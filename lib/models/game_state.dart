@@ -91,7 +91,27 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
   GameState() {
     _initializeGame();
   }
+  int _marketingLevel = 0;
 
+  int get marketingLevel => _marketingLevel;
+
+  void upgradeMarketing() {
+    _marketingLevel++;
+    notifyListeners();
+  }
+  double _productionCost = 0.05; // Exemple de coût de production par trombone
+
+  double get productionCost => _productionCost;
+
+  void setProductionCost(double cost) {
+    _productionCost = cost;
+    notifyListeners();
+  }
+
+  set money(double value) {
+    _money = value;
+    notifyListeners();
+  }
   Future<void> _initializeGame() async {
     await loadSaveDirectory();
     await loadGame();
@@ -100,7 +120,14 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
     _startMetalPriceVariation();
     _startPlayTimeTracking();
   }
-
+  void purchaseUpgrade(String id) {
+    final upgrade = upgrades[id];
+    if (upgrade != null && money >= upgrade.currentCost && upgrade.level < upgrade.maxLevel) {
+      money -= upgrade.currentCost;
+      upgrade.level++;
+      notifyListeners();
+    }
+  }
 
   void _startPlayTimeTracking() {
     _playTimeTimer?.cancel();
