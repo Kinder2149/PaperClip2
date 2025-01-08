@@ -175,6 +175,42 @@ class _StartScreenState extends State<StartScreen> {
     }
   }
 
+  void _showNewGameDialog() {
+    final TextEditingController nameController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Nouvelle Partie'),
+        content: TextField(
+          controller: nameController,
+          decoration: const InputDecoration(
+            labelText: 'Nom de la Partie',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              // Logique pour démarrer une nouvelle partie avec le nom fourni
+              Navigator.pop(context);
+              // Démarrer la nouvelle partie ici
+              context.read<GameState>().startNewGame(nameController.text);
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => const MainGame()),
+              );
+            },
+            child: const Text('Commencer'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -227,12 +263,7 @@ class _StartScreenState extends State<StartScreen> {
                   children: [
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(builder: (context) => const MainGame()),
-                          );
-                        },
+                        onPressed: _showNewGameDialog,
                         icon: const Icon(Icons.add),
                         label: const Text('Nouvelle Partie'),
                         style: ElevatedButton.styleFrom(

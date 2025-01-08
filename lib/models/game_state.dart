@@ -180,6 +180,33 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
     }
   }
 
+  void startNewGame(String gameName) {
+    // Réinitialiser les valeurs du jeu pour commencer une nouvelle partie
+    _paperclips = 0;
+    _metal = GameConstants.INITIAL_METAL;
+    _money = GameConstants.INITIAL_MONEY;
+    _sellPrice = GameConstants.INITIAL_PRICE;
+    _autoclippers = 0;
+    _currentMetalPrice = GameConstants.MIN_METAL_PRICE;
+    _totalPaperclipsProduced = 0;
+    _totalTimePlayedInSeconds = 0;
+    _marketingLevel = 0;
+    _productionCost = 0.05; // Exemple de coût de production par trombone
+
+    // Réinitialiser les upgrades
+    upgrades.forEach((key, value) {
+      value.reset();
+    });
+
+    // Autres initialisations nécessaires
+    initializeMarket();
+    startProductionTimer();
+    _startMetalPriceVariation();
+    _startPlayTimeTracking();
+
+    notifyListeners();
+  }
+
   @override
   void processMarket() {
     double calculatedDemand = marketManager.calculateDemand(_sellPrice, getMarketingLevel());
@@ -330,6 +357,9 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
         return [];
       }
       final files = await dir.list().toList();
+      files.sort((a, b) {
+        return b.statSync().modified.compareTo(a.statSync().modified);
+      });
       return files
           .whereType<File>()
           .where((f) => f.path.endsWith('.json'))
@@ -347,6 +377,7 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
       final file = File('$directory/$filename.json');
       if (await file.exists()) {
         await file.delete();
+        notifyListeners();
       }
     } catch (e) {
       print('Error deleting save: $e');

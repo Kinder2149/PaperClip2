@@ -10,26 +10,36 @@ class Upgrade {
     required this.description,
     required this.baseCost,
     this.level = 0,
-    required this.maxLevel,
+    this.maxLevel = 10,
   });
 
-  double get currentCost => baseCost * (1.5 * level);
+  // Getter pour obtenir le coût actuel de l'amélioration
+  double get currentCost {
+    return baseCost * (1.15 * level);
+  }
 
-  Map<String, dynamic> toJson() => {
-    'name': name,
-    'description': description,
-    'baseCost': baseCost,
-    'level': level,
-    'maxLevel': maxLevel,
-  };
+  // Méthode pour réinitialiser l'amélioration
+  void reset() {
+    level = 0;
+  }
 
-  factory Upgrade.fromJson(Map<String, dynamic> json) {
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'description': description,
+      'baseCost': baseCost,
+      'level': level,
+      'maxLevel': maxLevel,
+    };
+  }
+
+  static Upgrade fromJson(Map<String, dynamic> json) {
     return Upgrade(
-      name: json['name'] ?? '',
-      description: json['description'] ?? '',
-      baseCost: (json['baseCost'] ?? 0.0).toDouble(),
-      level: json['level'] ?? 0,
-      maxLevel: json['maxLevel'] ?? 1,
+      name: json['name'],
+      description: json['description'],
+      baseCost: json['baseCost'],
+      level: json['level'],
+      maxLevel: json['maxLevel'],
     );
   }
 }
