@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:math';
 import 'dart:convert';
@@ -28,6 +29,8 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
   int _totalTimePlayedInSeconds = 0;
   Timer? _playTimeTimer;
   String? _customSaveDirectory;
+  int _marketingLevel = 0;
+  double _productionCost = 0.05; // Exemple de coût de production par trombone
 
   // Public getters
   double get paperclips => _paperclips;
@@ -35,12 +38,13 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
   double get money => _money;
   double get sellPrice => _sellPrice;
   int get autoclippers => _autoclippers;
-  double get autocliperCost =>
-      GameConstants.BASE_AUTOCLIPPER_COST * (1.15 * _autoclippers);
+  double get autocliperCost => GameConstants.BASE_AUTOCLIPPER_COST * (1.15 * _autoclippers);
   double get currentMetalPrice => _currentMetalPrice;
   int get totalTimePlayed => _totalTimePlayedInSeconds;
   int get totalPaperclipsProduced => _totalPaperclipsProduced;
   String? get customSaveDirectory => _customSaveDirectory;
+  int get marketingLevel => _marketingLevel;
+  double get productionCost => _productionCost;
 
   // Setters
   set paperclips(double value) {
@@ -60,6 +64,16 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
 
   set customSaveDirectory(String? value) {
     _customSaveDirectory = value;
+    notifyListeners();
+  }
+
+  set money(double value) {
+    _money = value;
+    notifyListeners();
+  }
+
+  void setProductionCost(double cost) {
+    _productionCost = cost;
     notifyListeners();
   }
 
@@ -91,27 +105,12 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
   GameState() {
     _initializeGame();
   }
-  int _marketingLevel = 0;
-
-  int get marketingLevel => _marketingLevel;
 
   void upgradeMarketing() {
     _marketingLevel++;
     notifyListeners();
   }
-  double _productionCost = 0.05; // Exemple de coût de production par trombone
 
-  double get productionCost => _productionCost;
-
-  void setProductionCost(double cost) {
-    _productionCost = cost;
-    notifyListeners();
-  }
-
-  set money(double value) {
-    _money = value;
-    notifyListeners();
-  }
   Future<void> _initializeGame() async {
     await loadSaveDirectory();
     await loadGame();
@@ -120,6 +119,7 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
     _startMetalPriceVariation();
     _startPlayTimeTracking();
   }
+
   void purchaseUpgrade(String id) {
     final upgrade = upgrades[id];
     if (upgrade != null && money >= upgrade.currentCost && upgrade.level < upgrade.maxLevel) {
@@ -138,18 +138,13 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
 
   void _startMetalPriceVariation() {
     _metalPriceTimer?.cancel();
-    _metalPriceTimer = Timer.periodic(
-        const Duration(seconds: 4),
-            (timer) async {
-          double variation = (Random().nextDouble() * 4) - 2;
-          _currentMetalPrice = (_currentMetalPrice + variation)
-              .clamp(
-              GameConstants.MIN_METAL_PRICE, GameConstants.MAX_METAL_PRICE);
-          notifyListeners();
-          await Future.delayed(
-              Duration(milliseconds: Random().nextInt(6000) + 4000));
-        }
-    );
+    _metalPriceTimer = Timer.periodic(const Duration(seconds: 4), (timer) async {
+      double variation = (Random().nextDouble() * 4) - 2;
+      _currentMetalPrice = (_currentMetalPrice + variation)
+          .clamp(GameConstants.MIN_METAL_PRICE, GameConstants.MAX_METAL_PRICE);
+      notifyListeners();
+      await Future.delayed(Duration(milliseconds: Random().nextInt(6000) + 4000));
+    });
   }
 
   void producePaperclip() {
@@ -187,13 +182,8 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
 
   @override
   void processMarket() {
-    double calculatedDemand = marketManager.calculateDemand(
-      _sellPrice,
-      getMarketingLevel(),
-    );
-
+    double calculatedDemand = marketManager.calculateDemand(_sellPrice, getMarketingLevel());
     int potentialSales = calculatedDemand.floor();
-
     if (_paperclips >= potentialSales && potentialSales > 0) {
       _paperclips -= potentialSales;
       _money += potentialSales * _sellPrice;
@@ -206,11 +196,8 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
   void processProduction() {
     if (_autoclippers > 0) {
       double bulkBonus = 1.0 + (upgrades['bulk']?.level ?? 0) * 0.35;
-      double efficiencyBonus = 1.0 -
-          ((upgrades['efficiency']?.level ?? 0) * 0.15);
-      double metalNeeded = _autoclippers * GameConstants.METAL_PER_PAPERCLIP *
-          efficiencyBonus;
-
+      double efficiencyBonus = 1.0 - ((upgrades['efficiency']?.level ?? 0) * 0.15);
+      double metalNeeded = _autoclippers * GameConstants.METAL_PER_PAPERCLIP * efficiencyBonus;
       if (_metal >= metalNeeded) {
         double production = _autoclippers * bulkBonus;
         _paperclips += production;
@@ -245,15 +232,12 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
     try {
       final prefs = await SharedPreferences.getInstance();
       final savedData = prefs.getString(GameConstants.SAVE_KEY);
-
       if (savedData != null) {
         Map<String, dynamic> gameData = jsonDecode(savedData);
-
         // Vérifier si une migration est nécessaire
         if (UpdateManager.needsMigration(gameData['version'] as String?)) {
           gameData = UpdateManager.migrateData(gameData);
         }
-
         _paperclips = (gameData['paperclips'] ?? 0).toDouble();
         _metal = (gameData['metal'] ?? GameConstants.INITIAL_METAL).toDouble();
         _money = (gameData['money'] ?? GameConstants.INITIAL_MONEY).toDouble();
@@ -263,7 +247,6 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
         _totalPaperclipsProduced = gameData['totalPaperclipsProduced'] ?? 0;
         _totalTimePlayedInSeconds = gameData['totalTimePlayedInSeconds'] ?? 0;
         _customSaveDirectory = gameData['customSaveDirectory'];
-
         // Charger les upgrades
         if (gameData['upgrades'] != null) {
           Map<String, dynamic> savedUpgrades = gameData['upgrades'];
@@ -273,10 +256,8 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
             }
           });
         }
-
         // Initialiser le marché avec la réputation sauvegardée
         marketManager.reputation = (gameData['marketReputation'] ?? 1.0).toDouble();
-
         notifyListeners();
       }
     } catch (e) {
@@ -288,16 +269,12 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
     try {
       final directory = await saveDirectory;
       final file = File('$directory/$filename.json');
-
       if (!await file.exists()) return false;
-
       final content = await file.readAsString();
       Map<String, dynamic> gameData = jsonDecode(content);
-
       if (UpdateManager.needsMigration(gameData['version'] as String?)) {
         gameData = UpdateManager.migrateData(gameData);
       }
-
       // Mettre à jour les données du jeu
       _paperclips = (gameData['paperclips'] ?? 0).toDouble();
       _metal = (gameData['metal'] ?? GameConstants.INITIAL_METAL).toDouble();
@@ -307,7 +284,6 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
       _currentMetalPrice = (gameData['currentMetalPrice'] ?? GameConstants.MIN_METAL_PRICE).toDouble();
       _totalPaperclipsProduced = gameData['totalPaperclipsProduced'] ?? 0;
       _totalTimePlayedInSeconds = gameData['totalTimePlayedInSeconds'] ?? 0;
-
       // Charger les upgrades
       if (gameData['upgrades'] != null) {
         Map<String, dynamic> savedUpgrades = gameData['upgrades'];
@@ -317,9 +293,7 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
           }
         });
       }
-
       marketManager.reputation = (gameData['marketReputation'] ?? 1.0).toDouble();
-
       // Sauvegarder dans les préférences
       await saveGame();
       notifyListeners();
@@ -336,7 +310,6 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
       final String? result = await FilePicker.platform.getDirectoryPath(
         dialogTitle: 'Sélectionner le dossier de sauvegarde',
       );
-
       if (result != null) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(GameConstants.SAVE_DIR_KEY, result);
@@ -352,12 +325,10 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
     try {
       final directory = await saveDirectory;
       final dir = Directory(directory);
-
       if (!await dir.exists()) {
         await dir.create(recursive: true);
         return [];
       }
-
       final files = await dir.list().toList();
       return files
           .whereType<File>()
@@ -374,7 +345,6 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
     try {
       final directory = await saveDirectory;
       final file = File('$directory/$filename.json');
-
       if (await file.exists()) {
         await file.delete();
       }
@@ -392,8 +362,31 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
     _playTimeTimer?.cancel();
     super.dispose();
   }
- @override
-int getMarketingLevel() {
-  return upgrades['marketing']?.level ?? 0;
+
+  @override
+  int getMarketingLevel() {
+    return upgrades['marketing']?.level ?? 0;
+  }
+
+  // Fonction de sauvegarde
+  Future<void> saveGame() async {
+    final prefs = await SharedPreferences.getInstance();
+    final gameData = prepareGameData();
+    await prefs.setString(GameConstants.SAVE_KEY, jsonEncode(gameData));
+    notifyListeners();
+  }
+
+  void showAutoSaveMessage(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Jeu sauvegardé automatiquement')),
+    );
+  }
+
+  // Initialiser la sauvegarde automatique
+  void startAutoSave(BuildContext context) {
+    Timer.periodic(const Duration(minutes: 5), (timer) {
+      saveGame();
+      showAutoSaveMessage(context);
+    });
   }
 }

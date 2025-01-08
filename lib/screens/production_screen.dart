@@ -231,12 +231,15 @@ class ProductionScreen extends StatelessWidget {
                 children: [
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: () => _showSaveDialog(context, gameState),
+                      onPressed: () {
+                        Provider.of<GameState>(context, listen: false).saveGame();
+                      },
                       icon: const Icon(Icons.save),
-                      label: const Text('Sauvegarder'),
+                      label: const Text('Sauvegarder la Partie'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
+                        backgroundColor: Colors.blue, // Conserve la couleur du design actuel
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                        textStyle: const TextStyle(fontSize: 16),
                       ),
                     ),
                   ),

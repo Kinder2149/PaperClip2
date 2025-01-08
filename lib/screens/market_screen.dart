@@ -112,7 +112,7 @@ class MarketScreen extends StatelessWidget {
                 Icons.trending_up,
                 Colors.purple.shade100,
                 'Les conditions actuelles du marché influencent la demande.',
-                    () => _showInfoDialog(context, 'Conditions du marché', 'Les conditions du marché sont des facteurs externes qui influencent la demande via un multiplicateur. Les conditions favorables augmentent la demande, tandis que les conditions défavorables la réduisent.'),
+                    () => _showInfoDialog(context, 'Conditions du marché', 'Les conditions du marché sont des facteurs externes qui influencent la demande via un multiplicateur. Les conditions favorables augmentent la demande, tandis qu\'une condition défavorable la réduisent.'),
               ),
               const SizedBox(height: 8),
 
@@ -202,6 +202,21 @@ class MarketScreen extends StatelessWidget {
                     ),
                   ),
                 ],
+              ),
+
+              const SizedBox(height: 8),
+
+              // Bouton de sauvegarde
+              ElevatedButton(
+                onPressed: () {
+                  Provider.of<GameState>(context, listen: false).saveGame();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue, // Conserve la couleur du design actuel
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  textStyle: const TextStyle(fontSize: 16),
+                ),
+                child: const Text('Sauvegarder la Partie'),
               ),
             ],
           ),
