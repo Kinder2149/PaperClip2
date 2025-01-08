@@ -95,11 +95,95 @@ class _MainGameState extends State<MainGame> {
   }
 
   void _showSaveDialog(BuildContext context, GameState gameState) {
-    // Implémentation de la boîte de dialogue de sauvegarde
+    final TextEditingController nameController = TextEditingController(
+        text: 'save_${DateTime.now().toString().split('.')[0].replaceAll(RegExp(r'[^0-9]'), '')}'
+    );
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sauvegarder la partie'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'Nom de la sauvegarde',
+                hintText: 'Entrez un nom pour votre sauvegarde',
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Dossier de sauvegarde :\n${gameState.customSaveDirectory ?? "Dossier par défaut"}',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              try {
+                await gameState.exportSave(nameController.text);
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Sauvegarde créée avec succès')),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Erreur lors de la sauvegarde'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text('Sauvegarder'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showChangelogDialog(BuildContext context) {
-    // Implémentation de la boîte de dialogue du changelog
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Version ${UpdateManager.CURRENT_VERSION}'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Derniers changements :',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(UpdateManager.getChangelogForVersion(UpdateManager.CURRENT_VERSION)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
+import '../models/constants.dart';
 import '../widgets/money_display.dart';
 import '../utils/update_manager.dart';
 import 'dart:io';
+import '../models/constants.dart';
 
 class ProductionScreen extends StatelessWidget {
   const ProductionScreen({super.key});
@@ -246,7 +248,7 @@ class ProductionScreen extends StatelessWidget {
                           : null,
                       icon: const Icon(Icons.shopping_cart),
                       label: Text(
-                        '${GameState.METAL_PACK_AMOUNT} métal\n${gameState.currentMetalPrice.toStringAsFixed(2)} €',
+                        '${GameConstants.METAL_PACK_AMOUNT} métal\n${gameState.currentMetalPrice.toStringAsFixed(2)} €',
                         textAlign: TextAlign.center,
                         style: const TextStyle(fontSize: 12),
                       ),
@@ -262,12 +264,12 @@ class ProductionScreen extends StatelessWidget {
 
               // Boutons de production
               ElevatedButton.icon(
-                onPressed: gameState.metal >= GameState.METAL_PER_PAPERCLIP
+                onPressed: gameState.metal >= GameConstants.METAL_PER_PAPERCLIP
                     ? gameState.producePaperclip
                     : null,
                 icon: const Icon(Icons.add),
                 label: Text(
-                  'Produire un trombone (${GameState.METAL_PER_PAPERCLIP} métal)',
+                  'Produire un trombone (${GameConstants.METAL_PER_PAPERCLIP} métal)',
                   style: const TextStyle(fontSize: 16),
                 ),
                 style: ElevatedButton.styleFrom(

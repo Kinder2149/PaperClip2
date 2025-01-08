@@ -1,4 +1,3 @@
-// lib/models/upgrade.dart
 class Upgrade {
   final String name;
   final String description;

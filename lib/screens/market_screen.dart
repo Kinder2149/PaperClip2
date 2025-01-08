@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
+import '../models/constants.dart';
+import '../models/market/market_manager.dart';
 import '../widgets/money_display.dart';
 import '../widgets/sales_chart.dart';
 
@@ -29,7 +31,7 @@ class MarketScreen extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Text(
-                'Demande du marché: ${(gameState.marketDemand * 100).toStringAsFixed(1)}%',
+                'Réputation: ${(gameState.marketManager.reputation * 100).toStringAsFixed(1)}%',
                 style: const TextStyle(fontSize: 16),
               ),
               const SizedBox(height: 10),
@@ -43,8 +45,8 @@ class MarketScreen extends StatelessWidget {
                   Expanded(
                     child: Slider(
                       value: gameState.sellPrice,
-                      min: 0.01,
-                      max: 1.0,
+                      min: MarketManager.MIN_PRICE,
+                      max: MarketManager.MAX_PRICE,
                       divisions: 99,
                       onChanged: (value) => gameState.setSellPrice(value),
                     ),
@@ -57,97 +59,15 @@ class MarketScreen extends StatelessWidget {
                     ? gameState.buyMetal
                     : null,
                 child: Text(
-                  'Acheter ${GameState.METAL_PACK_AMOUNT} métal (${gameState.currentMetalPrice.toStringAsFixed(2)} €)',
+                  'Acheter ${GameConstants.METAL_PACK_AMOUNT} métal (${gameState.currentMetalPrice.toStringAsFixed(2)} €)',
                 ),
               ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Évolution des ventes',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.history),
-                    onPressed: () {
-                      showModalBottomSheet(
-                        context: context,
-                        isScrollControlled: true,
-                        builder: (context) => DraggableScrollableSheet(
-                          initialChildSize: 0.7,
-                          maxChildSize: 0.9,
-                          minChildSize: 0.5,
-                          builder: (context, scrollController) => Container(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    const Text(
-                                      'Historique des ventes',
-                                      style: TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.close),
-                                      onPressed: () => Navigator.pop(context),
-                                    ),
-                                  ],
-                                ),
-                                Expanded(
-                                  child: ListView.builder(
-                                    controller: scrollController,
-                                    itemCount: gameState.salesHistory.length,
-                                    itemBuilder: (context, index) {
-                                      final sale = gameState.salesHistory[
-                                      gameState.salesHistory.length - 1 - index
-                                      ];
-                                      final previousSale = index < gameState.salesHistory.length - 1
-                                          ? gameState.salesHistory[gameState.salesHistory.length - 2 - index]
-                                          : null;
-                                      return ListTile(
-                                        dense: true,
-                                        title: Text(
-                                          '${sale.quantity} trombones à ${sale.price.toStringAsFixed(2)}€',
-                                          style: const TextStyle(fontWeight: FontWeight.w500),
-                                        ),
-                                        subtitle: Text(
-                                          'Revenu: ${sale.revenue.toStringAsFixed(2)}€\n'
-                                              'Temps depuis dernière vente: ${_formatTimeDifference(sale.timestamp, previousSale?.timestamp)}',
-                                        ),
-                                        trailing: Text(
-                                          '${sale.timestamp.hour}:${sale.timestamp.minute}:${sale.timestamp.second}',
-                                          style: TextStyle(
-                                            color: Colors.grey[600],
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
+              // ... reste du code ...
               Expanded(
                 child: Card(
                   child: Padding(
                     padding: const EdgeInsets.all(8.0),
-                    child: SalesChart(salesHistory: gameState.salesHistory),
+                    child: SalesChart(salesHistory: gameState.marketManager.salesHistory),
                   ),
                 ),
               ),
