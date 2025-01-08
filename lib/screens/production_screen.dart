@@ -226,61 +226,7 @@ class ProductionScreen extends StatelessWidget {
               ),
               const SizedBox(height: 20),
 
-              // Boutons de sauvegarde et d'achat
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        Provider.of<GameState>(context, listen: false).saveGame();
-                      },
-                      icon: const Icon(Icons.save),
-                      label: const Text('Sauvegarder la Partie'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue, // Conserve la couleur du design actuel
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                        textStyle: const TextStyle(fontSize: 16),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: gameState.money >= gameState.currentMetalPrice
-                          ? gameState.buyMetal
-                          : null,
-                      icon: const Icon(Icons.shopping_cart),
-                      label: Text(
-                        '${GameConstants.METAL_PACK_AMOUNT} métal\n${gameState.currentMetalPrice.toStringAsFixed(2)} €',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-
-              const Spacer(),
-
-              // Boutons de production
-              ElevatedButton.icon(
-                onPressed: gameState.metal >= GameConstants.METAL_PER_PAPERCLIP
-                    ? gameState.producePaperclip
-                    : null,
-                icon: const Icon(Icons.add),
-                label: Text(
-                  'Produire un trombone (${GameConstants.METAL_PER_PAPERCLIP} métal)',
-                  style: const TextStyle(fontSize: 16),
-                ),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.all(16),
-                  minimumSize: const Size(double.infinity, 50),
-                ),
-              ),
-              const SizedBox(height: 16),
+              // Boutons de production et d'achat
               ElevatedButton.icon(
                 onPressed: gameState.money >= gameState.autocliperCost
                     ? gameState.buyAutoclipper
@@ -295,7 +241,41 @@ class ProductionScreen extends StatelessWidget {
                   minimumSize: const Size(double.infinity, 50),
                 ),
               ),
+              const SizedBox(height: 16),
+
+              // Bouton de sauvegarde
+              ElevatedButton.icon(
+                onPressed: () {
+                  Provider.of<GameState>(context, listen: false).saveGame();
+                },
+                icon: const Icon(Icons.save),
+                label: const Text('Sauvegarder la Partie'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue, // Conserve la couleur du design actuel
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  textStyle: const TextStyle(fontSize: 16),
+                ),
+              ),
               const SizedBox(height: 24),
+
+              // Bouton de production de trombone
+              ElevatedButton.icon(
+                onPressed: gameState.metal >= GameConstants.METAL_PER_PAPERCLIP
+                    ? gameState.producePaperclip
+                    : null,
+                icon: const Icon(Icons.add),
+                label: Text(
+                  'Produire un trombone (${GameConstants.METAL_PER_PAPERCLIP} métal)',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.all(16),
+                  minimumSize: const Size(double.infinity, 50),
+                ),
+              ),
             ],
           ),
         );
