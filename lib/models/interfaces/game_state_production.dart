@@ -1,19 +1,21 @@
-// lib/models/interfaces/game_state_production.dart
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import '../constants.dart';
 import '../upgrade.dart';
 
-mixin GameStateProduction on ChangeNotifier {  // Ajout de "on ChangeNotifier"
-  Timer? _productionTimer;  // Renommé pour éviter les conflits
+mixin GameStateProduction on ChangeNotifier {
+  Timer? _productionTimer;
 
-  // Getters abstraits qui seront implémentés dans GameState
+  // Getters et setters abstraits
   double get metal;
   set metal(double value);
   int get autoclippers;
   double get paperclips;
   set paperclips(double value);
   Map<String, Upgrade> get upgrades;
+
+  // Méthode abstraite
+  void processProduction();
 
   void startProductionTimer() {
     _productionTimer?.cancel();
@@ -23,8 +25,6 @@ mixin GameStateProduction on ChangeNotifier {  // Ajout de "on ChangeNotifier"
     );
   }
 
-  void processProduction();  // Méthode abstraite
-
-  // Ajout du getter pour l'accès depuis GameState
+  // Getter pour l'accès au timer
   Timer? get productionTimer => _productionTimer;
 }

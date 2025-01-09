@@ -1,7 +1,10 @@
+// lib/screens/start_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import '../utils/update_manager.dart';
+import './save_load_screen.dart';
 import '../main.dart';
 
 class StartScreen extends StatefulWidget {
@@ -14,22 +17,35 @@ class StartScreen extends StatefulWidget {
 class _StartScreenState extends State<StartScreen> {
   bool _isLoading = false;
 
-  Future<void> _loadSave() async {
+  Future<void> _continueLastGame() async {
     setState(() => _isLoading = true);
-
     try {
-      await context.read<GameState>().loadGame();
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const MainGame()),
-        );
+      final games = await context.read<GameState>().listGames();
+      if (games.isNotEmpty) {
+        // Charge la dernière partie sauvegardée
+        final lastGame = games.first;
+        await context.read<GameState>().loadGame(lastGame['id'] as String);
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const MainGame()),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Aucune partie sauvegardée trouvée'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erreur: ${e.toString()}'),
+          const SnackBar(
+            content: Text('Erreur lors du chargement'),
             backgroundColor: Colors.red,
           ),
         );
@@ -39,17 +55,20 @@ class _StartScreenState extends State<StartScreen> {
     }
   }
 
-  void _showNewGameDialog() {
-    final TextEditingController nameController = TextEditingController();
+  void _showNewGameDialog(BuildContext context) {
+    final controller = TextEditingController(
+      text: 'Partie ${DateTime.now().day}/${DateTime.now().month}',
+    );
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Nouvelle Partie'),
         content: TextField(
-          controller: nameController,
+          controller: controller,
           decoration: const InputDecoration(
-            labelText: 'Nom de la Partie',
+            labelText: 'Nom de la partie',
+            hintText: 'Entrez un nom pour votre partie',
           ),
         ),
         actions: [
@@ -58,13 +77,15 @@ class _StartScreenState extends State<StartScreen> {
             child: const Text('Annuler'),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              context.read<GameState>().startNewGame(nameController.text);
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => const MainGame()),
-              );
+              await context.read<GameState>().startNewGame(controller.text);
+              if (context.mounted) {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const MainGame()),
+                );
+              }
             },
             child: const Text('Commencer'),
           ),
@@ -120,36 +141,64 @@ class _StartScreenState extends State<StartScreen> {
                 ),
                 const SizedBox(height: 40),
                 ElevatedButton.icon(
-                  onPressed: _showNewGameDialog,
+                  onPressed: () => _showNewGameDialog(context),
                   icon: const Icon(Icons.add),
                   label: const Text('Nouvelle Partie'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
                     foregroundColor: Colors.deepPurple[700],
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    backgroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 32,
+                      vertical: 16,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(30),
                     ),
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
                 ElevatedButton.icon(
-                  onPressed: _loadSave,
+                  onPressed: _continueLastGame,
                   icon: const Icon(Icons.play_arrow),
-                  label: const Text('Charger Jeu'),
+                  label: const Text('Continuer'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepPurple[700],
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    backgroundColor: Colors.deepPurple[600],
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 32,
+                      vertical: 16,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(30),
                     ),
                   ),
                 ),
-                const SizedBox(height: 20),
-                _isLoading
-                    ? const CircularProgressIndicator()
-                    : const SizedBox.shrink(),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const SaveLoadScreen()),
+                  ),
+                  icon: const Icon(Icons.folder_open),
+                  label: const Text('Charger une partie'),
+                  style: ElevatedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    backgroundColor: Colors.deepPurple[500],
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 32,
+                      vertical: 16,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                  ),
+                ),
+                if (_isLoading) ...[
+                  const SizedBox(height: 24),
+                  const CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ],
               ],
             ),
           ),

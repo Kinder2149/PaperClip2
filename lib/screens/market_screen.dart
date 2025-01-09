@@ -212,7 +212,7 @@ class MarketScreen extends StatelessWidget {
                   Provider.of<GameState>(context, listen: false).saveGame();
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red, // Conserve la couleur du design actuel
+                  backgroundColor: Colors.purple.shade200, // Conserve la couleur du design actuel
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                   textStyle: const TextStyle(fontSize: 16),
                 ),
