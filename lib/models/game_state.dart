@@ -202,7 +202,7 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
     }
   }
 
-  void buyAutoclipper() {
+  void buyAutoclipper() async {
     if (_money >= autocliperCost) {
       _money -= autocliperCost;
       _autoclippers++;
@@ -332,6 +332,28 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
     await prefs.setString(GameConstants.SAVE_KEY, jsonEncode(gameData));
     _lastSaveTime = DateTime.now();
     notifyListeners();
+  }
+
+  Future<List<Map<String, dynamic>>> listGames() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedGames = prefs.getStringList('saved_games') ?? [];
+    return savedGames.map((game) => jsonDecode(game) as Map<String, dynamic>).toList();
+  }
+
+  Future<void> deleteGame(String gameId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedGames = prefs.getStringList('saved_games') ?? [];
+    savedGames.removeWhere((game) => jsonDecode(game)['id'] == gameId);
+    await prefs.setStringList('saved_games', savedGames);
+  }
+
+  void startAutoSave(BuildContext context) {
+    Timer.periodic(const Duration(minutes: 5), (timer) {
+      saveGame();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Jeu sauvegardé automatiquement')),
+      );
+    });
   }
 
   @override
