@@ -4,8 +4,6 @@ import '../models/game_state.dart';
 import '../models/constants.dart';
 import '../widgets/money_display.dart';
 import '../utils/update_manager.dart';
-import 'dart:io';
-import '../models/constants.dart';
 
 class ProductionScreen extends StatelessWidget {
   const ProductionScreen({super.key});
@@ -76,20 +74,6 @@ class ProductionScreen extends StatelessWidget {
                 hintText: 'Entrez un nom pour votre sauvegarde',
               ),
             ),
-            const SizedBox(height: 16),
-            Text(
-              'Dossier de sauvegarde :\n${gameState.customSaveDirectory ?? "Dossier par défaut"}',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
-              ),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: () => gameState.selectSaveDirectory(),
-              icon: const Icon(Icons.folder),
-              label: const Text('Changer le dossier'),
-            ),
           ],
         ),
         actions: [
@@ -100,7 +84,7 @@ class ProductionScreen extends StatelessWidget {
           ElevatedButton(
             onPressed: () async {
               try {
-                await gameState.exportSave(nameController.text);
+                await gameState.saveGame();
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Sauvegarde créée avec succès')),
@@ -218,6 +202,24 @@ class ProductionScreen extends StatelessWidget {
                 Colors.grey.shade200,
               ),
               const SizedBox(height: 12),
+
+              // Bouton pour acheter du métal
+              ElevatedButton.icon(
+                onPressed: gameState.money >= gameState.currentMetalPrice
+                    ? gameState.buyMetal
+                    : null,
+                icon: const Icon(Icons.shopping_cart),
+                label: Text(
+                  'Acheter Métal (${gameState.currentMetalPrice.toStringAsFixed(1)} €)',
+                  style: const TextStyle(fontSize: 16),
+                ),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.all(16),
+                  minimumSize: const Size(double.infinity, 50),
+                ),
+              ),
+              const SizedBox(height: 12),
+
               _buildResourceCard(
                 'Autoclippers',
                 gameState.autoclippers.toString(),
@@ -246,12 +248,12 @@ class ProductionScreen extends StatelessWidget {
               // Bouton de sauvegarde
               ElevatedButton.icon(
                 onPressed: () {
-                  Provider.of<GameState>(context, listen: false).saveGame();
+                  _showSaveDialog(context, gameState);
                 },
                 icon: const Icon(Icons.save),
                 label: const Text('Sauvegarder la Partie'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue, // Conserve la couleur du design actuel
+                  backgroundColor: Colors.blue,
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                   textStyle: const TextStyle(fontSize: 16),
                 ),

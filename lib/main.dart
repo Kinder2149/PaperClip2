@@ -82,10 +82,21 @@ class _MainGameState extends State<MainGame> {
                 title: const Text('Temps de jeu'),
                 subtitle: Text(_formatTimePlayed(gameState.totalTimePlayed)),
               ),
+              if (gameState.lastSaveTime != null)
+                ListTile(
+                  leading: const Icon(Icons.access_time),
+                  title: const Text('Dernière sauvegarde'),
+                  subtitle: Text(gameState.lastSaveTime!.toString()),
+                ),
               ListTile(
                 leading: const Icon(Icons.save),
                 title: const Text('Sauvegarder'),
                 onTap: () => _showSaveDialog(context, gameState),
+              ),
+              ListTile(
+                leading: const Icon(Icons.folder_open),
+                title: const Text('Charger une sauvegarde'),
+                onTap: () => _showLoadDialog(context, gameState),
               ),
             ],
           ),
@@ -114,14 +125,6 @@ class _MainGameState extends State<MainGame> {
                 hintText: 'Entrez un nom pour votre sauvegarde',
               ),
             ),
-            const SizedBox(height: 16),
-            Text(
-              'Dossier de sauvegarde :\n${gameState.customSaveDirectory ?? "Dossier par défaut"}',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
-              ),
-            ),
           ],
         ),
         actions: [
@@ -132,7 +135,7 @@ class _MainGameState extends State<MainGame> {
           ElevatedButton(
             onPressed: () async {
               try {
-                await gameState.exportSave(nameController.text);
+                await gameState.saveGame();
                 if (context.mounted) {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -157,6 +160,30 @@ class _MainGameState extends State<MainGame> {
     );
   }
 
+  void _showLoadDialog(BuildContext context, GameState gameState) async {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Charger une sauvegarde'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: const Text('Charger la dernière sauvegarde'),
+              onTap: () async {
+                await gameState.loadGame();
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Sauvegarde chargée avec succès')),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showChangelogDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -173,6 +200,13 @@ class _MainGameState extends State<MainGame> {
               ),
               const SizedBox(height: 8),
               Text(UpdateManager.getChangelogForVersion(UpdateManager.CURRENT_VERSION)),
+              const Divider(),
+              const Text(
+                'Historique complet :',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(UpdateManager.getFullChangelog()),
             ],
           ),
         ),
@@ -200,6 +234,7 @@ class _MainGameState extends State<MainGame> {
           IconButton(
             icon: const Icon(Icons.settings, color: Colors.white),
             iconSize: 32,
+            tooltip: 'Paramètres',
             onPressed: () => _showSettingsMenu(context),
           ),
         ],
