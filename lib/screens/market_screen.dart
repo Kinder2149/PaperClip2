@@ -208,16 +208,32 @@ class MarketScreen extends StatelessWidget {
 
               // Bouton de sauvegarde
               ElevatedButton(
-                onPressed: () {
-                  Provider.of<GameState>(context, listen: false).saveGame();
+                onPressed: () async {
+                  try {
+                    await gameState.quickSave();
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Sauvegarde créée avec succès')),
+                      );
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Erreur lors de la sauvegarde'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red, // Conserve la couleur du design actuel
+                  backgroundColor: Colors.red,
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                   textStyle: const TextStyle(fontSize: 16),
                 ),
                 child: const Text('Sauvegarder la Partie'),
-              ),
+              )
             ],
           ),
         );

@@ -5,6 +5,9 @@ import '../utils/update_manager.dart';
 import '../main.dart';
 import './save_load_screen.dart';
 import '../services/save_manager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../models/constants.dart';
+
 
 class StartScreen extends StatefulWidget {
   const StartScreen({super.key});
@@ -19,8 +22,9 @@ class _StartScreenState extends State<StartScreen> {
   Future<void> _continueLastGame() async {
     setState(() => _isLoading = true);
     try {
-      final hasSaveGame = await SaveManager.hasSaveGame();
-      if (hasSaveGame) {
+      final prefs = await SharedPreferences.getInstance();
+      final savedData = prefs.getString(GameConstants.SAVE_KEY);
+      if (savedData != null) {
         await context.read<GameState>().loadGame();
         if (mounted) {
           Navigator.pushReplacement(
@@ -31,20 +35,14 @@ class _StartScreenState extends State<StartScreen> {
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Aucune partie sauvegardée trouvée'),
-              backgroundColor: Colors.orange,
-            ),
+            const SnackBar(content: Text('Aucune sauvegarde trouvée')),
           );
         }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Erreur lors du chargement'),
-            backgroundColor: Colors.red,
-          ),
+          const SnackBar(content: Text('Erreur de chargement')),
         );
       }
     } finally {
@@ -76,7 +74,7 @@ class _StartScreenState extends State<StartScreen> {
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(context);
-              await context.read<GameState>().startNewGame();
+              await context.read<GameState>().startNewGame(controller.text);
               if (context.mounted) {
                 Navigator.pushReplacement(
                   context,

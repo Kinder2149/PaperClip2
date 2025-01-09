@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
-import '../services/save_manager.dart';
 import '../main.dart';
 
 class SaveLoadScreen extends StatelessWidget {
@@ -17,57 +16,72 @@ class SaveLoadScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Parties sauvegardées'),
       ),
-      body: FutureBuilder<List<Map<String, dynamic>>>(
-        future: context.read<GameState>().listGames(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: Consumer<GameState>(
+        builder: (context, gameState, child) {
+          return FutureBuilder<List<SaveGame>>(
+            future: gameState.listGames(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-          if (snapshot.hasError) {
-            return Center(child: Text('Erreur: ${snapshot.error}'));
-          }
+              if (snapshot.hasError) {
+                return Center(child: Text('Erreur: ${snapshot.error}'));
+              }
 
-          final games = snapshot.data ?? [];
+              final games = snapshot.data ?? [];
 
-          if (games.isEmpty) {
-            return const Center(child: Text('Aucune partie sauvegardée'));
-          }
+              if (games.isEmpty) {
+                return const Center(child: Text('Aucune partie sauvegardée'));
+              }
 
-          return ListView.builder(
-            itemCount: games.length,
-            itemBuilder: (context, index) {
-              final game = games[index];
-              final lastSaveTime = DateTime.parse(game['lastSaveTime'] as String);
+              return ListView.builder(
+                itemCount: games.length,
+                itemBuilder: (context, index) {
+                  final game = games[index];
+                  final lastSaveTime = game.lastSaveTime;
 
-              return ListTile(
-                title: Text(game['name'] as String),
-                subtitle: Text('Dernière sauvegarde: ${_formatDateTime(lastSaveTime)}'),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.play_arrow),
-                      onPressed: () async {
-                        await context.read<GameState>().loadGame();
-                        if (context.mounted) {
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(builder: (context) => const MainGame()),
-                          );
-                        }
-                      },
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete),
-                      onPressed: () => _showDeleteConfirmation(
-                        context,
-                        game['id'] as String,
-                        game['name'] as String,
+                  return Card(
+                    margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: ListTile(
+                      title: Text(game.name),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Dernière sauvegarde: ${_formatDateTime(lastSaveTime)}'),
+                          Text('Trombones: ${game.paperclips.toStringAsFixed(0)}'),
+                          Text('Argent: ${game.money.toStringAsFixed(2)} €'),
+                        ],
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.play_arrow),
+                            onPressed: () async {
+                              await gameState.loadGameById(game.id);
+                              if (context.mounted) {
+                                Navigator.pushReplacement(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const MainGame()),
+                                );
+                              }
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete),
+                            onPressed: () => _showDeleteConfirmation(
+                              context,
+                              gameState,
+                              game.id,
+                              game.name,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                ),
+                  );
+                },
               );
             },
           );
@@ -82,6 +96,7 @@ class SaveLoadScreen extends StatelessWidget {
 
   Future<void> _showDeleteConfirmation(
       BuildContext context,
+      GameState gameState,
       String gameId,
       String gameName,
       ) async {
@@ -98,13 +113,14 @@ class SaveLoadScreen extends StatelessWidget {
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Supprimer'),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
           ),
         ],
       ),
     );
 
     if (result == true && context.mounted) {
-      await context.read<GameState>().deleteGame(gameId);
+      await gameState.deleteGame(gameId);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Partie supprimée')),
@@ -142,7 +158,7 @@ class SaveLoadScreen extends StatelessWidget {
     );
 
     if (result != null && result.isNotEmpty && context.mounted) {
-      await context.read<GameState>().startNewGame();
+      await context.read<GameState>().startNewGame(result);
       if (context.mounted) {
         Navigator.pushReplacement(
           context,

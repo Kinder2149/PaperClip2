@@ -164,58 +164,24 @@ class ProductionScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _showSaveDialog(BuildContext context, GameState gameState) async {
-    final TextEditingController nameController = TextEditingController(
-        text: 'save_${DateTime.now().toString().split('.')[0].replaceAll(RegExp(r'[^0-9]'), '')}');
-
-    return showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Sauvegarder la partie'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(
-                labelText: 'Nom de la sauvegarde',
-                hintText: 'Entrez un nom pour votre sauvegarde',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Annuler'),
+  void _quickSave(BuildContext context, GameState gameState) async {
+    try {
+      await gameState.quickSave();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Sauvegarde créée avec succès')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Erreur lors de la sauvegarde'),
+            backgroundColor: Colors.red,
           ),
-          ElevatedButton(
-            onPressed: () async {
-              try {
-                await gameState.saveGame(nameController.text);
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Sauvegarde créée avec succès')),
-                  );
-                  Navigator.pop(context);
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Erreur lors de la sauvegarde'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              }
-            },
-            child: const Text('Sauvegarder'),
-          ),
-        ],
-      ),
-    );
+        );
+      }
+    }
   }
 
   @override
@@ -402,7 +368,7 @@ class ProductionScreen extends StatelessWidget {
 
                         // Bouton de sauvegarde
                         ElevatedButton(
-                          onPressed: () => _showSaveDialog(context, gameState),
+                          onPressed: () => _quickSave(context, gameState),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.purple.shade200,
                             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -412,7 +378,7 @@ class ProductionScreen extends StatelessWidget {
                             'Sauvegarder la Partie',
                             style: TextStyle(fontSize: 14),
                           ),
-                        ),
+                        )
                       ],
                     ),
                   ),

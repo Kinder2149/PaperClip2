@@ -8,11 +8,45 @@ import '../utils/update_manager.dart';
 import 'constants.dart';
 import 'upgrade.dart';
 import 'market/market_manager.dart';
-import 'market/sale_record.dart';
 import 'interfaces/game_state_market.dart';
 import 'interfaces/game_state_production.dart';
 import 'interfaces/game_state_save.dart';
 import '../models/level_system.dart';
+import '../services/save_manager.dart';
+
+class SaveGame {
+  final String id;
+  final String name;
+  final DateTime lastSaveTime;
+  final double paperclips;
+  final double metal;
+  final double money;
+  final Map<String, dynamic> gameData;
+
+  SaveGame({
+    required this.id,
+    required this.name,
+    required this.lastSaveTime,
+    required this.paperclips,
+    required this.metal,
+    required this.money,
+    required this.gameData,
+  });
+
+  factory SaveGame.fromJson(Map<String, dynamic> json) {
+    return SaveGame(
+      id: json['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      name: json['name'] ?? 'Sauvegarde sans nom',
+      lastSaveTime: DateTime.tryParse(json['lastSaveTime'] ?? '') ?? DateTime.now(),
+      paperclips: (json['paperclips'] ?? 0).toDouble(),
+      metal: (json['metal'] ?? 0).toDouble(),
+      money: (json['money'] ?? 0).toDouble(),
+      gameData: json,
+    );
+  }
+
+  Map<String, dynamic> toJson() => gameData;
+}
 
 class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction, GameStateSave {
   // Private properties
@@ -26,10 +60,11 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
   int _totalPaperclipsProduced = 0;
   int _totalTimePlayedInSeconds = 0;
   Timer? _playTimeTimer;
-  DateTime? _lastSaveTime; // Ajout pour stocker la dernière heure de sauvegarde
+  DateTime? _lastSaveTime;
   int _marketingLevel = 0;
   double _productionCost = 0.05;
   BuildContext? _context;
+  List<Map<String, dynamic>> _statsHistory = [];
 
   // Properties ajoutées
   LevelSystem _levelSystem = LevelSystem();
@@ -58,8 +93,6 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
   DateTime? get lastSaveTime => _lastSaveTime;
   int get marketingLevel => _marketingLevel;
   double get productionCost => _productionCost;
-
-  // Capacité de stockage
   int get maxMetalStorage => (1000 * (1 + (upgrades['storage']?.level ?? 0) * 0.50)).toInt();
 
   // Setters
@@ -88,90 +121,8 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
     notifyListeners();
   }
 
-  // Upgrade system
-  final Map<String, Upgrade> upgrades = {
-    'efficiency': Upgrade(
-      name: 'Metal Efficiency',
-      description: 'Réduit la consommation de métal de 15 %',
-      baseCost: 45.0,
-      level: 0,
-      maxLevel: 10,
-    ),
-    'marketing': Upgrade(
-      name: 'Marketing',
-      description: 'Augmente la demande du marché de 30 %',
-      baseCost: 75.0,
-      level: 0,
-      maxLevel: 8,
-    ),
-    'bulk': Upgrade(
-      name: 'Bulk Production',
-      description: 'Les autoclippeuses produisent 35 % plus vite',
-      baseCost: 150.0,
-      level: 0,
-      maxLevel: 8,
-    ),
-    'speed': Upgrade(
-      name: 'Speed Boost',
-      description: 'Augmente la vitesse de production de 20 %',
-      baseCost: 100.0,
-      level: 0,
-      maxLevel: 5,
-    ),
-    'storage': Upgrade(
-      name: 'Storage Upgrade',
-      description: 'Augmente la capacité de stockage de métal de 50 %',
-      baseCost: 60.0,
-      level: 0,
-      maxLevel: 5,
-    ),
-    'automation': Upgrade(
-      name: 'Automation',
-      description: 'Réduit le coût des autoclippeuses de 10 % par niveau',
-      baseCost: 200.0,
-      level: 0,
-      maxLevel: 5,
-    ),
-    'quality': Upgrade(
-      name: 'Quality Control',
-      description: 'Augmente le prix de vente des trombones de 10 % par niveau',
-      baseCost: 80.0,
-      level: 0,
-      maxLevel: 10,
-    ),
-  };
-
-  GameState() {
-    _initializeGame();
-  }
-
-  Future<void> _initializeGame() async {
-    await loadGame();
-    initializeMarket();
-    startProductionTimer();
-    _startMetalPriceVariation();
-    _startPlayTimeTracking();
-  }
-
   void setContext(BuildContext context) {
     _context = context;
-  }
-
-  Future<void> purchaseUpgrade(String id) async {
-    final upgrade = upgrades[id];
-    if (upgrade != null && money >= upgrade.currentCost && upgrade.level < upgrade.maxLevel) {
-      money -= upgrade.currentCost;
-      upgrade.level++;
-      await saveGame();
-      notifyListeners();
-    }
-  }
-
-  void _startPlayTimeTracking() {
-    _playTimeTimer?.cancel();
-    _playTimeTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      _totalTimePlayedInSeconds++;
-    });
   }
 
   void _startMetalPriceVariation() {
@@ -185,41 +136,14 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
     });
   }
 
-  void producePaperclip() {
-    if (_metal >= GameConstants.METAL_PER_PAPERCLIP) {
-      _paperclips++;
-      _totalPaperclipsProduced++;
-      _metal -= GameConstants.METAL_PER_PAPERCLIP;
-      notifyListeners();
-    }
-  }
-
-  void buyMetal() {
-    if (_money >= _currentMetalPrice && _metal < maxMetalStorage) {
-      _metal += GameConstants.METAL_PACK_AMOUNT;
-      _money -= _currentMetalPrice;
-      notifyListeners();
-    }
-  }
-
-  void buyAutoclipper() async {
-    if (_money >= autocliperCost) {
-      _money -= autocliperCost;
-      _autoclippers++;
-      await saveGame();
-      notifyListeners();
-    }
-  }
-
-  void setSellPrice(double price) {
-    if (price >= GameConstants.MIN_PRICE && price <= GameConstants.MAX_PRICE) {
-      _sellPrice = price;
-      notifyListeners();
-    }
+  void _startPlayTimeTracking() {
+    _playTimeTimer?.cancel();
+    _playTimeTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _totalTimePlayedInSeconds++;
+    });
   }
 
   Future<void> startNewGame(String name) async {
-    // Réinitialiser les valeurs du jeu pour commencer une nouvelle partie
     _paperclips = 0;
     _metal = GameConstants.INITIAL_METAL;
     _money = GameConstants.INITIAL_MONEY;
@@ -231,17 +155,59 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
     _marketingLevel = 0;
     _productionCost = 0.05;
 
-    // Réinitialiser les upgrades
     upgrades.forEach((key, value) => value.reset());
 
-    // Autres initialisations nécessaires
     initializeMarket();
     startProductionTimer();
     _startMetalPriceVariation();
     _startPlayTimeTracking();
 
-    await saveGame();
+    await SaveManager.saveGame(this);
     notifyListeners();
+  }
+
+  void buyMetal() {
+    if (_money >= _currentMetalPrice && _metal < maxMetalStorage) {
+      _metal += GameConstants.METAL_PACK_AMOUNT;
+      _money -= _currentMetalPrice;
+      notifyListeners();
+    }
+  }
+
+  void buyAutoclipper() {
+    if (_money >= autocliperCost) {
+      _money -= autocliperCost;
+      _autoclippers++;
+      _levelSystem.addAutoclipperPurchase(); // Ajout XP achat autoclipper
+      notifyListeners();
+    }
+  }
+
+  void setSellPrice(double price) {
+    if (price >= GameConstants.MIN_PRICE && price <= GameConstants.MAX_PRICE) {
+      _sellPrice = price;
+      notifyListeners();
+    }
+  }
+
+  void purchaseUpgrade(String id) {
+    final upgrade = upgrades[id];
+    if (upgrade != null && _money >= upgrade.currentCost && upgrade.level < upgrade.maxLevel) {
+      _money -= upgrade.currentCost;
+      upgrade.level++;
+      _levelSystem.addUpgradePurchase(upgrade.level); // Ajout XP amélioration
+      notifyListeners();
+    }
+  }
+
+  void producePaperclip() {
+    if (_metal >= GameConstants.METAL_PER_PAPERCLIP) {
+      _paperclips++;
+      _totalPaperclipsProduced++;
+      _metal -= GameConstants.METAL_PER_PAPERCLIP;
+      _levelSystem.addManualProduction(); // Ajout XP production manuelle
+      notifyListeners();
+    }
   }
 
   @override
@@ -255,6 +221,7 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
       _money += potentialSales * salePrice;
       marketManager.recordSale(potentialSales, salePrice);
       notifyListeners();
+      _levelSystem.addSale(potentialSales, salePrice); // Ajout XP ventes
     }
   }
 
@@ -270,16 +237,31 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
         _paperclips += production;
         _totalPaperclipsProduced += production.floor();
         _metal -= metalNeeded;
+        _levelSystem.addAutomaticProduction(production.floor()); // Ajout XP production auto
         notifyListeners();
       }
     }
   }
 
+  GameState() {
+    _initializeGame();
+  }
+
+  Future<void> _initializeGame() async {
+    await loadGame();
+    initializeMarket();
+    startProductionTimer();
+    _startMetalPriceVariation();
+    _startPlayTimeTracking();
+  }
+
+  // Save/Load System Methods
   @override
   Map<String, dynamic> prepareGameData() {
     return {
       'version': UpdateManager.CURRENT_VERSION,
       'buildNumber': UpdateManager.CURRENT_BUILD_NUMBER,
+      'lastSaveTime': DateTime.now().toIso8601String(),
       'paperclips': _paperclips,
       'metal': _metal,
       'money': _money,
@@ -290,8 +272,22 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
       'totalTimePlayedInSeconds': _totalTimePlayedInSeconds,
       'upgrades': upgrades.map((key, value) => MapEntry(key, value.toJson())),
       'marketReputation': marketManager.reputation,
-      'lastSaveTime': _lastSaveTime?.toIso8601String(),
+      'statsHistory': _statsHistory,
+      'levelSystem': _levelSystem.toJson(), // Nécessite une méthode toJson() dans LevelSystem
     };
+  }
+
+  Future<void> saveGame() async {
+    await SaveManager.saveGame(this);
+    _lastSaveTime = DateTime.now();
+    notifyListeners();
+  }
+
+  Future<void> loadGame() async {
+    final gameData = await SaveManager.loadGame();
+    if (gameData != null) {
+      await _loadGameData(gameData);
+    }
   }
 
   Future<void> _loadGameData(Map<String, dynamic> gameData) async {
@@ -312,48 +308,37 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
         }
       });
     }
+    _statsHistory = List<Map<String, dynamic>>.from(gameData['statsHistory'] ?? []);
     marketManager.reputation = (gameData['marketReputation'] ?? 1.0).toDouble();
     notifyListeners();
   }
 
-  Future<void> loadGame() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedData = prefs.getString(GameConstants.SAVE_KEY);
-    if (savedData != null) {
-      final gameData = jsonDecode(savedData);
-      await _loadGameData(gameData);
-    }
-  }
-
-  @override
-  Future<void> saveGame() async {
-    final prefs = await SharedPreferences.getInstance();
-    final gameData = prepareGameData();
-    await prefs.setString(GameConstants.SAVE_KEY, jsonEncode(gameData));
+  Future<void> quickSave() async {
+    await SaveManager.saveGame(this);
     _lastSaveTime = DateTime.now();
     notifyListeners();
   }
 
-  Future<List<Map<String, dynamic>>> listGames() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedGames = prefs.getStringList('saved_games') ?? [];
-    return savedGames.map((game) => jsonDecode(game) as Map<String, dynamic>).toList();
-  }
-
-  Future<void> deleteGame(String gameId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedGames = prefs.getStringList('saved_games') ?? [];
-    savedGames.removeWhere((game) => jsonDecode(game)['id'] == gameId);
-    await prefs.setStringList('saved_games', savedGames);
-  }
-
   void startAutoSave(BuildContext context) {
-    Timer.periodic(const Duration(minutes: 5), (timer) {
-      saveGame();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Jeu sauvegardé automatiquement')),
-      );
+    Timer.periodic(const Duration(minutes: 5), (timer) async {
+      await quickSave();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Jeu sauvegardé automatiquement')),
+        );
+      }
     });
+  }
+
+  void processStatsHistory() {
+    final currentStats = {
+      'paperclips': _paperclips,
+      'metal': _metal,
+      'money': _money,
+      'time': DateTime.now().toIso8601String()
+    };
+    _statsHistory.add(currentStats);
+    notifyListeners();
   }
 
   @override

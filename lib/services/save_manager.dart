@@ -1,5 +1,3 @@
-// lib/services/save_manager.dart
-
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../models/game_state.dart';
@@ -14,19 +12,7 @@ class SaveManager {
     final saveData = {
       'version': CURRENT_SAVE_VERSION,
       'timestamp': DateTime.now().toIso8601String(),
-      'gameData': {
-        'paperclips': gameState.paperclips,
-        'metal': gameState.metal,
-        'money': gameState.money,
-        'sellPrice': gameState.sellPrice,
-        'autoclippers': gameState.autoclippers,
-        'totalPaperclipsProduced': gameState.totalPaperclipsProduced,
-        'totalTimePlayedInSeconds': gameState.totalTimePlayed,
-        'upgrades': gameState.upgrades.map((key, value) => MapEntry(key, value.toJson())),
-        'marketReputation': gameState.marketManager.reputation,
-        'marketingLevel': gameState.marketingLevel,
-        'productionCost': gameState.productionCost,
-      }
+      'gameData': gameState.prepareGameData(),
     };
 
     await prefs.setString(SAVE_KEY, jsonEncode(saveData));
@@ -74,5 +60,10 @@ class SaveManager {
   static Future<bool> hasSaveGame() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.containsKey(SAVE_KEY);
+  }
+
+  static Future<void> deleteGame() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(SAVE_KEY);
   }
 }

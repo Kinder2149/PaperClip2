@@ -98,9 +98,8 @@ class UpgradesScreen extends StatelessWidget {
                           ],
                         ),
                         enabled: gameState.money >= upgrade.currentCost && upgrade.level < upgrade.maxLevel,
-                        onTap: () async {
-                          await gameState.purchaseUpgrade(id);
-                          // Mettre à jour les informations sur les autres pages après l'achat
+                        onTap: () {
+                          gameState.purchaseUpgrade(id);
                           Provider.of<GameState>(context, listen: false).notifyListeners();
                         },
                       ),
