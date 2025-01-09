@@ -4,6 +4,7 @@ import '../models/game_state.dart';
 import '../utils/update_manager.dart';
 import '../main.dart';
 import './save_load_screen.dart';
+import '../services/save_manager.dart';
 
 class StartScreen extends StatefulWidget {
   const StartScreen({super.key});
@@ -18,10 +19,8 @@ class _StartScreenState extends State<StartScreen> {
   Future<void> _continueLastGame() async {
     setState(() => _isLoading = true);
     try {
-      final games = await context.read<GameState>().listGames();
-      if (games.isNotEmpty) {
-        // Charge la dernière partie sauvegardée
-        final lastGame = games.first;
+      final hasSaveGame = await SaveManager.hasSaveGame();
+      if (hasSaveGame) {
         await context.read<GameState>().loadGame();
         if (mounted) {
           Navigator.pushReplacement(

@@ -69,7 +69,7 @@ class ProductionScreen extends StatelessWidget {
     );
   }
 
-  void _showEventHistoryDialog(BuildContext context, GameState gameState) {
+  void _showEventHistoryDialog(BuildContext context) {
     showDialog(
       context: context,
       builder: (context) {
@@ -193,7 +193,7 @@ class ProductionScreen extends StatelessWidget {
           ElevatedButton(
             onPressed: () async {
               try {
-                await gameState.saveGame();
+                await gameState.saveGame(nameController.text);
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Sauvegarde créée avec succès')),
@@ -274,7 +274,7 @@ class ProductionScreen extends StatelessWidget {
                               child: Stack(
                                 children: [
                                   ElevatedButton(
-                                    onPressed: () => _showEventHistoryDialog(context, gameState),
+                                    onPressed: () => _showEventHistoryDialog(context),
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: Colors.blue,
                                       foregroundColor: Colors.white,

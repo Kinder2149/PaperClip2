@@ -38,7 +38,7 @@ class SaveLoadScreen extends StatelessWidget {
             itemCount: games.length,
             itemBuilder: (context, index) {
               final game = games[index];
-              final lastSaveTime = game['lastSaveTime'] as DateTime;
+              final lastSaveTime = DateTime.parse(game['lastSaveTime'] as String);
 
               return ListTile(
                 title: Text(game['name'] as String),
