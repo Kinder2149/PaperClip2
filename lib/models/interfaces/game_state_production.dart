@@ -6,16 +6,12 @@ import '../upgrade.dart';
 mixin GameStateProduction on ChangeNotifier {
   Timer? _productionTimer;
 
-  // Getters et setters abstraits
   double get metal;
   set metal(double value);
   int get autoclippers;
   double get paperclips;
   set paperclips(double value);
   Map<String, Upgrade> get upgrades;
-
-  // Méthode abstraite
-  void processProduction();
 
   void startProductionTimer() {
     _productionTimer?.cancel();
@@ -25,6 +21,7 @@ mixin GameStateProduction on ChangeNotifier {
     );
   }
 
-  // Getter pour l'accès au timer
+  void processProduction();
+
   Timer? get productionTimer => _productionTimer;
 }

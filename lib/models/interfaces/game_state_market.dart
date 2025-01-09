@@ -7,17 +7,12 @@ mixin GameStateMarket on ChangeNotifier {
   late MarketManager marketManager;
   Timer? _marketTimer;
 
-  // Getters et setters abstraits
   double get sellPrice;
   set sellPrice(double value);
   double get metal;
   double get money;
   double get paperclips;
   set paperclips(double value);
-
-  // Méthodes abstraites
-  void processMarket();
-  int getMarketingLevel();
 
   void initializeMarket() {
     marketManager = MarketManager(MarketDynamics());
@@ -32,6 +27,8 @@ mixin GameStateMarket on ChangeNotifier {
     );
   }
 
-  // Getter pour l'accès au timer
+  void processMarket();
+  int getMarketingLevel();
+
   Timer? get marketTimer => _marketTimer;
 }

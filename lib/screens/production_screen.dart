@@ -68,6 +68,7 @@ class ProductionScreen extends StatelessWidget {
       ),
     );
   }
+
   void _showEventHistoryDialog(BuildContext context, GameState gameState) {
     showDialog(
       context: context,
@@ -216,6 +217,7 @@ class ProductionScreen extends StatelessWidget {
       ),
     );
   }
+
   @override
   Widget build(BuildContext context) {
     // Initialiser le contexte dans GameState
@@ -369,7 +371,7 @@ class ProductionScreen extends StatelessWidget {
                                       context,
                                       'Bonus des Autoclippers',
                                       'Bonus de Production: Augmente la quantité de production par unité de temps.\n\n'
-                                      'Bonus de Vitesse: Augmente la vitesse de production des autoclippeuses.',
+                                          'Bonus de Vitesse: Augmente la vitesse de production des autoclippeuses.',
                                     );
                                   },
                                 ),

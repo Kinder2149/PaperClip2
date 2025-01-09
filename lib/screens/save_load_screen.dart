@@ -1,5 +1,3 @@
-// lib/screens/save_load_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
@@ -51,7 +49,7 @@ class SaveLoadScreen extends StatelessWidget {
                     IconButton(
                       icon: const Icon(Icons.play_arrow),
                       onPressed: () async {
-                        await context.read<GameState>().loadGame(game['id'] as String);
+                        await context.read<GameState>().loadGame();
                         if (context.mounted) {
                           Navigator.pushReplacement(
                             context,
@@ -144,7 +142,7 @@ class SaveLoadScreen extends StatelessWidget {
     );
 
     if (result != null && result.isNotEmpty && context.mounted) {
-      await context.read<GameState>().startNewGame(result);
+      await context.read<GameState>().startNewGame();
       if (context.mounted) {
         Navigator.pushReplacement(
           context,

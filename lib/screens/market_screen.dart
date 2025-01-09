@@ -94,7 +94,7 @@ class MarketScreen extends StatelessWidget {
                 Icons.star,
                 Colors.blue.shade100,
                 'La réputation affecte la demande du marché. Limites : 0% (min), 100% (max).',
-                    () => _showInfoDialog(context, 'Réputation', 'La réputation influence la demande en augmentant ou diminuant le facteur de réputation. Une meilleure réputation augmente la demande, tandis qu\'une mauvaise réputation la diminue. Limites : 0% (min), 100% (max).'),
+                    () => _showInfoDialog(context, 'Réputation', 'La réputation influence la demande en augmentant ou diminuant le facteur de réputation. Une meilleure réputation augmente la demande.'),
               ),
               const SizedBox(height: 8),
               _buildMarketCard(
@@ -103,7 +103,7 @@ class MarketScreen extends StatelessWidget {
                 Icons.campaign,
                 Colors.orange.shade100,
                 'Le niveau de marketing affecte la demande.',
-                    () => _showInfoDialog(context, 'Niveau de Marketing', 'Le niveau de marketing augmente la demande en améliorant la visibilité et l\'attractivité des trombones. Un niveau de marketing plus élevé se traduit par une demande plus élevée.'),
+                    () => _showInfoDialog(context, 'Niveau de Marketing', 'Le niveau de marketing augmente la demande en améliorant la visibilité et l\'attractivité des trombones. Un niveau de marketing plus élevé augmente la demande.'),
               ),
               const SizedBox(height: 8),
               _buildMarketCard(
@@ -112,7 +112,7 @@ class MarketScreen extends StatelessWidget {
                 Icons.trending_up,
                 Colors.purple.shade100,
                 'Les conditions actuelles du marché influencent la demande.',
-                    () => _showInfoDialog(context, 'Conditions du marché', 'Les conditions du marché sont des facteurs externes qui influencent la demande via un multiplicateur. Les conditions favorables augmentent la demande, tandis qu\'une condition défavorable la réduisent.'),
+                    () => _showInfoDialog(context, 'Conditions du marché', 'Les conditions du marché sont des facteurs externes qui influencent la demande via un multiplicateur. Les conditions favorables augmentent la demande, tandis que les conditions défavorables la diminuent.'),
               ),
               const SizedBox(height: 8),
 
@@ -123,7 +123,7 @@ class MarketScreen extends StatelessWidget {
                 Icons.attach_money,
                 Colors.green.shade100,
                 'Le prix de vente des trombones affecte la demande. Limites : ${MarketManager.MIN_PRICE} € (min), ${MarketManager.MAX_PRICE} € (max).',
-                    () => _showInfoDialog(context, 'Prix de vente', 'Le prix de vente des trombones affecte la demande. Des prix plus bas augmentent la demande, tandis qu\'des prix plus élevés la réduisent. Limites : ${MarketManager.MIN_PRICE} € (min), ${MarketManager.MAX_PRICE} € (max).'),
+                    () => _showInfoDialog(context, 'Prix de vente', 'Le prix de vente des trombones affecte la demande. Des prix plus bas augmentent la demande, tandis que des prix plus élevés la réduisent.'),
               ),
               const SizedBox(height: 8),
 
@@ -169,7 +169,7 @@ class MarketScreen extends StatelessWidget {
                 Icons.assessment,
                 Colors.red.shade100,
                 'La rentabilité actuelle est calculée en fonction de la demande, du prix de vente et des coûts de production.',
-                    () => _showInfoDialog(context, 'Rentabilité actuelle', 'La rentabilité actuelle est calculée en fonction de la demande, du prix de vente et des coûts de production. Une rentabilité positive indique que vous générez des bénéfices.'),
+                    () => _showInfoDialog(context, 'Rentabilité actuelle', 'La rentabilité actuelle est calculée en fonction de la demande, du prix de vente et des coûts de production. Une rentabilité positive indique que le prix de vente et la demande couvrent les coûts de production.'),
               ),
 
               const Spacer(),
@@ -212,7 +212,7 @@ class MarketScreen extends StatelessWidget {
                   Provider.of<GameState>(context, listen: false).saveGame();
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.purple.shade200, // Conserve la couleur du design actuel
+                  backgroundColor: Colors.red, // Conserve la couleur du design actuel
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                   textStyle: const TextStyle(fontSize: 16),
                 ),

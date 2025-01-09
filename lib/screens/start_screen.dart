@@ -1,11 +1,9 @@
-// lib/screens/start_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import '../utils/update_manager.dart';
-import './save_load_screen.dart';
 import '../main.dart';
+import './save_load_screen.dart';
 
 class StartScreen extends StatefulWidget {
   const StartScreen({super.key});
@@ -24,7 +22,7 @@ class _StartScreenState extends State<StartScreen> {
       if (games.isNotEmpty) {
         // Charge la dernière partie sauvegardée
         final lastGame = games.first;
-        await context.read<GameState>().loadGame(lastGame['id'] as String);
+        await context.read<GameState>().loadGame();
         if (mounted) {
           Navigator.pushReplacement(
             context,
@@ -79,7 +77,7 @@ class _StartScreenState extends State<StartScreen> {
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(context);
-              await context.read<GameState>().startNewGame(controller.text);
+              await context.read<GameState>().startNewGame();
               if (context.mounted) {
                 Navigator.pushReplacement(
                   context,
