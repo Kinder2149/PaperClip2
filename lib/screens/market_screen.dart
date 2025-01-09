@@ -103,7 +103,7 @@ class MarketScreen extends StatelessWidget {
                 Icons.campaign,
                 Colors.orange.shade100,
                 'Le niveau de marketing affecte la demande.',
-                    () => _showInfoDialog(context, 'Niveau de Marketing', 'Le niveau de marketing augmente la demande en améliorant la visibilité et l\'attractivité des trombones. Un niveau de marketing plus élevé augmente la demande.'),
+                    () => _showInfoDialog(context, 'Niveau de Marketing', 'Le niveau de marketing augmente la demande en améliorant la visibilité et l\'attractivité des trombones.'),
               ),
               const SizedBox(height: 8),
               _buildMarketCard(
@@ -112,7 +112,7 @@ class MarketScreen extends StatelessWidget {
                 Icons.trending_up,
                 Colors.purple.shade100,
                 'Les conditions actuelles du marché influencent la demande.',
-                    () => _showInfoDialog(context, 'Conditions du marché', 'Les conditions du marché sont des facteurs externes qui influencent la demande via un multiplicateur. Les conditions favorables augmentent la demande, tandis que les conditions défavorables la diminuent.'),
+                    () => _showInfoDialog(context, 'Conditions du marché', 'Les conditions du marché sont des facteurs externes qui influencent la demande via un multiplicateur.'),
               ),
               const SizedBox(height: 8),
 
@@ -169,7 +169,7 @@ class MarketScreen extends StatelessWidget {
                 Icons.assessment,
                 Colors.red.shade100,
                 'La rentabilité actuelle est calculée en fonction de la demande, du prix de vente et des coûts de production.',
-                    () => _showInfoDialog(context, 'Rentabilité actuelle', 'La rentabilité actuelle est calculée en fonction de la demande, du prix de vente et des coûts de production. Une rentabilité positive indique que le prix de vente et la demande couvrent les coûts de production.'),
+                    () => _showInfoDialog(context, 'Rentabilité actuelle', 'La rentabilité actuelle est calculée en fonction de la demande, du prix de vente et des coûts de production. Une rentabilité élevée indique un bon équilibre entre ces facteurs.'),
               ),
 
               const Spacer(),

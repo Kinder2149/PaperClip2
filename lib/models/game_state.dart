@@ -12,6 +12,7 @@ import 'market/sale_record.dart';
 import 'interfaces/game_state_market.dart';
 import 'interfaces/game_state_production.dart';
 import 'interfaces/game_state_save.dart';
+import '../models/level_system.dart'; // Ajouté
 
 class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction, GameStateSave {
   // Private properties
@@ -30,8 +31,8 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
   double _productionCost = 0.05; // Exemple de coût de production par trombone
 
   // Properties ajoutées
-  dynamic _levelSystem; // Remplacez par le type approprié pour votre levelSystem
-  dynamic get levelSystem => _levelSystem;
+  LevelSystem _levelSystem = LevelSystem(); // Remplacez par le type approprié pour votre levelSystem
+  LevelSystem get levelSystem => _levelSystem;
 
   dynamic _activeEvent;
   dynamic get activeEvent => _activeEvent;

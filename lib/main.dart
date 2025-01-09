@@ -7,7 +7,7 @@ import './screens/market_screen.dart';
 import './screens/upgrades_screen.dart';
 import './models/game_state.dart';
 import './utils/update_manager.dart';
-import './models/level_system.dart'; // Ajouté
+import './models/level_system.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
