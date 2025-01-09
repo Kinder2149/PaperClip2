@@ -95,6 +95,61 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
   double get productionCost => _productionCost;
   int get maxMetalStorage => (1000 * (1 + (upgrades['storage']?.level ?? 0) * 0.50)).toInt();
 
+  // Implement the upgrades property
+  @override
+  Map<String, Upgrade> get upgrades => _upgrades;
+  final Map<String, Upgrade> _upgrades = {
+    'efficiency': Upgrade(
+      name: 'Metal Efficiency',
+      description: 'Réduit la consommation de métal de 15 %',
+      baseCost: 45.0,
+      level: 0,
+      maxLevel: 10,
+    ),
+    'marketing': Upgrade(
+      name: 'Marketing',
+      description: 'Augmente la demande du marché de 30 %',
+      baseCost: 75.0,
+      level: 0,
+      maxLevel: 8,
+    ),
+    'bulk': Upgrade(
+      name: 'Bulk Production',
+      description: 'Les autoclippeuses produisent 35 % plus vite',
+      baseCost: 150.0,
+      level: 0,
+      maxLevel: 8,
+    ),
+    'speed': Upgrade(
+      name: 'Speed Boost',
+      description: 'Augmente la vitesse de production de 20 %',
+      baseCost: 100.0,
+      level: 0,
+      maxLevel: 5,
+    ),
+    'storage': Upgrade(
+      name: 'Storage Upgrade',
+      description: 'Augmente la capacité de stockage de métal de 50 %',
+      baseCost: 60.0,
+      level: 0,
+      maxLevel: 5,
+    ),
+    'automation': Upgrade(
+      name: 'Automation',
+      description: 'Réduit le coût des autoclippeuses de 10 % par niveau',
+      baseCost: 200.0,
+      level: 0,
+      maxLevel: 5,
+    ),
+    'quality': Upgrade(
+      name: 'Quality Control',
+      description: 'Augmente le prix de vente des trombones de 10 % par niveau',
+      baseCost: 80.0,
+      level: 0,
+      maxLevel: 10,
+    ),
+  };
+
   // Setters
   set paperclips(double value) {
     _paperclips = value;
@@ -220,8 +275,8 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
       _paperclips -= potentialSales;
       _money += potentialSales * salePrice;
       marketManager.recordSale(potentialSales, salePrice);
+      _levelSystem.addSale(potentialSales, salePrice);// Ajout XP ventesààààààààààààààààààààààààààààààààààà
       notifyListeners();
-      _levelSystem.addSale(potentialSales, salePrice); // Ajout XP ventes
     }
   }
 
@@ -255,7 +310,6 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
     _startPlayTimeTracking();
   }
 
-  // Save/Load System Methods
   @override
   Map<String, dynamic> prepareGameData() {
     return {
@@ -338,6 +392,45 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
       'time': DateTime.now().toIso8601String()
     };
     _statsHistory.add(currentStats);
+    notifyListeners();
+  }
+
+  Future<List<SaveGame>> listGames() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saves = prefs.getStringList('saves') ?? [];
+
+    return saves.map((saveStr) {
+      final saveData = jsonDecode(saveStr);
+      return SaveGame.fromJson(saveData);
+    }).toList();
+  }
+
+  Future<void> loadGameById(String gameId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final saves = prefs.getStringList('saves') ?? [];
+
+    for (String saveStr in saves) {
+      final saveData = jsonDecode(saveStr);
+      if (saveData['id'] == gameId) {
+        await _loadGameData(saveData);
+        await prefs.setString(GameConstants.SAVE_KEY, saveStr);
+        return;
+      }
+    }
+
+    throw Exception('Sauvegarde non trouvée');
+  }
+
+  Future<void> deleteGame(String gameId) async {
+    final prefs = await SharedPreferences.getInstance();
+    List<String> saves = prefs.getStringList('saves') ?? [];
+
+    saves.removeWhere((saveStr) {
+      final saveData = jsonDecode(saveStr);
+      return saveData['id'] == gameId;
+    });
+
+    await prefs.setStringList('saves', saves);
     notifyListeners();
   }
 
