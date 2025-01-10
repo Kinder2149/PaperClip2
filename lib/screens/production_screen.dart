@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import '../models/constants.dart';
 import '../widgets/money_display.dart';
-import '../utils/update_manager.dart';
+import '../services/save_manager.dart';
 
 class ProductionScreen extends StatelessWidget {
   const ProductionScreen({super.key});
@@ -16,37 +16,40 @@ class ProductionScreen extends StatelessWidget {
     }
   }
 
-  Widget _buildResourceCard(String title, String value, Color color) {
+  Widget _buildResourceCard(String title, String value, Color color, {VoidCallback? onTap}) {
     return Expanded(
       child: Card(
         elevation: 2,
         color: color,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Colors.black87,
-                  fontWeight: FontWeight.w500,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Colors.black87,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 16,
-                  color: Colors.black,
-                  fontWeight: FontWeight.bold,
+                const SizedBox(height: 8),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    color: Colors.black,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.visible,
                 ),
-                textAlign: TextAlign.center,
-                overflow: TextOverflow.visible,
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -56,9 +59,12 @@ class ProductionScreen extends StatelessWidget {
   void _showInfoDialog(BuildContext context, String title, String message) {
     showDialog(
       context: context,
+      barrierDismissible: true,
       builder: (context) => AlertDialog(
         title: Text(title),
-        content: Text(message),
+        content: SingleChildScrollView(
+          child: Text(message),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -69,128 +75,64 @@ class ProductionScreen extends StatelessWidget {
     );
   }
 
-  void _showEventHistoryDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return Consumer<GameState>(
-          builder: (context, gameState, child) {
-            return AlertDialog(
-              title: const Text('Historique des Événements'),
-              content: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (gameState.activeEvent != null)
-                      Container(
-                        color: Colors.blue.shade100,
-                        margin: const EdgeInsets.only(bottom: 8),
-                        child: ListTile(
-                          title: Text(
-                            gameState.activeEvent!['title'] ?? 'Titre inconnu',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                gameState.activeEvent!['description'] ?? 'Description inconnue',
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                gameState.activeEvent!['time'] ?? 'Temps inconnu',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
-                            ],
-                          ),
-                          trailing: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.blue,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Text(
-                              'ACTIF',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ...gameState.eventHistory.map((event) => Card(
-                      margin: const EdgeInsets.symmetric(vertical: 4),
-                      child: ListTile(
-                        title: Text(
-                          event['title'] ?? 'Titre inconnu',
-                          style: const TextStyle(fontWeight: FontWeight.w500),
-                        ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(event['description'] ?? 'Description inconnue'),
-                            Text(
-                              event['time'] ?? 'Temps inconnu',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )).toList(),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Fermer'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _quickSave(BuildContext context, GameState gameState) async {
+  Future<void> _saveGame(BuildContext context, GameState gameState) async {
     try {
-      await gameState.quickSave();
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Sauvegarde créée avec succès')),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
+      if (gameState.gameName == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Erreur lors de la sauvegarde'),
+            content: Text('Erreur: Aucun nom de partie défini'),
             backgroundColor: Colors.red,
           ),
         );
+        return;
       }
+
+      await SaveManager.saveGame(gameState, gameState.gameName!);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Partie sauvegardée avec succès'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur lors de la sauvegarde: $e'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 4),
+        ),
+      );
     }
+  }
+
+  Widget _buildActionButton({
+    required VoidCallback? onPressed,
+    required String label,
+    required IconData icon,
+    Color? backgroundColor,
+    Color? textColor,
+  }) {
+    return ElevatedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 20),
+      label: Text(
+        label,
+        style: TextStyle(fontSize: 14, color: textColor),
+      ),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: backgroundColor ?? Colors.grey.shade50,
+        foregroundColor: textColor ?? Colors.black87,
+        padding: const EdgeInsets.all(16),
+        minimumSize: const Size(double.infinity, 50),
+        disabledBackgroundColor: (backgroundColor ?? Colors.grey.shade50).withOpacity(0.6),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    // Initialiser le contexte dans GameState
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<GameState>(context, listen: false).setContext(context);
-    });
-
     return Scaffold(
       body: Column(
         children: [
@@ -209,13 +151,20 @@ class ProductionScreen extends StatelessWidget {
                         const MoneyDisplay(),
                         const SizedBox(height: 16),
 
-                        // Stats de production et trombones en stock
+                        // Stats de production
                         Row(
                           children: [
                             _buildResourceCard(
                               'Total Trombones Créés',
                               gameState.totalPaperclipsProduced.toString(),
                               Colors.purple.shade100,
+                              onTap: () => _showInfoDialog(
+                                context,
+                                'Statistiques de Production',
+                                'Total de trombones produits depuis le début du jeu: ${gameState.totalPaperclipsProduced}\n'
+                                    'Niveau de production: ${gameState.levelSystem.level}\n'
+                                    'Multiplicateur de production: x${gameState.levelSystem.productionMultiplier.toStringAsFixed(2)}',
+                              ),
                             ),
                             const SizedBox(width: 16),
                             _buildResourceCard(
@@ -227,119 +176,89 @@ class ProductionScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 16),
 
-                        // Métal et historique des événements
+                        // Ressources et métal
                         Row(
                           children: [
                             _buildResourceCard(
                               'Métal',
-                              formatNumber(gameState.metal, true),
+                              '${formatNumber(gameState.metal, true)} / ${gameState.maxMetalStorage}',
                               Colors.grey.shade200,
+                              onTap: () => _showInfoDialog(
+                                context,
+                                'Stock de Métal',
+                                'Stock actuel: ${formatNumber(gameState.metal, true)}\n'
+                                    'Capacité maximale: ${gameState.maxMetalStorage}\n'
+                                    'Prix actuel: ${gameState.currentMetalPrice.toStringAsFixed(2)} €',
+                              ),
                             ),
                             const SizedBox(width: 16),
-                            Expanded(
-                              child: Stack(
-                                children: [
-                                  ElevatedButton(
-                                    onPressed: () => _showEventHistoryDialog(context),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.blue,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(vertical: 24),
-                                      minimumSize: const Size(double.infinity, 72),
-                                    ),
-                                    child: const Text(
-                                      'Historique des Événements',
-                                      style: TextStyle(fontSize: 14),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ),
-                                  if (gameState.activeEvent != null)
-                                    Positioned(
-                                      top: 8,
-                                      right: 8,
-                                      child: Container(
-                                        width: 12,
-                                        height: 12,
-                                        decoration: const BoxDecoration(
-                                          color: Colors.red,
-                                          shape: BoxShape.circle,
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
+                            _buildResourceCard(
+                              'Prix du Marché',
+                              '${gameState.sellPrice.toStringAsFixed(2)} €',
+                              Colors.green.shade100,
                             ),
                           ],
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 16),
 
-                        // Bouton pour acheter du métal
-                        ElevatedButton.icon(
-                          onPressed: gameState.money >= gameState.currentMetalPrice
-                              ? gameState.buyMetal
-                              : null,
-                          icon: const Icon(Icons.shopping_cart, size: 20),
-                          label: Text(
-                            'Acheter Métal (${gameState.currentMetalPrice.toStringAsFixed(1)} €)',
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.grey.shade50,
-                            foregroundColor: Colors.black87,
-                            padding: const EdgeInsets.all(16),
-                            minimumSize: const Size(double.infinity, 50),
-                          ),
+                        // Actions de production
+                        _buildActionButton(
+                          onPressed: gameState.money >= gameState.currentMetalPrice ?
+                          gameState.buyMetal : null,
+                          label: 'Acheter Métal (${gameState.currentMetalPrice.toStringAsFixed(1)} €)',
+                          icon: Icons.shopping_cart,
                         ),
                         const SizedBox(height: 12),
 
-                        // Bloc Autoclippers
+                        // Bloc Autoclippers amélioré
                         Card(
                           elevation: 2,
                           color: Colors.orange.shade100,
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            child: Row(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
                               children: [
-                                const Icon(Icons.precision_manufacturing, size: 20),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'Autoclippers: ${gameState.autoclippers}',
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                Row(
                                   children: [
-                                    Row(
-                                      children: [
-                                        const Icon(Icons.trending_up, size: 14),
-                                        const SizedBox(width: 4),
-                                        Text('${bulkBonus.toStringAsFixed(0)}%'),
-                                      ],
+                                    const Icon(Icons.precision_manufacturing),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Autoclippers: ${gameState.autoclippers}',
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
                                     ),
-                                    Row(
-                                      children: [
-                                        const Icon(Icons.speed, size: 14),
-                                        const SizedBox(width: 4),
-                                        Text('${speedBonus.toStringAsFixed(0)}%'),
-                                      ],
+                                    IconButton(
+                                      icon: const Icon(Icons.info_outline),
+                                      onPressed: () => _showInfoDialog(
+                                        context,
+                                        'Détails des Autoclippers',
+                                        'Production de base: ${gameState.autoclippers} par cycle\n'
+                                            'Bonus de production: +${bulkBonus.toStringAsFixed(0)}%\n'
+                                            'Bonus de vitesse: +${speedBonus.toStringAsFixed(0)}%\n'
+                                            'Production effective: ${(gameState.autoclippers * (1 + bulkBonus/100) * (1 + speedBonus/100)).toStringAsFixed(1)} par cycle',
+                                      ),
                                     ),
                                   ],
                                 ),
-                                IconButton(
-                                  icon: const Icon(Icons.info_outline, size: 20),
-                                  onPressed: () {
-                                    _showInfoDialog(
-                                      context,
-                                      'Bonus des Autoclippers',
-                                      'Bonus de Production: Augmente la quantité de production par unité de temps.\n\n'
-                                          'Bonus de Vitesse: Augmente la vitesse de production des autoclippeuses.',
-                                    );
-                                  },
+                                const Divider(),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                  children: [
+                                    _buildBonusIndicator(
+                                      'Production',
+                                      '${bulkBonus.toStringAsFixed(0)}%',
+                                      Icons.trending_up,
+                                    ),
+                                    _buildBonusIndicator(
+                                      'Vitesse',
+                                      '${speedBonus.toStringAsFixed(0)}%',
+                                      Icons.speed,
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -347,38 +266,21 @@ class ProductionScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 12),
 
-                        // Bouton d'achat d'autoclipper
-                        ElevatedButton.icon(
-                          onPressed: gameState.money >= gameState.autocliperCost
-                              ? gameState.buyAutoclipper
-                              : null,
-                          icon: const Icon(Icons.shopping_cart, size: 20),
-                          label: Text(
-                            'Acheter Autoclipper (${gameState.autocliperCost.toStringAsFixed(1)} €)',
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.grey.shade50,
-                            foregroundColor: Colors.black87,
-                            padding: const EdgeInsets.all(16),
-                            minimumSize: const Size(double.infinity, 50),
-                          ),
+                        _buildActionButton(
+                          onPressed: gameState.money >= gameState.autocliperCost ?
+                          gameState.buyAutoclipper : null,
+                          label: 'Acheter Autoclipper (${gameState.autocliperCost.toStringAsFixed(1)} €)',
+                          icon: Icons.add_circle_outline,
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 16),
 
-                        // Bouton de sauvegarde
-                        ElevatedButton(
-                          onPressed: () => _quickSave(context, gameState),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.purple.shade200,
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                            minimumSize: const Size(double.infinity, 50),
-                          ),
-                          child: const Text(
-                            'Sauvegarder la Partie',
-                            style: TextStyle(fontSize: 14),
-                          ),
-                        )
+                        _buildActionButton(
+                          onPressed: () => _saveGame(context, gameState),
+                          label: 'Sauvegarder la Partie',
+                          icon: Icons.save,
+                          backgroundColor: Colors.purple.shade200,
+                          textColor: Colors.white,
+                        ),
                       ],
                     ),
                   ),
@@ -386,35 +288,40 @@ class ProductionScreen extends StatelessWidget {
               },
             ),
           ),
-          // Bouton de production fixe en bas
+          // Bouton de production
           Container(
             padding: const EdgeInsets.all(16),
             child: Consumer<GameState>(
               builder: (context, gameState, child) {
-                return ElevatedButton.icon(
-                  onPressed: gameState.metal >= GameConstants.METAL_PER_PAPERCLIP
-                      ? gameState.producePaperclip
-                      : null,
-                  icon: const Icon(Icons.add),
-                  label: Text(
-                    'Produire un trombone (${gameState.productionCost.toStringAsFixed(2)} €)',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue.shade500,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.all(16),
-                    minimumSize: const Size(double.infinity, 50),
-                  ),
+                bool canProduce = gameState.metal >= GameConstants.METAL_PER_PAPERCLIP;
+                return _buildActionButton(
+                  onPressed: canProduce ? gameState.producePaperclip : null,
+                  label: 'Produire un trombone (${GameConstants.METAL_PER_PAPERCLIP} métal)',
+                  icon: Icons.add,
+                  backgroundColor: Colors.blue.shade500,
+                  textColor: Colors.white,
                 );
               },
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildBonusIndicator(String label, String value, IconData icon) {
+    return Column(
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16),
+            const SizedBox(width: 4),
+            Text(value),
+          ],
+        ),
+        Text(label, style: const TextStyle(fontSize: 12)),
+      ],
     );
   }
 }

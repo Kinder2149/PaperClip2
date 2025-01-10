@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import '../main.dart';
+import '../services/save_manager.dart'; // Ajout de l'import
 
 class SaveLoadScreen extends StatelessWidget {
   const SaveLoadScreen({Key? key}) : super(key: key);
@@ -19,7 +20,7 @@ class SaveLoadScreen extends StatelessWidget {
       body: Consumer<GameState>(
         builder: (context, gameState, child) {
           return FutureBuilder<List<SaveGame>>(
-            future: gameState.listGames(),
+            future: SaveManager.getAllSaves(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
@@ -39,7 +40,9 @@ class SaveLoadScreen extends StatelessWidget {
                 itemCount: games.length,
                 itemBuilder: (context, index) {
                   final game = games[index];
-                  final lastSaveTime = game.lastSaveTime;
+                  // Récupérer les données du gameData pour l'affichage
+                  final paperclips = game.gameData['paperclips'] ?? 0;
+                  final money = game.gameData['money'] ?? 0;
 
                   return Card(
                     margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -48,9 +51,9 @@ class SaveLoadScreen extends StatelessWidget {
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Dernière sauvegarde: ${_formatDateTime(lastSaveTime)}'),
-                          Text('Trombones: ${game.paperclips.toStringAsFixed(0)}'),
-                          Text('Argent: ${game.money.toStringAsFixed(2)} €'),
+                          Text('Dernière sauvegarde: ${_formatDateTime(game.lastSaveTime)}'),
+                          Text('Trombones: ${paperclips.toStringAsFixed(0)}'),
+                          Text('Argent: ${money.toStringAsFixed(2)} €'),
                         ],
                       ),
                       trailing: Row(
@@ -59,12 +62,20 @@ class SaveLoadScreen extends StatelessWidget {
                           IconButton(
                             icon: const Icon(Icons.play_arrow),
                             onPressed: () async {
-                              await gameState.loadGameById(game.id);
-                              if (context.mounted) {
-                                Navigator.pushReplacement(
-                                  context,
-                                  MaterialPageRoute(builder: (context) => const MainGame()),
-                                );
+                              try {
+                                await gameState.loadGame(game.name);
+                                if (context.mounted) {
+                                  Navigator.pushReplacement(
+                                    context,
+                                    MaterialPageRoute(builder: (context) => const MainGame()),
+                                  );
+                                }
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Erreur: $e')),
+                                  );
+                                }
                               }
                             },
                           ),
@@ -72,8 +83,6 @@ class SaveLoadScreen extends StatelessWidget {
                             icon: const Icon(Icons.delete),
                             onPressed: () => _showDeleteConfirmation(
                               context,
-                              gameState,
-                              game.id,
                               game.name,
                             ),
                           ),
@@ -96,8 +105,6 @@ class SaveLoadScreen extends StatelessWidget {
 
   Future<void> _showDeleteConfirmation(
       BuildContext context,
-      GameState gameState,
-      String gameId,
       String gameName,
       ) async {
     final result = await showDialog<bool>(
@@ -120,7 +127,7 @@ class SaveLoadScreen extends StatelessWidget {
     );
 
     if (result == true && context.mounted) {
-      await gameState.deleteGame(gameId);
+      await SaveManager.deleteGame(gameName);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Partie supprimée')),

@@ -5,9 +5,7 @@ import '../utils/update_manager.dart';
 import '../main.dart';
 import './save_load_screen.dart';
 import '../services/save_manager.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/constants.dart';
-
 
 class StartScreen extends StatefulWidget {
   const StartScreen({super.key});
@@ -22,10 +20,9 @@ class _StartScreenState extends State<StartScreen> {
   Future<void> _continueLastGame() async {
     setState(() => _isLoading = true);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final savedData = prefs.getString(GameConstants.SAVE_KEY);
-      if (savedData != null) {
-        await context.read<GameState>().loadGame();
+      final lastSave = await SaveManager.getLastSave();  // Utilisation de getLastSave()
+      if (lastSave != null) {
+        await context.read<GameState>().loadGame(lastSave.name);
         if (mounted) {
           Navigator.pushReplacement(
             context,
@@ -35,22 +32,30 @@ class _StartScreenState extends State<StartScreen> {
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Aucune sauvegarde trouvée')),
+            const SnackBar(
+              content: Text('Aucune sauvegarde trouvée'),
+              backgroundColor: Colors.orange,
+            ),
           );
         }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Erreur de chargement')),
+          SnackBar(
+            content: Text('Erreur lors du chargement de la sauvegarde: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
-  void _showNewGameDialog(BuildContext context) {
+  void _showNewGameDialog(BuildContext context) async {
     final controller = TextEditingController(
       text: 'Partie ${DateTime.now().day}/${DateTime.now().month}',
     );
@@ -59,12 +64,23 @@ class _StartScreenState extends State<StartScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Nouvelle Partie'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'Nom de la partie',
-            hintText: 'Entrez un nom pour votre partie',
-          ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                labelText: 'Nom de la partie',
+                hintText: 'Entrez un nom pour votre partie',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Cette action créera une nouvelle sauvegarde',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -73,13 +89,53 @@ class _StartScreenState extends State<StartScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              Navigator.pop(context);
-              await context.read<GameState>().startNewGame(controller.text);
-              if (context.mounted) {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (context) => const MainGame()),
+              final gameName = controller.text.trim();
+              if (gameName.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Le nom ne peut pas être vide')),
                 );
+                return;
+              }
+
+              // Vérification de l'existence de la sauvegarde
+              final exists = await SaveManager.saveExists(gameName);
+              if (exists) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Une partie avec ce nom existe déjà'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                }
+                return;
+              }
+
+              if (context.mounted) {
+                Navigator.pop(context);
+                setState(() => _isLoading = true);
+                try {
+                  await context.read<GameState>().startNewGame(gameName);
+                  if (context.mounted) {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (context) => const MainGame()),
+                    );
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Erreur lors de la création: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                } finally {
+                  if (mounted) {
+                    setState(() => _isLoading = false);
+                  }
+                }
               }
             },
             child: const Text('Commencer'),
@@ -135,58 +191,31 @@ class _StartScreenState extends State<StartScreen> {
                   ),
                 ),
                 const SizedBox(height: 40),
-                ElevatedButton.icon(
+                _buildMenuButton(
                   onPressed: () => _showNewGameDialog(context),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Nouvelle Partie'),
-                  style: ElevatedButton.styleFrom(
-                    foregroundColor: Colors.deepPurple[700],
-                    backgroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 16,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                  ),
+                  icon: Icons.add,
+                  label: 'Nouvelle Partie',
+                  color: Colors.white,
+                  textColor: Colors.deepPurple[700],
                 ),
                 const SizedBox(height: 16),
-                ElevatedButton.icon(
-                  onPressed: _continueLastGame,
-                  icon: const Icon(Icons.play_arrow),
-                  label: const Text('Continuer'),
-                  style: ElevatedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    backgroundColor: Colors.deepPurple[600],
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 16,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                  ),
+                _buildMenuButton(
+                  onPressed: _isLoading ? null : _continueLastGame,
+                  icon: Icons.play_arrow,
+                  label: 'Continuer',
+                  color: Colors.deepPurple[600],
+                  textColor: Colors.white,
                 ),
                 const SizedBox(height: 16),
-                ElevatedButton.icon(
-                  onPressed: () => Navigator.push(
+                _buildMenuButton(
+                  onPressed: _isLoading ? null : () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const SaveLoadScreen()),
                   ),
-                  icon: const Icon(Icons.folder_open),
-                  label: const Text('Charger une partie'),
-                  style: ElevatedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    backgroundColor: Colors.deepPurple[500],
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 16,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                  ),
+                  icon: Icons.folder_open,
+                  label: 'Charger une partie',
+                  color: Colors.deepPurple[500],
+                  textColor: Colors.white,
                 ),
                 if (_isLoading) ...[
                   const SizedBox(height: 24),
@@ -198,6 +227,32 @@ class _StartScreenState extends State<StartScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildMenuButton({
+    required VoidCallback? onPressed,
+    required IconData icon,
+    required String label,
+    required Color? color,
+    required Color? textColor,
+  }) {
+    return ElevatedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon),
+      label: Text(label),
+      style: ElevatedButton.styleFrom(
+        foregroundColor: textColor,
+        backgroundColor: color,
+        padding: const EdgeInsets.symmetric(
+          horizontal: 32,
+          vertical: 16,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(30),
+        ),
+        disabledBackgroundColor: color?.withOpacity(0.6),
       ),
     );
   }
