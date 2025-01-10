@@ -76,7 +76,7 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
   List<dynamic> _eventHistory = [];
   List<dynamic> get eventHistory => _eventHistory;
 
-  // Public getters
+  // Public getters & setters
   double get paperclips => _paperclips;
   double get metal => _metal;
   double get money => _money;
@@ -95,7 +95,6 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
   double get productionCost => _productionCost;
   int get maxMetalStorage => (1000 * (1 + (upgrades['storage']?.level ?? 0) * 0.50)).toInt();
 
-  // Implement the upgrades property
   @override
   Map<String, Upgrade> get upgrades => _upgrades;
   final Map<String, Upgrade> _upgrades = {
@@ -275,7 +274,7 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
       _paperclips -= potentialSales;
       _money += potentialSales * salePrice;
       marketManager.recordSale(potentialSales, salePrice);
-      _levelSystem.addSale(potentialSales, salePrice);// Ajout XP ventesààààààààààààààààààààààààààààààààààà
+      _levelSystem.addSale(potentialSales, salePrice); // Ajout XP ventes
       notifyListeners();
     }
   }
@@ -327,7 +326,7 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
       'upgrades': upgrades.map((key, value) => MapEntry(key, value.toJson())),
       'marketReputation': marketManager.reputation,
       'statsHistory': _statsHistory,
-      'levelSystem': _levelSystem.toJson(), // Nécessite une méthode toJson() dans LevelSystem
+      'levelSystem': _levelSystem.toJson(),
     };
   }
 
@@ -341,6 +340,7 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
     final gameData = await SaveManager.loadGame();
     if (gameData != null) {
       await _loadGameData(gameData);
+      print('Game loaded successfully: $gameData'); // Log to check loaded data
     }
   }
 
@@ -414,6 +414,7 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
       if (saveData['id'] == gameId) {
         await _loadGameData(saveData);
         await prefs.setString(GameConstants.SAVE_KEY, saveStr);
+        print('Game loaded by ID: $gameId'); // Log to check loaded data by ID
         return;
       }
     }

@@ -16,13 +16,17 @@ class SaveManager {
     };
 
     await prefs.setString(SAVE_KEY, jsonEncode(saveData));
+    print('Game saved: $saveData'); // Log to check save data
   }
 
   static Future<Map<String, dynamic>?> loadGame() async {
     final prefs = await SharedPreferences.getInstance();
     final savedData = prefs.getString(SAVE_KEY);
 
-    if (savedData == null) return null;
+    if (savedData == null) {
+      print('No saved game found.');
+      return null;
+    }
 
     final decodedData = jsonDecode(savedData);
     final saveVersion = decodedData['version'] ?? 0;
@@ -31,20 +35,18 @@ class SaveManager {
       return await _migrateSaveData(decodedData);
     }
 
+    print('Game loaded: ${decodedData['gameData']}'); // Log to check loaded data
     return decodedData['gameData'];
   }
 
   static Future<Map<String, dynamic>> _migrateSaveData(Map<String, dynamic> oldData) async {
-    // Handle migrations between versions
     final gameData = oldData['gameData'];
 
-    // Example migration from version 0 to 1:
     if (oldData['version'] == 0) {
       gameData['marketingLevel'] = 0;
       gameData['productionCost'] = 0.05;
     }
 
-    // Save migrated data
     final newSaveData = {
       'version': CURRENT_SAVE_VERSION,
       'timestamp': DateTime.now().toIso8601String(),
@@ -54,6 +56,7 @@ class SaveManager {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(SAVE_KEY, jsonEncode(newSaveData));
 
+    print('Game data migrated: $newSaveData'); // Log to check migrated data
     return gameData;
   }
 
