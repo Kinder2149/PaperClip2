@@ -136,6 +136,7 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
 
   // Initialization
   Future<void> _initializeGame() async {
+    initializeMarket(); // Assurez-vous que le marché est initialisé avant de charger le jeu
     final lastSave = await SaveManager.getLastSave();
     if (lastSave != null) {
       await loadGame(lastSave.name);
@@ -144,7 +145,7 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
   }
 
   void _startGameSystems() {
-    initializeMarket();
+    initializeMarket(); // Initialiser le marché ici si ce n'est pas déjà fait
     startProductionTimer();
     _startMetalPriceVariation();
     _startPlayTimeTracking();
@@ -259,7 +260,6 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
       notifyListeners();
     }
   }
-
 
   Map<String, dynamic> prepareGameData() {
     return {

@@ -4,6 +4,7 @@ import '../models/game_state.dart';
 import '../utils/update_manager.dart';
 import '../main.dart';
 import './save_load_screen.dart';
+import './introduction_screen.dart'; // Import de l'écran d'introduction
 import '../services/save_manager.dart';
 import '../models/constants.dart';
 
@@ -119,7 +120,16 @@ class _StartScreenState extends State<StartScreen> {
                   if (context.mounted) {
                     Navigator.pushReplacement(
                       context,
-                      MaterialPageRoute(builder: (context) => const MainGame()),
+                      MaterialPageRoute(
+                        builder: (context) => IntroductionScreen(
+                          onStart: () {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(builder: (context) => const MainGame()),
+                            );
+                          },
+                        ),
+                      ),
                     );
                   }
                 } catch (e) {

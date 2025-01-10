@@ -20,6 +20,7 @@ dependencies:
   file_selector_linux: ^0.9.2
   file_selector_macos: ^0.9.3
   file_selector_windows: ^0.9.3
+  just_audio: ^0.9.42
 
 dev_dependencies:
   flutter_test:
@@ -29,4 +30,5 @@ dev_dependencies:
 flutter:
   assets:
     - assets/
+    - assets/audio/ambient-technology.mp3
   uses-material-design: true
