@@ -7,6 +7,7 @@ import '../models/upgrade.dart';
 class UpgradesScreen extends StatelessWidget {
   const UpgradesScreen({super.key});
 
+  // Toutes les méthodes précédentes restent identiques
   String _formatDuration(int seconds) {
     int hours = seconds ~/ 3600;
     int minutes = (seconds % 3600) ~/ 60;
@@ -15,6 +16,7 @@ class UpgradesScreen extends StatelessWidget {
   }
 
   Widget _buildStatisticsCard(GameState gameState) {
+    // Code inchangé
     return Card(
       elevation: 2,
       child: Padding(
@@ -81,7 +83,9 @@ class UpgradesScreen extends StatelessWidget {
     );
   }
 
+  // Autres méthodes précédentes restent identiques
   Widget _buildStatItem(IconData icon, String label, String value) {
+    // Code inchangé
     return Column(
       children: [
         Icon(icon, size: 20, color: Colors.grey[700]),
@@ -104,12 +108,84 @@ class UpgradesScreen extends StatelessWidget {
     );
   }
 
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<GameState>(
+      builder: (context, gameState, child) {
+        // Récupérer les éléments visibles selon le niveau
+        final visibleElements = gameState.getVisibleScreenElements();
+
+        // Si les améliorations ne sont pas débloquées, afficher un écran de verrouillage
+        if (visibleElements['upgradesSection'] != true) {
+          return Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.lock,
+                  size: 100,
+                  color: Colors.grey,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Améliorations verrouillées',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Atteignez le niveau ${gameState.levelSystem.level} '
+                      'pour débloquer cette section.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const MoneyDisplay(),
+              const SizedBox(height: 16),
+              _buildStatisticsCard(gameState),
+              const SizedBox(height: 16),
+              Expanded(
+                child: ListView(
+                  children: gameState.upgrades.entries
+                      .map((entry) => _buildUpgradeCard(
+                    context,
+                    gameState,
+                    entry.key,
+                    entry.value,
+                  ))
+                      .toList(),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // Méthode _buildUpgradeCard et _getUpgradeIcon restent identiques
   Widget _buildUpgradeCard(
       BuildContext context,
       GameState gameState,
       String id,
       Upgrade upgrade,
       ) {
+    // Code inchangé
     bool canBuy = gameState.money >= upgrade.currentCost && upgrade.level < upgrade.maxLevel;
     bool isMaxed = upgrade.level >= upgrade.maxLevel;
 
@@ -140,14 +216,15 @@ class UpgradesScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (!isMaxed) Text(
-                    '${upgrade.currentCost.toStringAsFixed(1)} €',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: canBuy ? Colors.green : Colors.grey,
-                      fontWeight: FontWeight.bold,
+                  if (!isMaxed)
+                    Text(
+                      '${upgrade.currentCost.toStringAsFixed(1)} €',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: canBuy ? Colors.green : Colors.grey,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -193,6 +270,7 @@ class UpgradesScreen extends StatelessWidget {
   }
 
   IconData _getUpgradeIcon(String upgradeId) {
+    // Code inchangé
     switch (upgradeId) {
       case 'efficiency':
         return Icons.eco;
@@ -211,37 +289,5 @@ class UpgradesScreen extends StatelessWidget {
       default:
         return Icons.extension;
     }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Consumer<GameState>(
-      builder: (context, gameState, child) {
-        return Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const MoneyDisplay(),
-              const SizedBox(height: 16),
-              _buildStatisticsCard(gameState),
-              const SizedBox(height: 16),
-              Expanded(
-                child: ListView(
-                  children: gameState.upgrades.entries.map((entry) {
-                    return _buildUpgradeCard(
-                      context,
-                      gameState,
-                      entry.key,
-                      entry.value,
-                    );
-                  }).toList(),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
   }
 }

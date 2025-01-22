@@ -16,6 +16,7 @@ class ProductionScreen extends StatelessWidget {
     }
   }
 
+  // Toutes les méthodes précédentes restent identiques
   Widget _buildResourceCard(String title, String value, Color color, {VoidCallback? onTap}) {
     return Expanded(
       child: Card(
@@ -57,6 +58,7 @@ class ProductionScreen extends StatelessWidget {
   }
 
   void _showInfoDialog(BuildContext context, String title, String message) {
+    // Méthode inchangée
     showDialog(
       context: context,
       barrierDismissible: true,
@@ -76,6 +78,7 @@ class ProductionScreen extends StatelessWidget {
   }
 
   Future<void> _saveGame(BuildContext context, GameState gameState) async {
+    // Méthode inchangée
     try {
       if (gameState.gameName == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -114,6 +117,7 @@ class ProductionScreen extends StatelessWidget {
     Color? backgroundColor,
     Color? textColor,
   }) {
+    // Méthode inchangée
     return ElevatedButton.icon(
       onPressed: onPressed,
       icon: Icon(icon, size: 20),
@@ -131,27 +135,161 @@ class ProductionScreen extends StatelessWidget {
     );
   }
 
+  // Nouvelle méthode pour la section Autoclippers
+  Widget _buildAutoclippersSection(BuildContext context, GameState gameState) {
+    double bulkBonus = (gameState.upgrades['bulk']?.level ?? 0) * 20;
+    double speedBonus = (gameState.upgrades['speed']?.level ?? 0) * 15;
+
+    return Card(
+      elevation: 2,
+      color: Colors.orange.shade100,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.precision_manufacturing),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Autoclippers: ${gameState.autoclippers}',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.info_outline),
+                  onPressed: () => _showAutoclipperInfoDialog(
+                      context,
+                      gameState,
+                      bulkBonus,
+                      speedBonus
+                  ),
+                ),
+              ],
+            ),
+            const Divider(),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildBonusIndicator(
+                  'Production',
+                  '${bulkBonus.toStringAsFixed(0)}%',
+                  Icons.trending_up,
+                ),
+                _buildBonusIndicator(
+                  'Vitesse',
+                  '${speedBonus.toStringAsFixed(0)}%',
+                  Icons.speed,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _buildActionButton(
+              onPressed: gameState.money >= gameState.autocliperCost
+                  ? gameState.buyAutoclipper
+                  : null,
+              label: 'Acheter Autoclipper (${gameState.autocliperCost.toStringAsFixed(1)} €)',
+              icon: Icons.add_circle_outline,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  void _showAutoclipperInfoDialog(
+      BuildContext context,
+      GameState gameState,
+      double bulkBonus,
+      double speedBonus
+      ) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Détails des Autoclippers'),
+        content: SingleChildScrollView(
+          child: Text(
+            'Production de base: ${gameState.autoclippers} par cycle\n'
+                'Bonus de production: +${bulkBonus.toStringAsFixed(0)}%\n'
+                'Bonus de vitesse: +${speedBonus.toStringAsFixed(0)}%\n'
+                'Production effective: ${(gameState.autoclippers * (1 + bulkBonus/100) * (1 + speedBonus/100)).toStringAsFixed(1)} par cycle',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Nouvelle méthode pour la section Améliorations
+  Widget _buildUpgradesSection(GameState gameState) {
+    return Card(
+      elevation: 2,
+      color: Colors.green.shade100,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: gameState.upgrades.values.map((upgrade) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: _buildActionButton(
+                onPressed: gameState.money >= upgrade.currentCost
+                    ? () => gameState.purchaseUpgrade(upgrade.name)
+                    : null,
+                label: '${upgrade.name} (${upgrade.currentCost.toStringAsFixed(1)} €)',
+                icon: Icons.upgrade,
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  // Méthode pour les indicateurs de bonus
+  Widget _buildBonusIndicator(String label, String value, IconData icon) {
+    return Column(
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16),
+            const SizedBox(width: 4),
+            Text(value),
+          ],
+        ),
+        Text(label, style: const TextStyle(fontSize: 12)),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
-        children: [
-          Expanded(
-            child: Consumer<GameState>(
-              builder: (context, gameState, child) {
-                double bulkBonus = (gameState.upgrades['bulk']?.level ?? 0) * 20;
-                double speedBonus = (gameState.upgrades['speed']?.level ?? 0) * 15;
+      body: Consumer<GameState>(
+        builder: (context, gameState, child) {
+          // Récupérer les éléments visibles selon le niveau
+          final visibleElements = gameState.getVisibleScreenElements();
 
-                return Padding(
+          return Column(
+            children: [
+              Expanded(
+                child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: SingleChildScrollView(
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.start,
                       children: [
                         const MoneyDisplay(),
                         const SizedBox(height: 16),
 
-                        // Stats de production
+                        // Statistiques de production
                         Row(
                           children: [
                             _buildResourceCard(
@@ -176,7 +314,7 @@ class ProductionScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 16),
 
-                        // Ressources et métal
+                        // Ressources
                         Row(
                           children: [
                             _buildResourceCard(
@@ -201,79 +339,31 @@ class ProductionScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 16),
 
-                        // Actions de production
-                        _buildActionButton(
-                          onPressed: gameState.money >= gameState.currentMetalPrice ?
-                          gameState.buyMetal : null,
-                          label: 'Acheter Métal (${gameState.currentMetalPrice.toStringAsFixed(1)} €)',
-                          icon: Icons.shopping_cart,
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Bloc Autoclippers amélioré
-                        Card(
-                          elevation: 2,
-                          color: Colors.orange.shade100,
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Column(
-                              children: [
-                                Row(
-                                  children: [
-                                    const Icon(Icons.precision_manufacturing),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        'Autoclippers: ${gameState.autoclippers}',
-                                        style: const TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.info_outline),
-                                      onPressed: () => _showInfoDialog(
-                                        context,
-                                        'Détails des Autoclippers',
-                                        'Production de base: ${gameState.autoclippers} par cycle\n'
-                                            'Bonus de production: +${bulkBonus.toStringAsFixed(0)}%\n'
-                                            'Bonus de vitesse: +${speedBonus.toStringAsFixed(0)}%\n'
-                                            'Production effective: ${(gameState.autoclippers * (1 + bulkBonus/100) * (1 + speedBonus/100)).toStringAsFixed(1)} par cycle',
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const Divider(),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                                  children: [
-                                    _buildBonusIndicator(
-                                      'Production',
-                                      '${bulkBonus.toStringAsFixed(0)}%',
-                                      Icons.trending_up,
-                                    ),
-                                    _buildBonusIndicator(
-                                      'Vitesse',
-                                      '${speedBonus.toStringAsFixed(0)}%',
-                                      Icons.speed,
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
+                        // Achat de métal (optionnel)
+                        if (visibleElements['metalPurchaseButton'] == true) ...[
+                          _buildActionButton(
+                            onPressed: gameState.money >= gameState.currentMetalPrice
+                                ? gameState.buyMetal
+                                : null,
+                            label: 'Acheter Métal (${gameState.currentMetalPrice.toStringAsFixed(1)} €)',
+                            icon: Icons.shopping_cart,
                           ),
-                        ),
-                        const SizedBox(height: 12),
+                          const SizedBox(height: 16),
+                        ],
 
-                        _buildActionButton(
-                          onPressed: gameState.money >= gameState.autocliperCost ?
-                          gameState.buyAutoclipper : null,
-                          label: 'Acheter Autoclipper (${gameState.autocliperCost.toStringAsFixed(1)} €)',
-                          icon: Icons.add_circle_outline,
-                        ),
-                        const SizedBox(height: 16),
+                        // Section Autoclippers (conditionnelle)
+                        if (visibleElements['autoclippersSection'] == true) ...[
+                          _buildAutoclippersSection(context, gameState),
+                          const SizedBox(height: 16),
+                        ],
 
+                        // Section Améliorations (conditionnelle)
+                        if (visibleElements['upgradesSection'] == true) ...[
+                          _buildUpgradesSection(gameState),
+                          const SizedBox(height: 16),
+                        ],
+
+                        // Bouton de sauvegarde
                         _buildActionButton(
                           onPressed: () => _saveGame(context, gameState),
                           label: 'Sauvegarder la Partie',
@@ -284,44 +374,26 @@ class ProductionScreen extends StatelessWidget {
                       ],
                     ),
                   ),
-                );
-              },
-            ),
-          ),
-          // Bouton de production
-          Container(
-            padding: const EdgeInsets.all(16),
-            child: Consumer<GameState>(
-              builder: (context, gameState, child) {
-                bool canProduce = gameState.metal >= GameConstants.METAL_PER_PAPERCLIP;
-                return _buildActionButton(
-                  onPressed: canProduce ? gameState.producePaperclip : null,
+                ),
+              ),
+
+              // Bouton de production principal
+              Container(
+                padding: const EdgeInsets.all(16),
+                child: _buildActionButton(
+                  onPressed: gameState.metal >= GameConstants.METAL_PER_PAPERCLIP
+                      ? gameState.producePaperclip
+                      : null,
                   label: 'Produire un trombone (${GameConstants.METAL_PER_PAPERCLIP} métal)',
                   icon: Icons.add,
                   backgroundColor: Colors.blue.shade500,
                   textColor: Colors.white,
-                );
-              },
-            ),
-          ),
-        ],
+                ),
+              ),
+            ],
+          );
+        },
       ),
-    );
-  }
-
-  Widget _buildBonusIndicator(String label, String value, IconData icon) {
-    return Column(
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16),
-            const SizedBox(width: 4),
-            Text(value),
-          ],
-        ),
-        Text(label, style: const TextStyle(fontSize: 12)),
-      ],
     );
   }
 }

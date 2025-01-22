@@ -1,10 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'dart:async';
-import '../constants.dart';
+import 'package:paperclip2/models/constants.dart';
 import '../upgrade.dart';
 
 mixin GameStateProduction on ChangeNotifier {
-  Timer? _productionTimer;
+  Timer? productionTimer; // Suppression du *
 
   double get metal;
   set metal(double value);
@@ -14,14 +14,13 @@ mixin GameStateProduction on ChangeNotifier {
   Map<String, Upgrade> get upgrades;
 
   void startProductionTimer() {
-    _productionTimer?.cancel();
-    _productionTimer = Timer.periodic(
+    productionTimer?.cancel(); // Suppression du *
+    productionTimer = Timer.periodic( // Suppression du *
       const Duration(seconds: 1),
           (timer) => processProduction(),
     );
   }
 
   void processProduction();
-
-  Timer? get productionTimer => _productionTimer;
+  Timer? get productionTimerGetter => productionTimer; // Renommé
 }

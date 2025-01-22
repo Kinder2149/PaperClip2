@@ -11,4 +11,5 @@ class GameConstants {
   static const double BASE_AUTOCLIPPER_COST = 15.0;
   static const double MIN_PRICE = 0.01;
   static const double MAX_PRICE = 1.0;
+  static const double INITIAL_MARKET_METAL = 1500.0;
 }

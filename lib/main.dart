@@ -9,13 +9,21 @@ import './models/game_state.dart';
 import './utils/update_manager.dart';
 import './models/level_system.dart';
 import './services/save_manager.dart';
+import './services/background_music.dart';
+import './screens/event_log_screen.dart';
+import 'widgets/GlobalNotificationOverlay.dart';
+
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized();
   runApp(
-    ChangeNotifierProvider(
-      create: (context) => GameState(),
-      child: const MyApp(),
+    GlobalNotificationOverlay(
+      child: MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (context) => GameState()),
+          Provider(create: (_) => BackgroundMusicService()),
+        ],
+        child: const MyApp(),
+      ),
     ),
   );
 }
@@ -25,17 +33,22 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Paperclip Game',
-      theme: ThemeData(
-        primarySwatch: Colors.deepPurple,
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
-          brightness: Brightness.light,
+    return MultiProvider(
+      providers: [
+        Provider(create: (_) => BackgroundMusicService()),
+      ],
+      child: MaterialApp(
+        title: 'Paperclip Game',
+        theme: ThemeData(
+          primarySwatch: Colors.deepPurple,
+          useMaterial3: true,
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: Colors.deepPurple,
+            brightness: Brightness.light,
+          ),
         ),
+        home: const StartScreen(),
       ),
-      home: const StartScreen(),
     );
   }
 }
@@ -60,12 +73,36 @@ class _MainGameState extends State<MainGame> {
   void initState() {
     super.initState();
     _initializeGame();
+    _playBackgroundMusic();
   }
 
   Future<void> _initializeGame() async {
     final gameState = context.read<GameState>();
     await Future.delayed(Duration.zero); // Permet d'avoir le contexte
     gameState.setContext(context);
+  }
+
+  Future<void> _playBackgroundMusic() async {
+    final backgroundMusicService = context.read<BackgroundMusicService>();
+    await backgroundMusicService.initialize();
+    await backgroundMusicService.play();
+  }
+
+  Future<void> _toggleMusic() async {
+    final backgroundMusicService = context.read<BackgroundMusicService>();
+    if (backgroundMusicService.isPlaying) {
+      await backgroundMusicService.pause();
+    } else {
+      await backgroundMusicService.play();
+    }
+    setState(() {});
+  }
+
+  @override
+  void dispose() {
+    final backgroundMusicService = context.read<BackgroundMusicService>();
+    backgroundMusicService.dispose();
+    super.dispose();
   }
 
   String _formatTimePlayed(int seconds) {
@@ -379,6 +416,7 @@ class _MainGameState extends State<MainGame> {
   Widget build(BuildContext context) {
     return Consumer<GameState>(
       builder: (context, gameState, child) {
+        final backgroundMusicService = context.watch<BackgroundMusicService>();
         return Scaffold(
           appBar: AppBar(
             title: Text(
@@ -392,6 +430,56 @@ class _MainGameState extends State<MainGame> {
               child: _buildLevelIndicator(gameState.levelSystem),
             ),
             actions: [
+              Stack(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.notifications),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const EventLogScreen()),
+                      );
+                    },
+                  ),
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Consumer<GameState>(
+                      builder: (context, gameState, child) {
+                        final notificationCount = EventManager.getEvents()
+                            .where((event) => event.importance >= EventImportance.HIGH)
+                            .length;
+
+                        return notificationCount > 0
+                            ? Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Text(
+                            '$notificationCount',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        )
+                            : const SizedBox.shrink();
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              IconButton(
+                icon: Icon(
+                  backgroundMusicService.isPlaying ? Icons.volume_up : Icons.volume_off,
+                  color: Colors.white,
+                ),
+                onPressed: _toggleMusic,
+                tooltip: 'Activer/Désactiver la musique',
+              ),
               IconButton(
                 icon: const Icon(Icons.settings, color: Colors.white),
                 onPressed: () => _showSettingsMenu(context),

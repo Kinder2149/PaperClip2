@@ -26,9 +26,14 @@ class _IntroductionScreenState extends State<IntroductionScreen> with SingleTick
 
   Future<void> _initializeAudio() async {
     _audioPlayer = AudioPlayer();
-    await _audioPlayer.setAsset('assets/audio/ambient-technology.mp3');
-    await _audioPlayer.setLoopMode(LoopMode.one);
-    await _audioPlayer.play();
+    try {
+      await _audioPlayer.setAsset('assets/audio/ambient-technology.wav');
+      await _audioPlayer.setLoopMode(LoopMode.one);
+      await _audioPlayer.play();
+      print('Audio is playing');
+    } catch (e) {
+      print('Error initializing audio: $e');
+    }
   }
 
   void _initializeAnimations() {
@@ -40,14 +45,14 @@ class _IntroductionScreenState extends State<IntroductionScreen> with SingleTick
     _fadeIn = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
-        curve: Interval(0.0, 0.5, curve: Curves.easeIn),
+        curve: const Interval(0.0, 0.5, curve: Curves.easeIn),
       ),
     );
 
     _slideUp = Tween<double>(begin: 50, end: 0).animate(
       CurvedAnimation(
         parent: _controller,
-        curve: Interval(0.2, 0.7, curve: Curves.easeOut),
+        curve: const Interval(0.2, 0.7, curve: Curves.easeOut),
       ),
     );
 

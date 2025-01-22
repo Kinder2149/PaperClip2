@@ -2,10 +2,11 @@ import 'package:flutter/foundation.dart';
 import 'dart:async';
 import '../market/market_manager.dart';
 import '../market/market_dynamics.dart';
+import 'package:paperclip2/models/level_system.dart'; // Ajout de l'import
 
 mixin GameStateMarket on ChangeNotifier {
   late MarketManager marketManager;
-  Timer? _marketTimer;
+  Timer? marketTimer; // Suppression du *
 
   double get sellPrice;
   set sellPrice(double value);
@@ -20,8 +21,8 @@ mixin GameStateMarket on ChangeNotifier {
   }
 
   void startMarketTimer() {
-    _marketTimer?.cancel();
-    _marketTimer = Timer.periodic(
+    marketTimer?.cancel(); // Suppression du *
+    marketTimer = Timer.periodic( // Suppression du *
       const Duration(milliseconds: 500),
           (timer) => processMarket(),
     );
@@ -29,6 +30,5 @@ mixin GameStateMarket on ChangeNotifier {
 
   void processMarket();
   int getMarketingLevel();
-
-  Timer? get marketTimer => _marketTimer;
+  Timer? get marketTimerGetter => marketTimer;
 }

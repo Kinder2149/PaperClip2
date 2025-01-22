@@ -1,5 +1,4 @@
-// lib/models/mission_system.dart
-import 'dart:async'; // Ajouté
+import 'dart:async';
 
 enum MissionType {
   PRODUCE_PAPERCLIPS,
@@ -39,10 +38,10 @@ class Mission {
   };
 
   factory Mission.fromJson(Map<String, dynamic> json) {
-    return _getMissionTemplate(json['id'])..progress = json['progress'];
+    return getMissionTemplate(json['id'])..progress = json['progress'];
   }
 
-  static Mission _getMissionTemplate(String id) {
+  static Mission getMissionTemplate(String id) {
     switch (id) {
       case 'daily_production':
         return Mission(
@@ -53,7 +52,24 @@ class Mission {
           target: 1000,
           experienceReward: 500,
         );
-    // ... autres templates de missions
+      case 'daily_sales':
+        return Mission(
+          id: 'daily_sales',
+          title: 'Ventes journalières',
+          description: 'Vendre 500 trombones',
+          type: MissionType.SELL_PAPERCLIPS,
+          target: 500,
+          experienceReward: 300,
+        );
+      case 'weekly_autoclippers':
+        return Mission(
+          id: 'weekly_autoclippers',
+          title: 'Expansion automatique',
+          description: 'Acheter 10 autoclippeuses',
+          type: MissionType.BUY_AUTOCLIPPERS,
+          target: 10,
+          experienceReward: 750,
+        );
       default:
         throw Exception('Mission template not found');
     }
@@ -61,41 +77,47 @@ class Mission {
 }
 
 class MissionSystem {
-  final List<Mission> _dailyMissions = [];
-  final List<Mission> _weeklyMissions = [];
-  final List<Mission> _achievements = [];
+  List<Mission> dailyMissions = [];
+  List<Mission> weeklyMissions = [];
+  List<Mission> achievements = [];
 
-  Timer? _missionRefreshTimer;
+  Timer? missionRefreshTimer;
 
   void initialize() {
-    _generateDailyMissions();
-    _startMissionRefreshTimer();
+    generateDailyMissions();
+    generateWeeklyMissions();
+    startMissionRefreshTimer();
   }
 
-  void _generateDailyMissions() {
-    _dailyMissions.clear();
-    // Ajouter de nouvelles missions quotidiennes
-    _dailyMissions.add(Mission(
-      id: 'daily_production',
-      title: 'Production journalière',
-      description: 'Produire 1000 trombones',
-      type: MissionType.PRODUCE_PAPERCLIPS,
-      target: 1000,
-      experienceReward: 500,
-    ));
-    // ... autres missions
+  void generateDailyMissions() {
+    dailyMissions.clear();
+    dailyMissions.addAll([
+      Mission.getMissionTemplate('daily_production'),
+      Mission.getMissionTemplate('daily_sales'),
+    ]);
   }
 
-  void _startMissionRefreshTimer() {
-    _missionRefreshTimer?.cancel();
-    _missionRefreshTimer = Timer.periodic(
+  void generateWeeklyMissions() {
+    weeklyMissions.clear();
+    weeklyMissions.add(Mission.getMissionTemplate('weekly_autoclippers'));
+  }
+
+  void startMissionRefreshTimer() {
+    missionRefreshTimer?.cancel();
+
+    // Missions quotidiennes - réinitialisation toutes les 24h
+    missionRefreshTimer = Timer.periodic(
       const Duration(hours: 24),
-          (_) => _generateDailyMissions(),
+          (_) {
+        generateDailyMissions();
+        onMissionSystemRefresh?.call();
+      },
     );
   }
 
   void updateMissions(MissionType type, double amount) {
-    for (var mission in _dailyMissions) {
+    // Mettre à jour les missions quotidiennes
+    for (var mission in dailyMissions) {
       if (mission.type == type && !mission.isCompleted) {
         mission.updateProgress(amount);
         if (mission.isCompleted) {
@@ -103,23 +125,42 @@ class MissionSystem {
         }
       }
     }
-    // Vérifier également les missions hebdomadaires et achievements
+
+    // Mettre à jour les missions hebdomadaires
+    for (var mission in weeklyMissions) {
+      if (mission.type == type && !mission.isCompleted) {
+        mission.updateProgress(amount);
+        if (mission.isCompleted) {
+          onMissionCompleted?.call(mission);
+        }
+      }
+    }
   }
 
   Function(Mission mission)? onMissionCompleted;
+  Function()? onMissionSystemRefresh;
 
   // Sauvegarde et chargement
   Map<String, dynamic> toJson() => {
-    'dailyMissions': _dailyMissions.map((m) => m.toJson()).toList(),
-    'weeklyMissions': _weeklyMissions.map((m) => m.toJson()).toList(),
-    'achievements': _achievements.map((m) => m.toJson()).toList(),
+    'dailyMissions': dailyMissions.map((m) => m.toJson()).toList(),
+    'weeklyMissions': weeklyMissions.map((m) => m.toJson()).toList(),
   };
 
   void fromJson(Map<String, dynamic> json) {
-    // ... logique de chargement
+    if (json['dailyMissions'] != null) {
+      dailyMissions = (json['dailyMissions'] as List)
+          .map((missionJson) => Mission.fromJson(missionJson))
+          .toList();
+    }
+
+    if (json['weeklyMissions'] != null) {
+      weeklyMissions = (json['weeklyMissions'] as List)
+          .map((missionJson) => Mission.fromJson(missionJson))
+          .toList();
+    }
   }
 
   void dispose() {
-    _missionRefreshTimer?.cancel();
+    missionRefreshTimer?.cancel();
   }
 }

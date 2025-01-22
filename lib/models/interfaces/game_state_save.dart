@@ -20,7 +20,7 @@ mixin GameStateSave on ChangeNotifier {
       final savedData = prefs.getString(GameConstants.SAVE_KEY);
       if (savedData != null) {
         final gameData = jsonDecode(savedData);
-        _loadGameData(gameData);
+        loadGameData(gameData); // Suppression du *
       }
     } catch (e) {
       print('Error loading game: $e');
@@ -28,5 +28,5 @@ mixin GameStateSave on ChangeNotifier {
   }
 
   Map<String, dynamic> prepareGameData();
-  void _loadGameData(Map<String, dynamic> gameData);
+  void loadGameData(Map<String, dynamic> gameData); // Suppression du *
 }

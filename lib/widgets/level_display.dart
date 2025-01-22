@@ -1,8 +1,7 @@
-// lib/widgets/level_display.dart
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
+import 'package:paperclip2/models/level_system.dart';
 
 class LevelDisplay extends StatelessWidget {
   const LevelDisplay({Key? key}) : super(key: key);
@@ -29,7 +28,7 @@ class LevelDisplay extends StatelessWidget {
                     ),
                     IconButton(
                       icon: const Icon(Icons.info_outline),
-                      onPressed: () => _showLevelInfo(context, gameState),
+                      onPressed: () => showLevelInfo(context, gameState),
                     ),
                   ],
                 ),
@@ -56,7 +55,7 @@ class LevelDisplay extends StatelessWidget {
     );
   }
 
-  void _showLevelInfo(BuildContext context, GameState gameState) {
+  void showLevelInfo(BuildContext context, GameState gameState) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -67,18 +66,24 @@ class LevelDisplay extends StatelessWidget {
           children: [
             Text('Niveau actuel: ${gameState.levelSystem.level}'),
             const SizedBox(height: 8),
-            Text('Bonus de production: +${(gameState.levelSystem.productionMultiplier - 1) * 100}%'),
-            Text('Bonus de vente: +${(gameState.levelSystem.salesMultiplier - 1) * 100}%'),
+            Text('Bonus de production: +${((gameState.levelSystem.productionMultiplier - 1) * 100).toStringAsFixed(1)}%'),
+            Text('Bonus de vente: +${((gameState.levelSystem.salesMultiplier - 1) * 100).toStringAsFixed(1)}%'),
             const SizedBox(height: 16),
             const Text(
               'Gains d\'expérience :',
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
-            const Text('• Production manuelle : 1 XP'),
-            const Text('• Production auto : 0.5 XP'),
-            const Text('• Vente : 2 XP × prix'),
-            const Text('• Achat autoclipper : 50 XP'),
-            const Text('• Amélioration : 100 XP × niveau'),
+            const Text('• Production manuelle : 0.1 XP'),
+            const Text('• Production auto : 0.05 XP × quantité'),
+            const Text('• Vente : 0.2 XP × quantité (plafonné à 5)'),
+            const Text('• Achat autoclipper : 2 XP'),
+            const Text('• Amélioration : 1 XP × niveau'),
+            const SizedBox(height: 16),
+            const Text(
+              'Progression de niveau :',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            Text('Courbe exponentielle : 50 * 2.5^niveau + (niveau² * 10)'),
           ],
         ),
         actions: [
@@ -89,5 +94,111 @@ class LevelDisplay extends StatelessWidget {
         ],
       ),
     );
+  }
+
+}
+class GlobalNotificationOverlay extends StatefulWidget {
+  final Widget child;
+
+  const GlobalNotificationOverlay({Key? key, required this.child}) : super(key: key);
+
+  @override
+  _GlobalNotificationOverlayState createState() => _GlobalNotificationOverlayState();
+}
+
+class _GlobalNotificationOverlayState extends State<GlobalNotificationOverlay> {
+  OverlayEntry? _overlayEntry;
+
+  @override
+  void initState() {
+    super.initState();
+
+    EventManager.notificationStream.addListener(_handleNotification);
+  }
+
+  void _handleNotification() {
+    final notification = EventManager.notificationStream.value;
+    if (notification != null) {
+      _showNotificationOverlay(notification);
+    }
+  }
+
+  void _showNotificationOverlay(NotificationEvent event) {
+    _overlayEntry?.remove();
+    _overlayEntry = OverlayEntry(
+        builder: (context) => Positioned(
+          top: 50,
+          left: 0,
+          right: 0,
+          child: Center(
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                width: 300,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                    color: Colors.deepPurple,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                          color: Colors.black26,
+                          blurRadius: 10,
+                          offset: Offset(0, 4)
+                      )
+                    ]
+                ),
+                child: Row(
+                  children: [
+                    Icon(event.icon, color: Colors.white, size: 30),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                              event.title,
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16
+                              )
+                          ),
+                          Text(
+                              event.description,
+                              style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 14
+                              )
+                          )
+                        ],
+                      ),
+                    )
+                  ],
+                ),
+              ),
+            ),
+          ),
+        )
+    );
+
+    Overlay.of(context).insert(_overlayEntry!);
+
+    // Fermer automatiquement après 3 secondes
+    Future.delayed(const Duration(seconds: 3), () {
+      _overlayEntry?.remove();
+      _overlayEntry = null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return widget.child;
+  }
+
+  @override
+  void dispose() {
+    EventManager.notificationStream.removeListener(_handleNotification);
+    _overlayEntry?.remove();
+    super.dispose();
   }
 }

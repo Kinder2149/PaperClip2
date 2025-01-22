@@ -11,6 +11,7 @@ import 'sales_history_screen.dart';
 class MarketScreen extends StatelessWidget {
   const MarketScreen({super.key});
 
+  // Toutes les méthodes précédentes restent identiques
   Widget _buildMarketCard({
     required String title,
     required String value,
@@ -20,6 +21,7 @@ class MarketScreen extends StatelessWidget {
     required VoidCallback onInfoPressed,
     Widget? trailing,
   }) {
+    // Code inchangé
     return Card(
       elevation: 2,
       color: color,
@@ -73,6 +75,7 @@ class MarketScreen extends StatelessWidget {
   }
 
   void _showInfoDialog(BuildContext context, String title, String message) {
+    // Code inchangé
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -91,6 +94,7 @@ class MarketScreen extends StatelessWidget {
   }
 
   Future<void> _saveGame(BuildContext context, GameState gameState) async {
+    // Code inchangé
     try {
       if (gameState.gameName == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -123,6 +127,7 @@ class MarketScreen extends StatelessWidget {
   }
 
   Widget _buildPriceControls(GameState gameState) {
+    // Code inchangé
     return Column(
       children: [
         Row(
@@ -178,6 +183,10 @@ class MarketScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<GameState>(
       builder: (context, gameState, child) {
+        // Récupérer les éléments visibles selon le niveau
+        final visibleElements = gameState.getVisibleScreenElements();
+
+        // Calculs existants
         double demand = gameState.marketManager.calculateDemand(
             gameState.sellPrice,
             gameState.getMarketingLevel()
@@ -198,6 +207,7 @@ class MarketScreen extends StatelessWidget {
                 child: SingleChildScrollView(
                   child: Column(
                     children: [
+                      // Stock de métal (toujours visible)
                       _buildMarketCard(
                         title: 'Stock de Métal',
                         value: '${gameState.metal.toStringAsFixed(1)}',
@@ -221,102 +231,117 @@ class MarketScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 8),
 
-                      _buildMarketCard(
-                        title: 'Réputation du Marché',
-                        value: '${(gameState.marketManager.reputation * 100).toStringAsFixed(1)}%',
-                        icon: Icons.star,
-                        color: Colors.blue.shade100,
-                        tooltip: 'Influence la demande globale',
-                        onInfoPressed: () => _showInfoDialog(
-                          context,
-                          'Réputation',
-                          'La réputation influence directement la demande du marché.\n'
-                              'Une meilleure réputation augmente les ventes potentielles.',
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-
-                      _buildMarketCard(
-                        title: 'Marketing',
-                        value: 'Niveau ${gameState.getMarketingLevel()}',
-                        icon: Icons.campaign,
-                        color: Colors.orange.shade100,
-                        tooltip: 'Augmente la visibilité',
-                        onInfoPressed: () => _showInfoDialog(
-                          context,
-                          'Marketing',
-                          'Le niveau de marketing augmente la demande de base.\n'
-                              'Chaque niveau ajoute +30% à la demande.',
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-
-                      _buildMarketCard(
-                        title: 'Conditions du Marché',
-                        value: marketStatus,
-                        icon: Icons.trending_up,
-                        color: Colors.purple.shade100,
-                        tooltip: 'Multiplicateur: x${marketCondition.toStringAsFixed(2)}',
-                        onInfoPressed: () => _showInfoDialog(
-                          context,
-                          'Conditions du Marché',
-                          'Les conditions actuelles influencent la demande.\n'
-                              'Multiplicateur actuel: x${marketCondition.toStringAsFixed(2)}\n'
-                              'Status: $marketStatus',
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-
-                      Card(
-                        elevation: 2,
-                        color: Colors.green.shade100,
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  const Text(
-                                    'Prix de Vente',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  Text(
-                                    '${gameState.sellPrice.toStringAsFixed(2)} €',
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              _buildPriceControls(gameState),
-                            ],
+                      // Réputation du marché (conditionnelle)
+                      if (visibleElements['marketPrice'] == true) ...[
+                        _buildMarketCard(
+                          title: 'Réputation du Marché',
+                          value: '${(gameState.marketManager.reputation * 100).toStringAsFixed(1)}%',
+                          icon: Icons.star,
+                          color: Colors.blue.shade100,
+                          tooltip: 'Influence la demande globale',
+                          onInfoPressed: () => _showInfoDialog(
+                            context,
+                            'Réputation',
+                            'La réputation influence directement la demande du marché.\n'
+                                'Une meilleure réputation augmente les ventes potentielles.',
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 12),
+                        const SizedBox(height: 8),
+                      ],
 
-                      _buildMarketCard(
-                        title: 'Rentabilité Estimée',
-                        value: '${profitability.toStringAsFixed(1)} €/min',
-                        icon: Icons.assessment,
-                        color: Colors.amber.shade100,
-                        tooltip: 'Basé sur la demande actuelle',
-                        onInfoPressed: () => _showInfoDialog(
-                          context,
-                          'Rentabilité',
-                          'Estimation des revenus par minute basée sur:\n'
-                              '- Prix de vente: ${gameState.sellPrice.toStringAsFixed(2)} €\n'
-                              '- Demande estimée: ${demand.toStringAsFixed(1)} unités/min\n'
-                              '- Revenus potentiels: ${profitability.toStringAsFixed(1)} €/min',
+                      // Marketing (conditonnel)
+                      if (visibleElements['marketPrice'] == true) ...[
+                        _buildMarketCard(
+                          title: 'Marketing',
+                          value: 'Niveau ${gameState.getMarketingLevel()}',
+                          icon: Icons.campaign,
+                          color: Colors.orange.shade100,
+                          tooltip: 'Augmente la visibilité',
+                          onInfoPressed: () => _showInfoDialog(
+                            context,
+                            'Marketing',
+                            'Le niveau de marketing augmente la demande de base.\n'
+                                'Chaque niveau ajoute +30% à la demande.',
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: 8),
+                      ],
+
+                      // Conditions du marché (conditonnel)
+                      if (visibleElements['marketPrice'] == true) ...[
+                        _buildMarketCard(
+                          title: 'Conditions du Marché',
+                          value: marketStatus,
+                          icon: Icons.trending_up,
+                          color: Colors.purple.shade100,
+                          tooltip: 'Multiplicateur: x${marketCondition.toStringAsFixed(2)}',
+                          onInfoPressed: () => _showInfoDialog(
+                            context,
+                            'Conditions du Marché',
+                            'Les conditions actuelles influencent la demande.\n'
+                                'Multiplicateur actuel: x${marketCondition.toStringAsFixed(2)}\n'
+                                'Status: $marketStatus',
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+
+                      // Prix de vente (conditionnel)
+                      if (visibleElements['sellButton'] == true) ...[
+                        Card(
+                          elevation: 2,
+                          color: Colors.green.shade100,
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      'Prix de Vente',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    Text(
+                                      '${gameState.sellPrice.toStringAsFixed(2)} €',
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                _buildPriceControls(gameState),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+
+                      // Rentabilité (conditionnelle)
+                      if (visibleElements['marketPrice'] == true) ...[
+                        _buildMarketCard(
+                          title: 'Rentabilité Estimée',
+                          value: '${profitability.toStringAsFixed(1)} €/min',
+                          icon: Icons.assessment,
+                          color: Colors.amber.shade100,
+                          tooltip: 'Basé sur la demande actuelle',
+                          onInfoPressed: () => _showInfoDialog(
+                            context,
+                            'Rentabilité',
+                            'Estimation des revenus par minute basée sur:\n'
+                                '- Prix de vente: ${gameState.sellPrice.toStringAsFixed(2)} €\n'
+                                '- Demande estimée: ${demand.toStringAsFixed(1)} unités/min\n'
+                                '- Revenus potentiels: ${profitability.toStringAsFixed(1)} €/min',
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -325,6 +350,7 @@ class MarketScreen extends StatelessWidget {
               const SizedBox(height: 16),
               Row(
                 children: [
+                  // Bouton Calculateur (toujours visible)
                   Expanded(
                     child: ElevatedButton.icon(
                       onPressed: () => Navigator.push(
@@ -341,21 +367,24 @@ class MarketScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const SalesHistoryScreen()),
-                      ),
-                      icon: const Icon(Icons.history),
-                      label: const Text('Historique'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.purple,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+
+                  // Bouton Historique (conditionnel)
+                  if (visibleElements['marketPrice'] == true)
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const SalesHistoryScreen()),
+                        ),
+                        icon: const Icon(Icons.history),
+                        label: const Text('Historique'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.purple,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ),
               const SizedBox(height: 8),

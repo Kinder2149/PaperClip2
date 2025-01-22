@@ -47,11 +47,21 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
   int get totalPaperclipsProduced => _totalPaperclipsProduced;
   DateTime? get lastSaveTime => _lastSaveTime;
 
+
+  set money(double value) {
+    if (value >= 0) { // Vérifie que l'argent ne devient pas négatif
+      _money = value;
+      notifyListeners(); // Notifie les listeners des changements
+    }
+  }
+
+
   double get autocliperCost {
     double baseCost = GameConstants.BASE_AUTOCLIPPER_COST * (1.15 * _autoclippers);
     double automationDiscount = 1.0 - ((upgrades['automation']?.level ?? 0) * 0.10);
     return baseCost * automationDiscount;
   }
+
 
   int get maxMetalStorage => (1000 * (1 + (upgrades['storage']?.level ?? 0) * 0.50)).toInt();
   @override
@@ -61,6 +71,12 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
       notifyListeners();
     }
   }
+  int getCriticalEventsCount() {
+    return EventManager.getEvents()
+        .where((event) => event.importance == EventImportance.CRITICAL)
+        .length;
+  }
+
 
   @override
   set metal(double value) {
@@ -73,6 +89,7 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
     _paperclips = value;
     notifyListeners();
   }
+
 
   // Upgrades
   @override
@@ -131,8 +148,10 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
 
   // Constructor
   GameState() {
+    _levelSystem.onLevelUp = _handleLevelUp;
     _initializeGame();
   }
+
 
   // Initialization
   Future<void> _initializeGame() async {
@@ -144,6 +163,7 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
     _startGameSystems();
   }
 
+
   void _startGameSystems() {
     initializeMarket(); // Initialiser le marché ici si ce n'est pas déjà fait
     startProductionTimer();
@@ -151,10 +171,62 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
     _startPlayTimeTracking();
   }
 
-  // Game State Management
+  void _handleLevelUp(int newLevel, List<UnlockableFeature> newFeatures) {
+    // Logique de gestion des level up
+    print('Niveau atteint : $newLevel');
+    print('Fonctionnalités débloquées : $newFeatures');
+
+    // Exemple de notification ou d'action lors du déblocage
+    newFeatures.forEach((feature) {
+      switch (feature) {
+        case UnlockableFeature.MANUAL_PRODUCTION:
+          _showUnlockNotification('Production manuelle débloquée !');
+          break;
+        case UnlockableFeature.MARKET_SALES:
+          _showUnlockNotification('Ventes débloquées !');
+          break;
+        case UnlockableFeature.AUTOCLIPPERS:
+          _showUnlockNotification('Autoclippeuses disponibles !');
+          break;
+        case UnlockableFeature.METAL_PURCHASE:
+          _showUnlockNotification('Achat de métal débloqué !');
+          break;
+        case UnlockableFeature.MARKET_SCREEN:
+          _showUnlockNotification('Écran de marché débloqué !');
+          break;
+        case UnlockableFeature.UPGRADES:
+          _showUnlockNotification('Améliorations disponibles !');
+          break;
+      }
+    });
+
+    notifyListeners();
+  }
+  void _showUnlockNotification(String message) {
+    if (_context != null) {
+      ScaffoldMessenger.of(_context!).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: const Duration(seconds: 3),
+          action: SnackBarAction(
+            label: 'OK',
+            onPressed: () {
+              ScaffoldMessenger.of(_context!).hideCurrentSnackBar();
+            },
+          ),
+        ),
+      );
+    } else {
+      print(message); // Fallback if context is not available
+    }
+  }
+  Map<String, bool> getVisibleScreenElements() {
+    return _levelSystem.featureUnlocker.getVisibleScreenElements(_levelSystem.level);
+  }
+
   void _startMetalPriceVariation() {
     _metalPriceTimer?.cancel();
-    _metalPriceTimer = Timer.periodic(const Duration(seconds: 4), (timer) async {
+    _metalPriceTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
       double variation = (Random().nextDouble() * 4) - 2;
       _currentMetalPrice = (_currentMetalPrice + variation)
           .clamp(GameConstants.MIN_METAL_PRICE, GameConstants.MAX_METAL_PRICE);
@@ -162,6 +234,7 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
     });
   }
 
+  // Méthode de suivi du temps de jeu
   void _startPlayTimeTracking() {
     _playTimeTimer?.cancel();
     _playTimeTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -206,6 +279,7 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
       notifyListeners();
     }
   }
+
 
   // Market and Production implementations
   @override
