@@ -12,4 +12,7 @@ class GameConstants {
   static const double MIN_PRICE = 0.01;
   static const double MAX_PRICE = 1.0;
   static const double INITIAL_MARKET_METAL = 1500.0;
+  static const Duration NOTIFICATION_DURATION = Duration(seconds: 5);
+  static const Duration EVENT_MAX_AGE = Duration(days: 1);
+  static const int MAX_STORED_EVENTS = 100;
 }

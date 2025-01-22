@@ -92,6 +92,22 @@ class MarketScreen extends StatelessWidget {
       ),
     );
   }
+  void _showXPGain(BuildContext context, double amount) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.stars, color: Colors.amber),
+            const SizedBox(width: 8),
+            Text('+ ${amount.toStringAsFixed(1)} XP'),
+          ],
+        ),
+        duration: const Duration(seconds: 1),
+        backgroundColor: Colors.green,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
 
   Future<void> _saveGame(BuildContext context, GameState gameState) async {
     // Code inchangé

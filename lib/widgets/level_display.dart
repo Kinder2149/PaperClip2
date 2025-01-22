@@ -10,6 +10,9 @@ class LevelDisplay extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<GameState>(
       builder: (context, gameState, child) {
+        final comboMultiplier = gameState.levelSystem.currentComboMultiplier;
+        final totalMultiplier = gameState.levelSystem.totalXpMultiplier;
+
         return Card(
           elevation: 2,
           child: Padding(
@@ -26,6 +29,26 @@ class LevelDisplay extends StatelessWidget {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+                    if (comboMultiplier > 1.0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.flash_on, color: Colors.orange, size: 16),
+                            Text(
+                              'x${comboMultiplier.toStringAsFixed(1)}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.orange,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     IconButton(
                       icon: const Icon(Icons.info_outline),
                       onPressed: () => showLevelInfo(context, gameState),
@@ -43,10 +66,46 @@ class LevelDisplay extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  'XP: ${gameState.levelSystem.experience.floor()} / ${gameState.levelSystem.experienceForNextLevel.floor()}',
-                  style: const TextStyle(fontSize: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'XP: ${gameState.levelSystem.experience.floor()} / ${gameState.levelSystem.experienceForNextLevel.floor()}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    if (totalMultiplier > 1.0)
+                      Text(
+                        'XP x${totalMultiplier.toStringAsFixed(1)}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.green,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                  ],
                 ),
+                if (gameState.levelSystem.isDailyBonusAvailable)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        if (gameState.levelSystem.claimDailyBonus()) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Bonus quotidien réclamé !'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.stars),
+                      label: const Text('Bonus quotidien disponible !'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.amber,
+                        foregroundColor: Colors.black87,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -70,20 +129,21 @@ class LevelDisplay extends StatelessWidget {
             Text('Bonus de vente: +${((gameState.levelSystem.salesMultiplier - 1) * 100).toStringAsFixed(1)}%'),
             const SizedBox(height: 16),
             const Text(
+              'Multiplicateurs actifs :',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            Text('• Combo: x${gameState.levelSystem.currentComboMultiplier.toStringAsFixed(1)}'),
+            Text('• Total: x${gameState.levelSystem.totalXpMultiplier.toStringAsFixed(1)}'),
+            const SizedBox(height: 16),
+            const Text(
               'Gains d\'expérience :',
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
-            const Text('• Production manuelle : 0.1 XP'),
-            const Text('• Production auto : 0.05 XP × quantité'),
-            const Text('• Vente : 0.2 XP × quantité (plafonné à 5)'),
-            const Text('• Achat autoclipper : 2 XP'),
-            const Text('• Amélioration : 1 XP × niveau'),
-            const SizedBox(height: 16),
-            const Text(
-              'Progression de niveau :',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            Text('Courbe exponentielle : 50 * 2.5^niveau + (niveau² * 10)'),
+            const Text('• Production manuelle : 2 XP'),
+            const Text('• Production auto : 0.1 XP × quantité'),
+            const Text('• Vente : 0.3 XP × quantité (max 8)'),
+            const Text('• Achat autoclipper : 3 XP'),
+            const Text('• Amélioration : 2 XP × niveau'),
           ],
         ),
         actions: [
@@ -95,8 +155,9 @@ class LevelDisplay extends StatelessWidget {
       ),
     );
   }
-
 }
+
+
 class GlobalNotificationOverlay extends StatefulWidget {
   final Widget child;
 

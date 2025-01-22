@@ -1,4 +1,3 @@
-// game_state.dart
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
@@ -11,6 +10,14 @@ import 'interfaces/game_state_market.dart';
 import 'interfaces/game_state_production.dart';
 import '../models/level_system.dart';
 import '../services/save_manager.dart';
+import 'package:paperclip2/widgets/xp_status_display.dart';
+import 'package:paperclip2/models/resource_manager.dart';
+import 'package:paperclip2/models/progression_bonus.dart';
+import 'package:paperclip2/models/event_manager.dart'; // Garder uniquement celui-ci
+import 'package:paperclip2/models/notification_manager.dart';
+import 'package:paperclip2/models/game_event.dart';
+import 'game_enums.dart';
+import 'event_manager.dart';
 
 class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction {
   // Timers
@@ -46,7 +53,7 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
   int get totalTimePlayed => _totalTimePlayedInSeconds;
   int get totalPaperclipsProduced => _totalPaperclipsProduced;
   DateTime? get lastSaveTime => _lastSaveTime;
-
+  final ResourceManager resourceManager = ResourceManager();
 
   set money(double value) {
     if (value >= 0) { // Vérifie que l'argent ne devient pas négatif
@@ -266,6 +273,7 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
       _money -= upgrade.currentCost;
       upgrade.level++;
       _levelSystem.addUpgradePurchase(upgrade.level);
+      resourceManager.checkMetalStatus(levelSystem.level);
       notifyListeners();
     }
   }
@@ -276,16 +284,16 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
       _totalPaperclipsProduced++;
       _metal -= GameConstants.METAL_PER_PAPERCLIP;
       _levelSystem.addManualProduction();
+      resourceManager.checkMetalStatus(_levelSystem.level);
       notifyListeners();
     }
   }
 
-
-  // Market and Production implementations
   @override
   void processMarket() {
     double calculatedDemand = marketManager.calculateDemand(_sellPrice, getMarketingLevel());
     int potentialSales = calculatedDemand.floor();
+
     if (_paperclips >= potentialSales && potentialSales > 0) {
       double qualityBonus = 1.0 + (upgrades['quality']?.level ?? 0) * 0.10;
       double salePrice = _sellPrice * qualityBonus;
@@ -293,6 +301,7 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
       _money += potentialSales * salePrice;
       marketManager.recordSale(potentialSales, salePrice);
       _levelSystem.addSale(potentialSales, salePrice);
+      resourceManager.checkMetalStatus(_levelSystem.level);
       notifyListeners();
     }
   }
@@ -304,12 +313,14 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
       double efficiencyBonus = 1.0 - ((upgrades['efficiency']?.level ?? 0) * 0.15);
       double speedBonus = 1.0 + (upgrades['speed']?.level ?? 0) * 0.20;
       double metalNeeded = _autoclippers * GameConstants.METAL_PER_PAPERCLIP * efficiencyBonus;
+
       if (_metal >= metalNeeded) {
         double production = _autoclippers * bulkBonus * speedBonus;
         _paperclips += production;
         _totalPaperclipsProduced += production.floor();
         _metal -= metalNeeded;
         _levelSystem.addAutomaticProduction(production.floor());
+        resourceManager.checkMetalStatus(_levelSystem.level);
         notifyListeners();
       }
     }
@@ -347,6 +358,7 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
       'totalTimePlayedInSeconds': _totalTimePlayedInSeconds,
       'upgrades': upgrades.map((key, value) => MapEntry(key, value.toJson())),
       'marketReputation': marketManager.reputation,
+      'marketMetalStock': resourceManager.marketMetalStock,
       'levelSystem': _levelSystem.toJson(),
     };
   }
@@ -376,6 +388,12 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
             print('Erreur lors du chargement de l\'upgrade $key: $e');
           }
         }
+
+      });
+    }
+    if (data['marketMetalStock'] != null) {
+      resourceManager.loadFromJson({
+        'marketMetalStock': data['marketMetalStock']
       });
     }
 
@@ -427,6 +445,36 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
     _metalPriceTimer?.cancel();
     _playTimeTimer?.cancel();
     _autoSaveTimer?.cancel();
+    levelSystem.comboSystem.dispose();
+    levelSystem.dailyBonus.dispose();
     super.dispose();
+  }
+  void activateXPBoost() {
+    levelSystem.applyXPBoost(2.0, const Duration(minutes: 5));
+    EventManager.triggerNotificationPopup(
+      title: 'Bonus XP activé !',
+      description: 'x2 XP pendant 5 minutes',
+      icon: Icons.stars,
+    );
+  }
+  void checkMilestones() {
+    if (_levelSystem.level % 5 == 0) {
+      activateXPBoost();
+    }
+  }
+
+  void activateTemporaryBoost(double multiplier, Duration duration) {
+    _levelSystem.applyXPBoost(multiplier, duration);
+  }
+
+  void checkResourceCrisis() {
+    if (resourceManager.marketMetalStock <= ResourceManager.WARNING_THRESHOLD) {
+      EventManager.addEvent(
+          EventType.RESOURCE_DEPLETION,
+          "Ressources en diminution",
+          description: "Les réserves mondiales de métal s'amenuisent",
+          importance: EventImportance.HIGH
+      );
+    }
   }
 }

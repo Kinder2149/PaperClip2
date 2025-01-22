@@ -4,6 +4,7 @@ import '../models/game_state.dart';
 import '../models/constants.dart';
 import '../widgets/money_display.dart';
 import '../services/save_manager.dart';
+import 'package:paperclip2/widgets/xp_status_display.dart';
 
 class ProductionScreen extends StatelessWidget {
   const ProductionScreen({super.key});
@@ -117,21 +118,49 @@ class ProductionScreen extends StatelessWidget {
     Color? backgroundColor,
     Color? textColor,
   }) {
-    // Méthode inchangée
-    return ElevatedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 20),
-      label: Text(
-        label,
-        style: TextStyle(fontSize: 14, color: textColor),
-      ),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: backgroundColor ?? Colors.grey.shade50,
-        foregroundColor: textColor ?? Colors.black87,
-        padding: const EdgeInsets.all(16),
-        minimumSize: const Size(double.infinity, 50),
-        disabledBackgroundColor: (backgroundColor ?? Colors.grey.shade50).withOpacity(0.6),
-      ),
+    return Consumer<GameState>(
+      builder: (context, gameState, child) {
+        final comboMultiplier = gameState.levelSystem.currentComboMultiplier;
+
+        return Stack(
+          children: [
+            ElevatedButton.icon(
+              onPressed: onPressed,
+              icon: Icon(icon, size: 20),
+              label: Text(
+                label,
+                style: TextStyle(fontSize: 14, color: textColor),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: backgroundColor ?? Colors.grey.shade50,
+                foregroundColor: textColor ?? Colors.black87,
+                padding: const EdgeInsets.all(16),
+                minimumSize: const Size(double.infinity, 50),
+              ),
+            ),
+            if (comboMultiplier > 1.0)
+              Positioned(
+                right: 8,
+                top: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.orange,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'x${comboMultiplier.toStringAsFixed(1)}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 
@@ -286,6 +315,7 @@ class ProductionScreen extends StatelessWidget {
                   child: SingleChildScrollView(
                     child: Column(
                       children: [
+                        const XPStatusDisplay(),
                         const MoneyDisplay(),
                         const SizedBox(height: 16),
 

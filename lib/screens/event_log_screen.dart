@@ -52,6 +52,10 @@ class EventLogScreenState extends State<EventLogScreen> {
         return Icons.new_releases;
       case EventType.SPECIAL_ACHIEVEMENT:
         return Icons.stars;
+      case EventType.XP_BOOST:
+        return Icons.speed; // ou Icons.exposure_plus_2 pour représenter le boost
+      default:
+        return Icons.event_note;
     }
   }
 
@@ -143,6 +147,8 @@ class EventLogScreenState extends State<EventLogScreen> {
         return 'Amélioration disponible : ${event.data['upgrade']}';
       case EventType.SPECIAL_ACHIEVEMENT:
         return 'Réalisation spéciale : ${event.data['achievement']}';
+      case EventType.XP_BOOST:
+        return 'Multiplicateur : x${event.data['multiplier']} - Durée : ${event.data['duration']} minutes';
       default:
         return '';
     }

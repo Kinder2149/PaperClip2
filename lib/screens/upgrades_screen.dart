@@ -235,6 +235,18 @@ class UpgradesScreen extends StatelessWidget {
                   color: Colors.grey[600],
                 ),
               ),
+              if (upgrade.level < upgrade.maxLevel) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'XP Gain: ${(2.0 * (upgrade.level + 1)).toStringAsFixed(1)}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.green[700],
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+
               const SizedBox(height: 8),
               Row(
                 children: [
