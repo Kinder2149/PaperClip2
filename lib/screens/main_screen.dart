@@ -5,11 +5,13 @@ import 'production_screen.dart';
 import 'market_screen.dart';
 import 'upgrades_screen.dart';
 import 'event_log_screen.dart';
-import '../widgets/event_notification_overlay.dart';
-import '../models/notification_manager.dart';
-import '../models/notification_event.dart';
-import '../models/game_enums.dart';
-import '../models/constants.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../models/game_state.dart';
+import '../widgets/level_widgets.dart';
+import '../widgets/resource_widgets.dart';
+import '../widgets/notification_widgets.dart';
+import '../widgets/chart_widgets.dart';
 
 class MainScreen extends StatelessWidget {
   const MainScreen({Key? key}) : super(key: key);

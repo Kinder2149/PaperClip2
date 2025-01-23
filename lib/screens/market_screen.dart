@@ -7,6 +7,11 @@ import '../widgets/money_display.dart';
 import '../services/save_manager.dart';
 import 'demand_calculation_screen.dart';
 import 'sales_history_screen.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../models/game_state.dart';
+import '../widgets/chart_widgets.dart';
+import '../widgets/resource_widgets.dart';
 
 class MarketScreen extends StatelessWidget {
   const MarketScreen({super.key});

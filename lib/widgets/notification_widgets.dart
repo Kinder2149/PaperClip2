@@ -1,18 +1,16 @@
+// lib/widgets/notification_widgets.dart
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../models/game_state.dart';
-import '../models/level_system.dart';
-import '../models/event_manager.dart';
-import '../models/notification_event.dart';
+import '../models/event_system.dart';
+import '../main.dart' show navigatorKey;
 
 class GlobalNotificationOverlay extends StatefulWidget {
   final Widget child;
-  final GlobalKey<NavigatorState> navigatorKey;  // Ajoutez cette ligne
+  final GlobalKey<NavigatorState> navigatorKey;
 
   const GlobalNotificationOverlay({
     Key? key,
     required this.child,
-    required this.navigatorKey,  // Ajoutez cette ligne
+    required this.navigatorKey,
   }) : super(key: key);
 
   @override
@@ -96,7 +94,6 @@ class _GlobalNotificationOverlayState extends State<GlobalNotificationOverlay> {
     if (widget.navigatorKey.currentContext != null) {
       Overlay.of(widget.navigatorKey.currentContext!).insert(_overlayEntry!);
 
-      // Fermer automatiquement après 3 secondes
       Future.delayed(const Duration(seconds: 3), () {
         _overlayEntry?.remove();
         _overlayEntry = null;
@@ -107,7 +104,7 @@ class _GlobalNotificationOverlayState extends State<GlobalNotificationOverlay> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      navigatorKey: widget.navigatorKey,  // Utilisez la clé de navigation ici
+      navigatorKey: widget.navigatorKey,
       home: widget.child,
       debugShowCheckedModeBanner: false,
     );
@@ -118,5 +115,59 @@ class _GlobalNotificationOverlayState extends State<GlobalNotificationOverlay> {
     EventManager.notificationStream.removeListener(_handleNotification);
     _overlayEntry?.remove();
     super.dispose();
+  }
+}
+
+class EventNotificationOverlay extends StatelessWidget {
+  const EventNotificationOverlay({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<NotificationEvent?>(
+      valueListenable: EventManager.notificationStream,
+      builder: (context, notification, child) {
+        if (notification == null) return const SizedBox.shrink();
+
+        return Positioned(
+          top: MediaQuery.of(context).padding.top + 10,
+          right: 10,
+          child: Material(
+            elevation: 8,
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(notification.icon, color: Colors.blue),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        notification.title,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(
+                        notification.description,
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 }

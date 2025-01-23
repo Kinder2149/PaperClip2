@@ -1,56 +1,35 @@
-import 'dart:math';
+// lib/models/progression_system.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'game_enums.dart';
-import 'event_manager.dart';
-import 'game_event.dart';
-import 'notification_event.dart';
+import 'event_system.dart';
+import 'dart:math';
 
-enum ProgressionPath {
-  PRODUCTION,
-  MARKETING,
-  EFFICIENCY,
-  INNOVATION
+/// Système de bonus de progression
+class ProgressionBonus {
+  static double calculateLevelBonus(int level) {
+    if (level < 35) {
+      return 1.0 + (level * 0.02);
+    } else {
+      return 1.7 + ((level - 35) * 0.01);
+    }
+  }
+
+  static double getMilestoneBonus(int level) {
+    Map<int, double> milestones = {
+      10: 1.2,
+      20: 1.3,
+      30: 1.4,
+    };
+    return milestones[level] ?? 1.0;
+  }
+
+  static double getTotalBonus(int level) {
+    return calculateLevelBonus(level) * getMilestoneBonus(level);
+  }
 }
 
-
-enum ExperienceType {
-  GENERAL,
-  PRODUCTION,
-  SALE,
-  UPGRADE,
-  DAILY_BONUS,
-  COMBO_BONUS
-}
-
-
-
-
-
-
-
-
-class PathOption {
-  final ProgressionPath path;
-  final double probability;
-
-  PathOption(this.path, this.probability);
-}
-
-class LevelUnlock {
-  final String description;
-  final List<String> unlockedFeatures;
-  final List<PathOption>? pathOptions;
-  final double initialExperienceRequirement;
-
-  LevelUnlock({
-    required this.description,
-    this.unlockedFeatures = const [],
-    this.pathOptions,
-    required this.initialExperienceRequirement
-  });
-}
-
+/// Système de combo XP
 class XPComboSystem {
   int _comboCount = 0;
   Timer? _comboTimer;
@@ -62,11 +41,11 @@ class XPComboSystem {
   }
 
   double getComboMultiplier() {
-    return 1.0 + (_comboCount * 0.1); // +10% par combo
+    return 1.0 + (_comboCount * 0.1);
   }
 
   void incrementCombo() {
-    _comboCount = min(_comboCount + 1, 5); // Max 5 combos
+    _comboCount = _comboCount.clamp(0, 5);
     _resetComboTimer();
   }
 
@@ -82,6 +61,7 @@ class XPComboSystem {
   }
 }
 
+/// Système de bonus quotidien
 class DailyXPBonus {
   bool _claimed = false;
   final double _bonusAmount = 10.0;
@@ -122,16 +102,160 @@ class DailyXPBonus {
   }
 }
 
+/// Système de missions
+class Mission {
+  final String id;
+  final String title;
+  final String description;
+  final MissionType type;
+  final double target;
+  final double experienceReward;
+  double progress = 0;
+
+  Mission({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.type,
+    required this.target,
+    required this.experienceReward,
+  });
+
+  bool get isCompleted => progress >= target;
+
+  void updateProgress(double amount) {
+    progress = (progress + amount).clamp(0, target);
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'progress': progress,
+  };
+
+  factory Mission.fromJson(Map<String, dynamic> json) {
+    return getMissionTemplate(json['id'])..progress = json['progress'];
+  }
+
+  static Mission getMissionTemplate(String id) {
+    switch (id) {
+      case 'daily_production':
+        return Mission(
+          id: 'daily_production',
+          title: 'Production journalière',
+          description: 'Produire 1000 trombones',
+          type: MissionType.PRODUCE_PAPERCLIPS,
+          target: 1000,
+          experienceReward: 500,
+        );
+      case 'daily_sales':
+        return Mission(
+          id: 'daily_sales',
+          title: 'Ventes journalières',
+          description: 'Vendre 500 trombones',
+          type: MissionType.SELL_PAPERCLIPS,
+          target: 500,
+          experienceReward: 300,
+        );
+      case 'weekly_autoclippers':
+        return Mission(
+          id: 'weekly_autoclippers',
+          title: 'Expansion automatique',
+          description: 'Acheter 10 autoclippeuses',
+          type: MissionType.BUY_AUTOCLIPPERS,
+          target: 10,
+          experienceReward: 750,
+        );
+      default:
+        throw Exception('Mission template not found');
+    }
+  }
+}
+
+/// Gestionnaire de missions
+class MissionSystem {
+  List<Mission> dailyMissions = [];
+  List<Mission> weeklyMissions = [];
+  List<Mission> achievements = [];
+  Timer? missionRefreshTimer;
+  Function(Mission mission)? onMissionCompleted;
+  Function()? onMissionSystemRefresh;
+
+  void initialize() {
+    generateDailyMissions();
+    generateWeeklyMissions();
+    startMissionRefreshTimer();
+  }
+
+  void generateDailyMissions() {
+    dailyMissions = [
+      Mission.getMissionTemplate('daily_production'),
+      Mission.getMissionTemplate('daily_sales'),
+    ];
+  }
+
+  void generateWeeklyMissions() {
+    weeklyMissions = [
+      Mission.getMissionTemplate('weekly_autoclippers'),
+    ];
+  }
+
+  void startMissionRefreshTimer() {
+    missionRefreshTimer?.cancel();
+    missionRefreshTimer = Timer.periodic(
+      const Duration(hours: 24),
+          (_) {
+        generateDailyMissions();
+        onMissionSystemRefresh?.call();
+      },
+    );
+  }
+
+  void updateMissions(MissionType type, double amount) {
+    for (var mission in [...dailyMissions, ...weeklyMissions]) {
+      if (mission.type == type && !mission.isCompleted) {
+        mission.updateProgress(amount);
+        if (mission.isCompleted) {
+          onMissionCompleted?.call(mission);
+        }
+      }
+    }
+  }
+
+  Map<String, dynamic> toJson() => {
+    'dailyMissions': dailyMissions.map((m) => m.toJson()).toList(),
+    'weeklyMissions': weeklyMissions.map((m) => m.toJson()).toList(),
+  };
+
+  void fromJson(Map<String, dynamic> json) {
+    if (json['dailyMissions'] != null) {
+      dailyMissions = (json['dailyMissions'] as List)
+          .map((missionJson) => Mission.fromJson(missionJson))
+          .toList();
+    }
+
+    if (json['weeklyMissions'] != null) {
+      weeklyMissions = (json['weeklyMissions'] as List)
+          .map((missionJson) => Mission.fromJson(missionJson))
+          .toList();
+    }
+  }
+
+  void dispose() {
+    missionRefreshTimer?.cancel();
+  }
+}
+
+/// Système de niveaux
 class LevelSystem extends ChangeNotifier {
   double _experience = 0;
   int _level = 1;
   ProgressionPath _currentPath = ProgressionPath.PRODUCTION;
   final GameFeatureUnlocker featureUnlocker = GameFeatureUnlocker();
-
-  // Nouveaux systèmes
-  double _xpMultiplier = 1.0;
   final XPComboSystem comboSystem = XPComboSystem();
   final DailyXPBonus dailyBonus = DailyXPBonus();
+  double _xpMultiplier = 1.0;
+
+  Function(int level, List<UnlockableFeature> newFeatures)? onLevelUp;
 
   // Getters
   double get experience => _experience;
@@ -141,28 +265,8 @@ class LevelSystem extends ChangeNotifier {
   double get totalXpMultiplier => _xpMultiplier * currentComboMultiplier;
   bool get isDailyBonusAvailable => !dailyBonus.claimed;
 
-  Function(int level, List<UnlockableFeature> newFeatures)? onLevelUp;
-
-  // Multiplicateurs de base
-  double get productionMultiplier => 1 + (_level * 0.01);
-  double get salesMultiplier => 1 + (_level * 0.005);
-
   double get experienceForNextLevel => calculateExperienceRequirement(_level + 1);
   double get experienceProgress => _experience / experienceForNextLevel;
-
-  // Nouveau calcul d'expérience requis
-  @override
-  double calculateExperienceRequirement(int level) {
-    if (level <= 10) {
-      return 50 * pow(1.3, level) + (level * level * 4);
-    } else if (level <= 20) {
-      return 50 * pow(1.5, level) + (level * level * 6);
-    } else if (level <= 30) {
-      return 50 * pow(1.7, level) + (level * level * 8);
-    } else {
-      return 50 * pow(2.0, level) + (level * level * 10);
-    }
-  }
   final Map<int, LevelUnlock> _levelUnlocks = {
     1: LevelUnlock(
         description: "Production manuelle débloquée",
@@ -235,47 +339,24 @@ class LevelSystem extends ChangeNotifier {
   Map<int, String> get levelUnlocks {
     return _levelUnlocks.map((key, value) => MapEntry(key, value.description));
   }
-  void addExperience(double amount) {
-    _experience += amount;
-    _checkLevelUp();
-    notifyListeners();
+
+  double calculateExperienceRequirement(int level) {
+    if (level <= 10) {
+      return 50 * pow(1.3, level) + (level * level * 4);
+    } else if (level <= 20) {
+      return 50 * pow(1.5, level) + (level * level * 6);
+    } else if (level <= 30) {
+      return 50 * pow(1.7, level) + (level * level * 8);
+    } else {
+      return 50 * pow(2.0, level) + (level * level * 10);
+    }
   }
 
-  // Méthodes de gain d'XP améliorées
-  void addManualProduction() {
-    double baseXP = 2.0;
-    double bonusXP = ProgressionBonus.getTotalBonus(level);
-    addExperience(baseXP * bonusXP);
-    comboSystem.incrementCombo();
-  }
-
-  void addAutomaticProduction(int amount) {
-    double baseXP = 0.1 * amount;
-    double bonusXP = ProgressionBonus.getTotalBonus(level);
-    addExperience(baseXP * bonusXP);
-  }
-
-  void addSale(int quantity, double price) {
-    double baseXP = 0.3 * quantity * (1 + (price - 0.25) * 2);
-    double bonusXP = ProgressionBonus.getTotalBonus(level);
-    addExperience(baseXP * bonusXP);
-  }
-
-  void addAutoclipperPurchase() {
-    gainExperience(3);
-  }
-
-  void addUpgradePurchase(int upgradeLevel) {
-    gainExperience(2.0 * upgradeLevel);
-  }
-
-  // Système de gain d'XP principal
   void gainExperience(double amount) {
     double baseAmount = amount * totalXpMultiplier;
-    double levelPenalty = _level * 0.02; // Réduit à 2%
+    double levelPenalty = _level * 0.02;
     double adjustedAmount = baseAmount * (1 - levelPenalty);
 
-    // Bonus de progression pré-35
     if (_level < 35) {
       adjustedAmount *= 1.1;
     }
@@ -286,8 +367,32 @@ class LevelSystem extends ChangeNotifier {
     notifyListeners();
   }
 
+  void addManualProduction() {
+    double baseXP = 2.0;
+    double bonusXP = ProgressionBonus.getTotalBonus(level);
+    gainExperience(baseXP * bonusXP);
+  }
 
-  // Gestion des bonus temporaires
+  void addAutomaticProduction(int amount) {
+    double baseXP = 0.1 * amount;
+    double bonusXP = ProgressionBonus.getTotalBonus(level);
+    gainExperience(baseXP * bonusXP);
+  }
+
+  void addSale(int quantity, double price) {
+    double baseXP = 0.3 * quantity * (1 + (price - 0.25) * 2);
+    double bonusXP = ProgressionBonus.getTotalBonus(level);
+    gainExperience(baseXP * bonusXP);
+  }
+
+  void addAutoclipperPurchase() {
+    gainExperience(3);
+  }
+
+  void addUpgradePurchase(int upgradeLevel) {
+    gainExperience(2.0 * upgradeLevel);
+  }
+
   void applyXPBoost(double multiplier, Duration duration) {
     _xpMultiplier = multiplier;
     EventManager.addEvent(
@@ -303,7 +408,6 @@ class LevelSystem extends ChangeNotifier {
     });
   }
 
-  // Bonus quotidien
   bool claimDailyBonus() {
     return dailyBonus.claimDailyBonus(this);
   }
@@ -315,10 +419,9 @@ class LevelSystem extends ChangeNotifier {
       _level++;
       _experience -= requiredExperience;
 
-      // Vérifier les nouvelles fonctionnalités débloquées
-      List<UnlockableFeature> newFeatures = featureUnlocker.getNewlyUnlockedFeatures(_level - 1, _level);
+      List<UnlockableFeature> newFeatures =
+      featureUnlocker.getNewlyUnlockedFeatures(_level - 1, _level);
 
-      // Notification de level up
       _triggerLevelUpEvent(_level, newFeatures);
 
       if (onLevelUp != null) {
@@ -335,21 +438,14 @@ class LevelSystem extends ChangeNotifier {
         ? "Continuez votre progression !"
         : "Nouvelles fonctionnalités débloquées !";
 
-    EventManager.addEvent(
+    EventManager.instance.addEvent(
         EventType.LEVEL_UP,
         "Niveau $newLevel atteint !",
         description: featuresDescription,
         importance: EventImportance.HIGH
     );
-
-    EventManager.triggerNotificationPopup(
-      title: "Niveau $newLevel débloqué !",
-      description: featuresDescription,
-      icon: Icons.stars,
-    );
   }
 
-  // Sérialisation
   Map<String, dynamic> toJson() => {
     'experience': _experience,
     'level': _level,
@@ -359,7 +455,6 @@ class LevelSystem extends ChangeNotifier {
     'dailyBonusClaimed': dailyBonus.claimed,
   };
 
-  // Désérialisation
   void loadFromJson(Map<String, dynamic> json) {
     _experience = (json['experience'] as num?)?.toDouble() ?? 0;
     _level = (json['level'] as num?)?.toInt() ?? 1;
@@ -367,11 +462,10 @@ class LevelSystem extends ChangeNotifier {
     _xpMultiplier = (json['xpMultiplier'] as num?)?.toDouble() ?? 1.0;
     comboSystem.setComboCount(json['comboCount'] ?? 0);
     dailyBonus.setClaimed(json['dailyBonusClaimed'] ?? false);
-
     _checkLevelUp();
   }
 
-  // Nettoyage
+  @override
   void dispose() {
     comboSystem.dispose();
     dailyBonus.dispose();
@@ -379,6 +473,7 @@ class LevelSystem extends ChangeNotifier {
   }
 }
 
+/// Gestionnaire des fonctionnalités débloquables
 class GameFeatureUnlocker {
   final Map<UnlockableFeature, int> _featureLevelRequirements = {
     UnlockableFeature.MANUAL_PRODUCTION: 1,
@@ -418,27 +513,5 @@ class GameFeatureUnlocker {
       'upgradesSection': isFeatureUnlocked(
           UnlockableFeature.UPGRADES, currentLevel),
     };
-  }
-}
-class ProgressionBonus {
-  static double calculateLevelBonus(int level) {
-    if (level < 35) {
-      return 1.0 + (level * 0.02);
-    } else {
-      return 1.7 + ((level - 35) * 0.01);
-    }
-  }
-
-  static double getMilestoneBonus(int level) {
-    Map<int, double> milestones = {
-      10: 1.2,
-      20: 1.3,
-      30: 1.4,
-    };
-    return milestones[level] ?? 1.0;
-  }
-
-  static double getTotalBonus(int level) {
-    return calculateLevelBonus(level) * getMilestoneBonus(level);
   }
 }
