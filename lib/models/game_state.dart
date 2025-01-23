@@ -17,7 +17,12 @@ import 'package:paperclip2/models/event_manager.dart'; // Garder uniquement celu
 import 'package:paperclip2/models/notification_manager.dart';
 import 'package:paperclip2/models/game_event.dart';
 import 'game_enums.dart';
-import 'event_manager.dart';
+import 'notification_event.dart';
+import 'notification_manager.dart';
+import 'package:paperclip2/main.dart';
+import 'package:paperclip2/main.dart' show navigatorKey;
+import 'market/market_dynamics.dart';
+
 
 class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction {
   // Timers
@@ -26,6 +31,8 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
   Timer? _metalPriceTimer;
   Timer? _playTimeTimer;
   Timer? _autoSaveTimer;
+  double _maintenanceCosts = 0.0;
+  Timer? _maintenanceTimer;
 
   // Private properties
   String? _gameName;
@@ -40,6 +47,10 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
   DateTime? _lastSaveTime;
   BuildContext? _context;
   LevelSystem _levelSystem = LevelSystem();
+  final MarketDynamics marketDynamics = MarketDynamics();
+  final MarketManager marketManager;
+  String? _currentGameName;
+  String? get currentGameName => _currentGameName;
 
   // Public getters
   String? get gameName => _gameName;
@@ -54,6 +65,8 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
   int get totalPaperclipsProduced => _totalPaperclipsProduced;
   DateTime? get lastSaveTime => _lastSaveTime;
   final ResourceManager resourceManager = ResourceManager();
+  bool _isGameInitialized = false;
+  bool get isGameInitialized => _isGameInitialized;
 
   set money(double value) {
     if (value >= 0) { // Vérifie que l'argent ne devient pas négatif
@@ -154,15 +167,63 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
   };
 
   // Constructor
-  GameState() {
+  GameState() : marketManager = MarketManager(MarketDynamics()) {
     _levelSystem.onLevelUp = _handleLevelUp;
+    _loadSavedGame();
     _initializeGame();
+  }
+  Future<void> _loadSavedGame() async {
+    final lastSave = await SaveManager.getLastSave();
+    if (lastSave != null) {
+      await loadGame(lastSave.name);
+    }
+    _isGameInitialized = true;
+    notifyListeners();
+  }
+  @override
+  void dispose() {
+    productionTimer?.cancel();
+    super.dispose();
+  }
+
+  void startProductionTimer() {
+    productionTimer?.cancel();
+    productionTimer = Timer.periodic(
+      const Duration(seconds: 1),
+          (_) {
+        processProduction();
+        processMarket();
+      },
+    );
+  }
+
+  void processProduction() {
+    if (_autoclippers > 0) {
+      double bulkBonus = 1.0 + (upgrades['bulk']?.level ?? 0) * 0.35;
+      double efficiencyBonus = 1.0 - ((upgrades['efficiency']?.level ?? 0) * 0.15);
+      double speedBonus = 1.0 + (upgrades['speed']?.level ?? 0) * 0.20;
+
+      double metalNeeded = _autoclippers * GameConstants.METAL_PER_PAPERCLIP * efficiencyBonus;
+
+      if (_metal >= metalNeeded) {
+        _metal -= metalNeeded;
+        double production = _autoclippers * bulkBonus * speedBonus;
+        _paperclips += production;
+        _totalPaperclipsProduced += production.floor();
+        notifyListeners();
+      }
+    }
   }
 
 
-  // Initialization
-  Future<void> _initializeGame() async {
-    initializeMarket(); // Assurez-vous que le marché est initialisé avant de charger le jeu
+
+
+
+
+
+
+  void _initializeGame() async {
+    initializeMarket();
     final lastSave = await SaveManager.getLastSave();
     if (lastSave != null) {
       await loadGame(lastSave.name);
@@ -170,13 +231,12 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
     _startGameSystems();
   }
 
-
   void _startGameSystems() {
-    initializeMarket(); // Initialiser le marché ici si ce n'est pas déjà fait
-    startProductionTimer();
+    startProductionTimer();  // S'assurer que ceci est appelé
     _startMetalPriceVariation();
     _startPlayTimeTracking();
   }
+
 
   void _handleLevelUp(int newLevel, List<UnlockableFeature> newFeatures) {
     // Logique de gestion des level up
@@ -234,9 +294,7 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
   void _startMetalPriceVariation() {
     _metalPriceTimer?.cancel();
     _metalPriceTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
-      double variation = (Random().nextDouble() * 4) - 2;
-      _currentMetalPrice = (_currentMetalPrice + variation)
-          .clamp(GameConstants.MIN_METAL_PRICE, GameConstants.MAX_METAL_PRICE);
+      _currentMetalPrice = marketManager.updateMetalPrice();
       notifyListeners();
     });
   }
@@ -251,10 +309,118 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
 
   // Game Actions
   void buyMetal() {
-    if (_money >= _currentMetalPrice && _metal < maxMetalStorage) {
-      _metal += GameConstants.METAL_PACK_AMOUNT;
-      _money -= _currentMetalPrice;
+    if (_money >= _currentMetalPrice) {
+      double amount = GameConstants.METAL_PACK_AMOUNT;
+
+      // Vérification de la capacité de stockage
+      if (_metal + amount <= maxMetalStorage) {
+        _metal += amount;
+        _money -= _currentMetalPrice;
+        notifyListeners();
+      } else {
+        // Notification de stockage plein
+        EventManager.addEvent(
+            EventType.RESOURCE_DEPLETION,
+            "Stockage plein",
+            description: "Impossible d'acheter plus de métal. Améliorez votre stockage!",
+            importance: EventImportance.HIGH
+        );
+      }
+    }
+  }
+  void _startMaintenanceTimer() {
+    _maintenanceTimer?.cancel();
+    _maintenanceTimer = Timer.periodic(
+        const Duration(minutes: 1),
+            (_) => _applyMaintenanceCosts()
+    );
+  }
+  void _applyMaintenanceCosts() {
+    _maintenanceCosts = resourceManager.calculateMaintenanceCost();
+    if (_money >= _maintenanceCosts) {
+      _money -= _maintenanceCosts;
       notifyListeners();
+    }
+  }
+
+  void setSellPrice(double newPrice) {
+    if (marketManager.isPriceExcessive(newPrice)) {
+      final notification = NotificationEvent(
+        title: "Prix Excessif!",
+        description: "Ce prix pourrait affecter vos ventes",
+        detailedDescription: """
+Impact du prix élevé sur votre entreprise:
+
+• Réputation: Diminution possible
+• Ventes: Réduction probable
+• Concurrence: Avantage pour vos concurrents
+
+${marketManager.getPriceRecommendation()}
+
+Conseils:
+1. Analysez le marché actuel
+2. Ajustez progressivement vos prix
+3. Surveillez l'impact sur vos ventes
+      """,
+        icon: Icons.price_change,
+        priority: NotificationPriority.HIGH,
+        additionalData: {
+          "Prix actuel": newPrice.toStringAsFixed(2),
+          "Prix recommandé": marketManager.getPriceRecommendation(),
+          "Impact sur la réputation": "Négatif",
+        },
+        canBeSuppressed: true,
+        suppressionDuration: const Duration(minutes: 10),
+      );
+
+      if (navigatorKey.currentContext != null) {
+        NotificationManager.showGameNotification(
+          navigatorKey.currentContext!,
+          event: notification,
+        );
+      }
+    }
+    _sellPrice = newPrice;
+    notifyListeners();
+  }
+  void checkMetalStorage() {
+    double stockPercentage = metal / maxMetalStorage;
+
+    if (stockPercentage >= 0.9) {  // 90% de remplissage
+      final notification = NotificationEvent(
+        title: "Stockage Critique",
+        description: "Stockage à ${(stockPercentage * 100).toInt()}%",
+        detailedDescription: """
+Votre stockage de métal atteint ses limites !
+
+État actuel :
+• Capacité totale: $maxMetalStorage
+• Métal stocké: ${metal.toInt()}
+• Taux d'occupation: ${(stockPercentage * 100).toInt()}%
+
+Actions recommandées :
+1. Augmentez votre capacité de stockage
+2. Accélérez la production
+3. Vendez l'excès de métal
+      """,
+        icon: Icons.warehouse,
+        priority: NotificationPriority.HIGH,
+        additionalData: {
+          'Capacité maximale': maxMetalStorage,
+          'Stock actuel': metal.toInt(),
+          'Espace restant': (maxMetalStorage - metal).toInt(),
+          'Taux remplissage': '${(stockPercentage * 100).toInt()}%',
+        },
+        canBeSuppressed: true,
+        suppressionDuration: const Duration(minutes: 5),
+      );
+
+      if (navigatorKey.currentContext != null) {
+        NotificationManager.showGameNotification(
+          navigatorKey.currentContext!,
+          event: notification,
+        );
+      }
     }
   }
 
@@ -273,8 +439,14 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
       _money -= upgrade.currentCost;
       upgrade.level++;
       _levelSystem.addUpgradePurchase(upgrade.level);
-      resourceManager.checkMetalStatus(levelSystem.level);
       notifyListeners();
+
+      // Debug log pour vérifier
+      print('Upgrade $id purchased. New level: ${upgrade.level}');
+      print('Current bonuses:');
+      print('Bulk: ${1.0 + (upgrades['bulk']?.level ?? 0) * 0.35}');
+      print('Efficiency: ${1.0 - ((upgrades['efficiency']?.level ?? 0) * 0.15)}');
+      print('Speed: ${1.0 + (upgrades['speed']?.level ?? 0) * 0.20}');
     }
   }
 
@@ -284,7 +456,7 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
       _totalPaperclipsProduced++;
       _metal -= GameConstants.METAL_PER_PAPERCLIP;
       _levelSystem.addManualProduction();
-      resourceManager.checkMetalStatus(_levelSystem.level);
+      resourceManager.checkMetalStatus(levelSystem.level, maxMetalStorage, _metal);
       notifyListeners();
     }
   }
@@ -294,47 +466,55 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
     double calculatedDemand = marketManager.calculateDemand(_sellPrice, getMarketingLevel());
     int potentialSales = calculatedDemand.floor();
 
-    if (_paperclips >= potentialSales && potentialSales > 0) {
+    // Limiter les ventes au stock disponible
+    potentialSales = min(potentialSales, _paperclips.floor());
+
+    if (potentialSales > 0) {  // Vérification modifiée
       double qualityBonus = 1.0 + (upgrades['quality']?.level ?? 0) * 0.10;
       double salePrice = _sellPrice * qualityBonus;
-      _paperclips -= potentialSales;
-      _money += potentialSales * salePrice;
-      marketManager.recordSale(potentialSales, salePrice);
-      _levelSystem.addSale(potentialSales, salePrice);
-      resourceManager.checkMetalStatus(_levelSystem.level);
+
+      // Ajout d'une limite sur les ventes en fonction de la réputation
+      int actualSales = (potentialSales * marketManager.reputation).floor();
+
+      // Double vérification pour éviter les nombres négatifs
+      actualSales = min(actualSales, _paperclips.floor());
+
+      _paperclips -= actualSales;
+      _money += actualSales * salePrice;
+      marketManager.recordSale(actualSales, salePrice);
+      _levelSystem.addSale(actualSales, salePrice);
       notifyListeners();
     }
   }
-
-  @override
-  void processProduction() {
-    if (_autoclippers > 0) {
-      double bulkBonus = 1.0 + (upgrades['bulk']?.level ?? 0) * 0.35;
-      double efficiencyBonus = 1.0 - ((upgrades['efficiency']?.level ?? 0) * 0.15);
-      double speedBonus = 1.0 + (upgrades['speed']?.level ?? 0) * 0.20;
-      double metalNeeded = _autoclippers * GameConstants.METAL_PER_PAPERCLIP * efficiencyBonus;
-
-      if (_metal >= metalNeeded) {
-        double production = _autoclippers * bulkBonus * speedBonus;
-        _paperclips += production;
-        _totalPaperclipsProduced += production.floor();
-        _metal -= metalNeeded;
-        _levelSystem.addAutomaticProduction(production.floor());
-        resourceManager.checkMetalStatus(_levelSystem.level);
-        notifyListeners();
-      }
+  Future<void> startNewGame([String? name]) async {
+    // Réinitialiser toutes les valeurs
+    resetGame();
+    if (name != null) {
+      _gameName = name;
     }
+    _isGameInitialized = true;
+    startProductionTimer(); // S'assurer que la production démarre
+    notifyListeners();
   }
 
-  @override
-  int getMarketingLevel() => upgrades['marketing']?.level ?? 0;
+
+
+  int getMarketingLevel() {
+    return upgrades['marketing']?.level ?? 0;
+  }
 
   // Save/Load integration
-  Future<void> startNewGame(String name) async {
-    _gameName = name;
-    _resetGameState();
-    await SaveManager.saveGame(this, name);
+
+  void resetGame() {
+    _paperclips = 0;
+    _metal = GameConstants.INITIAL_METAL;
+    _money = GameConstants.INITIAL_MONEY;
+    _autoclippers = 0;
+    // Réinitialiser les autres valeurs...
+    _isGameInitialized = false;
+    productionTimer?.cancel();
   }
+
 
   Future<void> loadGame(String name) async {
     final saveGame = await SaveManager.loadGame(name);
@@ -358,7 +538,7 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
       'totalTimePlayedInSeconds': _totalTimePlayedInSeconds,
       'upgrades': upgrades.map((key, value) => MapEntry(key, value.toJson())),
       'marketReputation': marketManager.reputation,
-      'marketMetalStock': resourceManager.marketMetalStock,
+      'marketMetalStock': _metal,  // Utiliser _metal au lieu de resourceManager.marketMetalStock
       'levelSystem': _levelSystem.toJson(),
     };
   }
@@ -438,17 +618,7 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
     });
   }
 
-  @override
-  void dispose() {
-    marketTimer?.cancel();
-    productionTimer?.cancel();
-    _metalPriceTimer?.cancel();
-    _playTimeTimer?.cancel();
-    _autoSaveTimer?.cancel();
-    levelSystem.comboSystem.dispose();
-    levelSystem.dailyBonus.dispose();
-    super.dispose();
-  }
+
   void activateXPBoost() {
     levelSystem.applyXPBoost(2.0, const Duration(minutes: 5));
     EventManager.triggerNotificationPopup(
@@ -468,7 +638,7 @@ class GameState extends ChangeNotifier with GameStateMarket, GameStateProduction
   }
 
   void checkResourceCrisis() {
-    if (resourceManager.marketMetalStock <= ResourceManager.WARNING_THRESHOLD) {
+    if (resourceManager.marketMetalStock <= ResourceManager.WARNING_THRESHOLD) {  // Utiliser ResourceManager.WARNING_THRESHOLD
       EventManager.addEvent(
           EventType.RESOURCE_DEPLETION,
           "Ressources en diminution",

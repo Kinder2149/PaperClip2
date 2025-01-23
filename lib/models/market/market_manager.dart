@@ -1,9 +1,11 @@
 import 'dart:math';
+import '../game_enums.dart';
 import '../constants.dart';
+import '../event_manager.dart';
 import 'market_dynamics.dart';
 import 'sale_record.dart';
-import 'package:paperclip2/models/game_state.dart';
-import 'package:paperclip2/models/level_system.dart';
+import 'package:flutter/material.dart';
+import 'dart:async';
 
 // Énumération des événements de marché
 enum MarketEventType {
@@ -20,6 +22,10 @@ class MarketManager {
   List<SaleRecord> salesHistory = [];
   double reputation = 1.0;
   double marketMetalStock = GameConstants.INITIAL_MARKET_METAL; // 1500 unités de métal
+  int _gameStartDay = DateTime.now().millisecondsSinceEpoch ~/ (1000 * 60 * 60 * 24);
+  double _difficultyMultiplier = GameConstants.BASE_DIFFICULTY;
+  double _currentMetalPrice = GameConstants.MIN_METAL_PRICE;
+
 
   static const double MARKET_DEPLETION_THRESHOLD = 750.0;
 
@@ -27,6 +33,35 @@ class MarketManager {
   static const double MAX_PRICE = GameConstants.MAX_PRICE;
 
   MarketManager(this.dynamics);
+  double _currentPrice = 1.0;
+  double _competitionPrice = GameConstants.INITIAL_PRICE;
+  double _marketSaturation = 100.0;
+  Map<String, MarketSegment> _segments = {
+    'budget': MarketSegment('Budget', -2.0, 0.25, 0.4),
+    'standard': MarketSegment('Standard', -1.5, 0.50, 0.4),
+    'premium': MarketSegment('Premium', -1.0, 1.00, 0.2),
+  };
+  double updateMetalPrice() {
+    dynamics.updateMarketConditions();
+    double variation = (Random().nextDouble() * 4) - 2;
+    _currentMetalPrice = (_currentMetalPrice + variation)
+        .clamp(GameConstants.MIN_METAL_PRICE, GameConstants.MAX_METAL_PRICE);
+    return _currentMetalPrice;
+  }
+
+  double getCurrentPrice() {
+    return _currentMetalPrice;
+  }
+
+  bool isPriceExcessive(double price) {
+    return price > _currentMetalPrice * 2;
+  }
+
+  String getPriceRecommendation() {
+    return "Prix recommandé : ${(_currentMetalPrice * 1.5).toStringAsFixed(2)}";
+  }
+
+
 
 
 
@@ -91,38 +126,114 @@ class MarketManager {
 
   // Calcul de l'élasticité de prix
   double _calculatePriceElasticity(double price) {
-    double baseElasticity = -1.5;
-    double historicalAdjustment = _calculateHistoricalElasticityModifier();
-    return baseElasticity * (1 + historicalAdjustment);
+    if (price <= 0.25) return -1.0;
+    if (price <= 0.50) return -2.0;
+    return -3.0;
   }
 
-  double _calculateBaseDemand(double price, double elasticity) {
-    const double marketSaturation = 100.0;
-    return marketSaturation * (1 / (1 + exp(elasticity * price)));
+  double _calculateBaseDemand(double price) {
+    double elasticity;
+
+    if (price <= GameConstants.OPTIMAL_PRICE_LOW) {
+      // Forte demande mais faible marge
+      elasticity = -1.0;
+    } else if (price <= GameConstants.OPTIMAL_PRICE_HIGH) {
+      // Zone optimale
+      elasticity = -1.5;
+    } else if (price <= GameConstants.MAX_PRICE) {
+      // Demande réduite
+      elasticity = -2.0;
+    } else {
+      // Prix excessif
+      elasticity = -3.0;
+    }
+
+    return _marketSaturation * exp(elasticity * (price / GameConstants.OPTIMAL_PRICE_LOW));
   }
+  double _calculateReputationFactor(double price) {
+    return max(0.1, 1.0 - (price - 0.25) * 0.5) * reputation;
+  }
+
+  double _calculateCompetitionFactor(double price) {
+    return max(0.1, 1.0 - (price / _competitionPrice - 1.0));
+  }
+
+
 
 
   // Calcul de la demande de base
   double calculateDemand(double price, int marketingLevel) {
-    double baseElasticity = _calculatePriceElasticity(price);
-    double baseDemand = _calculateBaseDemand(price, baseElasticity);
+    _updateDifficultyMultiplier();
 
-    // Facteurs d'influence
-    double marketingMultiplier = 1.0 + (marketingLevel * 0.3);
-    double reputationFactor = 0.5 + (reputation * 0.5);
-    double seasonalityFactor = _calculateSeasonalityFactor();
-    double competitivePressure = _calculateCompetitivePressure();
+    double baseDemand = _calculateBaseDemand(price);
+    double reputationFactor = _calculateReputationImpact(price);
+    double difficultyFactor = _calculateDifficultyFactor();
+    double marketingFactor = 1.0 + (marketingLevel * 0.2);
 
-    // Calcul de la demande finale
-    double finalDemand = baseDemand
-        * marketingMultiplier
-        * reputationFactor
-        * seasonalityFactor
-        * (1 + competitivePressure)
-        * dynamics.getMarketConditionMultiplier();
+    double finalDemand = baseDemand *
+        reputationFactor *
+        difficultyFactor *
+        marketingFactor;
 
-    return finalDemand;
+    // Appliquer les limites
+    return max(0, min(finalDemand, _marketSaturation));
   }
+  double _calculateReputationImpact(double price) {
+    if (price > GameConstants.MAX_PRICE) {
+      // Pénalité pour prix excessif
+      reputation *= GameConstants.REPUTATION_PENALTY_RATE;
+    } else if (price <= GameConstants.OPTIMAL_PRICE_HIGH) {
+      // Bonus pour prix raisonnable
+      reputation = min(
+          GameConstants.MAX_REPUTATION,
+          reputation * GameConstants.REPUTATION_BONUS_RATE
+      );
+    }
+
+    return max(GameConstants.MIN_REPUTATION, reputation);
+  }
+
+  double _calculateDifficultyFactor() {
+    return 1.0 / _difficultyMultiplier;
+  }
+  void _updateDifficultyMultiplier() {
+    int currentDay = DateTime.now().millisecondsSinceEpoch ~/ (1000 * 60 * 60 * 24);
+    int monthsPassed = (currentDay - _gameStartDay) ~/ 30;
+    _difficultyMultiplier = GameConstants.BASE_DIFFICULTY +
+        (monthsPassed * GameConstants.DIFFICULTY_INCREASE_PER_MONTH);
+  }
+
+
+
+
+  // Ajouter ces méthodes dans la classe MarketManager
+  String _getEventTitle(MarketEvent event) {
+    switch (event) {
+      case MarketEvent.PRICE_WAR:
+        return "Guerre des Prix!";
+      case MarketEvent.DEMAND_SPIKE:
+        return "Pic de Demande!";
+      case MarketEvent.MARKET_CRASH:
+        return "Krach du Marché!";
+      case MarketEvent.QUALITY_CONCERNS:
+        return "Problèmes de Qualité";
+    }
+  }
+
+  String _getEventDescription(MarketEvent event) {
+    switch (event) {
+      case MarketEvent.PRICE_WAR:
+        return "Les concurrents baissent leurs prix agressivement";
+      case MarketEvent.DEMAND_SPIKE:
+        return "La demande en trombones explose!";
+      case MarketEvent.MARKET_CRASH:
+        return "Le marché s'effondre, les prix chutent";
+      case MarketEvent.QUALITY_CONCERNS:
+        return "Des inquiétudes sur la qualité affectent la réputation";
+    }
+  }
+
+
 
 
   // Calcul du facteur saisonnier
@@ -185,6 +296,54 @@ class MarketManager {
   void updateMarket() {
     dynamics.updateMarketConditions();
   }
+  void updateMarketConditions() {
+    // Mise à jour du prix de la concurrence
+    _competitionPrice = GameConstants.INITIAL_PRICE *
+        (0.8 + Random().nextDouble() * 0.4);
+
+    // Mise à jour de la saturation du marché
+    _marketSaturation = max(50, _marketSaturation +
+        (Random().nextDouble() - 0.5) * 10);
+
+    // Possibilité d'événement de marché
+    _checkForMarketEvent();
+  }
+
+  void _checkForMarketEvent() {
+    if (Random().nextDouble() < 0.05) { // 5% de chance
+      final event = MarketEvent.values[
+      Random().nextInt(MarketEvent.values.length)
+      ];
+      _handleMarketEvent(event);
+    }
+  }
+
+  void _handleMarketEvent(MarketEvent event) {
+    switch (event) {
+      case MarketEvent.PRICE_WAR:
+        _competitionPrice *= 0.8;
+        break;
+      case MarketEvent.DEMAND_SPIKE:
+        _marketSaturation *= 1.5;
+        break;
+      case MarketEvent.MARKET_CRASH:
+        _competitionPrice *= 0.6;
+        _marketSaturation *= 0.7;
+        break;
+      case MarketEvent.QUALITY_CONCERNS:
+        reputation *= 0.9;
+        break;
+    }
+
+    // Notifier l'événement
+    EventManager.addEvent(
+        EventType.MARKET_CHANGE,
+        _getEventTitle(event),
+        description: _getEventDescription(event),
+        importance: EventImportance.MEDIUM
+    );
+  }
+
 
   // Génération d'événements de marché
   MarketEventType? generateMarketEvent() {

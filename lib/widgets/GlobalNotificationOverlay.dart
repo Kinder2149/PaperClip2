@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:paperclip2/models/game_state.dart';
-import 'package:paperclip2/models/level_system.dart';
+import '../models/game_state.dart';
+import '../models/level_system.dart';
+import '../models/event_manager.dart';
+import '../models/notification_event.dart';
 
 class GlobalNotificationOverlay extends StatefulWidget {
   final Widget child;
+  final GlobalKey<NavigatorState> navigatorKey;  // Ajoutez cette ligne
 
-  const GlobalNotificationOverlay({Key? key, required this.child}) : super(key: key);
+  const GlobalNotificationOverlay({
+    Key? key,
+    required this.child,
+    required this.navigatorKey,  // Ajoutez cette ligne
+  }) : super(key: key);
 
   @override
   _GlobalNotificationOverlayState createState() => _GlobalNotificationOverlayState();
@@ -18,7 +25,6 @@ class _GlobalNotificationOverlayState extends State<GlobalNotificationOverlay> {
   @override
   void initState() {
     super.initState();
-
     EventManager.notificationStream.addListener(_handleNotification);
   }
 
@@ -87,18 +93,24 @@ class _GlobalNotificationOverlayState extends State<GlobalNotificationOverlay> {
         )
     );
 
-    Overlay.of(context).insert(_overlayEntry!);
+    if (widget.navigatorKey.currentContext != null) {
+      Overlay.of(widget.navigatorKey.currentContext!).insert(_overlayEntry!);
 
-    // Fermer automatiquement après 3 secondes
-    Future.delayed(const Duration(seconds: 3), () {
-      _overlayEntry?.remove();
-      _overlayEntry = null;
-    });
+      // Fermer automatiquement après 3 secondes
+      Future.delayed(const Duration(seconds: 3), () {
+        _overlayEntry?.remove();
+        _overlayEntry = null;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return widget.child;
+    return MaterialApp(
+      navigatorKey: widget.navigatorKey,  // Utilisez la clé de navigation ici
+      home: widget.child,
+      debugShowCheckedModeBanner: false,
+    );
   }
 
   @override

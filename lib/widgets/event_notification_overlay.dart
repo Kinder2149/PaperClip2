@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:paperclip2/models/event_manager.dart';
-import 'package:paperclip2/models/notification_manager.dart';
 import 'package:paperclip2/models/notification_event.dart';
 
 class EventNotificationOverlay extends StatelessWidget {

@@ -29,3 +29,23 @@ enum UnlockableFeature {
   AUTOCLIPPERS,
   UPGRADES,
 }
+enum MarketEvent {
+  PRICE_WAR,
+  DEMAND_SPIKE,
+  MARKET_CRASH,
+  QUALITY_CONCERNS
+}
+
+class MarketSegment {
+  final String name;
+  final double elasticity;
+  final double maxPrice;
+  final double marketShare;
+
+  const MarketSegment(
+      this.name,
+      this.elasticity,
+      this.maxPrice,
+      this.marketShare
+      );
+}

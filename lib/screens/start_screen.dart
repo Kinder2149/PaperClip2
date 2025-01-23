@@ -4,7 +4,7 @@ import '../models/game_state.dart';
 import '../utils/update_manager.dart';
 import '../main.dart';
 import './save_load_screen.dart';
-import './introduction_screen.dart'; // Import de l'écran d'introduction
+import './introduction_screen.dart';
 import '../services/save_manager.dart';
 import '../models/constants.dart';
 
@@ -17,11 +17,27 @@ class StartScreen extends StatefulWidget {
 
 class _StartScreenState extends State<StartScreen> {
   bool _isLoading = false;
+  String? _lastSaveInfo;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLastSaveInfo();
+  }
+
+  Future<void> _loadLastSaveInfo() async {
+    final lastSave = await SaveManager.getLastSave();
+    if (lastSave != null) {
+      setState(() {
+        _lastSaveInfo = 'Dernière partie : ${lastSave.name}';
+      });
+    }
+  }
 
   Future<void> _continueLastGame() async {
     setState(() => _isLoading = true);
     try {
-      final lastSave = await SaveManager.getLastSave();  // Utilisation de getLastSave()
+      final lastSave = await SaveManager.getLastSave();
       if (lastSave != null) {
         await context.read<GameState>().loadGame(lastSave.name);
         if (mounted) {
@@ -98,7 +114,6 @@ class _StartScreenState extends State<StartScreen> {
                 return;
               }
 
-              // Vérification de l'existence de la sauvegarde
               final exists = await SaveManager.saveExists(gameName);
               if (exists) {
                 if (context.mounted) {
@@ -215,6 +230,15 @@ class _StartScreenState extends State<StartScreen> {
                   label: 'Continuer',
                   color: Colors.deepPurple[600],
                   textColor: Colors.white,
+                  trailing: _lastSaveInfo != null
+                      ? Text(
+                    _lastSaveInfo!,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white70,
+                    ),
+                  )
+                      : null,
                 ),
                 const SizedBox(height: 16),
                 _buildMenuButton(
@@ -247,22 +271,32 @@ class _StartScreenState extends State<StartScreen> {
     required String label,
     required Color? color,
     required Color? textColor,
+    Widget? trailing,
   }) {
-    return ElevatedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon),
-      label: Text(label),
-      style: ElevatedButton.styleFrom(
-        foregroundColor: textColor,
-        backgroundColor: color,
-        padding: const EdgeInsets.symmetric(
-          horizontal: 32,
-          vertical: 16,
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon),
+        label: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label),
+            if (trailing != null) trailing,
+          ],
         ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(30),
+        style: ElevatedButton.styleFrom(
+          foregroundColor: textColor,
+          backgroundColor: color,
+          padding: const EdgeInsets.symmetric(
+            horizontal: 32,
+            vertical: 16,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(30),
+          ),
+          disabledBackgroundColor: color?.withOpacity(0.6),
         ),
-        disabledBackgroundColor: color?.withOpacity(0.6),
       ),
     );
   }

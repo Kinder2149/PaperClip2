@@ -2,6 +2,9 @@ import 'dart:math';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'game_enums.dart';
+import 'event_manager.dart';
+import 'game_event.dart';
+import 'notification_event.dart';
 
 enum ProgressionPath {
   PRODUCTION,
@@ -21,86 +24,11 @@ enum ExperienceType {
 }
 
 
-class GameEvent {
-  final EventType type;
-  final String title;
-  final String description;
-  final EventImportance importance;
-  final DateTime timestamp;
-  final Map<String, dynamic> data;
 
-  GameEvent({
-    required this.type,
-    required this.title,
-    required this.description,
-    this.importance = EventImportance.LOW,
-    this.data = const {},
-  }) : timestamp = DateTime.now();
-}
 
-class EventManager {
-  static List<GameEvent> _events = [];
-  static final ValueNotifier<NotificationEvent?> _notificationController =
-  ValueNotifier<NotificationEvent?>(null);
 
-  static ValueNotifier<NotificationEvent?> get notificationStream => _notificationController;
 
-  static List<GameEvent> getEvents() {
-    return List.from(_events);
-  }
 
-  static void addEvent(
-      EventType type,
-      String title,
-      {
-        String description = '',
-        EventImportance importance = EventImportance.LOW
-      }
-      ) {
-    final event = GameEvent(
-        type: type,
-        title: title,
-        description: description,
-        importance: importance
-    );
-    _events.add(event);
-  }
-
-  static void clearEvents() {
-    _events.clear();
-  }
-
-  static void triggerNotificationPopup({
-    required String title,
-    required String description,
-    required IconData icon,
-  }) {
-    _notificationController.value = NotificationEvent(
-        title: title,
-        description: description,
-        icon: icon,
-        timestamp: DateTime.now()
-    );
-  }
-
-  static List<GameEvent> getEventsByImportance(EventImportance minImportance) {
-    return _events.where((event) => event.importance >= minImportance).toList();
-  }
-}
-
-class NotificationEvent {
-  final String title;
-  final String description;
-  final IconData icon;
-  final DateTime timestamp;
-
-  NotificationEvent({
-    required this.title,
-    required this.description,
-    required this.icon,
-    required this.timestamp,
-  });
-}
 
 class PathOption {
   final ProgressionPath path;

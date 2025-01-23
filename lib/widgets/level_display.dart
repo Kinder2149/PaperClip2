@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import 'package:paperclip2/models/level_system.dart';
+import 'package:paperclip2/models/event_manager.dart';
+import '../models/notification_event.dart';
+
 
 class LevelDisplay extends StatelessWidget {
   const LevelDisplay({Key? key}) : super(key: key);

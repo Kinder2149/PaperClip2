@@ -40,54 +40,67 @@ class SaveLoadScreen extends StatelessWidget {
                 itemCount: games.length,
                 itemBuilder: (context, index) {
                   final game = games[index];
-                  // Récupérer les données du gameData pour l'affichage
+                  // Récupération des données de sauvegarde
                   final paperclips = game.gameData['paperclips'] ?? 0;
                   final money = game.gameData['money'] ?? 0;
+                  final metal = game.gameData['metal'] ?? 0;
+                  final autoclippers = game.gameData['autoclippers'] ?? 0;
+                  final level = (game.gameData['levelSystem'] as Map<String, dynamic>?)?['level'] ?? 1;
+                  final totalPaperclips = game.gameData['totalPaperclipsProduced'] ?? 0;
 
                   return Card(
                     margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    child: ListTile(
+                    child: ExpansionTile(
                       title: Text(game.name),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Dernière sauvegarde: ${_formatDateTime(game.lastSaveTime)}'),
-                          Text('Trombones: ${paperclips.toStringAsFixed(0)}'),
-                          Text('Argent: ${money.toStringAsFixed(2)} €'),
-                        ],
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.play_arrow),
-                            onPressed: () async {
-                              try {
-                                await gameState.loadGame(game.name);
-                                if (context.mounted) {
-                                  Navigator.pushReplacement(
-                                    context,
-                                    MaterialPageRoute(builder: (context) => const MainGame()),
-                                  );
-                                }
-                              } catch (e) {
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Erreur: $e')),
-                                  );
-                                }
-                              }
-                            },
+                      subtitle: Text('Niveau ${level.toString()} - ${_formatDateTime(game.lastSaveTime)}'),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildInfoRow('Trombones', paperclips.toStringAsFixed(0)),
+                              _buildInfoRow('Argent', '${money.toStringAsFixed(2)} €'),
+                              _buildInfoRow('Métal', '${metal.toStringAsFixed(1)} unités'),
+                              _buildInfoRow('Autoclippeuses', autoclippers.toString()),
+                              _buildInfoRow('Production totale', totalPaperclips.toString()),
+                              const SizedBox(height: 16),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  TextButton.icon(
+                                    icon: const Icon(Icons.play_arrow),
+                                    label: const Text('Charger'),
+                                    onPressed: () async {
+                                      try {
+                                        await gameState.loadGame(game.name);
+                                        if (context.mounted) {
+                                          Navigator.pushReplacement(
+                                            context,
+                                            MaterialPageRoute(builder: (context) => const MainGame()),
+                                          );
+                                        }
+                                      } catch (e) {
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text('Erreur: $e')),
+                                          );
+                                        }
+                                      }
+                                    },
+                                  ),
+                                  TextButton.icon(
+                                    icon: const Icon(Icons.delete),
+                                    label: const Text('Supprimer'),
+                                    style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                    onPressed: () => _showDeleteConfirmation(context, game.name),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.delete),
-                            onPressed: () => _showDeleteConfirmation(
-                              context,
-                              game.name,
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   );
                 },
@@ -99,6 +112,19 @@ class SaveLoadScreen extends StatelessWidget {
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showNewGameDialog(context),
         child: const Icon(Icons.add),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text(value),
+        ],
       ),
     );
   }

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'level_system.dart'; // Pour les enums EventType et EventImportance
-
+import 'game_enums.dart';
 class GameEvent {
   final EventType type;
   final String title;

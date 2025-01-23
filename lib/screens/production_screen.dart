@@ -240,11 +240,23 @@ class ProductionScreen extends StatelessWidget {
       builder: (context) => AlertDialog(
         title: const Text('Détails des Autoclippers'),
         content: SingleChildScrollView(
-          child: Text(
-            'Production de base: ${gameState.autoclippers} par cycle\n'
-                'Bonus de production: +${bulkBonus.toStringAsFixed(0)}%\n'
-                'Bonus de vitesse: +${speedBonus.toStringAsFixed(0)}%\n'
-                'Production effective: ${(gameState.autoclippers * (1 + bulkBonus/100) * (1 + speedBonus/100)).toStringAsFixed(1)} par cycle',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Production de base: ${gameState.autoclippers} par cycle'),
+              Text('Bonus de production: +${bulkBonus.toStringAsFixed(0)}%'),
+              Text('Bonus de vitesse: +${speedBonus.toStringAsFixed(0)}%'),
+              const Divider(),
+              Text('Production effective: ${(gameState.autoclippers * (1 + bulkBonus/100) * (1 + speedBonus/100)).toStringAsFixed(1)} par cycle'),
+              const Divider(),
+              Text('Coûts de maintenance: ${gameState.autocliperCost.toStringAsFixed(1)} € par min'),
+              const SizedBox(height: 8),
+              const Text(
+                'Note: La maintenance est automatiquement déduite de vos revenus.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
           ),
         ),
         actions: [
@@ -256,6 +268,111 @@ class ProductionScreen extends StatelessWidget {
       ),
     );
   }
+  Widget _buildMarketInfoCard(BuildContext context, GameState gameState) {
+    return Card(
+      elevation: 2,
+      color: Colors.teal.shade100,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.trending_up),
+                const SizedBox(width: 8),
+                const Text('État du Marché',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.info_outline),
+                  onPressed: () => _showMarketInfoDialog(context, gameState),
+                ),
+              ],
+            ),
+            const Divider(),
+            _buildMarketIndicator(
+              'Réputation',
+              gameState.marketManager.reputation.toStringAsFixed(2),
+              Icons.star,
+            ),
+            _buildMarketIndicator(
+              'Demande',
+              '${(gameState.marketManager.calculateDemand(gameState.sellPrice, gameState.getMarketingLevel()) * 100).toStringAsFixed(0)}%',
+              Icons.people,
+            ),
+            _buildMarketIndicator(
+              'Stock Métal Mondial',
+              gameState.resourceManager.marketMetalStock.toStringAsFixed(0),
+              Icons.inventory_2,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  Widget _buildMarketIndicator(String label, String value, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 16),
+          const SizedBox(width: 8),
+          Text(label),
+          const Spacer(),
+          Text(value,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  void _showMarketInfoDialog(BuildContext context, GameState gameState) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Informations du Marché'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Réputation: ${gameState.marketManager.reputation.toStringAsFixed(2)}'),
+              const Text(
+                'Influence les ventes et les prix maximum.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const Divider(),
+              Text('Demande actuelle: ${(gameState.marketManager.calculateDemand(gameState.sellPrice, gameState.getMarketingLevel()) * 100).toStringAsFixed(0)}%'),
+              const Text(
+                'Basée sur le prix et le niveau marketing.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const Divider(),
+              Text('Stock mondial de métal: ${gameState.resourceManager.marketMetalStock.toStringAsFixed(0)}'),
+              const Text(
+                'Influence les prix et la disponibilité.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
+  }
+
 
   // Nouvelle méthode pour la section Améliorations
   Widget _buildUpgradesSection(GameState gameState) {
@@ -301,72 +418,84 @@ class ProductionScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Consumer<GameState>(
-        builder: (context, gameState, child) {
-          // Récupérer les éléments visibles selon le niveau
-          final visibleElements = gameState.getVisibleScreenElements();
+    return Consumer<GameState>(
+      builder: (context, gameState, child) {
+        final visibleElements = gameState.getVisibleScreenElements();
 
-          return Column(
-            children: [
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: SingleChildScrollView(
-                    child: Column(
-                      children: [
-                        const XPStatusDisplay(),
-                        const MoneyDisplay(),
-                        const SizedBox(height: 16),
+        return Column(
+          children: [
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      const XPStatusDisplay(),
+                      const MoneyDisplay(),
+                      const SizedBox(height: 16),
 
-                        // Statistiques de production
-                        Row(
-                          children: [
-                            _buildResourceCard(
-                              'Total Trombones Créés',
-                              gameState.totalPaperclipsProduced.toString(),
-                              Colors.purple.shade100,
-                              onTap: () => _showInfoDialog(
-                                context,
-                                'Statistiques de Production',
-                                'Total de trombones produits depuis le début du jeu: ${gameState.totalPaperclipsProduced}\n'
-                                    'Niveau de production: ${gameState.levelSystem.level}\n'
-                                    'Multiplicateur de production: x${gameState.levelSystem.productionMultiplier.toStringAsFixed(2)}',
-                              ),
+                      // Statistiques de production
+                      Row(
+                        children: [
+                          _buildResourceCard(
+                            'Total Trombones',
+                            gameState.totalPaperclipsProduced.toString(),
+                            Colors.purple.shade100,
+                            onTap: () => _showInfoDialog(
+                              context,
+                              'Statistiques de Production',
+                              'Total produit: ${gameState.totalPaperclipsProduced}\n'
+                                  'Niveau: ${gameState.levelSystem.level}\n'
+                                  'Multiplicateur: x${gameState.levelSystem.productionMultiplier.toStringAsFixed(2)}',
                             ),
-                            const SizedBox(width: 16),
-                            _buildResourceCard(
-                              'Trombones en stock',
-                              formatNumber(gameState.paperclips, false),
-                              Colors.blue.shade100,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
+                          ),
+                          const SizedBox(width: 16),
+                          _buildResourceCard(
+                            'Stock Trombones',
+                            formatNumber(gameState.paperclips, false),
+                            Colors.blue.shade100,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
 
-                        // Ressources
-                        Row(
-                          children: [
-                            _buildResourceCard(
-                              'Métal',
-                              '${formatNumber(gameState.metal, true)} / ${gameState.maxMetalStorage}',
-                              Colors.grey.shade200,
-                              onTap: () => _showInfoDialog(
-                                context,
-                                'Stock de Métal',
-                                'Stock actuel: ${formatNumber(gameState.metal, true)}\n'
-                                    'Capacité maximale: ${gameState.maxMetalStorage}\n'
-                                    'Prix actuel: ${gameState.currentMetalPrice.toStringAsFixed(2)} €',
-                              ),
+                      // Informations du marché
+                      if (visibleElements['marketInfo'] == true)
+                        _buildMarketInfoCard(context, gameState),
+
+                      const SizedBox(height: 16),
+
+                      // Ressources
+                      Row(
+                        children: [
+                          _buildResourceCard(
+                            'Métal',
+                            '${formatNumber(gameState.metal, true)} / ${gameState.maxMetalStorage}',
+                            Colors.grey.shade200,
+                            onTap: () => _showInfoDialog(
+                              context,
+                              'Stock de Métal',
+                              'Stock: ${formatNumber(gameState.metal, true)}\n'
+                                  'Capacité: ${gameState.maxMetalStorage}\n'
+                                  'Prix: ${gameState.currentMetalPrice.toStringAsFixed(2)} €\n'
+                                  'Efficacité: ${((1 - ((gameState.upgrades["efficiency"]?.level ?? 0) * 0.15)) * 100).toStringAsFixed(0)}%',
                             ),
-                            const SizedBox(width: 16),
-                            _buildResourceCard(
-                              'Prix du Marché',
-                              '${gameState.sellPrice.toStringAsFixed(2)} €',
-                              Colors.green.shade100,
+                          ),
+                          const SizedBox(width: 16),
+                          _buildResourceCard(
+                            'Prix Vente',
+                            '${gameState.sellPrice.toStringAsFixed(2)} €',
+                            Colors.green.shade100,
+                            onTap: () => _showInfoDialog(
+                              context,
+                              'Prix de Vente',
+                              'Prix actuel: ${gameState.sellPrice.toStringAsFixed(2)} €\n'
+                                  'Bonus qualité: +${((gameState.upgrades["quality"]?.level ?? 0) * 10)}%\n'
+                                  'Impact réputation: x${gameState.marketManager.reputation.toStringAsFixed(2)}',
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
+                      ),
                         const SizedBox(height: 16),
 
                         // Achat de métal (optionnel)
@@ -423,7 +552,6 @@ class ProductionScreen extends StatelessWidget {
             ],
           );
         },
-      ),
     );
   }
 }

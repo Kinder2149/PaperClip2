@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../models/game_state.dart';
-import '../models/level_system.dart'; // Assurez-vous que ce fichier contient EventManager et les enums
+import '../models/notification_event.dart';
+import '../models/notification_manager.dart';
+import '../models/event_manager.dart';
 
 class EventLogScreen extends StatefulWidget {
   const EventLogScreen({Key? key}) : super(key: key);
@@ -11,51 +11,97 @@ class EventLogScreen extends StatefulWidget {
 }
 
 class EventLogScreenState extends State<EventLogScreen> {
-  List<GameEvent> events = [];
+  List<NotificationEvent> notifications = [];
 
   @override
   void initState() {
     super.initState();
-    loadEvents();
+    loadNotifications();
+    EventManager.notificationStream.addListener(_handleNewNotification);
   }
 
-  void loadEvents() {
-    setState(() {
-      events = EventManager.getEvents().reversed.toList();
-    });
-  }
-
-  // Méthode pour obtenir la couleur en fonction de l'importance de l'événement
-  Color getColorForImportance(EventImportance importance) {
-    switch (importance) {
-      case EventImportance.LOW:
-        return Colors.grey;
-      case EventImportance.MEDIUM:
-        return Colors.blue;
-      case EventImportance.HIGH:
-        return Colors.orange;
-      case EventImportance.CRITICAL:
-        return Colors.red;
+  void _handleNewNotification() {
+    final notification = EventManager.notificationStream.value;
+    if (notification != null) {
+      setState(() {
+        notifications.insert(0, notification);
+      });
     }
   }
 
-  // Méthode pour obtenir l'icône en fonction du type d'événement
-  IconData getIconForEventType(EventType type) {
-    switch (type) {
-      case EventType.LEVEL_UP:
-        return Icons.upgrade;
-      case EventType.MARKET_CHANGE:
-        return Icons.trending_up;
-      case EventType.RESOURCE_DEPLETION:
-        return Icons.warning;
-      case EventType.UPGRADE_AVAILABLE:
-        return Icons.new_releases;
-      case EventType.SPECIAL_ACHIEVEMENT:
-        return Icons.stars;
-      case EventType.XP_BOOST:
-        return Icons.speed; // ou Icons.exposure_plus_2 pour représenter le boost
-      default:
-        return Icons.event_note;
+  void loadNotifications() {
+    setState(() {
+      notifications = List.from(notifications);  // Créer une nouvelle liste
+    });
+  }
+
+  void _clearNotifications() {
+    setState(() {
+      notifications.clear();
+    });
+  }
+
+  @override
+  void dispose() {
+    EventManager.notificationStream.removeListener(_handleNewNotification);
+    super.dispose();
+  }
+
+  void _showDetailedNotification(BuildContext context, NotificationEvent event) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(event.icon),
+            const SizedBox(width: 8),
+            Expanded(child: Text(event.title)),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (event.detailedDescription != null)
+                Text(event.detailedDescription!),
+              if (event.additionalData != null && event.additionalData!.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                const Divider(),
+                ...event.additionalData!.entries.map((e) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(e.key, style: const TextStyle(fontWeight: FontWeight.bold)),
+                      Text(e.value.toString()),
+                    ],
+                  ),
+                )),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _getPriorityColor(NotificationPriority priority) {
+    switch (priority) {
+      case NotificationPriority.LOW:
+        return Colors.blue;
+      case NotificationPriority.MEDIUM:
+        return Colors.orange;
+      case NotificationPriority.HIGH:
+        return Colors.deepOrange;
+      case NotificationPriority.CRITICAL:
+        return Colors.red;
     }
   }
 
@@ -67,63 +113,50 @@ class EventLogScreenState extends State<EventLogScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.clear_all),
-            onPressed: () {
-              EventManager.clearEvents();
-              loadEvents();
-            },
-            tooltip: 'Effacer tous les événements',
+            onPressed: _clearNotifications,
+            tooltip: 'Effacer toutes les notifications',
           )
         ],
       ),
-      body: events.isEmpty
-          ? Center(
+      body: notifications.isEmpty
+          ? const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.event_note, size: 100, color: Colors.grey),
-            const SizedBox(height: 20),
-            const Text(
-              'Aucun événement pour le moment',
+            Icon(Icons.notifications_none, size: 100, color: Colors.grey),
+            SizedBox(height: 20),
+            Text(
+              'Aucune notification pour le moment',
               style: TextStyle(fontSize: 18, color: Colors.grey),
             )
           ],
         ),
       )
           : ListView.builder(
-        itemCount: events.length,
+        itemCount: notifications.length,
         itemBuilder: (context, index) {
-          final event = events[index];
-          return ListTile(
-            leading: Icon(
-              getIconForEventType(event.type),
-              color: getColorForImportance(event.importance),
-            ),
-            title: Text(
-              event.title,
-              style: TextStyle(
-                fontWeight: event.importance == EventImportance.CRITICAL
-                    ? FontWeight.bold
-                    : FontWeight.normal,
-                color: getColorForImportance(event.importance),
+          final notification = notifications[index];
+          return Card(
+            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: ListTile(
+              leading: Icon(
+                notification.icon,
+                color: _getPriorityColor(notification.priority),
               ),
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  event.description,
-                  style: const TextStyle(fontSize: 12),
+              title: Text(
+                notification.title,
+                style: TextStyle(
+                  fontWeight: notification.priority == NotificationPriority.CRITICAL
+                      ? FontWeight.bold
+                      : FontWeight.normal,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  _getNotificationDetails(event),
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-              ],
-            ),
-            trailing: Text(
-              _formatEventTime(event.timestamp),
-              style: const TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+              subtitle: Text(notification.description),
+              trailing: Text(
+                _formatEventTime(notification.timestamp),
+                style: const TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+              onTap: () => _showDetailedNotification(context, notification),
             ),
           );
         },
@@ -132,25 +165,6 @@ class EventLogScreenState extends State<EventLogScreen> {
   }
 
   String _formatEventTime(DateTime timestamp) {
-    return '${timestamp.day}/${timestamp.month} ${timestamp.hour}:${timestamp.minute}';
-  }
-
-  String _getNotificationDetails(GameEvent event) {
-    switch (event.type) {
-      case EventType.LEVEL_UP:
-        return 'Nouveau niveau : ${event.data['level']}';
-      case EventType.MARKET_CHANGE:
-        return 'Prix du marché : ${event.data['price']}';
-      case EventType.RESOURCE_DEPLETION:
-        return 'Ressource épuisée : ${event.data['resource']}';
-      case EventType.UPGRADE_AVAILABLE:
-        return 'Amélioration disponible : ${event.data['upgrade']}';
-      case EventType.SPECIAL_ACHIEVEMENT:
-        return 'Réalisation spéciale : ${event.data['achievement']}';
-      case EventType.XP_BOOST:
-        return 'Multiplicateur : x${event.data['multiplier']} - Durée : ${event.data['duration']} minutes';
-      default:
-        return '';
-    }
+    return '${timestamp.day}/${timestamp.month} ${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}';
   }
 }

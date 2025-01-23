@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
-
+import 'package:paperclip2/models/market/market_dynamics.dart';
 class DemandCalculationScreen extends StatelessWidget {
   const DemandCalculationScreen({super.key});
 
@@ -23,19 +23,24 @@ class DemandCalculationScreen extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             _buildFactorCard(
-                title: 'Prix de Vente',
-                description: 'Des prix plus bas augmentent la demande, tandis que des prix plus élevés la réduisent.',
-                currentValue: 'Actuel : ${gameState.sellPrice.toStringAsFixed(2)} €'
+              title: 'Prix de Vente',
+              description: 'Des prix plus bas augmentent la demande, tandis que des prix plus élevés la réduisent.',
+              currentValue: 'Actuel : ${gameState.sellPrice.toStringAsFixed(2)} €',
             ),
             _buildFactorCard(
-                title: 'Niveau de Marketing',
-                description: 'Un niveau de marketing plus élevé augmente la demande.',
-                currentValue: 'Niveau actuel : ${gameState.getMarketingLevel()}'
+              title: 'Niveau de Marketing',
+              description: 'Un niveau de marketing plus élevé augmente la demande.',
+              currentValue: 'Niveau actuel : ${gameState.getMarketingLevel()}',
             ),
             _buildFactorCard(
-                title: 'Réputation',
-                description: 'Une meilleure réputation augmente la demande.',
-                currentValue: 'Réputation : ${gameState.marketManager.reputation.toStringAsFixed(2)}'
+              title: 'Réputation',
+              description: 'Une meilleure réputation augmente la demande.',
+              currentValue: 'Réputation : ${gameState.marketManager.reputation.toStringAsFixed(2)}',
+            ),
+            _buildFactorCard(
+              title: 'Demande Actuelle',
+              description: 'La demande totale calculée en fonction de tous les facteurs.',
+              currentValue: 'Demande : ${gameState.marketManager.calculateDemand(gameState.sellPrice, gameState.getMarketingLevel()).toStringAsFixed(0)} unités/s',
             ),
             SizedBox(height: 16),
             Text(

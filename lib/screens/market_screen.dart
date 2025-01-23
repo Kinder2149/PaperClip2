@@ -11,7 +11,6 @@ import 'sales_history_screen.dart';
 class MarketScreen extends StatelessWidget {
   const MarketScreen({super.key});
 
-  // Toutes les méthodes précédentes restent identiques
   Widget _buildMarketCard({
     required String title,
     required String value,
@@ -21,7 +20,6 @@ class MarketScreen extends StatelessWidget {
     required VoidCallback onInfoPressed,
     Widget? trailing,
   }) {
-    // Code inchangé
     return Card(
       elevation: 2,
       color: color,
@@ -45,7 +43,7 @@ class MarketScreen extends StatelessWidget {
                   if (tooltip.isNotEmpty)
                     Text(
                       tooltip,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 12,
                         color: Colors.black54,
                       ),
@@ -75,7 +73,6 @@ class MarketScreen extends StatelessWidget {
   }
 
   void _showInfoDialog(BuildContext context, String title, String message) {
-    // Code inchangé
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -92,25 +89,8 @@ class MarketScreen extends StatelessWidget {
       ),
     );
   }
-  void _showXPGain(BuildContext context, double amount) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.stars, color: Colors.amber),
-            const SizedBox(width: 8),
-            Text('+ ${amount.toStringAsFixed(1)} XP'),
-          ],
-        ),
-        duration: const Duration(seconds: 1),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
 
   Future<void> _saveGame(BuildContext context, GameState gameState) async {
-    // Code inchangé
     try {
       if (gameState.gameName == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -136,14 +116,13 @@ class MarketScreen extends StatelessWidget {
         SnackBar(
           content: Text('Erreur lors de la sauvegarde: $e'),
           backgroundColor: Colors.red,
-          duration: Duration(seconds: 4),
+          duration: const Duration(seconds: 4),
         ),
       );
     }
   }
 
   Widget _buildPriceControls(GameState gameState) {
-    // Code inchangé
     return Column(
       children: [
         Row(
@@ -199,18 +178,12 @@ class MarketScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<GameState>(
       builder: (context, gameState, child) {
-        // Récupérer les éléments visibles selon le niveau
         final visibleElements = gameState.getVisibleScreenElements();
-
-        // Calculs existants
         double demand = gameState.marketManager.calculateDemand(
             gameState.sellPrice,
             gameState.getMarketingLevel()
         );
         double profitability = demand * gameState.sellPrice;
-        double marketCondition = gameState.marketManager.dynamics.getMarketConditionMultiplier();
-        String marketStatus = marketCondition > 1.1 ? '📈 En hausse' :
-        marketCondition < 0.9 ? '📉 En baisse' : '➡️ Stable';
 
         return Padding(
           padding: const EdgeInsets.all(12.0),
@@ -223,7 +196,6 @@ class MarketScreen extends StatelessWidget {
                 child: SingleChildScrollView(
                   child: Column(
                     children: [
-                      // Stock de métal (toujours visible)
                       _buildMarketCard(
                         title: 'Stock de Métal',
                         value: '${gameState.metal.toStringAsFixed(1)}',
@@ -247,7 +219,6 @@ class MarketScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 8),
 
-                      // Réputation du marché (conditionnelle)
                       if (visibleElements['marketPrice'] == true) ...[
                         _buildMarketCard(
                           title: 'Réputation du Marché',
@@ -263,10 +234,7 @@ class MarketScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 8),
-                      ],
 
-                      // Marketing (conditonnel)
-                      if (visibleElements['marketPrice'] == true) ...[
                         _buildMarketCard(
                           title: 'Marketing',
                           value: 'Niveau ${gameState.getMarketingLevel()}',
@@ -281,28 +249,25 @@ class MarketScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 8),
-                      ],
 
-                      // Conditions du marché (conditonnel)
-                      if (visibleElements['marketPrice'] == true) ...[
                         _buildMarketCard(
-                          title: 'Conditions du Marché',
-                          value: marketStatus,
-                          icon: Icons.trending_up,
-                          color: Colors.purple.shade100,
-                          tooltip: 'Multiplicateur: x${marketCondition.toStringAsFixed(2)}',
+                          title: 'Rentabilité Estimée',
+                          value: '${profitability.toStringAsFixed(1)} €/min',
+                          icon: Icons.assessment,
+                          color: Colors.amber.shade100,
+                          tooltip: 'Basé sur la demande actuelle',
                           onInfoPressed: () => _showInfoDialog(
                             context,
-                            'Conditions du Marché',
-                            'Les conditions actuelles influencent la demande.\n'
-                                'Multiplicateur actuel: x${marketCondition.toStringAsFixed(2)}\n'
-                                'Status: $marketStatus',
+                            'Rentabilité',
+                            'Estimation des revenus par minute basée sur:\n'
+                                '- Prix de vente: ${gameState.sellPrice.toStringAsFixed(2)} €\n'
+                                '- Demande estimée: ${demand.toStringAsFixed(1)} unités/min\n'
+                                '- Revenus potentiels: ${profitability.toStringAsFixed(1)} €/min',
                           ),
                         ),
                         const SizedBox(height: 12),
                       ],
 
-                      // Prix de vente (conditionnel)
                       if (visibleElements['sellButton'] == true) ...[
                         Card(
                           elevation: 2,
@@ -337,26 +302,6 @@ class MarketScreen extends StatelessWidget {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 12),
-                      ],
-
-                      // Rentabilité (conditionnelle)
-                      if (visibleElements['marketPrice'] == true) ...[
-                        _buildMarketCard(
-                          title: 'Rentabilité Estimée',
-                          value: '${profitability.toStringAsFixed(1)} €/min',
-                          icon: Icons.assessment,
-                          color: Colors.amber.shade100,
-                          tooltip: 'Basé sur la demande actuelle',
-                          onInfoPressed: () => _showInfoDialog(
-                            context,
-                            'Rentabilité',
-                            'Estimation des revenus par minute basée sur:\n'
-                                '- Prix de vente: ${gameState.sellPrice.toStringAsFixed(2)} €\n'
-                                '- Demande estimée: ${demand.toStringAsFixed(1)} unités/min\n'
-                                '- Revenus potentiels: ${profitability.toStringAsFixed(1)} €/min',
-                          ),
-                        ),
                       ],
                     ],
                   ),
@@ -366,7 +311,6 @@ class MarketScreen extends StatelessWidget {
               const SizedBox(height: 16),
               Row(
                 children: [
-                  // Bouton Calculateur (toujours visible)
                   Expanded(
                     child: ElevatedButton.icon(
                       onPressed: () => Navigator.push(
@@ -384,7 +328,6 @@ class MarketScreen extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
 
-                  // Bouton Historique (conditionnel)
                   if (visibleElements['marketPrice'] == true)
                     Expanded(
                       child: ElevatedButton.icon(

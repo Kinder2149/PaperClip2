@@ -3,11 +3,11 @@ import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import '../widgets/money_display.dart';
 import '../models/upgrade.dart';
+import 'package:paperclip2/models/level_system.dart';
 
 class UpgradesScreen extends StatelessWidget {
   const UpgradesScreen({super.key});
 
-  // Toutes les méthodes précédentes restent identiques
   String _formatDuration(int seconds) {
     int hours = seconds ~/ 3600;
     int minutes = (seconds % 3600) ~/ 60;
@@ -16,7 +16,6 @@ class UpgradesScreen extends StatelessWidget {
   }
 
   Widget _buildStatisticsCard(GameState gameState) {
-    // Code inchangé
     return Card(
       elevation: 2,
       child: Padding(
@@ -62,13 +61,13 @@ class UpgradesScreen extends StatelessWidget {
               children: [
                 _buildStatItem(
                   Icons.precision_manufacturing,
-                  'Bonus Production',
-                  '+${((gameState.levelSystem.productionMultiplier - 1) * 100).toStringAsFixed(1)}%',
+                  'Production',
+                  '${gameState.totalPaperclipsProduced}',
                 ),
                 _buildStatItem(
                   Icons.trending_up,
-                  'Bonus Ventes',
-                  '+${((gameState.levelSystem.salesMultiplier - 1) * 100).toStringAsFixed(1)}%',
+                  'Multiplicateur',
+                  'x${gameState.levelSystem.productionMultiplier.toStringAsFixed(1)}',
                 ),
                 _buildStatItem(
                   Icons.timer,
@@ -83,9 +82,7 @@ class UpgradesScreen extends StatelessWidget {
     );
   }
 
-  // Autres méthodes précédentes restent identiques
   Widget _buildStatItem(IconData icon, String label, String value) {
-    // Code inchangé
     return Column(
       children: [
         Icon(icon, size: 20, color: Colors.grey[700]),
@@ -112,35 +109,32 @@ class UpgradesScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<GameState>(
       builder: (context, gameState, child) {
-        // Récupérer les éléments visibles selon le niveau
         final visibleElements = gameState.getVisibleScreenElements();
 
-        // Si les améliorations ne sont pas débloquées, afficher un écran de verrouillage
         if (visibleElements['upgradesSection'] != true) {
-          return Padding(
-            padding: const EdgeInsets.all(16.0),
+          return const Padding(
+            padding: EdgeInsets.all(16.0),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(
+                Icon(
                   Icons.lock,
                   size: 100,
                   color: Colors.grey,
                 ),
-                const SizedBox(height: 16),
-                const Text(
+                SizedBox(height: 16),
+                Text(
                   'Améliorations verrouillées',
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: 16),
                 Text(
-                  'Atteignez le niveau ${gameState.levelSystem.level} '
-                      'pour débloquer cette section.',
+                  'Continuez à produire pour débloquer cette section.',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     color: Colors.grey,
                   ),
@@ -178,14 +172,12 @@ class UpgradesScreen extends StatelessWidget {
     );
   }
 
-  // Méthode _buildUpgradeCard et _getUpgradeIcon restent identiques
   Widget _buildUpgradeCard(
       BuildContext context,
       GameState gameState,
       String id,
       Upgrade upgrade,
       ) {
-    // Code inchangé
     bool canBuy = gameState.money >= upgrade.currentCost && upgrade.level < upgrade.maxLevel;
     bool isMaxed = upgrade.level >= upgrade.maxLevel;
 
@@ -235,18 +227,6 @@ class UpgradesScreen extends StatelessWidget {
                   color: Colors.grey[600],
                 ),
               ),
-              if (upgrade.level < upgrade.maxLevel) ...[
-                const SizedBox(height: 4),
-                Text(
-                  'XP Gain: ${(2.0 * (upgrade.level + 1)).toStringAsFixed(1)}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.green[700],
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-              ],
-
               const SizedBox(height: 8),
               Row(
                 children: [
@@ -282,7 +262,6 @@ class UpgradesScreen extends StatelessWidget {
   }
 
   IconData _getUpgradeIcon(String upgradeId) {
-    // Code inchangé
     switch (upgradeId) {
       case 'efficiency':
         return Icons.eco;

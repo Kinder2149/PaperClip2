@@ -12,43 +12,40 @@ import './services/save_manager.dart';
 import './services/background_music.dart';
 import './screens/event_log_screen.dart';
 import 'widgets/GlobalNotificationOverlay.dart';
+import 'models/event_manager.dart';
+import 'models/game_enums.dart';
 
+export 'package:paperclip2/main.dart' show navigatorKey;
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() {
   runApp(
-    GlobalNotificationOverlay(
-      child: MultiProvider(
-        providers: [
-          ChangeNotifierProvider(create: (context) => GameState()),
-          Provider(create: (_) => BackgroundMusicService()),
-        ],
-        child: const MyApp(),
-      ),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => GameState()),
+      ],
+      child: const MyApp(),
     ),
   );
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        Provider(create: (_) => BackgroundMusicService()),
-      ],
-      child: MaterialApp(
-        title: 'Paperclip Game',
-        theme: ThemeData(
-          primarySwatch: Colors.deepPurple,
-          useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.deepPurple,
-            brightness: Brightness.light,
-          ),
-        ),
-        home: const StartScreen(),
+    return MaterialApp(
+      home: Consumer<GameState>(
+        builder: (context, gameState, child) {
+          // Vérifie si une partie existe déjà
+          if (gameState.isGameInitialized) {
+            return const MainGame();
+          }
+          return const StartScreen();
+        },
       ),
+      debugShowCheckedModeBanner: false,
     );
   }
 }

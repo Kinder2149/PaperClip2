@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:paperclip2/models/game_state.dart';
-import 'package:paperclip2/models/notification_manager.dart';
-import 'package:paperclip2/models/constants.dart';
-import 'package:paperclip2/models/level_system.dart'; // Pour les enums EventType et EventImportance
-import 'package:flutter/material.dart';
+import 'game_enums.dart';
 import 'game_event.dart';
 import 'notification_event.dart';
-import 'game_enums.dart';
+import 'notification_manager.dart';
+import 'package:paperclip2/main.dart';
 
+// Supprimez l'import de level_system.dart s'il existe
 class EventManager {
   static List<GameEvent> _events = [];
   static final ValueNotifier<NotificationEvent?> _notificationController =
@@ -21,30 +19,26 @@ class EventManager {
 
   static void addEvent(
       EventType type,
-      String title,
-      {
-        String description = '',
-        EventImportance importance = EventImportance.LOW,
-        Map<String, dynamic> data = const {},
+      String title, {
+        required String description,
+        required EventImportance importance
       }) {
-    final event = GameEvent(
-      type: type,
+    final notification = NotificationEvent(
       title: title,
       description: description,
-      importance: importance,
-      data: data,
+      icon: _getIconForEventType(type),
+      priority: _convertImportanceToNotificationPriority(importance),
+      canBeSuppressed: importance != EventImportance.CRITICAL,
     );
-    _events.add(event);
 
-    // Notification automatique pour les événements importants
-    if (importance >= EventImportance.HIGH) {
-      triggerNotificationPopup(
-        title: title,
-        description: description,
-        icon: _getIconForEventType(type),
+    if (navigatorKey.currentContext != null) {
+      NotificationManager.showGameNotification(
+        navigatorKey.currentContext!,
+        event: notification,
       );
     }
   }
+
 
   static void clearEvents() {
     _events.clear();
@@ -69,20 +63,26 @@ class EventManager {
 
   static IconData _getIconForEventType(EventType type) {
     switch (type) {
-      case EventType.LEVEL_UP:
-        return Icons.upgrade;
       case EventType.MARKET_CHANGE:
         return Icons.trending_up;
       case EventType.RESOURCE_DEPLETION:
         return Icons.warning;
-      case EventType.UPGRADE_AVAILABLE:
-        return Icons.new_releases;
-      case EventType.SPECIAL_ACHIEVEMENT:
-        return Icons.stars;
-      case EventType.XP_BOOST:
-        return Icons.speed;
+      case EventType.LEVEL_UP:
+        return Icons.star;
       default:
-        return Icons.info_outline;
+        return Icons.info;
+    }
+  }
+  static NotificationPriority _convertImportanceToNotificationPriority(EventImportance importance) {
+    switch (importance) {
+      case EventImportance.LOW:
+        return NotificationPriority.LOW;
+      case EventImportance.MEDIUM:
+        return NotificationPriority.MEDIUM;
+      case EventImportance.HIGH:
+        return NotificationPriority.HIGH;
+      case EventImportance.CRITICAL:
+        return NotificationPriority.CRITICAL;
     }
   }
 
