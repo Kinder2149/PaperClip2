@@ -1,7 +1,8 @@
 // lib/models/event_system.dart
 import 'package:flutter/material.dart';
-import 'game_enums.dart';
-import 'constants.dart';
+import 'dart:async';
+import 'game_config.dart';
+import 'game_state_interfaces.dart';
 import '../main.dart' show navigatorKey;
 
 /// Définition des priorités de notification

@@ -1,9 +1,10 @@
 // lib/models/progression_system.dart
-import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'game_enums.dart';
-import 'event_system.dart';
+import 'dart:async';
 import 'dart:math';
+import 'game_config.dart';
+import 'event_system.dart';
 
 /// Système de bonus de progression
 class ProgressionBonus {

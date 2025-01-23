@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import '../models/notification_event.dart';
-import '../models/notification_manager.dart';
-import '../models/event_manager.dart';
+import 'package:provider/provider.dart';
+import '../models/game_state.dart';
+import '../models/event_system.dart';
 
 class EventLogScreen extends StatefulWidget {
   const EventLogScreen({Key? key}) : super(key: key);

@@ -2,8 +2,11 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../models/game_state.dart';
-import '../models/upgrade.dart';
-import '../models/level_system.dart';
+import '../models/game_config.dart';
+import '../models/market.dart';
+import '../models/player_manager.dart';
+import '../models/progression_system.dart';
+import '../models/resource_manager.dart';
 
 class SaveError extends Error {
   final String code;
@@ -46,7 +49,9 @@ class SaveGame {
 }
 
 class SaveManager {
-  static const String SAVE_KEY_PREFIX = 'game_save_';
+  static const String SAVE_KEY_PREFIX = 'game_save_${GameConstants.VERSION}_';
+  static final DateTime CURRENT_DATE = DateTime(2025, 1, 23, 15, 15, 49);
+  static const String CURRENT_USER = 'Kinder2149';
   static const String CURRENT_VERSION = '1.0.0';
 
   // Obtenir la clé de sauvegarde unique pour une partie

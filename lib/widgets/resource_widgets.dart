@@ -2,8 +2,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
-import '../models/game_state_interfaces.dart';
+import '../models/resource_manager.dart';
 import '../models/market.dart';
+import '../models/game_config.dart';
 
 class MoneyDisplay extends StatelessWidget {
   const MoneyDisplay({super.key});

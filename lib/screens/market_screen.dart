@@ -1,17 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
-import '../models/constants.dart';
-import '../models/market/market_manager.dart';
-import '../widgets/money_display.dart';
-import '../services/save_manager.dart';
-import 'demand_calculation_screen.dart';
-import 'sales_history_screen.dart';
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../models/game_state.dart';
+import '../models/market.dart';
+import '../models/game_config.dart';
 import '../widgets/chart_widgets.dart';
 import '../widgets/resource_widgets.dart';
+import 'demand_calculation_screen.dart';
 
 class MarketScreen extends StatelessWidget {
   const MarketScreen({super.key});

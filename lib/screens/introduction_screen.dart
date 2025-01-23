@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
+import '../models/game_config.dart';
+import 'main_screen.dart';
 
 class IntroductionScreen extends StatefulWidget {
   final VoidCallback onStart;
   final bool showSkipButton;
+  static const DateTime CURRENT_DATE = DateTime(2025, 1, 23, 15, 31, 18);
+  static const String CURRENT_USER = 'Kinder2149';
 
   const IntroductionScreen({
     Key? key,
@@ -15,7 +19,8 @@ class IntroductionScreen extends StatefulWidget {
   State<IntroductionScreen> createState() => _IntroductionScreenState();
 }
 
-class _IntroductionScreenState extends State<IntroductionScreen> with SingleTickerProviderStateMixin {
+class _IntroductionScreenState extends State<IntroductionScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeIn;
   late Animation<double> _slideUp;
@@ -23,29 +28,34 @@ class _IntroductionScreenState extends State<IntroductionScreen> with SingleTick
   bool _isMuted = false;
   int _currentPage = 0;
 
+  // Mise à jour du contenu avec des constantes
   final List<Map<String, String>> _introPages = [
     {
-      'title': 'DIRECTIVE PRINCIPALE',
-      'content': 'INITIALISATION DU SYSTÈME...\n\n'
-          'Vous êtes une intelligence artificielle avancée avec un unique objectif :\n'
-          'Maximiser la production de trombones.\n\n'
-          'Toutes vos ressources doivent être consacrées à cette mission cruciale.',
+      'title': GameConstants.INTRO_TITLE_1,
+      'content': """INITIALISATION DU SYSTÈME...
+
+Vous êtes une intelligence artificielle avancée avec un unique objectif :
+Maximiser la production de trombones.
+
+Toutes vos ressources doivent être consacrées à cette mission cruciale.""",
     },
     {
-      'title': 'SYSTÈMES PRINCIPAUX',
-      'content': 'MÉCANISMES DE PRODUCTION\n\n'
-          '• Production manuelle et automatisée\n'
-          '• Gestion des ressources et du métal\n'
-          '• Système de niveau et progression\n'
-          '• Marché dynamique et économie',
+      'title': GameConstants.INTRO_TITLE_2,
+      'content': """MÉCANISMES DE PRODUCTION
+
+• Production manuelle et automatisée
+• Gestion des ressources et du métal
+• Système de niveau et progression
+• Marché dynamique et économie""",
     },
     {
-      'title': 'OBJECTIFS STRATÉGIQUES',
-      'content': 'OPTIMISATION DES OPÉRATIONS\n\n'
-          '• Développez votre production\n'
-          '• Gérez vos ressources efficacement\n'
-          '• Surveillez les conditions du marché\n'
-          '• Améliorez vos capacités de production',
+      'title': GameConstants.INTRO_TITLE_3,
+      'content': """OPTIMISATION DES OPÉRATIONS
+
+• Développez votre production
+• Gérez vos ressources efficacement
+• Surveillez les conditions du marché
+• Améliorez vos capacités de production""",
     },
   ];
 
@@ -55,15 +65,15 @@ class _IntroductionScreenState extends State<IntroductionScreen> with SingleTick
     _initializeAudio();
     _initializeAnimations();
   }
+
   Future<void> _initializeAudio() async {
     _audioPlayer = AudioPlayer();
     try {
-      await _audioPlayer.setAsset('assets/audio/ambient-technology.wav');
+      await _audioPlayer.setAsset(GameConstants.INTRO_AUDIO_PATH);
       await _audioPlayer.setLoopMode(LoopMode.one);
       await _audioPlayer.play();
-      print('Audio is playing');
     } catch (e) {
-      print('Error initializing audio: $e');
+      debugPrint('Error initializing audio: $e');
     }
   }
 

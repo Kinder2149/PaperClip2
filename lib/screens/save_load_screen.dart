@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
-import '../main.dart';
-import '../services/save_manager.dart'; // Ajout de l'import
+import '../services/save_manager.dart';
+import '../models/game_config.dart';
 
 class SaveLoadScreen extends StatelessWidget {
   const SaveLoadScreen({Key? key}) : super(key: key);

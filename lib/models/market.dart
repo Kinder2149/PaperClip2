@@ -1,8 +1,10 @@
 // lib/models/market.dart
 import 'package:flutter/foundation.dart';
-import 'resource_manager.dart';
+import 'dart:async';
+import 'dart:math';
+import 'game_config.dart';
 import 'event_system.dart';
-import 'constants.dart';
+import 'resource_manager.dart';
 
 class MarketDynamics {
   double marketVolatility = 1.0;

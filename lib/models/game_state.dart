@@ -3,13 +3,15 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:math';
-import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'game_config.dart';
 import 'event_system.dart';
 import 'player_manager.dart';
 import 'market.dart';
 import 'progression_system.dart';
+import 'resource_manager.dart';
+import 'game_state_interfaces.dart';
+import '../services/save_manager.dart';
 
 class GameState extends ChangeNotifier {
   // Gestionnaires principaux

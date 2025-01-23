@@ -3,10 +3,10 @@ import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'constants.dart';
-import 'upgrade.dart';
+import 'game_config.dart';
 import 'market.dart';
-import 'level_system.dart';
+import 'player_manager.dart';
+import 'progression_system.dart';
 
 /// Base mixin pour la gestion des timers
 mixin GameStateBase on ChangeNotifier {

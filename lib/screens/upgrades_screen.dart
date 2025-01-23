@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
-import '../widgets/money_display.dart';
-import '../models/upgrade.dart';
-import 'package:paperclip2/models/level_system.dart';
+import '../models/player_manager.dart';
+import '../widgets/resource_widgets.dart';
 
 class UpgradesScreen extends StatelessWidget {
   const UpgradesScreen({super.key});
