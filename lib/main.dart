@@ -63,7 +63,7 @@ class MyApp extends StatelessWidget {
       ),
       home: Consumer<GameState>(
         builder: (context, gameState, child) {
-          if (gameState.isGameInitialized) {
+          if (gameState._isInitialized) {
             return const MainScreen();
           }
           return const StartScreen();

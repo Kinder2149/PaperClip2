@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import '../services/save_manager.dart';
 import '../models/game_config.dart';
+import 'package:paperclip2/screens/main_screen.dart';
 
 class SaveLoadScreen extends StatelessWidget {
   const SaveLoadScreen({Key? key}) : super(key: key);
@@ -77,7 +78,7 @@ class SaveLoadScreen extends StatelessWidget {
                                         if (context.mounted) {
                                           Navigator.pushReplacement(
                                             context,
-                                            MaterialPageRoute(builder: (context) => const MainGame()),
+                                            MaterialPageRoute(builder: (context) => const MainScreen()),
                                           );
                                         }
                                       } catch (e) {
@@ -195,7 +196,7 @@ class SaveLoadScreen extends StatelessWidget {
       if (context.mounted) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const MainGame()),
+          MaterialPageRoute(builder: (context) => const MainScreen()),
         );
       }
     }

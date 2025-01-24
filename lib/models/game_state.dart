@@ -12,6 +12,9 @@ import 'progression_system.dart';
 import 'resource_manager.dart';
 import 'game_state_interfaces.dart';
 import '../services/save_manager.dart';
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import '../utils/notification_manager.dart';
 
 class GameState extends ChangeNotifier {
   // Gestionnaires principaux
@@ -47,6 +50,14 @@ class GameState extends ChangeNotifier {
   int get totalTimePlayed => _totalTimePlayedInSeconds;
   int get totalPaperclipsProduced => _totalPaperclipsProduced;
   double get maintenanceCosts => _maintenanceCosts;
+  double get money => playerManager.money;
+  double get metal => playerManager.metal;
+  double get paperclips => playerManager.paperclips;
+  int get autoclippers => playerManager.autoclippers;
+  double get sellPrice => playerManager.sellPrice;
+  Map<String, Upgrade> get upgrades => playerManager.upgrades;
+  double get maxMetalStorage => playerManager.maxMetalStorage;
+  double get currentMetalPrice => marketManager.getCurrentPrice();
 
   double get autocliperCost {
     double baseCost = GameConstants.BASE_AUTOCLIPPER_COST * (1.15 * playerManager.autoclippers);
@@ -56,6 +67,7 @@ class GameState extends ChangeNotifier {
 
   final Map<String, Upgrade> _upgrades = {
     'efficiency': Upgrade(
+      id: "efficency",
       name: 'Metal Efficiency',
       description: 'Réduit la consommation de métal de 15 %',
       baseCost: 45.0,
@@ -63,6 +75,7 @@ class GameState extends ChangeNotifier {
       maxLevel: 10,
     ),
     'marketing': Upgrade(
+      id: "marketing",
       name: 'Marketing',
       description: 'Augmente la demande du marché de 30 %',
       baseCost: 75.0,
@@ -70,6 +83,7 @@ class GameState extends ChangeNotifier {
       maxLevel: 8,
     ),
     'bulk': Upgrade(
+      id: "bulk",
       name: 'Bulk Production',
       description: 'Les autoclippeuses produisent 35 % plus vite',
       baseCost: 150.0,
@@ -77,6 +91,7 @@ class GameState extends ChangeNotifier {
       maxLevel: 8,
     ),
     'speed': Upgrade(
+      id: "speed",
       name: 'Speed Boost',
       description: 'Augmente la vitesse de production de 20 %',
       baseCost: 100.0,
@@ -84,6 +99,7 @@ class GameState extends ChangeNotifier {
       maxLevel: 5,
     ),
     'storage': Upgrade(
+      id: "storage",
       name: 'Storage Upgrade',
       description: 'Augmente la capacité de stockage de métal de 50 %',
       baseCost: 60.0,
@@ -91,6 +107,7 @@ class GameState extends ChangeNotifier {
       maxLevel: 5,
     ),
     'automation': Upgrade(
+      id: "automation",
       name: 'Automation',
       description: 'Réduit le coût des autoclippeuses de 10 % par niveau',
       baseCost: 200.0,
@@ -98,6 +115,7 @@ class GameState extends ChangeNotifier {
       maxLevel: 5,
     ),
     'quality': Upgrade(
+      id: "quality",
       name: 'Quality Control',
       description: 'Augmente le prix de vente des trombones de 10 % par niveau',
       baseCost: 80.0,
@@ -169,6 +187,35 @@ class GameState extends ChangeNotifier {
             (_) => _applyMaintenanceCosts()
     );
   }
+  void _applyMaintenanceCosts() {
+    if (playerManager.autoclippers == 0) return;
+
+    _maintenanceCosts = playerManager.autoclippers * GameConstants.STORAGE_MAINTENANCE_RATE;
+
+    if (playerManager.money >= _maintenanceCosts) {
+      playerManager.money -= _maintenanceCosts;
+      notifyListeners();
+    } else {
+      playerManager.autoclippers = (playerManager.autoclippers * 0.9).floor();
+      EventManager.instance.addEvent(
+          EventType.RESOURCE_DEPLETION,
+          "Maintenance impayée !",
+          description: "Certaines autoclippeuses sont hors service",
+          importance: EventImportance.HIGH
+      );
+    }
+  }
+  Map<String, dynamic> prepareGameData() {
+    return {
+      'version': GameConstants.VERSION,
+      'playerManager': playerManager.toJson(),
+      'marketManager': marketManager.toJson(),
+      'levelSystem': levelSystem.toJson(),
+      'missionSystem': missionSystem.toJson(),
+      'totalTimePlayedInSeconds': _totalTimePlayedInSeconds,
+      'totalPaperclipsProduced': _totalPaperclipsProduced,
+    };
+  }
 
   void _stopTimers() {
     _productionTimer?.cancel();
@@ -178,6 +225,7 @@ class GameState extends ChangeNotifier {
     _autoSaveTimer?.cancel();
     _maintenanceTimer?.cancel();
   }
+
 
   // Production et marché
   void _processProduction() {
@@ -418,6 +466,13 @@ Actions recommandées :
         importance: EventImportance.MEDIUM
     );
   }
+  void startNewGame(String name) {
+    _gameName = name;
+    _isInitialized = true;
+    playerManager.resetResources();
+    levelSystem.reset();
+    notifyListeners();
+  }
 
   // Gestion de la sauvegarde
   Future<void> _loadSavedGame() async {
@@ -461,6 +516,17 @@ Actions recommandées :
       rethrow;
     }
   }
+  Map<String, bool> getVisibleScreenElements() {
+    return {
+      'market': levelSystem.level >= 7,
+      'upgrades': levelSystem.level >= 5,
+    };
+  }
+
+  bool purchaseUpgrade(String upgradeId) {
+    return playerManager.purchaseUpgrade(upgradeId);
+  }
+
 
   void _loadGameData(Map<String, dynamic> data) {
     playerManager.loadFromJson(data['playerManager'] ?? {});

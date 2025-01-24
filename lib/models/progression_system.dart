@@ -265,6 +265,8 @@ class LevelSystem extends ChangeNotifier {
   double get currentComboMultiplier => comboSystem.getComboMultiplier();
   double get totalXpMultiplier => _xpMultiplier * currentComboMultiplier;
   bool get isDailyBonusAvailable => !dailyBonus.claimed;
+  double get productionMultiplier => 1.0 + (level * 0.05);
+  double get salesMultiplier => 1.0 + (level * 0.03);
 
   double get experienceForNextLevel => calculateExperienceRequirement(_level + 1);
   double get experienceProgress => _experience / experienceForNextLevel;
@@ -367,6 +369,13 @@ class LevelSystem extends ChangeNotifier {
     _checkLevelUp();
     notifyListeners();
   }
+  void reset() {
+    // Réinitialisation du système
+    _experience = 0;
+    _level = 1;
+    // autres réinitialisations nécessaires
+  }
+
 
   void addManualProduction() {
     double baseXP = 2.0;
@@ -396,7 +405,7 @@ class LevelSystem extends ChangeNotifier {
 
   void applyXPBoost(double multiplier, Duration duration) {
     _xpMultiplier = multiplier;
-    EventManager.addEvent(
+    EventManager.instance.addEvent(
         EventType.XP_BOOST,
         "Bonus d'XP activé !",
         description: "Multiplicateur x$multiplier pendant ${duration.inMinutes} minutes",

@@ -123,6 +123,7 @@ class PlayerManager extends ChangeNotifier {
   int _autoclippers = 0;
   double _sellPrice = GameConstants.INITIAL_PRICE;
   Map<String, Upgrade> upgrades = {};
+  double maxMetalStorage = 1000.0;
 
   final LevelSystem levelSystem;
   Timer? _maintenanceTimer;
@@ -163,6 +164,20 @@ class PlayerManager extends ChangeNotifier {
       notifyListeners();
     }
   }
+  set autoclippers(int value) {
+    _autoclippers = value;
+    notifyListeners();
+  }
+
+  void resetResources() {
+    _metal = GameConstants.INITIAL_METAL;
+    _money = GameConstants.INITIAL_MONEY;
+    _paperclips = 0;
+    _autoclippers = 0;
+    _sellPrice = GameConstants.INITIAL_PRICE;
+    notifyListeners();
+  }
+
 
   set sellPrice(double value) {
     double clampedValue = value.clamp(

@@ -214,7 +214,7 @@ class _MainScreenState extends State<MainScreen> {
           top: 0,
           child: Consumer<GameState>(
             builder: (context, gameState, child) {
-              final notificationCount = EventManager.getEvents()
+              final notificationCount = EventManager.instance.getEvents()
                   .where((event) => event.importance >= EventImportance.HIGH)
                   .length;
 

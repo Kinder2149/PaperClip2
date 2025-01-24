@@ -8,6 +8,11 @@ class GameConstants {
   static const double METAL_PACK_AMOUNT = 100.0;
   static const double MIN_METAL_PRICE = 14.0;
   static const double MAX_METAL_PRICE = 39.0;
+  //  les constantes d'intro
+  static const String INTRO_TITLE_1 = "Bienvenue dans PaperClip";
+  static const String INTRO_TITLE_2 = "Apprenez les bases";
+  static const String INTRO_TITLE_3 = "Commencez votre aventure";
+  static const String INTRO_AUDIO_PATH = "assets/audio/intro.wav";
 
   // Clés de sauvegarde
   static const String SAVE_KEY = 'paperclip_game_save';

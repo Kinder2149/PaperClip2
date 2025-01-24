@@ -10,6 +10,19 @@ class MarketDynamics {
   double marketVolatility = 1.0;
   double marketTrend = 0.0;
   double competitorPressure = 1.0;
+  Map<String, dynamic> toJson() => {
+    'marketVolatility': marketVolatility,
+    'marketTrend': marketTrend,
+    'competitorPressure': competitorPressure,
+  };
+
+  void fromJson(Map<String, dynamic> json) {
+    marketVolatility = (json['marketVolatility'] as num?)?.toDouble() ?? 1.0;
+    marketTrend = (json['marketTrend'] as num?)?.toDouble() ?? 0.0;
+    competitorPressure = (json['competitorPressure'] as num?)?.toDouble() ?? 1.0;
+  }
+
+
 
   void updateMarketConditions() {
     marketVolatility = 0.8 + (Random().nextDouble() * 0.4);
@@ -34,7 +47,6 @@ class SaleRecord {
     required this.price,
     required this.revenue,
   });
-
   Map<String, dynamic> toJson() => {
     'timestamp': timestamp.toIso8601String(),
     'quantity': quantity,
@@ -91,6 +103,44 @@ class MarketManager extends ChangeNotifier {
   };
 
   MarketManager(this.dynamics);
+  Map<String, dynamic> toJson() => {
+    'marketMetalStock': marketMetalStock,
+    'reputation': reputation,
+    'currentMetalPrice': _currentMetalPrice,
+    'competitionPrice': _competitionPrice,
+    'marketSaturation': _marketSaturation,
+    'dynamics': {
+      'marketVolatility': dynamics.marketVolatility,
+      'marketTrend': dynamics.marketTrend,
+      'competitorPressure': dynamics.competitorPressure,
+    },
+    'salesHistory': salesHistory.map((sale) => sale.toJson()).toList(),
+  };
+
+  void fromJson(Map<String, dynamic> json) {
+    marketMetalStock = (json['marketMetalStock'] as num?)?.toDouble() ?? GameConstants.INITIAL_MARKET_METAL;
+    reputation = (json['reputation'] as num?)?.toDouble() ?? 1.0;
+    _currentMetalPrice = (json['currentMetalPrice'] as num?)?.toDouble() ?? GameConstants.MIN_METAL_PRICE;
+    _competitionPrice = (json['competitionPrice'] as num?)?.toDouble() ?? GameConstants.INITIAL_PRICE;
+    _marketSaturation = (json['marketSaturation'] as num?)?.toDouble() ?? 100.0;
+
+    if (json['dynamics'] != null) {
+      final dynamicsData = json['dynamics'] as Map<String, dynamic>;
+      dynamics.marketVolatility = (dynamicsData['marketVolatility'] as num?)?.toDouble() ?? 1.0;
+      dynamics.marketTrend = (dynamicsData['marketTrend'] as num?)?.toDouble() ?? 0.0;
+      dynamics.competitorPressure = (dynamicsData['competitorPressure'] as num?)?.toDouble() ?? 1.0;
+    }
+
+    if (json['salesHistory'] != null) {
+      salesHistory = (json['salesHistory'] as List)
+          .map((saleJson) => SaleRecord.fromJson(saleJson as Map<String, dynamic>))
+          .toList();
+    }
+  }
+  // Getters
+  double getCurrentPrice() => _currentMetalPrice;
+  double get currentMetalPrice => _currentMetalPrice;
+
 
   double updateMetalPrice() {
     dynamics.updateMarketConditions();
@@ -100,7 +150,7 @@ class MarketManager extends ChangeNotifier {
     return _currentMetalPrice;
   }
 
-  double getCurrentPrice() => _currentMetalPrice;
+
 
   bool isPriceExcessive(double price) {
     return price > _currentMetalPrice * 2;
@@ -133,7 +183,7 @@ class MarketManager extends ChangeNotifier {
 
   void _checkMarketDepletion() {
     if (marketMetalStock <= MARKET_DEPLETION_THRESHOLD) {
-      EventManager.addEvent(
+      EventManager.instance.addEvent(
           EventType.RESOURCE_DEPLETION,
           'Rupture Imminente des Stocks de Métal',
           description: 'Les réserves de métal du marché sont presque épuisées. Une nouvelle stratégie est nécessaire !',
@@ -291,7 +341,7 @@ class MarketManager extends ChangeNotifier {
         break;
     }
 
-    EventManager.addEvent(
+    EventManager.instance.addEvent(
         EventType.MARKET_CHANGE,
         _getEventTitle(event),
         description: _getEventDescription(event),
