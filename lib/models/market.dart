@@ -48,11 +48,15 @@ class SaleRecord {
     required this.revenue,
   });
   Map<String, dynamic> toJson() => {
-    'timestamp': timestamp.toIso8601String(),
-    'quantity': quantity,
-    'price': price,
-    'revenue': revenue,
+    'marketMetalStock': marketMetalStock,
+    'currentMetalPrice': _currentMetalPrice,
+    'reputation': reputation,
+    'marketSaturation': _marketSaturation,
+    'competitionPrice': _competitionPrice,
+    'dynamics': dynamics.toJson(),
+    'salesHistory': salesHistory.map((sale) => sale.toJson()).toList(),
   };
+
 
   factory SaleRecord.fromJson(Map<String, dynamic> json) {
     return SaleRecord(
@@ -91,6 +95,8 @@ class MarketManager extends ChangeNotifier {
   double _currentPrice = 1.0;
   double _competitionPrice = GameConstants.INITIAL_PRICE;
   double _marketSaturation = 100.0;
+  double getMetalPrice() => _currentMetalPrice;
+
 
   static const double MARKET_DEPLETION_THRESHOLD = 750.0;
   static const double MIN_PRICE = GameConstants.MIN_PRICE;
@@ -137,9 +143,8 @@ class MarketManager extends ChangeNotifier {
           .toList();
     }
   }
-  // Getters
-  double getCurrentPrice() => _currentMetalPrice;
-  double get currentMetalPrice => _currentMetalPrice;
+
+
 
 
   double updateMetalPrice() {
@@ -302,7 +307,29 @@ class MarketManager extends ChangeNotifier {
   }
 
   void updateMarket() {
+    if (_isPaused) return;
+
     dynamics.updateMarketConditions();
+    _updateMetalPrice();
+
+    if (_marketMetalStock <= GameConstants.WARNING_THRESHOLD) {
+      EventManager.instance.addEvent(
+          EventType.RESOURCE_DEPLETION,
+          'Rupture Imminente des Stocks de Métal',
+          description: 'Les réserves de métal du marché sont presque épuisées.',
+          importance: EventImportance.CRITICAL
+      );
+    }
+  }
+  void _checkResourceLevels() {
+    if (marketMetalStock <= GameConstants.WARNING_THRESHOLD) {
+      EventManager.instance.addEvent(
+          EventType.RESOURCE_DEPLETION,
+          "Ressources en diminution",
+          description: "Les réserves mondiales de métal s'amenuisent",
+          importance: EventImportance.HIGH
+      );
+    }
   }
 
   void updateMarketConditions() {

@@ -57,21 +57,14 @@ class SaveManager {
   // Obtenir la clé de sauvegarde unique pour une partie
   static String _getSaveKey(String gameName) => '$SAVE_KEY_PREFIX$gameName';
 
+
   // Sauvegarder une partie
   static Future<void> saveGame(GameState gameState, String gameName) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final gameData = _validateGameData(gameState.prepareGameData());
 
-      final saveGame = SaveGame(
-        name: gameName,
-        lastSaveTime: DateTime.now(),
-        gameData: gameData,
-        version: CURRENT_VERSION,
-      );
-
-      final savedData = jsonEncode(saveGame.toJson());
-      await prefs.setString(_getSaveKey(gameName), savedData);
+      await prefs.setString(_getSaveKey(gameName), jsonEncode(gameData));
     } catch (e) {
       throw SaveError('SAVE_FAILED', 'Erreur lors de la sauvegarde: $e');
     }
@@ -144,39 +137,26 @@ class SaveManager {
 
   // Validation et conversion des données de sauvegarde
   static Map<String, dynamic> _validateGameData(Map<String, dynamic> data) {
-    try {
-      // Vérification des champs obligatoires
-      final requiredFields = [
-        'paperclips',
-        'metal',
-        'money',
-        'autoclippers',
-        'upgrades',
-        'levelSystem'
-      ];
+    final requiredFields = [
+      'playerManager',
+      'marketManager',
+      'levelSystem',
+      'missionSystem',
+      'totalTimePlayedInSeconds',
+      'totalPaperclipsProduced'
+    ];
 
-      for (final field in requiredFields) {
-        if (!data.containsKey(field)) {
-          throw SaveError('VALIDATION_ERROR', 'Champ manquant: $field');
-        }
+    for (final field in requiredFields) {
+      if (!data.containsKey(field)) {
+        throw SaveError('VALIDATION_ERROR', 'Champ manquant: $field');
       }
-
-      // Validation des types
-      final validatedData = Map<String, dynamic>.from(data);
-      validatedData['paperclips'] = (data['paperclips'] as num).toDouble();
-      validatedData['metal'] = (data['metal'] as num).toDouble();
-      validatedData['money'] = (data['money'] as num).toDouble();
-      validatedData['autoclippers'] = (data['autoclippers'] as num).toInt();
-
-      // Validation des upgrades
-      if (data['upgrades'] is! Map) {
-        throw SaveError('VALIDATION_ERROR', 'Format des upgrades invalide');
-      }
-
-      return validatedData;
-    } catch (e) {
-      throw SaveError('VALIDATION_ERROR', 'Erreur de validation: $e');
     }
+
+    return {
+      ...data,
+      'version': GameConstants.VERSION,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
   }
 
   // Vérifier si une sauvegarde existe

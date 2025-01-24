@@ -7,12 +7,8 @@ import 'player_manager.dart';
 
 class ResourceManager extends ChangeNotifier {
   // Constantes de ressources
-  static const double WARNING_THRESHOLD = GameConstants.WARNING_THRESHOLD;
-  static const double CRITICAL_THRESHOLD = GameConstants.CRITICAL_THRESHOLD;
-  static const double INITIAL_MARKET_METAL = GameConstants.INITIAL_MARKET_METAL;
 
   // État des ressources
-  double _marketMetalStock = INITIAL_MARKET_METAL;
   double _metalStorageCapacity = 1000.0;
   double _baseStorageEfficiency = 1.0;
   double _resourceDecayRate = 0.01;
@@ -24,7 +20,9 @@ class ResourceManager extends ChangeNotifier {
 
   // Calculs de capacité
   double calculateEffectiveStorage(int storageUpgradeLevel) {
-    return _metalStorageCapacity * (1 + (storageUpgradeLevel * 0.5));
+    double baseStorage = _metalStorageCapacity;
+    double upgradeBonus = 1 + (storageUpgradeLevel * 0.5);
+    return baseStorage * upgradeBonus;
   }
 
   double calculateStorageEfficiency(int efficiencyUpgradeLevel) {
@@ -42,15 +40,34 @@ class ResourceManager extends ChangeNotifier {
     _checkResourceLevels();
     notifyListeners();
   }
+  void updateResourceEfficiency(int level) {
+    _baseStorageEfficiency = 1.0 + (level * 0.1);
+    notifyListeners();
+  }
+
+  // Ajout d'une méthode de vérification des ressources
+  bool hasEnoughResources(double amount) {
+    return _marketMetalStock >= amount;
+  }
+
+  void consumeResources(double amount) {
+    if (!hasEnoughResources(amount)) {
+      throw Exception('Ressources insuffisantes');
+    }
+    _marketMetalStock -= amount;
+    _checkResourceLevels();
+    notifyListeners();
+  }
+
 
   // Vérifications des niveaux de ressources
   void _checkResourceLevels() {
-    if (_marketMetalStock <= WARNING_THRESHOLD) {
+    if (_marketMetalStock <= GameConstants.WARNING_THRESHOLD) {
       EventManager.instance.addEvent(
-        EventType.RESOURCE_DEPLETION,
-        'Stocks de métal bas',
-        description: 'Les réserves de métal du marché s\'amenuisent',
-        importance: EventImportance.HIGH,
+          EventType.RESOURCE_DEPLETION,
+          "Ressources en diminution",
+          description: "Les réserves de métal s'amenuisent",
+          importance: EventImportance.HIGH
       );
     }
 
@@ -61,6 +78,11 @@ class ResourceManager extends ChangeNotifier {
         description: 'Les réserves de métal sont presque épuisées !',
         importance: EventImportance.CRITICAL,
       );
+    }
+  }
+  void restockMetal() {
+    if (marketMetalStock < GameConstants.INITIAL_MARKET_METAL * 0.5) {
+      marketMetalStock = GameConstants.INITIAL_MARKET_METAL;
     }
   }
 

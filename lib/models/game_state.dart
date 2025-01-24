@@ -17,11 +17,7 @@ import 'package:flutter/material.dart';
 import '../utils/notification_manager.dart';
 
 class GameState extends ChangeNotifier {
-  // Gestionnaires principaux
-  late final PlayerManager playerManager;
-  late final MarketManager marketManager;
-  late final LevelSystem levelSystem;
-  late final MissionSystem missionSystem;
+
 
   // Timers
   Timer? _productionTimer;
@@ -32,7 +28,6 @@ class GameState extends ChangeNotifier {
   Timer? _maintenanceTimer;
 
   // État du jeu
-  bool _isInitialized = false;
   bool _isPaused = false;
   String? _gameName;
   BuildContext? _context;
@@ -50,14 +45,15 @@ class GameState extends ChangeNotifier {
   int get totalTimePlayed => _totalTimePlayedInSeconds;
   int get totalPaperclipsProduced => _totalPaperclipsProduced;
   double get maintenanceCosts => _maintenanceCosts;
-  double get money => playerManager.money;
-  double get metal => playerManager.metal;
-  double get paperclips => playerManager.paperclips;
-  int get autoclippers => playerManager.autoclippers;
-  double get sellPrice => playerManager.sellPrice;
   Map<String, Upgrade> get upgrades => playerManager.upgrades;
   double get maxMetalStorage => playerManager.maxMetalStorage;
-  double get currentMetalPrice => marketManager.getCurrentPrice();
+  double get currentMetalPrice => marketManager.currentMetalPrice();
+
+  bool _isInitialized = false;
+  late final PlayerManager playerManager;
+  late final MarketManager marketManager;
+  late final LevelSystem levelSystem;
+  late final MissionSystem missionSystem;
 
   double get autocliperCost {
     double baseCost = GameConstants.BASE_AUTOCLIPPER_COST * (1.15 * playerManager.autoclippers);
@@ -65,64 +61,7 @@ class GameState extends ChangeNotifier {
     return baseCost * automationDiscount;
   }
 
-  final Map<String, Upgrade> _upgrades = {
-    'efficiency': Upgrade(
-      id: "efficency",
-      name: 'Metal Efficiency',
-      description: 'Réduit la consommation de métal de 15 %',
-      baseCost: 45.0,
-      level: 0,
-      maxLevel: 10,
-    ),
-    'marketing': Upgrade(
-      id: "marketing",
-      name: 'Marketing',
-      description: 'Augmente la demande du marché de 30 %',
-      baseCost: 75.0,
-      level: 0,
-      maxLevel: 8,
-    ),
-    'bulk': Upgrade(
-      id: "bulk",
-      name: 'Bulk Production',
-      description: 'Les autoclippeuses produisent 35 % plus vite',
-      baseCost: 150.0,
-      level: 0,
-      maxLevel: 8,
-    ),
-    'speed': Upgrade(
-      id: "speed",
-      name: 'Speed Boost',
-      description: 'Augmente la vitesse de production de 20 %',
-      baseCost: 100.0,
-      level: 0,
-      maxLevel: 5,
-    ),
-    'storage': Upgrade(
-      id: "storage",
-      name: 'Storage Upgrade',
-      description: 'Augmente la capacité de stockage de métal de 50 %',
-      baseCost: 60.0,
-      level: 0,
-      maxLevel: 5,
-    ),
-    'automation': Upgrade(
-      id: "automation",
-      name: 'Automation',
-      description: 'Réduit le coût des autoclippeuses de 10 % par niveau',
-      baseCost: 200.0,
-      level: 0,
-      maxLevel: 5,
-    ),
-    'quality': Upgrade(
-      id: "quality",
-      name: 'Quality Control',
-      description: 'Augmente le prix de vente des trombones de 10 % par niveau',
-      baseCost: 80.0,
-      level: 0,
-      maxLevel: 10,
-    ),
-  };
+
 
   // Constructeur et initialisation
   GameState() {
@@ -144,9 +83,18 @@ class GameState extends ChangeNotifier {
       ..initialize()
       ..onMissionCompleted = _handleMissionCompleted;
 
-    _loadSavedGame();
     _startTimers();
     _isInitialized = true;
+    notifyListeners();
+  }
+
+  void reset() {
+    _stopTimers();
+    playerManager.resetResources();
+    levelSystem.reset();
+    marketManager = MarketManager(MarketDynamics());
+    missionSystem = MissionSystem()..initialize();
+    _startTimers();
     notifyListeners();
   }
 

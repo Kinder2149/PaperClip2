@@ -143,31 +143,7 @@ class PlayerManager extends ChangeNotifier {
   double get sellPrice => _sellPrice;
   double get maintenanceCosts => _maintenanceCosts;
 
-  // Setters avec validation
-  set metal(double value) {
-    if (value != _metal) {
-      _metal = value;
-      notifyListeners();
-    }
-  }
 
-  set money(double value) {
-    if (value != _money) {
-      _money = value;
-      notifyListeners();
-    }
-  }
-
-  set paperclips(double value) {
-    if (value != _paperclips) {
-      _paperclips = value;
-      notifyListeners();
-    }
-  }
-  set autoclippers(int value) {
-    _autoclippers = value;
-    notifyListeners();
-  }
 
   void resetResources() {
     _metal = GameConstants.INITIAL_METAL;
@@ -179,16 +155,6 @@ class PlayerManager extends ChangeNotifier {
   }
 
 
-  set sellPrice(double value) {
-    double clampedValue = value.clamp(
-        GameConstants.MIN_PRICE,
-        GameConstants.MAX_PRICE
-    );
-    if (clampedValue != _sellPrice) {
-      _sellPrice = clampedValue;
-      notifyListeners();
-    }
-  }
 
   void _initializeUpgrades() {
     final upgradeIds = [
@@ -287,10 +253,106 @@ class PlayerManager extends ChangeNotifier {
       notifyListeners();
     }
   }
+  void updateMetal(double amount) {
+    if (amount != _metal) {
+      _metal = amount.clamp(0, maxMetalStorage);
+      notifyListeners();
+    }
+  }
+
+  void updateMoney(double amount) {
+    if (amount != _money) {
+      _money = amount;
+      notifyListeners();
+    }
+  }
+
+  void updatePaperclips(double amount) {
+    if (amount != _paperclips) {
+      _paperclips = amount;
+      notifyListeners();
+    }
+  }
+
+  void updateAutoclippers(int amount) {
+    if (amount != _autoclippers) {
+      _autoclippers = amount;
+      notifyListeners();
+    }
+  }
+
+  void updateSellPrice(double price) {
+    double clampedValue = price.clamp(
+        GameConstants.MIN_PRICE,
+        GameConstants.MAX_PRICE
+    );
+    if (clampedValue != _sellPrice) {
+      _sellPrice = clampedValue;
+      notifyListeners();
+    }
+  }
 
   void _triggerAutoSave() {
     // Implémenter la logique de sauvegarde automatique ici
   }
+  final Map<String, Upgrade> _upgrades = {
+    'efficiency': Upgrade(
+      id: "efficency",
+      name: 'Metal Efficiency',
+      description: 'Réduit la consommation de métal de 15 %',
+      baseCost: 45.0,
+      level: 0,
+      maxLevel: 10,
+    ),
+    'marketing': Upgrade(
+      id: "marketing",
+      name: 'Marketing',
+      description: 'Augmente la demande du marché de 30 %',
+      baseCost: 75.0,
+      level: 0,
+      maxLevel: 8,
+    ),
+    'bulk': Upgrade(
+      id: "bulk",
+      name: 'Bulk Production',
+      description: 'Les autoclippeuses produisent 35 % plus vite',
+      baseCost: 150.0,
+      level: 0,
+      maxLevel: 8,
+    ),
+    'speed': Upgrade(
+      id: "speed",
+      name: 'Speed Boost',
+      description: 'Augmente la vitesse de production de 20 %',
+      baseCost: 100.0,
+      level: 0,
+      maxLevel: 5,
+    ),
+    'storage': Upgrade(
+      id: "storage",
+      name: 'Storage Upgrade',
+      description: 'Augmente la capacité de stockage de métal de 50 %',
+      baseCost: 60.0,
+      level: 0,
+      maxLevel: 5,
+    ),
+    'automation': Upgrade(
+      id: "automation",
+      name: 'Automation',
+      description: 'Réduit le coût des autoclippeuses de 10 % par niveau',
+      baseCost: 200.0,
+      level: 0,
+      maxLevel: 5,
+    ),
+    'quality': Upgrade(
+      id: "quality",
+      name: 'Quality Control',
+      description: 'Augmente le prix de vente des trombones de 10 % par niveau',
+      baseCost: 80.0,
+      level: 0,
+      maxLevel: 10,
+    ),
+  };
 
   Map<String, dynamic> toJson() => {
     'metal': _metal,
