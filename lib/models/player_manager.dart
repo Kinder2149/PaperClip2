@@ -110,6 +110,17 @@ class Upgrade {
           baseCost: 175,
           requiredLevel: 6,
         );
+    // Ajout du cas pour 'automation'
+      case 'automation':
+        return Upgrade(
+          id: 'automation',
+          name: 'Automation',
+          description: 'Réduit le coût des autoclippeuses de 10%',
+          baseCost: 200,
+          requiredLevel: 7,
+          costMultiplier: 1.5,
+          maxLevel: 5,
+        );
       default:
         throw Exception('Unknown upgrade ID: $id');
     }
@@ -145,6 +156,50 @@ class PlayerManager extends ChangeNotifier {
   Timer? _maintenanceTimer;
   Timer? _autoSaveTimer;
   double _maintenanceCosts = 0.0;
+  final Map<String, Upgrade> _upgrades = {};
+
+  void fromJson(Map<String, dynamic> json) {
+    try {
+      _paperclips = (json['paperclips'] as num?)?.toDouble() ?? 0.0;
+      _money = (json['money'] as num?)?.toDouble() ?? 0.0;
+      _metal = (json['metal'] as num?)?.toDouble() ?? 0.0;
+      _autoclippers = (json['autoclippers'] as num?)?.toInt() ?? 0;
+      _sellPrice = (json['sellPrice'] as num?)?.toDouble() ?? GameConstants.INITIAL_PRICE;
+
+      // Réinitialiser d'abord les upgrades
+      _initializeUpgrades();
+
+      // Charger les upgrades
+      final upgradesData = json['upgrades'] as Map<String, dynamic>? ?? {};
+      upgradesData.forEach((key, value) {
+        try {
+          if (upgrades.containsKey(key)) {
+            upgrades[key]!.level = (value['level'] as num?)?.toInt() ?? 0;
+          }
+        } catch (e) {
+          print('Erreur lors du chargement de l\'upgrade $key: $e');
+        }
+      });
+
+      notifyListeners();
+    } catch (e) {
+      print('Erreur lors du chargement des données du joueur: $e');
+      // En cas d'erreur, réinitialiser aux valeurs par défaut
+      resetResources();
+      _initializeUpgrades();
+    }
+  }
+
+  Map<String, dynamic> toJson() => {
+    'paperclips': _paperclips,
+    'money': _money,
+    'metal': _metal,
+    'autoclippers': _autoclippers,
+    'sellPrice': _sellPrice,
+    'upgrades': upgrades.map((key, value) => MapEntry(key, value.toJson())),
+  };
+
+  void loadFromJson(Map<String, dynamic> json) => fromJson(json);
 
   PlayerManager(this.levelSystem) {
     _initializeUpgrades();
@@ -174,8 +229,13 @@ class PlayerManager extends ChangeNotifier {
 
   void _initializeUpgrades() {
     final upgradeIds = [
-      'efficiency', 'speed', 'quality',
-      'marketing', 'bulk', 'storage'
+      'efficiency',
+      'speed',
+      'quality',
+      'marketing',
+      'bulk',
+      'storage',
+      'automation'  // Ajout de 'automation' ici
     ];
 
     for (var id in upgradeIds) {
@@ -380,33 +440,6 @@ class PlayerManager extends ChangeNotifier {
   }
 
 
-
-  Map<String, dynamic> toJson() => {
-    'metal': _metal,
-    'money': _money,
-    'paperclips': _paperclips,
-    'autoclippers': _autoclippers,
-    'sellPrice': _sellPrice,
-    'upgrades': upgrades.map((key, value) => MapEntry(key, value.toJson())),
-  };
-
-  void loadFromJson(Map<String, dynamic> json) {
-    _metal = (json['metal'] as num?)?.toDouble() ?? GameConstants.INITIAL_METAL;
-    _money = (json['money'] as num?)?.toDouble() ?? GameConstants.INITIAL_MONEY;
-    _paperclips = (json['paperclips'] as num?)?.toDouble() ?? 0;
-    _autoclippers = (json['autoclippers'] as num?)?.toInt() ?? 0;
-    _sellPrice = (json['sellPrice'] as num?)?.toDouble() ??
-        GameConstants.INITIAL_PRICE;
-
-    if (json['upgrades'] != null) {
-      final upgradesJson = json['upgrades'] as Map<String, dynamic>;
-      upgradesJson.forEach((key, value) {
-        upgrades[key] = Upgrade.fromJson(value as Map<String, dynamic>);
-      });
-    }
-
-    notifyListeners();
-  }
 
   @override
   void dispose() {

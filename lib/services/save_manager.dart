@@ -1,21 +1,17 @@
-// save_manager.dart
-import 'package:shared_preferences/shared_preferences.dart';
+// lib/services/save_manager.dart
+
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/game_state.dart';
 import '../models/game_config.dart';
-import '../models/market.dart';
-import '../models/player_manager.dart';
-import '../models/progression_system.dart';
-import '../models/resource_manager.dart';
 
-class SaveError extends Error {
+class SaveError implements Exception {
   final String code;
   final String message;
-
   SaveError(this.code, this.message);
 
   @override
-  String toString() => 'SaveError($code): $message';
+  String toString() => '$code: $message';
 }
 
 class SaveGame {
@@ -36,7 +32,7 @@ class SaveGame {
       return SaveGame(
         name: json['name'] as String,
         lastSaveTime: DateTime.parse(json['timestamp'] as String),
-        gameData: json['gameData'] as Map<String, dynamic>,
+        gameData: (json['gameData'] as Map<String, dynamic>?) ?? {},
         version: json['version'] as String? ?? GameConstants.VERSION,
       );
     } catch (e) {
@@ -46,95 +42,96 @@ class SaveGame {
     }
   }
 
-  Map<String, dynamic> toJson() =>
-      {
-        'name': name,
-        'timestamp': lastSaveTime.toIso8601String(),
-        'gameData': gameData,
-        'version': version,
-      };
-
-
-  static bool isValidGameData(Map<String, dynamic> data) {
-    try {
-      final playerManager = data['gameData']?['playerManager'];
-      if (playerManager == null) return false;
-
-      // Vérifiez les champs requis
-      return playerManager['metal'] != null &&
-          playerManager['money'] != null &&
-          playerManager['paperclips'] != null;
-    } catch (e) {
-      print('Error validating game data: $e');
-      return false;
-    }
-  }
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'timestamp': lastSaveTime.toIso8601String(),
+    'gameData': gameData,
+    'version': version,
+  };
 }
 
 
 
+
 class SaveManager {
-  static const String SAVE_KEY_PREFIX = 'game_save_${GameConstants.VERSION}_';
+  static const String SAVE_PREFIX = 'paperclip_save_';
   static final DateTime CURRENT_DATE = DateTime(2025, 1, 23, 15, 15, 49);
   static const String CURRENT_USER = 'Kinder2149';
   static const String CURRENT_VERSION = '1.0.0';
+  static String _getSaveKey(String gameName) => '$SAVE_PREFIX$gameName';
 
   // Obtenir la clé de sauvegarde unique pour une partie
-  static String _getSaveKey(String gameName) => '$SAVE_KEY_PREFIX$gameName';
 
 
   // Sauvegarder une partie
-  static Future<void> saveGame(GameState gameState, String gameName) async {
+  static Future<void> saveGame(GameState gameState, String name) async {
     try {
+      if (name.isEmpty) {
+        throw SaveError('INVALID_NAME', 'Le nom de la sauvegarde ne peut pas être vide');
+      }
+
       final prefs = await SharedPreferences.getInstance();
-      final saveData = {
-        'name': gameName,
-        'timestamp': DateTime.now().toIso8601String(),
-        'version': GameConstants.VERSION,
-        'gameData': {
+      final saveData = SaveGame(
+        name: name,
+        lastSaveTime: DateTime.now(),
+        version: GameConstants.VERSION,
+        gameData: {
           'playerManager': gameState.playerManager.toJson(),
           'marketManager': gameState.marketManager.toJson(),
           'levelSystem': gameState.levelSystem.toJson(),
           'totalTimePlayedInSeconds': gameState.totalTimePlayed,
           'totalPaperclipsProduced': gameState.totalPaperclipsProduced,
-        }
-      };
+        },
+      );
 
-      final saveKey = _getSaveKey(gameName);
-      await prefs.setString(saveKey, jsonEncode(saveData));
+      final key = _getSaveKey(name);
+      await prefs.setString(key, jsonEncode(saveData.toJson()));
     } catch (e) {
-      print('Error saving game: $e');
+      print('Erreur lors de la sauvegarde: $e');
       throw SaveError('SAVE_FAILED', 'Erreur lors de la sauvegarde: $e');
     }
   }
+  static Future<SaveGameInfo?> getLastSave() async {
+    final saves = await listSaves();
+    return saves.isNotEmpty ? saves.first : null;
+  }
+
+  static Future<bool> saveExists(String name) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.containsKey(_getSaveKey(name));
+  }
+
 
   // Charger une partie spécifique
-  static Future<SaveGame?> loadGame(String gameName) async {
+  // Modifier cette méthode pour retourner un SaveGame au lieu d'un Map
+  static Future<SaveGame?> loadGame(String name) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final saveKey = _getSaveKey(gameName);
-      final savedData = prefs.getString(saveKey);
+      final key = '$SAVE_PREFIX$name';
+      final savedData = prefs.getString(key);
 
-      if (savedData == null) return null;
+      if (savedData == null) {
+        return null;
+      }
 
-      final saveGame = SaveGame.fromJson(jsonDecode(savedData));
-      return saveGame;
+      final jsonData = jsonDecode(savedData) as Map<String, dynamic>;
+
+      // Validation après chargement
+      if (!_validateSaveData(jsonData)) {
+        throw SaveError('CORRUPTED_DATA', 'Les données de sauvegarde sont corrompues');
+      }
+
+      // Créer et retourner un objet SaveGame
+      return SaveGame.fromJson(jsonData);
     } catch (e) {
-      throw SaveError('LOAD_FAILED', 'Erreur lors du chargement: $e');
+      print('Erreur lors du chargement: $e');
+      rethrow;
     }
   }
+
 
   // Récupérer la dernière sauvegarde
-  static Future<SaveGame?> getLastSave() async {
-    try {
-      final allSaves = await getAllSaves();
-      if (allSaves.isEmpty) return null;
-      return allSaves.first; // Déjà trié par date
-    } catch (e) {
-      print('Erreur lors de la récupération de la dernière sauvegarde: $e');
-      return null;
-    }
-  }
+
   static Future<void> debugSaveData(String gameName) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -151,80 +148,85 @@ class SaveManager {
       print('Debug - Error reading save: $e');
     }
   }
-
-  // Récupérer toutes les sauvegardes
-  static Future<List<SaveGame>> getAllSaves() async {
+  static Future<List<SaveGameInfo>> listSaves() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final List<SaveGame> saves = [];
+      final saves = <SaveGameInfo>[];
 
-      for (String key in prefs.getKeys()) {
-        if (!key.startsWith(SAVE_KEY_PREFIX)) continue;
-
-        try {
-          final String? savedData = prefs.getString(key);
-          if (savedData == null) continue;
-
-          final Map<String, dynamic> json = jsonDecode(savedData);
-
-          // Vérifiez que les données sont valides avant de créer le SaveGame
-          if (json.containsKey('name') &&
-              json.containsKey('timestamp') &&
-              json.containsKey('gameData')) {
-            saves.add(SaveGame.fromJson(json));
-          } else {
-            print('Invalid save data structure for key $key: $json');
+      for (final key in prefs.getKeys()) {
+        if (key.startsWith(SAVE_PREFIX)) {
+          try {
+            final data = jsonDecode(prefs.getString(key) ?? '{}');
+            saves.add(SaveGameInfo(
+              name: key.substring(SAVE_PREFIX.length),
+              timestamp: DateTime.parse(data['timestamp'] ?? ''),
+              version: data['version'] ?? '',
+              paperclips: data['gameData']?['playerManager']?['paperclips'] ?? 0,
+              money: data['gameData']?['playerManager']?['money'] ?? 0,
+            ));
+          } catch (e) {
+            print('Erreur lors du chargement de la sauvegarde $key: $e');
           }
-        } catch (e) {
-          print('Error parsing save at key $key: $e');
         }
       }
 
-      saves.sort((a, b) => b.lastSaveTime.compareTo(a.lastSaveTime));
+      // Trier par date de sauvegarde (plus récent d'abord)
+      saves.sort((a, b) => b.timestamp.compareTo(a.timestamp));
       return saves;
     } catch (e) {
-      print('Error getting all saves: $e');
+      print('Erreur lors de la liste des sauvegardes: $e');
       return [];
     }
   }
 
+
   // Supprimer une sauvegarde
-  static Future<void> deleteGame(String gameName) async {
+  static Future<void> deleteSave(String name) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_getSaveKey(gameName));
+      await prefs.remove('$SAVE_PREFIX$name');
     } catch (e) {
-      throw SaveError('DELETE_FAILED', 'Erreur lors de la suppression: $e');
+      print('Erreur lors de la suppression: $e');
+      rethrow;
     }
   }
 
-  // Validation et conversion des données de sauvegarde
-  static Map<String, dynamic> _validateGameData(Map<String, dynamic> data) {
-    final requiredFields = [
-      'playerManager',
-      'marketManager',
-      'levelSystem',
-      'missionSystem',
-      'totalTimePlayedInSeconds',
-      'totalPaperclipsProduced'
-    ];
-
-    for (final field in requiredFields) {
-      if (!data.containsKey(field)) {
-        throw SaveError('VALIDATION_ERROR', 'Champ manquant: $field');
+  // Validation des données
+  static bool _validateSaveData(Map<String, dynamic> data) {
+    try {
+      if (!data.containsKey('version') || !data.containsKey('timestamp')) {
+        return false;
       }
+
+      final gameData = data['gameData'] as Map<String, dynamic>?;
+      if (gameData == null) return false;
+
+      final playerManager = gameData['playerManager'] as Map<String, dynamic>?;
+      if (playerManager == null) return false;
+
+      // Vérifier les champs essentiels
+      return playerManager.containsKey('paperclips') &&
+          playerManager.containsKey('money') &&
+          playerManager.containsKey('metal');
+    } catch (e) {
+      print('Erreur de validation: $e');
+      return false;
     }
-
-    return {
-      ...data,
-      'version': GameConstants.VERSION,
-      'timestamp': DateTime.now().toIso8601String(),
-    };
   }
+}
 
-  // Vérifier si une sauvegarde existe
-  static Future<bool> saveExists(String gameName) async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.containsKey(_getSaveKey(gameName));
-  }
+class SaveGameInfo {
+  final String name;
+  final DateTime timestamp;
+  final String version;
+  final double paperclips;
+  final double money;
+
+  SaveGameInfo({
+    required this.name,
+    required this.timestamp,
+    required this.version,
+    required this.paperclips,
+    required this.money,
+  });
 }

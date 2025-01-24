@@ -16,6 +16,45 @@ import 'dart:convert';
 import '../utils/notification_manager.dart';
 
 class GameState extends ChangeNotifier {
+  static final GameState _instance = GameState._internal();
+  factory GameState() => _instance;
+
+  // Managers comme propriétés sans 'late'
+  final LevelSystem levelSystem = LevelSystem();
+  PlayerManager? _playerManager;
+  MarketManager? _marketManager;
+  ResourceManager? _resourceManager;
+  MissionSystem? _missionSystem;
+  // Getters sécurisés
+  PlayerManager get playerManager => _playerManager!;
+  MarketManager get marketManager => _marketManager!;
+  ResourceManager get resourceManager => _resourceManager!;
+  MissionSystem get missionSystem => _missionSystem!;
+  DateTime _lastUpdateTime = DateTime.now();
+
+  DateTime? _lastSaveTime;
+  bool _isPaused = false;
+  // État privé
+  bool _isInitialized = false;
+  String? _gameName;
+  BuildContext? _context;
+  int _totalTimePlayedInSeconds = 0;
+  int _totalPaperclipsProduced = 0;
+  double _maintenanceCosts = 0.0;
+  // Constructeur privé
+  GameState._internal() {
+    levelSystem.onLevelUp = _handleLevelUp;
+  }
+
+  // Gestionnaire de timers centralisé
+  final Map<String, Timer> _timers = {};
+
+  // Getters
+  bool get isInitialized => _isInitialized;
+  String? get gameName => _gameName;
+  int get totalTimePlayed => _totalTimePlayedInSeconds;
+  int get totalPaperclipsProduced => _totalPaperclipsProduced;
+  double get maintenanceCosts => _maintenanceCosts;
 
 
   // Timers
@@ -26,25 +65,11 @@ class GameState extends ChangeNotifier {
   Timer? _autoSaveTimer;
   Timer? _maintenanceTimer;
 
-  // État du jeu
-  bool _isPaused = false;
-  String? _gameName;
-  BuildContext? _context;
-  DateTime _lastUpdateTime = DateTime.now();
-  int _totalTimePlayedInSeconds = 0;
-  int _totalPaperclipsProduced = 0;
-  DateTime? _lastSaveTime;
-  double _maintenanceCosts = 0.0;
 
 
-  // Getters
-  bool get isInitialized => _isInitialized;
-  bool get isPaused => _isPaused;
-  String? get gameName => _gameName;
-  DateTime? get lastSaveTime => _lastSaveTime;
-  int get totalTimePlayed => _totalTimePlayedInSeconds;
-  int get totalPaperclipsProduced => _totalPaperclipsProduced;
-  double get maintenanceCosts => _maintenanceCosts;
+
+
+
   Map<String, Upgrade> get upgrades => playerManager.upgrades;
   double get maxMetalStorage => playerManager.maxMetalStorage;
   PlayerManager get player => playerManager;
@@ -54,13 +79,6 @@ class GameState extends ChangeNotifier {
 
 
 
-  bool _isInitialized = false;
-  late final PlayerManager playerManager;
-  late final MarketManager marketManager;
-  late final LevelSystem levelSystem;
-  late final MissionSystem missionSystem;
-  late final ResourceManager resourceManager;
-
   double get autocliperCost {
     double baseCost = GameConstants.BASE_AUTOCLIPPER_COST * (1.15 * player.autoclippers);
     double automationDiscount = 1.0 - ((player.upgrades['automation']?.level ?? 0) * 0.10);
@@ -69,86 +87,92 @@ class GameState extends ChangeNotifier {
 
 
 
-  // Constructeur et initialisation
-  GameState() {
-    _initializeGame();
-  }
 
-  void _initializeGame() {
+  void _initializeManagers() {
+    _stopAllTimers();
 
-    // Initialisation des systèmes dans le bon ordre
-    levelSystem = LevelSystem()
-      ..onLevelUp = _handleLevelUp;
-
-    playerManager = PlayerManager(levelSystem);
-
-    marketManager = MarketManager(MarketDynamics())
-      ..updateMarket();
-
-    resourceManager = ResourceManager();  // Initialisation du ResourceManager
-
-    missionSystem = MissionSystem()
-      ..initialize()
-      ..onMissionCompleted = _handleMissionCompleted;
+    // Créer de nouvelles instances des managers
+    _playerManager = PlayerManager(levelSystem);
+    _marketManager = MarketManager(MarketDynamics());
+    _resourceManager = ResourceManager();
+    _missionSystem = MissionSystem()..initialize();
 
     _startTimers();
-    notifyListeners();
+    _isInitialized = true;
   }
+
+
 
 
   void reset() {
     _stopTimers();
     player.resetResources();
     level.reset();
-    marketManager = MarketManager(MarketDynamics());
-    missionSystem = MissionSystem()..initialize();
+    _marketManager = MarketManager(MarketDynamics());  // Utiliser l'affectation avec _
+    _missionSystem = MissionSystem()..initialize();    // Utiliser l'affectation avec _
     _startTimers();
-    // Réinitialiser _isInitialized
     _isInitialized = false;
     notifyListeners();
   }
 
   void resetMarket() {
-    marketManager = MarketManager(MarketDynamics());
+    _marketManager = MarketManager(MarketDynamics());
     market.updateMarket();
+  }
+  void checkResourceLevels() {
+    if (marketManager.marketMetalStock <= GameConstants.WARNING_THRESHOLD) {
+      EventManager.instance.addEvent(
+          EventType.RESOURCE_DEPLETION,
+          "Ressources en diminution",
+          description: "Les réserves mondiales de métal s'amenuisent",
+          importance: EventImportance.HIGH
+      );
+    }
+  }
+  double _calculateManualProduction(double elapsed) {
+    if (playerManager.metal < GameConstants.METAL_PER_PAPERCLIP) return 0;
+
+    double metalUsed = GameConstants.METAL_PER_PAPERCLIP;
+    double efficiencyBonus = 1.0 + (playerManager.upgrades['efficiency']?.level ?? 0) * 0.1;
+    metalUsed /= efficiencyBonus;
+
+    playerManager.updateMetal(playerManager.metal - metalUsed);
+    return 1.0 * elapsed;
   }
 
   // Gestion des timers
   void _startTimers() {
-    _stopTimers();
-
-    _productionTimer = Timer.periodic(
-        const Duration(seconds: 1),
+    _timers['production'] = Timer.periodic(
+        const Duration(seconds: 2), // Optimisé de 1 à 2 secondes
             (_) => _processProduction()
     );
 
-    _marketTimer = Timer.periodic(
-        const Duration(milliseconds: 500),
+    _timers['market'] = Timer.periodic(
+        const Duration(seconds: 1), // Optimisé de 500ms à 1 seconde
             (_) => _processMarket()
     );
 
-    _metalPriceTimer = Timer.periodic(
-        const Duration(seconds: 4),
-            (_) {
-          marketManager.updateMetalPrice();
-          notifyListeners();
-        }
+    _timers['autoSave'] = Timer.periodic(
+        const Duration(minutes: 10), // Optimisé de 5 à 10 minutes
+            (_) => _autoSave()
     );
 
-    _playTimeTimer = Timer.periodic(
+    _timers['maintenance'] = Timer.periodic(
+        const Duration(minutes: 1),
+            (_) => _applyMaintenanceCosts()
+    );
+
+    _timers['playTime'] = Timer.periodic(
         const Duration(seconds: 1),
             (_) {
           _totalTimePlayedInSeconds++;
           notifyListeners();
         }
     );
-
-    _startAutoSave();
-
-    _maintenanceTimer = Timer.periodic(
-        const Duration(minutes: 1),
-            (_) => _applyMaintenanceCosts()
-    );
+  }
+  void _stopAllTimers() {
+    _timers.values.forEach((timer) => timer.cancel());
+    _timers.clear();
   }
   void _applyMaintenanceCosts() {
     if (player.autoclippers == 0) return;
@@ -182,28 +206,7 @@ class GameState extends ChangeNotifier {
       'autoclippers': playerManager.autoclippers,
     };
   }
-  Future<void> loadGame(String name) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final savedData = prefs.getString('save_$name');
 
-      if (savedData == null) {
-        throw Exception('Sauvegarde non trouvée');
-      }
-
-      final gameData = jsonDecode(savedData);
-      _gameName = name;
-      _loadGameData(gameData);
-      _startTimers();
-
-      // Mettre _isInitialized à true seulement après le chargement réussi
-      _isInitialized = true;
-      notifyListeners();
-    } catch (e) {
-      print('Error loading game: $e');
-      rethrow;
-    }
-  }
 
   void _stopTimers() {
     _productionTimer?.cancel();
@@ -217,30 +220,24 @@ class GameState extends ChangeNotifier {
 
   // Production et marché
   void _processProduction() {
-    if (_isPaused) return;
+    if (playerManager.metal < GameConstants.MIN_METAL_CONSUMPTION) return;
 
     final now = DateTime.now();
     final elapsed = now.difference(_lastUpdateTime).inMilliseconds / 1000;
     _lastUpdateTime = now;
 
-    double manualProduction = _calculateManualProduction(elapsed);
-    double autoProduction = _calculateAutoProduction(elapsed);
-    _applyProduction(manualProduction + autoProduction);
+    double production = _calculateProduction(elapsed);
+    _applyProduction(production);
 
-    checkMetalStorage();
-    checkResourceCrisis();
+    checkResourceLevels();
     notifyListeners();
   }
 
-  double _calculateManualProduction(double elapsed) {
-    if (player.metal < GameConstants.METAL_PER_PAPERCLIP) return 0;
-
-    double metalUsed = GameConstants.METAL_PER_PAPERCLIP;
-    double efficiencyBonus = 1.0 + (player.upgrades['efficiency']?.level ?? 0) * 0.1;
-    metalUsed /= efficiencyBonus;
-
-    player.updateMetal(player.metal - metalUsed);
-    return 1.0 * elapsed;
+  double _calculateProduction(double elapsed) {
+    // Calcul optimisé de la production
+    double manualProduction = _calculateManualProduction(elapsed);
+    double autoProduction = _calculateAutoProduction(elapsed);
+    return manualProduction + autoProduction;
   }
 
   double _calculateAutoProduction(double elapsed) {
@@ -275,20 +272,36 @@ class GameState extends ChangeNotifier {
         amount
     );
   }
+  Future<void> _autoSave() async {
+    if (_gameName == null || !_isInitialized) return;
+
+    try {
+      await saveGame(_gameName!);
+    } catch (e) {
+      print('Erreur lors de la sauvegarde automatique: $e');
+      if (_context != null) {
+        ScaffoldMessenger.of(_context!).showSnackBar(
+          SnackBar(
+            content: Text('Erreur de sauvegarde automatique: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   void _processMarket() {
-    if (_isPaused) return;
+    if (!_isInitialized) return;
 
-    market.updateMarket();
-
-    double demand = market.calculateDemand(
-        player.sellPrice,
-        player.upgrades['marketing']?.level ?? 0
+    marketManager.updateMarket();
+    double demand = marketManager.calculateDemand(
+        playerManager.sellPrice,
+        playerManager.getMarketingLevel()
     );
 
-    int sales = min(demand.floor(), player.paperclips.floor());
-    if (sales > 0) {
-      _processSales(sales);
+    int potentialSales = min(demand.floor(), playerManager.paperclips.floor());
+    if (potentialSales > 0) {
+      _processSales(potentialSales);
     }
   }
 
@@ -355,23 +368,25 @@ Actions recommandées :
 
   // Actions du jeu
   void buyMetal() {
-    double metalPrice = market.currentMetalPrice;
-    if (player.money >= metalPrice) {
-      double amount = GameConstants.METAL_PACK_AMOUNT;
+    if (!_canBuyMetal()) return;
 
-      if (player.metal + amount <= player.maxMetalStorage) {
-        player.updateMetal(player.metal + amount);
-        player.updateMoney(player.money - metalPrice);
-        notifyListeners();
-      } else {
-        EventManager.instance.addEvent(
-            EventType.RESOURCE_DEPLETION,
-            "Stockage plein",
-            description: "Impossible d'acheter plus de métal. Améliorez votre stockage!",
-            importance: EventImportance.HIGH
-        );
-      }
-    }
+    double metalPrice = marketManager.currentMetalPrice;
+    double amount = GameConstants.METAL_PACK_AMOUNT;
+
+    playerManager.updateMoney(playerManager.money - metalPrice);
+    playerManager.updateMetal(playerManager.metal + amount);
+    marketManager.updateMarketStock(-amount);
+
+    notifyListeners();
+  }
+
+  bool _canBuyMetal() {
+    double metalPrice = marketManager.currentMetalPrice;
+    double currentMetal = playerManager.metal;
+    double maxStorage = playerManager.maxMetalStorage;
+
+    return playerManager.money >= metalPrice &&
+        currentMetal + GameConstants.METAL_PACK_AMOUNT <= maxStorage;
   }
 
   void buyAutoclipper() {
@@ -456,13 +471,16 @@ Actions recommandées :
     try {
       print('Starting new game with name: $name');
       _gameName = name;
-      playerManager.resetResources();
+
+      // Initialiser les managers
+      _initializeManagers();
+
+      // Réinitialiser les ressources
+      _playerManager?.resetResources();
       levelSystem.reset();
-      _isInitialized = true;
 
       // Sauvegarder l'état initial
       await SaveManager.saveGame(this, name);
-      print('Game saved successfully');
 
       notifyListeners();
     } catch (e) {
@@ -480,6 +498,56 @@ Actions recommandées :
       _loadGameData(gameData);
     }
   }
+  Future<void> loadGame(String name) async {
+    try {
+      final saveGame = await SaveManager.loadGame(name);
+      if (saveGame == null) throw SaveError('NOT_FOUND', 'Sauvegarde non trouvée');
+
+      _stopAllTimers();
+
+      // Initialiser de nouveaux managers
+      _initializeManagers();
+
+      // Accéder aux données via l'objet SaveGame
+      final gameData = saveGame.gameData;
+
+      // Charger les données dans les managers
+      levelSystem.loadFromJson(gameData['levelSystem'] ?? {});
+      _playerManager?.fromJson(gameData['playerManager'] ?? {});
+      _marketManager?.fromJson(gameData['marketManager'] ?? {});
+
+      // Charger les statistiques globales
+      _totalTimePlayedInSeconds = gameData['totalTimePlayedInSeconds'] ?? 0;
+      _totalPaperclipsProduced = gameData['totalPaperclipsProduced'] ?? 0;
+
+      _gameName = name;
+      _lastSaveTime = saveGame.lastSaveTime;
+
+      _startTimers();
+      notifyListeners();
+    } catch (e) {
+      print('Error loading game: $e');
+      rethrow;
+    }
+  }
+
+  void _loadGameData(Map<String, dynamic> gameData) {
+    if (gameData['playerManager'] != null) {
+      playerManager.loadFromJson(gameData['playerManager']);
+    }
+    if (gameData['marketManager'] != null) {
+      marketManager.fromJson(gameData['marketManager']);
+    }
+    if (gameData['levelSystem'] != null) {
+      levelSystem.loadFromJson(gameData['levelSystem']);
+    }
+    if (gameData['missionSystem'] != null) {
+      missionSystem.fromJson(gameData['missionSystem']);
+    }
+
+    _totalTimePlayedInSeconds = (gameData['totalTimePlayedInSeconds'] as num?)?.toInt() ?? 0;
+    _totalPaperclipsProduced = (gameData['totalPaperclipsProduced'] as num?)?.toInt() ?? 0;
+  }
 
   void _startAutoSave() {
     _autoSaveTimer?.cancel();
@@ -491,25 +559,17 @@ Actions recommandées :
   }
 
   Future<void> saveGame(String name) async {
+    if (!_isInitialized) {
+      throw SaveError('NOT_INITIALIZED', 'Le jeu n\'est pas initialisé');
+    }
+
     try {
-      final prefs = await SharedPreferences.getInstance();
+      await SaveManager.saveGame(this, name);
       _gameName = name;
       _lastSaveTime = DateTime.now();
-
-      final gameData = {
-        'version': GameConstants.VERSION,
-        'timestamp': _lastSaveTime!.toIso8601String(),
-        'playerManager': playerManager.toJson(),
-        'marketManager': marketManager.toJson(),
-        'levelSystem': levelSystem.toJson(),
-        'missionSystem': missionSystem.toJson(),
-        'totalTimePlayedInSeconds': _totalTimePlayedInSeconds,
-        'totalPaperclipsProduced': _totalPaperclipsProduced,
-      };
-
-      await prefs.setString('save_$name', jsonEncode(gameData));
+      notifyListeners();
     } catch (e) {
-      print('Error saving game: $e');
+      print('Erreur dans GameState.saveGame: $e');
       rethrow;
     }
   }
@@ -557,22 +617,21 @@ Actions recommandées :
   }
 
   bool purchaseUpgrade(String upgradeId) {
-    return playerManager.purchaseUpgrade(upgradeId);
+    if (!playerManager.canAffordUpgrade(upgradeId)) return false;
+
+    bool success = playerManager.purchaseUpgrade(upgradeId);
+    if (success) {
+      levelSystem.addUpgradePurchase(
+          playerManager.upgrades[upgradeId]?.level ?? 0
+      );
+    }
+
+    return success;
   }
 
 
-  void _loadGameData(Map<String, dynamic> data) {
-    playerManager.loadFromJson(data['playerManager'] ?? {});
-    marketManager.fromJson(data['marketManager'] ?? {});
-    levelSystem.loadFromJson(data['levelSystem'] ?? {});
-    missionSystem.fromJson(data['missionSystem'] ?? {});
 
-    _totalTimePlayedInSeconds = (data['totalTimePlayedInSeconds'] as num?)?.toInt() ?? 0;
-    _totalPaperclipsProduced = (data['totalPaperclipsProduced'] as num?)?.toInt() ?? 0;
 
-    _lastUpdateTime = DateTime.now();
-    notifyListeners();
-  }
 
   // Utilitaires et autres
   void setContext(BuildContext context) {
@@ -620,10 +679,9 @@ Actions recommandées :
 
   @override
   void dispose() {
-    _stopTimers();
+    _stopAllTimers();
     playerManager.dispose();
     levelSystem.dispose();
-    missionSystem.dispose();
     super.dispose();
   }
 }

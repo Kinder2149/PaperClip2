@@ -53,77 +53,54 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Parties sauvegardées'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _refreshSaves,
-          ),
-          // Temporaire pour le débogage
-          IconButton(
-            icon: const Icon(Icons.bug_report),
-            onPressed: () async {
-              final games = await SaveManager.getAllSaves();
-              for (final game in games) {
-                await SaveManager.debugSaveData(game.name);
-              }
-            },
-          ),
-        ],
-      ),
-      body: Consumer<GameState>(
-        builder: (context, gameState, child) {
-          return FutureBuilder<List<SaveGame>>(
-            key: _futureBuilderKey, // Utiliser la clé ici
-            future: SaveManager.getAllSaves(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
+      appBar: AppBar(title: const Text('Sauvegardes')),
+      body: FutureBuilder<List<SaveGameInfo>>(
+        future: SaveManager.listSaves(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-              if (snapshot.hasError) {
-                return Center(child: Text('Erreur: ${snapshot.error}'));
-              }
+          if (snapshot.hasError) {
+            return Center(
+              child: Text('Erreur: ${snapshot.error}'),
+            );
+          }
 
-              final games = snapshot.data ?? [];
+          final saves = snapshot.data ?? [];
+          if (saves.isEmpty) {
+            return const Center(
+              child: Text('Aucune sauvegarde'),
+            );
+          }
 
-              if (games.isEmpty) {
-                return const Center(child: Text('Aucune partie sauvegardée'));
-              }
-
-              return ListView.builder(
-                itemCount: games.length,
-                itemBuilder: (context, index) {
-                  final game = games[index];
-                  final playerManager = game.gameData['playerManager'] as Map<String, dynamic>? ?? {};
-
-                  // Extraire les données avec sécurité
-                  final paperclips = (playerManager['paperclips'] as num?)?.toDouble() ?? 0.0;
-                  final money = (playerManager['money'] as num?)?.toDouble() ?? 0.0;
-                  final metal = (playerManager['metal'] as num?)?.toDouble() ?? 0.0;
-                  final autoclippers = playerManager['autoclippers'] as int? ?? 0;
-
-                  // Récupérer le niveau
-                  final levelSystem = game.gameData['levelSystem'] as Map<String, dynamic>? ?? {};
-                  final level = levelSystem['level'] as int? ?? 1;
-
-                  return Card(
-                    margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    child: Theme(  // Ajoutez ce Theme pour s'assurer que l'ExpansionTile fonctionne
-                      data: Theme.of(context).copyWith(
-                        dividerColor: Colors.transparent,
+          return ListView.builder(
+            itemCount: saves.length,
+            itemBuilder: (context, index) {
+              final save = saves[index];
+              return Card(
+                margin: const EdgeInsets.all(8.0),
+                child: ListTile(
+                  title: Text(save.name),
+                  subtitle: Text(
+                      'Dernière sauvegarde: ${_formatDateTime(save.timestamp)}\n'
+                          'Trombones: ${save.paperclips.toStringAsFixed(0)} | '
+                          'Argent: ${save.money.toStringAsFixed(2)}€'
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.play_arrow),
+                        onPressed: () => _loadGame(context, save.name),
                       ),
-                      child: ExpansionTile(
-                        initiallyExpanded: false,  // Assurez-vous que c'est initialement fermé
-                        maintainState: true,       // Gardez l'état
-                        title: Text(game.name),
-                        subtitle: Text('${_formatDateTime(game.lastSaveTime)}'),
-                        children: [_buildSaveDetails(game)],  // Extrayez les détails dans une méthode séparée
+                      IconButton(
+                        icon: const Icon(Icons.delete),
+                        onPressed: () => _confirmDelete(context, save.name),
                       ),
-                    ),
-                  );
-                },
+                    ],
+                  ),
+                ),
               );
             },
           );
@@ -135,60 +112,23 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
       ),
     );
   }
-  Widget _buildSaveDetails(SaveGame game) {
-    // Accédez aux données de manière sécurisée
-    final playerManager = game.gameData['gameData']?['playerManager'] as Map<String, dynamic>? ?? {};
-    final paperclips = (playerManager['paperclips'] as num?)?.toDouble() ?? 0.0;
-    final money = (playerManager['money'] as num?)?.toDouble() ?? 0.0;
-    final metal = (playerManager['metal'] as num?)?.toDouble() ?? 0.0;
-    final autoclippers = playerManager['autoclippers'] as int? ?? 0;
 
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildInfoRow('Trombones', paperclips.toStringAsFixed(0)),
-          _buildInfoRow('Argent', '${money.toStringAsFixed(2)} €'),
-          _buildInfoRow('Métal', '${metal.toStringAsFixed(1)} unités'),
-          _buildInfoRow('Autoclippeuses', autoclippers.toString()),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton.icon(
-                icon: const Icon(Icons.play_arrow),
-                label: const Text('Charger'),
-                onPressed: () => _loadGame(game),
-              ),
-              TextButton.icon(
-                icon: const Icon(Icons.delete),
-                label: const Text('Supprimer'),
-                style: TextButton.styleFrom(foregroundColor: Colors.red),
-                onPressed: () => _showDeleteConfirmation(context, game.name),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-  Future<void> _loadGame(SaveGame game) async {
+  Future<void> _loadGame(BuildContext context, String name) async {
     try {
-      final gameState = context.read<GameState>();
-      await gameState.loadGame(game.name);
-      if (mounted) {
+      final gameState = Provider.of<GameState>(context, listen: false);
+      await gameState.loadGame(name);
+
+      if (context.mounted) {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const MainScreen()),
         );
       }
     } catch (e) {
-      print('Error loading game: $e');
-      if (mounted) {
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erreur lors du chargement: $e'),
+            content: Text('Erreur de chargement: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -233,7 +173,7 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
     );
 
     if (result == true && context.mounted) {
-      await SaveManager.deleteGame(gameName);
+      await SaveManager.deleteSave(gameName);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Partie supprimée')),
@@ -241,6 +181,32 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
       }
     }
   }
+  Future<void> _confirmDelete(BuildContext context, String gameName) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Supprimer la partie ?'),
+        content: Text('Voulez-vous vraiment supprimer la partie "$gameName" ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Supprimer'),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && context.mounted) {
+      await SaveManager.deleteSave(gameName);
+      _refreshSaves();
+    }
+  }
+
 
   Future<void> _showNewGameDialog(BuildContext context) async {
     final controller = TextEditingController(

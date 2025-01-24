@@ -146,6 +146,15 @@ class MarketManager extends ChangeNotifier {
           .toList();
     }
   }
+  void updateMarketStock(double amount) {
+    marketMetalStock = (marketMetalStock + amount).clamp(
+        0.0,
+        GameConstants.INITIAL_MARKET_METAL
+    );
+    _checkResourceLevels();
+    notifyListeners();
+  }
+
 
 
 
