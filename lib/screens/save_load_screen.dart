@@ -24,6 +24,31 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
       _futureBuilderKey = UniqueKey(); // Créer une nouvelle clé force le rebuild
     });
   }
+  Future<void> _createNewGame(BuildContext context, String gameName) async {
+    try {
+      print('Creating new game: $gameName');
+      final gameState = context.read<GameState>();
+      await gameState.startNewGame(gameName);
+      print('Game created successfully');
+
+      if (context.mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const MainScreen()),
+        );
+      }
+    } catch (e) {
+      print('Error creating game: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur lors de la création: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,6 +59,16 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _refreshSaves,
+          ),
+          // Temporaire pour le débogage
+          IconButton(
+            icon: const Icon(Icons.bug_report),
+            onPressed: () async {
+              final games = await SaveManager.getAllSaves();
+              for (final game in games) {
+                await SaveManager.debugSaveData(game.name);
+              }
+            },
           ),
         ],
       ),
@@ -61,68 +96,31 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                 itemCount: games.length,
                 itemBuilder: (context, index) {
                   final game = games[index];
-                  final gameData = game.gameData;
-                  final paperclips = gameData['paperclips'] ?? 0;
-                  final money = gameData['money'] ?? 0;
-                  final metal = gameData['metal'] ?? 0;
-                  final autoclippers = gameData['autoclippers'] ?? 0;
-                  final levelSystem = gameData['levelSystem'] as Map<String, dynamic>? ?? {};
-                  final level = levelSystem['level'] ?? 1;
-                  final totalPaperclips = game.gameData['totalPaperclipsProduced'] ?? 0;
+                  final playerManager = game.gameData['playerManager'] as Map<String, dynamic>? ?? {};
+
+                  // Extraire les données avec sécurité
+                  final paperclips = (playerManager['paperclips'] as num?)?.toDouble() ?? 0.0;
+                  final money = (playerManager['money'] as num?)?.toDouble() ?? 0.0;
+                  final metal = (playerManager['metal'] as num?)?.toDouble() ?? 0.0;
+                  final autoclippers = playerManager['autoclippers'] as int? ?? 0;
+
+                  // Récupérer le niveau
+                  final levelSystem = game.gameData['levelSystem'] as Map<String, dynamic>? ?? {};
+                  final level = levelSystem['level'] as int? ?? 1;
 
                   return Card(
                     margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    child: ExpansionTile(
-                      title: Text(game.name),
-                      subtitle: Text('Niveau ${level.toString()} - ${_formatDateTime(game.lastSaveTime)}'),
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildInfoRow('Trombones', paperclips.toStringAsFixed(0)),
-                              _buildInfoRow('Argent', '${money.toStringAsFixed(2)} €'),
-                              _buildInfoRow('Métal', '${metal.toStringAsFixed(1)} unités'),
-                              _buildInfoRow('Autoclippeuses', autoclippers.toString()),
-                              _buildInfoRow('Production totale', totalPaperclips.toString()),
-                              const SizedBox(height: 16),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  TextButton.icon(
-                                    icon: const Icon(Icons.play_arrow),
-                                    label: const Text('Charger'),
-                                    onPressed: () async {
-                                      try {
-                                        await gameState.loadGame(game.name);
-                                        if (context.mounted) {
-                                          Navigator.pushReplacement(
-                                            context,
-                                            MaterialPageRoute(builder: (context) => const MainScreen()),
-                                          );
-                                        }
-                                      } catch (e) {
-                                        if (context.mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(content: Text('Erreur: $e')),
-                                          );
-                                        }
-                                      }
-                                    },
-                                  ),
-                                  TextButton.icon(
-                                    icon: const Icon(Icons.delete),
-                                    label: const Text('Supprimer'),
-                                    style: TextButton.styleFrom(foregroundColor: Colors.red),
-                                    onPressed: () => _showDeleteConfirmation(context, game.name),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                    child: Theme(  // Ajoutez ce Theme pour s'assurer que l'ExpansionTile fonctionne
+                      data: Theme.of(context).copyWith(
+                        dividerColor: Colors.transparent,
+                      ),
+                      child: ExpansionTile(
+                        initiallyExpanded: false,  // Assurez-vous que c'est initialement fermé
+                        maintainState: true,       // Gardez l'état
+                        title: Text(game.name),
+                        subtitle: Text('${_formatDateTime(game.lastSaveTime)}'),
+                        children: [_buildSaveDetails(game)],  // Extrayez les détails dans une méthode séparée
+                      ),
                     ),
                   );
                 },
@@ -136,6 +134,66 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
         child: const Icon(Icons.add),
       ),
     );
+  }
+  Widget _buildSaveDetails(SaveGame game) {
+    // Accédez aux données de manière sécurisée
+    final playerManager = game.gameData['gameData']?['playerManager'] as Map<String, dynamic>? ?? {};
+    final paperclips = (playerManager['paperclips'] as num?)?.toDouble() ?? 0.0;
+    final money = (playerManager['money'] as num?)?.toDouble() ?? 0.0;
+    final metal = (playerManager['metal'] as num?)?.toDouble() ?? 0.0;
+    final autoclippers = playerManager['autoclippers'] as int? ?? 0;
+
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildInfoRow('Trombones', paperclips.toStringAsFixed(0)),
+          _buildInfoRow('Argent', '${money.toStringAsFixed(2)} €'),
+          _buildInfoRow('Métal', '${metal.toStringAsFixed(1)} unités'),
+          _buildInfoRow('Autoclippeuses', autoclippers.toString()),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton.icon(
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('Charger'),
+                onPressed: () => _loadGame(game),
+              ),
+              TextButton.icon(
+                icon: const Icon(Icons.delete),
+                label: const Text('Supprimer'),
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                onPressed: () => _showDeleteConfirmation(context, game.name),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+  Future<void> _loadGame(SaveGame game) async {
+    try {
+      final gameState = context.read<GameState>();
+      await gameState.loadGame(game.name);
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const MainScreen()),
+        );
+      }
+    } catch (e) {
+      print('Error loading game: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur lors du chargement: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildInfoRow(String label, String value) {

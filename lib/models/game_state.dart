@@ -52,6 +52,8 @@ class GameState extends ChangeNotifier {
   ResourceManager get resources => resourceManager;
   LevelSystem get level => levelSystem;
 
+
+
   bool _isInitialized = false;
   late final PlayerManager playerManager;
   late final MarketManager marketManager;
@@ -449,17 +451,24 @@ Actions recommandées :
         importance: EventImportance.MEDIUM
     );
   }
+  // Dans GameState, ajoutez un logger pour le debug
   Future<void> startNewGame(String name) async {
-    _gameName = name;
-    playerManager.resetResources();
-    levelSystem.reset();
+    try {
+      print('Starting new game with name: $name');
+      _gameName = name;
+      playerManager.resetResources();
+      levelSystem.reset();
+      _isInitialized = true;
 
-    // Sauvegarder l'état initial
-    await saveGame(name);
+      // Sauvegarder l'état initial
+      await SaveManager.saveGame(this, name);
+      print('Game saved successfully');
 
-    // Mettre _isInitialized à true seulement après la création réussie
-    _isInitialized = true;
-    notifyListeners();
+      notifyListeners();
+    } catch (e) {
+      print('Error starting new game: $e');
+      rethrow;
+    }
   }
 
   // Gestion de la sauvegarde

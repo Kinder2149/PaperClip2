@@ -115,6 +115,21 @@ class Upgrade {
     }
   }
 }
+class UpgradeManager {
+  static const List<String> VALID_UPGRADE_IDS = [
+    'efficiency',
+    'marketing',
+    'bulk',
+    'speed',
+    'storage',
+    'automation',
+    'quality'
+  ];
+
+  static bool isValidUpgradeId(String id) {
+    return VALID_UPGRADE_IDS.contains(id);
+  }
+}
 
 /// Gestionnaire des ressources du joueur
 class PlayerManager extends ChangeNotifier {

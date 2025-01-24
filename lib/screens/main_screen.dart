@@ -138,6 +138,44 @@ class _MainScreenState extends State<MainScreen> {
       ),
     ];
   }
+  Future<void> _saveGame(BuildContext context) async {
+    final gameState = context.read<GameState>();
+    if (!gameState.isInitialized) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Erreur: Le jeu n\'est pas initialisé'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    try {
+      final gameName = gameState.gameName;
+      if (gameName == null || gameName.isEmpty) {
+        throw SaveError('NO_NAME', 'Aucun nom de partie défini');
+      }
+
+      await SaveManager.saveGame(gameState, gameName);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Partie sauvegardée'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur de sauvegarde: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
 
   void _showLevelInfoDialog(BuildContext context, LevelSystem levelSystem) {

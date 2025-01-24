@@ -32,23 +32,46 @@ class SaveGame {
   });
 
   factory SaveGame.fromJson(Map<String, dynamic> json) {
-    // Assurez-vous que les données sont correctement extraites
-    return SaveGame(
-      name: json['name'] as String? ?? '',
-      lastSaveTime: DateTime.parse(json['timestamp'] as String? ?? DateTime.now().toIso8601String()),
-      gameData: json['gameData'] as Map<String, dynamic>? ?? {},
-      version: json['version'] as String? ?? GameConstants.VERSION,
-    );
+    try {
+      return SaveGame(
+        name: json['name'] as String,
+        lastSaveTime: DateTime.parse(json['timestamp'] as String),
+        gameData: json['gameData'] as Map<String, dynamic>,
+        version: json['version'] as String? ?? GameConstants.VERSION,
+      );
+    } catch (e) {
+      print('Error creating SaveGame from JSON: $e');
+      print('JSON data: $json');
+      rethrow;
+    }
   }
 
+  Map<String, dynamic> toJson() =>
+      {
+        'name': name,
+        'timestamp': lastSaveTime.toIso8601String(),
+        'gameData': gameData,
+        'version': version,
+      };
 
-  Map<String, dynamic> toJson() => {
-    'name': name,
-    'lastSaveTime': lastSaveTime.toIso8601String(),
-    'gameData': gameData,
-    'version': version,
-  };
+
+  static bool isValidGameData(Map<String, dynamic> data) {
+    try {
+      final playerManager = data['gameData']?['playerManager'];
+      if (playerManager == null) return false;
+
+      // Vérifiez les champs requis
+      return playerManager['metal'] != null &&
+          playerManager['money'] != null &&
+          playerManager['paperclips'] != null;
+    } catch (e) {
+      print('Error validating game data: $e');
+      return false;
+    }
+  }
 }
+
+
 
 class SaveManager {
   static const String SAVE_KEY_PREFIX = 'game_save_${GameConstants.VERSION}_';
@@ -68,11 +91,19 @@ class SaveManager {
         'name': gameName,
         'timestamp': DateTime.now().toIso8601String(),
         'version': GameConstants.VERSION,
-        'gameData': gameState.prepareGameData(), // Cette méthode doit exister dans GameState
+        'gameData': {
+          'playerManager': gameState.playerManager.toJson(),
+          'marketManager': gameState.marketManager.toJson(),
+          'levelSystem': gameState.levelSystem.toJson(),
+          'totalTimePlayedInSeconds': gameState.totalTimePlayed,
+          'totalPaperclipsProduced': gameState.totalPaperclipsProduced,
+        }
       };
 
-      await prefs.setString(_getSaveKey(gameName), jsonEncode(saveData));
+      final saveKey = _getSaveKey(gameName);
+      await prefs.setString(saveKey, jsonEncode(saveData));
     } catch (e) {
+      print('Error saving game: $e');
       throw SaveError('SAVE_FAILED', 'Erreur lors de la sauvegarde: $e');
     }
   }
@@ -104,6 +135,22 @@ class SaveManager {
       return null;
     }
   }
+  static Future<void> debugSaveData(String gameName) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saveKey = _getSaveKey(gameName);
+      final savedData = prefs.getString(saveKey);
+      print('Debug - Save data for $gameName:');
+      print(savedData);
+      if (savedData != null) {
+        final decoded = jsonDecode(savedData);
+        print('Decoded data:');
+        print(decoded);
+      }
+    } catch (e) {
+      print('Debug - Error reading save: $e');
+    }
+  }
 
   // Récupérer toutes les sauvegardes
   static Future<List<SaveGame>> getAllSaves() async {
@@ -112,23 +159,32 @@ class SaveManager {
       final List<SaveGame> saves = [];
 
       for (String key in prefs.getKeys()) {
-        if (key.startsWith(SAVE_KEY_PREFIX)) {
-          try {
-            final saveData = SaveGame.fromJson(
-                jsonDecode(prefs.getString(key) ?? '{}')
-            );
-            saves.add(saveData);
-          } catch (e) {
-            print('Erreur lors de la lecture de la sauvegarde $key: $e');
+        if (!key.startsWith(SAVE_KEY_PREFIX)) continue;
+
+        try {
+          final String? savedData = prefs.getString(key);
+          if (savedData == null) continue;
+
+          final Map<String, dynamic> json = jsonDecode(savedData);
+
+          // Vérifiez que les données sont valides avant de créer le SaveGame
+          if (json.containsKey('name') &&
+              json.containsKey('timestamp') &&
+              json.containsKey('gameData')) {
+            saves.add(SaveGame.fromJson(json));
+          } else {
+            print('Invalid save data structure for key $key: $json');
           }
+        } catch (e) {
+          print('Error parsing save at key $key: $e');
         }
       }
 
-      // Tri par date décroissante
       saves.sort((a, b) => b.lastSaveTime.compareTo(a.lastSaveTime));
       return saves;
     } catch (e) {
-      throw SaveError('LIST_FAILED', 'Erreur lors de la liste des sauvegardes: $e');
+      print('Error getting all saves: $e');
+      return [];
     }
   }
 
