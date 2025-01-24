@@ -12,21 +12,21 @@ class ResourceManager extends ChangeNotifier {
   double _metalStorageCapacity = 1000.0;
   double _baseStorageEfficiency = 1.0;
   double _resourceDecayRate = 0.01;
+  double _marketMetalStock = GameConstants.INITIAL_MARKET_METAL;
 
   // Getters
   double get marketMetalStock => _marketMetalStock;
   double get metalStorageCapacity => _metalStorageCapacity;
   double get baseStorageEfficiency => _baseStorageEfficiency;
+  double get resourceDecayRate => _resourceDecayRate;
 
   // Calculs de capacité
   double calculateEffectiveStorage(int storageUpgradeLevel) {
-    double baseStorage = _metalStorageCapacity;
-    double upgradeBonus = 1 + (storageUpgradeLevel * 0.5);
-    return baseStorage * upgradeBonus;
+    return _metalStorageCapacity * (1 + (storageUpgradeLevel * GameConstants.STORAGE_UPGRADE_MULTIPLIER));
   }
 
   double calculateStorageEfficiency(int efficiencyUpgradeLevel) {
-    return _baseStorageEfficiency * (1 + (efficiencyUpgradeLevel * 0.1));
+    return _baseStorageEfficiency * (1 + (efficiencyUpgradeLevel * GameConstants.EFFICIENCY_UPGRADE_MULTIPLIER));
   }
 
   // Gestion des ressources
@@ -36,7 +36,10 @@ class ResourceManager extends ChangeNotifier {
   }
 
   void updateMarketStock(double amount) {
-    _marketMetalStock = (_marketMetalStock + amount).clamp(0.0, INITIAL_MARKET_METAL);
+    _marketMetalStock = (_marketMetalStock + amount).clamp(
+        0.0,
+        GameConstants.INITIAL_MARKET_METAL
+    );
     _checkResourceLevels();
     notifyListeners();
   }
@@ -71,7 +74,7 @@ class ResourceManager extends ChangeNotifier {
       );
     }
 
-    if (_marketMetalStock <= CRITICAL_THRESHOLD) {
+    if (_marketMetalStock <= GameConstants.CRITICAL_THRESHOLD) {
       EventManager.instance.addEvent(
         EventType.RESOURCE_DEPLETION,
         'Niveau critique !',
@@ -81,15 +84,16 @@ class ResourceManager extends ChangeNotifier {
     }
   }
   void restockMetal() {
-    if (marketMetalStock < GameConstants.INITIAL_MARKET_METAL * 0.5) {
-      marketMetalStock = GameConstants.INITIAL_MARKET_METAL;
+    if (_marketMetalStock < GameConstants.INITIAL_MARKET_METAL * 0.5) {
+      _marketMetalStock = GameConstants.INITIAL_MARKET_METAL;
+      notifyListeners();
     }
   }
 
   // Calculs de maintenance et d'efficacité
   double calculateMaintenanceCost(int storageUpgradeLevel, double currentMetal) {
     double baseMaintenanceCost = currentMetal * _resourceDecayRate;
-    double efficiencyFactor = 1.0 / (1 + (storageUpgradeLevel * 0.1));
+    double efficiencyFactor = 1.0 / (1 + (storageUpgradeLevel * GameConstants.MAINTENANCE_EFFICIENCY_MULTIPLIER));
     return baseMaintenanceCost * efficiencyFactor;
   }
 
@@ -117,26 +121,33 @@ class ResourceManager extends ChangeNotifier {
   };
 
   void fromJson(Map<String, dynamic> json) {
-    _marketMetalStock = (json['marketMetalStock'] as num?)?.toDouble() ?? INITIAL_MARKET_METAL;
-    _metalStorageCapacity = (json['metalStorageCapacity'] as num?)?.toDouble() ?? 1000.0;
-    _baseStorageEfficiency = (json['baseStorageEfficiency'] as num?)?.toDouble() ?? 1.0;
-    _resourceDecayRate = (json['resourceDecayRate'] as num?)?.toDouble() ?? 0.01;
+    _marketMetalStock = (json['marketMetalStock'] as num?)?.toDouble() ??
+        GameConstants.INITIAL_MARKET_METAL;
+    _metalStorageCapacity = (json['metalStorageCapacity'] as num?)?.toDouble() ??
+        GameConstants.INITIAL_STORAGE_CAPACITY;
+    _baseStorageEfficiency = (json['baseStorageEfficiency'] as num?)?.toDouble() ??
+        GameConstants.BASE_EFFICIENCY;
+    _resourceDecayRate = (json['resourceDecayRate'] as num?)?.toDouble() ??
+        GameConstants.RESOURCE_DECAY_RATE;
   }
 
   // Méthodes de restauration et de réinitialisation
   void restoreMarketStock(double amount) {
-    if (_marketMetalStock < INITIAL_MARKET_METAL) {
-      double restoration = (_marketMetalStock + amount).clamp(0.0, INITIAL_MARKET_METAL);
+    if (_marketMetalStock < GameConstants.INITIAL_MARKET_METAL) {
+      double restoration = (_marketMetalStock + amount).clamp(
+          0.0,
+          GameConstants.INITIAL_MARKET_METAL
+      );
       _marketMetalStock = restoration;
       notifyListeners();
     }
   }
 
   void resetResources() {
-    _marketMetalStock = INITIAL_MARKET_METAL;
-    _metalStorageCapacity = 1000.0;
-    _baseStorageEfficiency = 1.0;
-    _resourceDecayRate = 0.01;
+    _marketMetalStock = GameConstants.INITIAL_MARKET_METAL;
+    _metalStorageCapacity = GameConstants.INITIAL_STORAGE_CAPACITY;
+    _baseStorageEfficiency = GameConstants.BASE_EFFICIENCY;  // À ajouter dans GameConstants
+    _resourceDecayRate = GameConstants.RESOURCE_DECAY_RATE;
     notifyListeners();
   }
 }

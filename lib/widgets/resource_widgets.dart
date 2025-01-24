@@ -2,8 +2,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
-import '../models/resource_manager.dart';
-import '../models/market.dart';
 import '../models/game_config.dart';
 
 class MoneyDisplay extends StatelessWidget {
@@ -43,7 +41,7 @@ class MoneyDisplay extends StatelessWidget {
               const Icon(Icons.euro, size: 20),
               const SizedBox(width: 8),
               Text(
-                formatNumber(gameState.playerManager.money),
+                formatNumber(gameState.player.money),  // Utilisation du getter
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -64,9 +62,9 @@ class ResourceStatusWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<GameState>(
       builder: (context, gameState, child) {
-        final metalStock = gameState.resourceManager.marketMetalStock;
-        final warningLevel = metalStock <= ResourceManager.WARNING_THRESHOLD;
-        final criticalLevel = metalStock <= ResourceManager.CRITICAL_THRESHOLD;
+        final metalStock = gameState.resources.marketMetalStock;  // Utilisation du getter
+        final warningLevel = metalStock <= GameConstants.WARNING_THRESHOLD;  // Utilisation de GameConstants
+        final criticalLevel = metalStock <= GameConstants.CRITICAL_THRESHOLD;  // Utilisation de GameConstants
 
         return Card(
           child: Padding(
@@ -86,7 +84,7 @@ class ResourceStatusWidget extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 LinearProgressIndicator(
-                  value: metalStock / ResourceManager.INITIAL_MARKET_METAL,
+                  value: metalStock / GameConstants.INITIAL_MARKET_METAL,  // Utilisation de GameConstants
                   backgroundColor: Colors.grey[200],
                   valueColor: AlwaysStoppedAnimation<Color>(
                     criticalLevel
@@ -115,7 +113,6 @@ class ResourceStatusWidget extends StatelessWidget {
   }
 }
 
-// Ajout d'un nouveau widget pour afficher toutes les ressources
 class ResourceOverview extends StatelessWidget {
   const ResourceOverview({Key? key}) : super(key: key);
 
@@ -141,19 +138,19 @@ class ResourceOverview extends StatelessWidget {
                     _ResourceItem(
                       icon: Icons.euro,
                       label: 'Argent',
-                      value: gameState.playerManager.money.toStringAsFixed(2),
+                      value: gameState.player.money.toStringAsFixed(2),  // Utilisation du getter
                       color: Colors.green,
                     ),
                     _ResourceItem(
                       icon: Icons.link,
                       label: 'Trombones',
-                      value: gameState.playerManager.paperclips.toStringAsFixed(0),
+                      value: gameState.player.paperclips.toStringAsFixed(0),  // Utilisation du getter
                       color: Colors.blue,
                     ),
                     _ResourceItem(
                       icon: Icons.straighten,
                       label: 'Métal',
-                      value: '${gameState.playerManager.metal.toStringAsFixed(1)}/${gameState.playerManager.maxMetalStorage}',
+                      value: '${gameState.player.metal.toStringAsFixed(1)}/${gameState.player.maxMetalStorage}',  // Utilisation du getter
                       color: Colors.grey,
                     ),
                   ],

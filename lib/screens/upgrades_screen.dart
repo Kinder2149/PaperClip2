@@ -35,7 +35,7 @@ class UpgradesScreen extends StatelessWidget {
                 ),
                 const Spacer(),
                 Text(
-                  'Niveau ${gameState.levelSystem.level}',
+                  'Niveau ${gameState.level.level}',
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -48,7 +48,7 @@ class UpgradesScreen extends StatelessWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(10),
               child: LinearProgressIndicator(
-                value: gameState.levelSystem.experienceProgress,
+                value: gameState.level.experienceProgress,
                 backgroundColor: Colors.grey[200],
                 valueColor: const AlwaysStoppedAnimation<Color>(Colors.green),
                 minHeight: 10,
@@ -66,7 +66,7 @@ class UpgradesScreen extends StatelessWidget {
                 _buildStatItem(
                   Icons.trending_up,
                   'Multiplicateur',
-                  'x${gameState.levelSystem.productionMultiplier.toStringAsFixed(1)}',
+                  'x${gameState.level.productionMultiplier.toStringAsFixed(1)}',
                 ),
                 _buildStatItem(
                   Icons.timer,
@@ -154,7 +154,7 @@ class UpgradesScreen extends StatelessWidget {
               const SizedBox(height: 16),
               Expanded(
                 child: ListView(
-                  children: gameState.upgrades.entries
+                  children: gameState.player.upgrades.entries
                       .map((entry) => _buildUpgradeCard(
                     context,
                     gameState,
@@ -177,7 +177,7 @@ class UpgradesScreen extends StatelessWidget {
       String id,
       Upgrade upgrade,
       ) {
-    bool canBuy = gameState.money >= upgrade.currentCost && upgrade.level < upgrade.maxLevel;
+    bool canBuy = gameState.player.money >= upgrade.getCost() && upgrade.level < upgrade.maxLevel;
     bool isMaxed = upgrade.level >= upgrade.maxLevel;
 
     return Card(
@@ -209,7 +209,7 @@ class UpgradesScreen extends StatelessWidget {
                   ),
                   if (!isMaxed)
                     Text(
-                      '${upgrade.currentCost.toStringAsFixed(1)} €',
+                      '${upgrade.getCost().toStringAsFixed(1)} €',
                       style: TextStyle(
                         fontSize: 14,
                         color: canBuy ? Colors.green : Colors.grey,

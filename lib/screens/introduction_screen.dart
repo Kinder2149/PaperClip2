@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import '../models/game_config.dart';
 import 'main_screen.dart';
+import 'package:flutter/animation.dart';
 
 class IntroductionScreen extends StatefulWidget {
   final VoidCallback onStart;
   final bool showSkipButton;
-  static const DateTime CURRENT_DATE = DateTime(2025, 1, 23, 15, 31, 18);
   static const String CURRENT_USER = 'Kinder2149';
 
   const IntroductionScreen({
@@ -19,14 +19,26 @@ class IntroductionScreen extends StatefulWidget {
   State<IntroductionScreen> createState() => _IntroductionScreenState();
 }
 
-class _IntroductionScreenState extends State<IntroductionScreen>
-    with SingleTickerProviderStateMixin {
+class _IntroductionScreenState extends State<IntroductionScreen> with TickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeIn;
   late Animation<double> _slideUp;
   late AudioPlayer _audioPlayer;
   bool _isMuted = false;
   int _currentPage = 0;
+
+  void _handleNavigation() {
+    // S'assurer que le context est valide
+    if (!mounted) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const MainScreen()),
+        );
+      }
+    });
+  }
 
   // Mise à jour du contenu avec des constantes
   final List<Map<String, String>> _introPages = [
@@ -179,50 +191,54 @@ Toutes vos ressources doivent être consacrées à cette mission cruciale.""",
                       opacity: _fadeIn,
                       child: Transform.translate(
                         offset: Offset(0, _slideUp.value),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            if (_currentPage > 0)
-                              TextButton(
-                                onPressed: () {
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              if (_currentPage > 0) ...[
+                                TextButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      _currentPage--;
+                                    });
+                                  },
+                                  child: const Text(
+                                    'PRÉCÉDENT',
+                                    style: TextStyle(color: Colors.white70),
+                                  ),
+                                ),
+                                const SizedBox(width: 20),
+                              ],
+                              ElevatedButton(
+                                onPressed: _currentPage < _introPages.length - 1
+                                    ? () {
                                   setState(() {
-                                    _currentPage--;
+                                    _currentPage++;
                                   });
-                                },
-                                child: const Text(
-                                  'PRÉCÉDENT',
-                                  style: TextStyle(color: Colors.white70),
+                                }
+                                    : _handleNavigation,
+                                style: ElevatedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 40,
+                                    vertical: 20,
+                                  ),
+                                  backgroundColor: Colors.white.withOpacity(0.9),
+                                  foregroundColor: Colors.deepPurple[900],
+                                ),
+                                child: Text(
+                                  _currentPage < _introPages.length - 1
+                                      ? 'SUIVANT'
+                                      : 'INITIALISER LE SYSTÈME',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1,
+                                  ),
                                 ),
                               ),
-                            const SizedBox(width: 20),
-                            ElevatedButton(
-                              onPressed: _currentPage < _introPages.length - 1
-                                  ? () {
-                                setState(() {
-                                  _currentPage++;
-                                });
-                              }
-                                  : widget.onStart,
-                              style: ElevatedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 40,
-                                  vertical: 20,
-                                ),
-                                backgroundColor: Colors.white.withOpacity(0.9),
-                                foregroundColor: Colors.deepPurple[900],
-                              ),
-                              child: Text(
-                                _currentPage < _introPages.length - 1
-                                    ? 'SUIVANT'
-                                    : 'INITIALISER LE SYSTÈME',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 1,
-                                ),
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -256,7 +272,7 @@ Toutes vos ressources doivent être consacrées à cette mission cruciale.""",
               top: 40,
               left: 20,
               child: TextButton(
-                onPressed: widget.onStart,
+                onPressed: _handleNavigation,  // Utilisez la même méthode
                 child: const Text(
                   'PASSER',
                   style: TextStyle(color: Colors.white70),

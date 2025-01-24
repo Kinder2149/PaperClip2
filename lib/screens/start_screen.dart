@@ -133,18 +133,20 @@ class _StartScreenState extends State<StartScreen> {
                 try {
                   await context.read<GameState>().startNewGame(gameName);
                   if (context.mounted) {
+                    // Créer une classe intermédiaire pour la navigation
+                    final introScreen = IntroductionScreen(
+                      showSkipButton: true,
+                      onStart: () {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(builder: (_) => const MainScreen()),
+                        );
+                      },
+                    );
+
                     Navigator.pushReplacement(
                       context,
-                      MaterialPageRoute(
-                        builder: (context) => IntroductionScreen(
-                          onStart: () {
-                            Navigator.pushReplacement(
-                              context,
-                              MaterialPageRoute(builder: (context) => const MainScreen()),  // MainGame -> MainScreen
-                            );
-                          },
-                        ),
-                      ),
+                      MaterialPageRoute(builder: (_) => introScreen),
                     );
                   }
                 } catch (e) {

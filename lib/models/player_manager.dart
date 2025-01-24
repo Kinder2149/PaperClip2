@@ -19,6 +19,7 @@ class Upgrade {
   final int? requiredLevel;
   final Map<String, dynamic>? requirements;
 
+
   Upgrade({
     required this.id,
     required this.name,
@@ -122,8 +123,8 @@ class PlayerManager extends ChangeNotifier {
   double _paperclips = 0;
   int _autoclippers = 0;
   double _sellPrice = GameConstants.INITIAL_PRICE;
-  Map<String, Upgrade> upgrades = {};
   double maxMetalStorage = 1000.0;
+
 
   final LevelSystem levelSystem;
   Timer? _maintenanceTimer;
@@ -136,12 +137,12 @@ class PlayerManager extends ChangeNotifier {
   }
 
   // Getters
+  double get maintenanceCosts => _maintenanceCosts;
   double get metal => _metal;
   double get money => _money;
   double get paperclips => _paperclips;
   int get autoclippers => _autoclippers;
   double get sellPrice => _sellPrice;
-  double get maintenanceCosts => _maintenanceCosts;
 
 
 
@@ -295,7 +296,7 @@ class PlayerManager extends ChangeNotifier {
   void _triggerAutoSave() {
     // Implémenter la logique de sauvegarde automatique ici
   }
-  final Map<String, Upgrade> _upgrades = {
+  final Map<String, Upgrade> upgrades = {
     'efficiency': Upgrade(
       id: "efficency",
       name: 'Metal Efficiency',
@@ -353,6 +354,17 @@ class PlayerManager extends ChangeNotifier {
       maxLevel: 10,
     ),
   };
+  void updateUpgrade(String id, int level) {
+    if (upgrades.containsKey(id)) {
+      upgrades[id]!.level = level;
+      notifyListeners();
+    }
+  }
+  int getMarketingLevel() {
+    return upgrades['marketing']?.level ?? 0;
+  }
+
+
 
   Map<String, dynamic> toJson() => {
     'metal': _metal,

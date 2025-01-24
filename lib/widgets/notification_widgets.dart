@@ -23,11 +23,13 @@ class _GlobalNotificationOverlayState extends State<GlobalNotificationOverlay> {
   @override
   void initState() {
     super.initState();
-    EventManager.notificationStream.addListener(_handleNotification);
+    // Utiliser l'instance au lieu de l'accès statique
+    EventManager.instance.notificationStream.addListener(_handleNotification);
   }
 
   void _handleNotification() {
-    final notification = EventManager.notificationStream.value;
+    // Utiliser l'instance
+    final notification = EventManager.instance.notificationStream.value;
     if (notification != null) {
       _showNotificationOverlay(notification);
     }
@@ -112,7 +114,7 @@ class _GlobalNotificationOverlayState extends State<GlobalNotificationOverlay> {
 
   @override
   void dispose() {
-    EventManager.notificationStream.removeListener(_handleNotification);
+    EventManager.instance.notificationStream.removeListener(_handleNotification);
     _overlayEntry?.remove();
     super.dispose();
   }
@@ -124,7 +126,7 @@ class EventNotificationOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<NotificationEvent?>(
-      valueListenable: EventManager.notificationStream,
+      valueListenable: EventManager.instance.notificationStream,
       builder: (context, notification, child) {
         if (notification == null) return const SizedBox.shrink();
 

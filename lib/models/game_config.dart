@@ -8,11 +8,15 @@ class GameConstants {
   static const double METAL_PACK_AMOUNT = 100.0;
   static const double MIN_METAL_PRICE = 14.0;
   static const double MAX_METAL_PRICE = 39.0;
+  static const double INITIAL_STORAGE_CAPACITY = 1000.0;
+  static const double BASE_EFFICIENCY = 1.0;
+  static const double RESOURCE_DECAY_RATE = 0.01;
+  static const double STORAGE_UPGRADE_MULTIPLIER = 0.5;
+  static const double EFFICIENCY_UPGRADE_MULTIPLIER = 0.1;
+  static const double MAINTENANCE_EFFICIENCY_MULTIPLIER = 0.1;
+
   //  les constantes d'intro
-  static const String INTRO_TITLE_1 = "Bienvenue dans PaperClip";
-  static const String INTRO_TITLE_2 = "Apprenez les bases";
-  static const String INTRO_TITLE_3 = "Commencez votre aventure";
-  static const String INTRO_AUDIO_PATH = "assets/audio/intro.wav";
+
 
   // Clés de sauvegarde
   static const String SAVE_KEY = 'paperclip_game_save';
@@ -23,10 +27,34 @@ class GameConstants {
   static const double MIN_PRICE = 0.01;
   static const double MAX_PRICE = 0.50;
   static const double INITIAL_MARKET_METAL = 1500.0;
+  static const int MAX_COMBO_COUNT = 5;
+  static const double COMBO_MULTIPLIER = 0.1;  // Pour le calcul du multiplicateur de combo
+  static const double DAILY_BONUS_AMOUNT = 10.0;
 
   // Durées
-  static const Duration NOTIFICATION_DURATION = Duration(seconds: 5);
+  static const Duration AUTO_SAVE_INTERVAL = Duration(minutes: 5);
+  static const Duration MAINTENANCE_INTERVAL = Duration(minutes: 1);
+  static const Duration MARKET_UPDATE_INTERVAL = Duration(milliseconds: 500);
+  static const Duration PRODUCTION_INTERVAL = Duration(seconds: 1);
+  static const Duration METAL_PRICE_UPDATE_INTERVAL = Duration(seconds: 4);
   static const Duration EVENT_MAX_AGE = Duration(days: 1);
+
+
+
+
+  //  "Expérience et progression"
+  static const double MANUAL_PRODUCTION_XP = 2.0;
+  static const double AUTO_PRODUCTION_XP = 0.1;
+  static const double SALE_BASE_XP = 0.3;
+  static const double AUTOCLIPPER_PURCHASE_XP = 3.0;
+  static const double UPGRADE_XP_MULTIPLIER = 2.0;
+  static const double XP_BOOST_MULTIPLIER = 2.0;
+  // À ajouter dans une nouvelle section "Améliorations"
+  static const double EFFICIENCY_UPGRADE_BASE = 0.5;
+  static const double SPEED_UPGRADE_BASE = 0.20;
+  static const double BULK_UPGRADE_BASE = 0.35;
+  static const double QUALITY_UPGRADE_BASE = 0.10;
+  static const double AUTOMATION_DISCOUNT_BASE = 0.10;
 
   // Limites système
   static const int MAX_STORED_EVENTS = 100;
@@ -45,6 +73,9 @@ class GameConstants {
   // Prix optimaux
   static const double OPTIMAL_PRICE_LOW = 0.25;
   static const double OPTIMAL_PRICE_HIGH = 0.35;
+  // Niveaux de déblocage
+  static const int MARKET_UNLOCK_LEVEL = 7;
+  static const int UPGRADES_UNLOCK_LEVEL = 5;
 
   // Difficultés et multiplicateurs
   static const double BASE_DIFFICULTY = 1.0;
@@ -57,11 +88,22 @@ class GameConstants {
   // Seuils de ressources
   static const double WARNING_THRESHOLD = 1000.0;
   static const double CRITICAL_THRESHOLD = 500.0;
+  static const double MARKET_DEPLETION_THRESHOLD = 750.0;
+  static const double DEFAULT_MARKET_SATURATION = 100.0;
+  static const int MAX_SALES_HISTORY = 100;
+  static const double MARKET_EVENT_CHANCE = 0.05;
 
   // Information de version
   static const String VERSION = '1.0.0';
   static const String DEVELOPER = 'Kinder2149';
   static const String LAST_UPDATE = '23/01/2025';
+
+  static const String DEFAULT_GAME_NAME_PREFIX = 'Partie';
+  static const String APP_TITLE = 'Paperclip Game';
+  static const String INTRO_TITLE_1 = "INITIALISATION";
+  static const String INTRO_TITLE_2 = "PRODUCTION";
+  static const String INTRO_TITLE_3 = "OPTIMISATION";
+  static const String INTRO_AUDIO_PATH = "assets/audio/intro.mp3";
 }
 
 /// Énumérations de jeu

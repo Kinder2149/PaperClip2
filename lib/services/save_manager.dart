@@ -32,13 +32,15 @@ class SaveGame {
   });
 
   factory SaveGame.fromJson(Map<String, dynamic> json) {
+    // Assurez-vous que les données sont correctement extraites
     return SaveGame(
-      name: json['name'],
-      lastSaveTime: DateTime.parse(json['lastSaveTime']),
-      gameData: json['gameData'],
-      version: json['version'],
+      name: json['name'] as String? ?? '',
+      lastSaveTime: DateTime.parse(json['timestamp'] as String? ?? DateTime.now().toIso8601String()),
+      gameData: json['gameData'] as Map<String, dynamic>? ?? {},
+      version: json['version'] as String? ?? GameConstants.VERSION,
     );
   }
+
 
   Map<String, dynamic> toJson() => {
     'name': name,
@@ -62,9 +64,14 @@ class SaveManager {
   static Future<void> saveGame(GameState gameState, String gameName) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final gameData = _validateGameData(gameState.prepareGameData());
+      final saveData = {
+        'name': gameName,
+        'timestamp': DateTime.now().toIso8601String(),
+        'version': GameConstants.VERSION,
+        'gameData': gameState.prepareGameData(), // Cette méthode doit exister dans GameState
+      };
 
-      await prefs.setString(_getSaveKey(gameName), jsonEncode(gameData));
+      await prefs.setString(_getSaveKey(gameName), jsonEncode(saveData));
     } catch (e) {
       throw SaveError('SAVE_FAILED', 'Erreur lors de la sauvegarde: $e');
     }

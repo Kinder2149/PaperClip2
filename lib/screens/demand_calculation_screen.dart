@@ -27,12 +27,12 @@ class DemandCalculationScreen extends StatelessWidget {
             _buildFactorCard(
               title: 'Prix de Vente',
               description: 'Des prix plus bas augmentent la demande, tandis que des prix plus élevés la réduisent.',
-              currentValue: 'Actuel : ${gameState.sellPrice.toStringAsFixed(2)} €',
+              currentValue: 'Actuel : ${gameState.player.sellPrice.toStringAsFixed(2)} €',
             ),
             _buildFactorCard(
               title: 'Niveau de Marketing',
               description: 'Un niveau de marketing plus élevé augmente la demande.',
-              currentValue: 'Niveau actuel : ${gameState.getMarketingLevel()}',
+              currentValue: 'Niveau actuel : ${gameState.player.getMarketingLevel()}',
             ),
             _buildFactorCard(
               title: 'Réputation',
@@ -42,7 +42,7 @@ class DemandCalculationScreen extends StatelessWidget {
             _buildFactorCard(
               title: 'Demande Actuelle',
               description: 'La demande totale calculée en fonction de tous les facteurs.',
-              currentValue: 'Demande : ${gameState.marketManager.calculateDemand(gameState.sellPrice, gameState.getMarketingLevel()).toStringAsFixed(0)} unités/s',
+              currentValue: 'Demande : ${gameState.marketManager.calculateDemand(gameState.player.sellPrice, gameState.player.getMarketingLevel()).toStringAsFixed(0)} unités/s',
             ),
             SizedBox(height: 16),
             Text(

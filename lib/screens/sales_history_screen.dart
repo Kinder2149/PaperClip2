@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
-import '../models/player_manager.dart';
+import '../models/market.dart';
 
 class SalesHistoryScreen extends StatelessWidget {
   const SalesHistoryScreen({super.key});
@@ -18,7 +18,7 @@ class SalesHistoryScreen extends StatelessWidget {
       ),
       body: Consumer<GameState>(
         builder: (context, gameState, child) {
-          final sales = gameState.marketManager.salesHistory;
+          final sales = gameState.market.salesHistory;
 
           if (sales.isEmpty) {
             return const Center(
@@ -96,12 +96,12 @@ class SalesHistoryScreen extends StatelessWidget {
               children: [
                 _buildSummaryItem(
                   'Revenus Totaux',
-                  '${gameState.money.toStringAsFixed(2)} €',
+                  '${gameState.player.money.toStringAsFixed(2)} €',
                   Icons.euro,
                 ),
                 _buildSummaryItem(
                   'Prix Actuel',
-                  '${gameState.sellPrice.toStringAsFixed(2)} €',
+                  '${gameState.player.sellPrice.toStringAsFixed(2)} €',
                   Icons.price_check,
                 ),
                 _buildSummaryItem(

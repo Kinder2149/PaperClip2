@@ -12,16 +12,20 @@ class EventLogScreen extends StatefulWidget {
 
 class EventLogScreenState extends State<EventLogScreen> {
   List<NotificationEvent> notifications = [];
+  late final EventManager eventManager;
 
   @override
   void initState() {
     super.initState();
+    eventManager = EventManager.instance;
     loadNotifications();
-    EventManager.notificationStream.addListener(_handleNewNotification);
+    // On utilise ValueListenable.addListener sur le notificationStream
+    eventManager.notificationStream.addListener(_handleNewNotification);
   }
 
   void _handleNewNotification() {
-    final notification = EventManager.notificationStream.value;
+    // Récupérer la nouvelle notification depuis le ValueNotifier
+    final notification = eventManager.notificationStream.value;
     if (notification != null) {
       setState(() {
         notifications.insert(0, notification);
@@ -31,19 +35,21 @@ class EventLogScreenState extends State<EventLogScreen> {
 
   void loadNotifications() {
     setState(() {
-      notifications = List.from(notifications);  // Créer une nouvelle liste
+      // Charger les événements existants si nécessaire
+      notifications = List.from(notifications);
     });
   }
 
   void _clearNotifications() {
     setState(() {
       notifications.clear();
+      eventManager.clearEvents();
     });
   }
 
   @override
   void dispose() {
-    EventManager.notificationStream.removeListener(_handleNewNotification);
+    eventManager.notificationStream.removeListener(_handleNewNotification);
     super.dispose();
   }
 
@@ -92,19 +98,6 @@ class EventLogScreenState extends State<EventLogScreen> {
     );
   }
 
-  Color _getPriorityColor(NotificationPriority priority) {
-    switch (priority) {
-      case NotificationPriority.LOW:
-        return Colors.blue;
-      case NotificationPriority.MEDIUM:
-        return Colors.orange;
-      case NotificationPriority.HIGH:
-        return Colors.deepOrange;
-      case NotificationPriority.CRITICAL:
-        return Colors.red;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -141,7 +134,7 @@ class EventLogScreenState extends State<EventLogScreen> {
             child: ListTile(
               leading: Icon(
                 notification.icon,
-                color: _getPriorityColor(notification.priority),
+                color: EventManager.getPriorityColor(notification.priority),
               ),
               title: Text(
                 notification.title,

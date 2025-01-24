@@ -1,4 +1,4 @@
-// lib/screens/main_screen.dart - Partie 1
+// lib/screens/main_screen.dart
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -25,6 +25,8 @@ import 'market_screen.dart';
 import 'upgrades_screen.dart';
 import 'event_log_screen.dart';
 import 'save_load_screen.dart';
+import 'start_screen.dart';
+import 'introduction_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -35,20 +37,21 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
-  final List<String> _titles = ['Production', 'Marché', 'Améliorations'];
-  final List<Widget> _screens = [
-    const ProductionScreen(),
-    const MarketScreen(),
-    const UpgradesScreen(),
-  ];
+  late final List<Widget> _screens;
 
   @override
   void initState() {
     super.initState();
+    // Corriger l'ordre des écrans
+    _screens = [
+      const ProductionScreen(),
+      const MarketScreen(),        // Index 1
+      const UpgradesScreen(),      // Index 2
+    ];
+    // Retirer PlaceholderLockedScreen de la liste initiale
     _initializeGame();
     _playBackgroundMusic();
   }
-
   Future<void> _initializeGame() async {
     final gameState = context.read<GameState>();
     await Future.delayed(Duration.zero);
@@ -84,21 +87,109 @@ class _MainScreenState extends State<MainScreen> {
     int remainingSeconds = seconds % 60;
     return '${hours}h ${minutes}m ${remainingSeconds}s';
   }
-  // lib/screens/main_screen.dart - Partie 2
+
+  Widget _getCurrentScreen(Map<String, bool> visibleScreens) {
+    switch (_selectedIndex) {
+      case 0:
+        return _screens[0];  // Production toujours visible
+      case 1:
+      // Vérifier si le marché est débloqué
+        return visibleScreens['market'] == true
+            ? _screens[1]
+            : const PlaceholderLockedScreen();
+      case 2:
+      // Vérifier si les améliorations sont débloquées
+        return visibleScreens['upgradesSection'] == true
+            ? _screens[2]
+            : const PlaceholderLockedScreen();
+      default:
+        return _screens[0];
+    }
+  }
+
+  List<NavigationDestination> _buildNavigationDestinations(Map<String, bool> visibleScreens) {
+    return [
+      const NavigationDestination(
+        icon: Icon(Icons.factory_outlined),
+        selectedIcon: Icon(Icons.factory),
+        label: 'Production',
+      ),
+      NavigationDestination(
+        icon: Icon(visibleScreens['market'] == true
+            ? Icons.shopping_cart_outlined
+            : Icons.lock_outline),
+        selectedIcon: Icon(visibleScreens['market'] == true
+            ? Icons.shopping_cart
+            : Icons.lock),
+        label: visibleScreens['market'] == true
+            ? 'Marché'
+            : 'Niveau ${GameConstants.MARKET_UNLOCK_LEVEL}',
+      ),
+      NavigationDestination(
+        icon: Icon(visibleScreens['upgradesSection'] == true
+            ? Icons.upgrade_outlined
+            : Icons.lock_outline),
+        selectedIcon: Icon(visibleScreens['upgradesSection'] == true
+            ? Icons.upgrade
+            : Icons.lock),
+        label: visibleScreens['upgradesSection'] == true
+            ? 'Améliorations'
+            : 'Niveau ${GameConstants.UPGRADES_UNLOCK_LEVEL}',
+      ),
+    ];
+  }
+
+
+  void _showLevelInfoDialog(BuildContext context, LevelSystem levelSystem) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Niveau ${levelSystem.level}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('XP: ${levelSystem.experience}/${levelSystem.experienceForNextLevel}'),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: LinearProgressIndicator(
+                value: levelSystem.experienceProgress,
+                backgroundColor: Colors.grey[200],
+                valueColor: const AlwaysStoppedAnimation<Color>(Colors.green),
+                minHeight: 10,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text('Multiplicateur: x${levelSystem.productionMultiplier.toStringAsFixed(1)}'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Consumer<GameState>(
       builder: (context, gameState, child) {
         final backgroundMusicService = context.watch<BackgroundMusicService>();
+        final visibleScreens = gameState.getVisibleScreenElements();
+
         return Scaffold(
           appBar: AppBar(
-            title: Text(_titles[_selectedIndex], style: const TextStyle(color: Colors.white)),
+            title: Text(_getTitleForIndex(_selectedIndex),
+                style: const TextStyle(color: Colors.white)),
             centerTitle: true,
             backgroundColor: Colors.deepPurple[700],
             leading: Padding(
               padding: const EdgeInsets.all(8.0),
-              child: _buildLevelIndicator(gameState.levelSystem),
+              child: _buildLevelIndicator(gameState.level),
             ),
             actions: [
               _buildNotificationButton(),
@@ -119,47 +210,31 @@ class _MainScreenState extends State<MainScreen> {
           ),
           body: Stack(
             children: [
-              _screens[_selectedIndex],
+              _getCurrentScreen(visibleScreens),
               const EventNotificationOverlay(),
             ],
           ),
           bottomNavigationBar: NavigationBar(
             selectedIndex: _selectedIndex,
             onDestinationSelected: (index) => setState(() => _selectedIndex = index),
-            destinations: _buildNavigationDestinations(gameState.getVisibleScreenElements()),
+            destinations: _buildNavigationDestinations(visibleScreens),
           ),
         );
       },
     );
   }
 
-  List<NavigationDestination> _buildNavigationDestinations(Map<String, bool> visibleScreens) {
-    final List<NavigationDestination> destinations = [];
-
-    // Production toujours visible
-    destinations.add(const NavigationDestination(
-      icon: Icon(Icons.factory_outlined),
-      selectedIcon: Icon(Icons.factory),
-      label: 'Production',
-    ));
-
-    if (visibleScreens['market'] == true) {
-      destinations.add(const NavigationDestination(
-        icon: Icon(Icons.shopping_cart_outlined),
-        selectedIcon: Icon(Icons.shopping_cart),
-        label: 'Marché',
-      ));
+  String _getTitleForIndex(int index) {
+    switch (index) {
+      case 0:
+        return 'Production';
+      case 1:
+        return 'Marché';
+      case 2:
+        return 'Améliorations';
+      default:
+        return 'PaperClip Game';
     }
-
-    if (visibleScreens['upgrades'] == true) {
-      destinations.add(const NavigationDestination(
-        icon: Icon(Icons.upgrade_outlined),
-        selectedIcon: Icon(Icons.upgrade),
-        label: 'Améliorations',
-      ));
-    }
-
-    return destinations;
   }
 
   Widget _buildLevelIndicator(LevelSystem levelSystem) {
@@ -203,7 +278,7 @@ class _MainScreenState extends State<MainScreen> {
     return Stack(
       children: [
         IconButton(
-          icon: const Icon(Icons.notifications),
+          icon: const Icon(Icons.notifications, color: Colors.white),
           onPressed: () => Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => const EventLogScreen()),
@@ -239,41 +314,6 @@ class _MainScreenState extends State<MainScreen> {
           ),
         ),
       ],
-    );
-  }
-
-  void _showAboutInfo(BuildContext context) {
-    final now = DateTime(2025, 1, 23, 15, 26, 21); // Current timestamp
-    final notification = NotificationEvent(
-      title: 'À propos',
-      description: 'Version ${GameConstants.VERSION}',
-      detailedDescription: """
-PaperClip Game
-Version ${GameConstants.VERSION}
-
-Développé avec ❤️ par ${'Kinder2149'}
-
-Fonctionnalités:
-• Production de trombones
-• Gestion du marché
-• Système d'améliorations
-• Événements dynamiques
-
-Dernière mise à jour: ${now.toIso8601String()}
-""",
-      icon: Icons.info,
-      priority: NotificationPriority.LOW,
-      additionalData: {
-        'Version': GameConstants.VERSION,
-        'Développeur': 'Kinder2149',
-        'Date de mise à jour': now.toIso8601String(),
-      },
-      canBeSuppressed: false,
-    );
-
-    NotificationManager.showGameNotification(
-      context,
-      event: notification,
     );
   }
 
@@ -314,9 +354,26 @@ Dernière mise à jour: ${now.toIso8601String()}
                 leading: const Icon(Icons.save),
                 title: const Text('Sauvegarder'),
                 onTap: () async {
-                  await gameState.saveGame();
-                  if (context.mounted) {
-                    Navigator.pop(context);
+                  if (gameState.gameName != null) {
+                    await gameState.saveGame(gameState.gameName!);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Partie sauvegardée'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                      Navigator.pop(context);
+                    }
+                  } else {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Erreur: Aucun nom de partie défini'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
                   }
                 },
               ),
@@ -331,6 +388,95 @@ Dernière mise à jour: ${now.toIso8601String()}
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _showAboutInfo(BuildContext context) {
+    final notification = NotificationEvent(
+      title: 'À propos',
+      description: 'Version ${GameConstants.VERSION}',
+      detailedDescription: """
+PaperClip Game
+Version ${GameConstants.VERSION}
+
+Développé avec ❤️ par Kinder2149
+
+Fonctionnalités:
+• Production de trombones
+• Gestion du marché
+• Système d'améliorations
+• Événements dynamiques
+""",
+      icon: Icons.info,
+      priority: NotificationPriority.LOW,
+      additionalData: {
+        'Version': GameConstants.VERSION,
+        'Développeur': 'Kinder2149',
+        'Date de mise à jour': DateTime.now().toIso8601String(),
+      },
+      canBeSuppressed: false,
+    );
+
+    // Utiliser EventManager au lieu de NotificationManager
+    EventManager.instance.notificationStream.value = notification;
+
+    // Ou bien si vous préférez utiliser le système d'événements
+    EventManager.instance.addEvent(
+      EventType.SPECIAL_ACHIEVEMENT,
+      'À propos',
+      description: 'Version ${GameConstants.VERSION}',
+      importance: EventImportance.LOW,
+    );
+  }
+}
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => GameState()),
+        Provider(create: (_) => BackgroundMusicService()),
+      ],
+      child: const MyApp(),
+    ),
+  );
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: GameConstants.APP_TITLE,
+      theme: ThemeData(
+        primarySwatch: Colors.deepPurple,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
+      ),
+      home: const StartScreen(), // Changer ici pour commencer avec StartScreen
+    );
+  }
+}
+
+// Widget pour l'écran verrouillé
+class PlaceholderLockedScreen extends StatelessWidget {
+  const PlaceholderLockedScreen({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.lock, size: 64, color: Colors.grey),
+          SizedBox(height: 16),
+          Text(
+            'Débloqué au niveau 7',
+            style: TextStyle(fontSize: 18),
+          ),
+        ],
       ),
     );
   }

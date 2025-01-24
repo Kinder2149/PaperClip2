@@ -6,10 +6,12 @@ import 'game_config.dart';
 import 'event_system.dart';
 import 'resource_manager.dart';
 
+
 class MarketDynamics {
   double marketVolatility = 1.0;
   double marketTrend = 0.0;
   double competitorPressure = 1.0;
+
   Map<String, dynamic> toJson() => {
     'marketVolatility': marketVolatility,
     'marketTrend': marketTrend,
@@ -48,13 +50,10 @@ class SaleRecord {
     required this.revenue,
   });
   Map<String, dynamic> toJson() => {
-    'marketMetalStock': marketMetalStock,
-    'currentMetalPrice': _currentMetalPrice,
-    'reputation': reputation,
-    'marketSaturation': _marketSaturation,
-    'competitionPrice': _competitionPrice,
-    'dynamics': dynamics.toJson(),
-    'salesHistory': salesHistory.map((sale) => sale.toJson()).toList(),
+    'timestamp': timestamp.toIso8601String(),
+    'quantity': quantity,
+    'price': price,
+    'revenue': revenue,
   };
 
 
@@ -95,7 +94,11 @@ class MarketManager extends ChangeNotifier {
   double _currentPrice = 1.0;
   double _competitionPrice = GameConstants.INITIAL_PRICE;
   double _marketSaturation = 100.0;
-  double getMetalPrice() => _currentMetalPrice;
+  double get currentMetalPrice => _currentMetalPrice;
+  bool _isPaused = false;
+  double get currentPrice => _currentPrice;
+  double get competitionPrice => _competitionPrice;
+  double get marketSaturation => _marketSaturation;
 
 
   static const double MARKET_DEPLETION_THRESHOLD = 750.0;
@@ -187,11 +190,11 @@ class MarketManager extends ChangeNotifier {
   }
 
   void _checkMarketDepletion() {
-    if (marketMetalStock <= MARKET_DEPLETION_THRESHOLD) {
+    if (marketMetalStock <= GameConstants.MARKET_DEPLETION_THRESHOLD) {
       EventManager.instance.addEvent(
           EventType.RESOURCE_DEPLETION,
           'Rupture Imminente des Stocks de Métal',
-          description: 'Les réserves de métal du marché sont presque épuisées. Une nouvelle stratégie est nécessaire !',
+          description: 'Les réserves de métal du marché sont presque épuisées.',
           importance: EventImportance.CRITICAL
       );
     }
@@ -205,6 +208,19 @@ class MarketManager extends ChangeNotifier {
     if (isMarketDepletedForNextPhase()) {
       print("Les réserves de métal du marché s'épuisent. Nouvelle stratégie requise !");
     }
+  }
+  void reset() {
+    marketMetalStock = GameConstants.INITIAL_MARKET_METAL;
+    reputation = 1.0;
+    _currentMetalPrice = GameConstants.MIN_METAL_PRICE;
+    _currentPrice = 1.0;
+    _competitionPrice = GameConstants.INITIAL_PRICE;
+    _marketSaturation = 100.0;
+    salesHistory.clear();
+    dynamics.marketVolatility = 1.0;
+    dynamics.marketTrend = 0.0;
+    dynamics.competitorPressure = 1.0;
+    notifyListeners();
   }
 
   void restockMetal() {
@@ -310,9 +326,9 @@ class MarketManager extends ChangeNotifier {
     if (_isPaused) return;
 
     dynamics.updateMarketConditions();
-    _updateMetalPrice();
+    updateMetalPrice();  // Changer _updateMetalPrice en updateMetalPrice
 
-    if (_marketMetalStock <= GameConstants.WARNING_THRESHOLD) {
+    if (marketMetalStock <= GameConstants.WARNING_THRESHOLD) {  // Utiliser marketMetalStock au lieu de _marketMetalStock
       EventManager.instance.addEvent(
           EventType.RESOURCE_DEPLETION,
           'Rupture Imminente des Stocks de Métal',

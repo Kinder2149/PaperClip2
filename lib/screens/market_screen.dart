@@ -6,6 +6,8 @@ import '../models/game_config.dart';
 import '../widgets/chart_widgets.dart';
 import '../widgets/resource_widgets.dart';
 import 'demand_calculation_screen.dart';
+import '../services/save_manager.dart';  // Pour SaveManager
+import '../screens/sales_history_screen.dart';  // Pour SalesHistoryScreen
 
 class MarketScreen extends StatelessWidget {
   const MarketScreen({super.key});
@@ -128,11 +130,11 @@ class MarketScreen extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              'Min: ${MarketManager.MIN_PRICE.toStringAsFixed(2)} €',
+              'Min: ${GameConstants.MIN_PRICE.toStringAsFixed(2)} €',
               style: TextStyle(fontSize: 12, color: Colors.grey[600]),
             ),
             Text(
-              'Max: ${MarketManager.MAX_PRICE.toStringAsFixed(2)} €',
+              'Max: ${GameConstants.MAX_PRICE.toStringAsFixed(2)} €',
               style: TextStyle(fontSize: 12, color: Colors.grey[600]),
             ),
           ],
@@ -142,28 +144,28 @@ class MarketScreen extends StatelessWidget {
             IconButton(
               icon: const Icon(Icons.remove),
               onPressed: () {
-                double newValue = gameState.sellPrice - 0.01;
-                if (newValue >= MarketManager.MIN_PRICE) {
-                  gameState.sellPrice = newValue;
+                double newValue = gameState.player.sellPrice - 0.01;
+                if (newValue >= GameConstants.MIN_PRICE) {
+                  gameState.player.updateSellPrice(newValue);
                 }
               },
             ),
             Expanded(
               child: Slider(
-                value: gameState.sellPrice,
-                min: MarketManager.MIN_PRICE,
-                max: MarketManager.MAX_PRICE,
+                value: gameState.player.sellPrice,
+                min: GameConstants.MIN_PRICE,
+                max: GameConstants.MAX_PRICE,
                 divisions: 200,
-                label: '${gameState.sellPrice.toStringAsFixed(2)} €',
-                onChanged: (value) => gameState.sellPrice = value,
+                label: '${gameState.player.sellPrice.toStringAsFixed(2)} €',
+                onChanged: (value) => gameState.player.updateSellPrice(value),
               ),
             ),
             IconButton(
               icon: const Icon(Icons.add),
               onPressed: () {
-                double newValue = gameState.sellPrice + 0.01;
-                if (newValue <= MarketManager.MAX_PRICE) {
-                  gameState.sellPrice = newValue;
+                double newValue = gameState.player.sellPrice + 0.01;
+                if (newValue <= GameConstants.MAX_PRICE) {
+                  gameState.player.updateSellPrice(newValue);
                 }
               },
             ),
@@ -178,11 +180,11 @@ class MarketScreen extends StatelessWidget {
     return Consumer<GameState>(
       builder: (context, gameState, child) {
         final visibleElements = gameState.getVisibleScreenElements();
-        double demand = gameState.marketManager.calculateDemand(
-            gameState.sellPrice,
-            gameState.getMarketingLevel()
+        double demand = gameState.market.calculateDemand(
+            gameState.player.sellPrice,
+            gameState.player.getMarketingLevel()
         );
-        double profitability = demand * gameState.sellPrice;
+        double profitability = demand * gameState.player.sellPrice;
 
         return Padding(
           padding: const EdgeInsets.all(12.0),
@@ -197,7 +199,7 @@ class MarketScreen extends StatelessWidget {
                     children: [
                       _buildMarketCard(
                         title: 'Stock de Métal',
-                        value: '${gameState.metal.toStringAsFixed(1)}',
+                        value: '${gameState.player.metal.toStringAsFixed(1)}',
                         icon: Icons.inventory_2,
                         color: Colors.grey.shade200,
                         tooltip: 'Métal disponible pour la production',
@@ -206,7 +208,7 @@ class MarketScreen extends StatelessWidget {
                           'Stock de Métal',
                           'Quantité de métal disponible pour la production.\n'
                               'Capacité maximale: ${gameState.maxMetalStorage}\n'
-                              'Prix actuel: ${gameState.currentMetalPrice.toStringAsFixed(2)} €',
+                              'Prix actuel: ${gameState.market.currentMetalPrice.toStringAsFixed(2)} €',
                         ),
                         trailing: Text(
                           '/ ${gameState.maxMetalStorage}',
@@ -236,7 +238,7 @@ class MarketScreen extends StatelessWidget {
 
                         _buildMarketCard(
                           title: 'Marketing',
-                          value: 'Niveau ${gameState.getMarketingLevel()}',
+                          value: 'Niveau ${gameState.player.getMarketingLevel()}',
                           icon: Icons.campaign,
                           color: Colors.orange.shade100,
                           tooltip: 'Augmente la visibilité',
@@ -259,7 +261,7 @@ class MarketScreen extends StatelessWidget {
                             context,
                             'Rentabilité',
                             'Estimation des revenus par minute basée sur:\n'
-                                '- Prix de vente: ${gameState.sellPrice.toStringAsFixed(2)} €\n'
+                                '- Prix de vente: ${gameState.player.sellPrice.toStringAsFixed(2)} €\n'
                                 '- Demande estimée: ${demand.toStringAsFixed(1)} unités/min\n'
                                 '- Revenus potentiels: ${profitability.toStringAsFixed(1)} €/min',
                           ),
@@ -287,7 +289,7 @@ class MarketScreen extends StatelessWidget {
                                       ),
                                     ),
                                     Text(
-                                      '${gameState.sellPrice.toStringAsFixed(2)} €',
+                                      '${gameState.player.sellPrice.toStringAsFixed(2)} €',
                                       style: const TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.bold,

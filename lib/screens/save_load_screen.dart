@@ -5,11 +5,24 @@ import '../services/save_manager.dart';
 import '../models/game_config.dart';
 import 'package:paperclip2/screens/main_screen.dart';
 
-class SaveLoadScreen extends StatelessWidget {
+class SaveLoadScreen extends StatefulWidget {
   const SaveLoadScreen({Key? key}) : super(key: key);
 
+  @override
+  State<SaveLoadScreen> createState() => _SaveLoadScreenState();
+}
+
+class _SaveLoadScreenState extends State<SaveLoadScreen> {
+  // Ajouter une clé pour forcer le rafraîchissement du FutureBuilder
+  Key _futureBuilderKey = UniqueKey();
   String _formatDateTime(DateTime dateTime) {
     return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour}:${dateTime.minute}';
+  }
+
+  void _refreshSaves() {
+    setState(() {
+      _futureBuilderKey = UniqueKey(); // Créer une nouvelle clé force le rebuild
+    });
   }
 
   @override
@@ -17,10 +30,17 @@ class SaveLoadScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Parties sauvegardées'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _refreshSaves,
+          ),
+        ],
       ),
       body: Consumer<GameState>(
         builder: (context, gameState, child) {
           return FutureBuilder<List<SaveGame>>(
+            key: _futureBuilderKey, // Utiliser la clé ici
             future: SaveManager.getAllSaves(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
@@ -41,12 +61,13 @@ class SaveLoadScreen extends StatelessWidget {
                 itemCount: games.length,
                 itemBuilder: (context, index) {
                   final game = games[index];
-                  // Récupération des données de sauvegarde
-                  final paperclips = game.gameData['paperclips'] ?? 0;
-                  final money = game.gameData['money'] ?? 0;
-                  final metal = game.gameData['metal'] ?? 0;
-                  final autoclippers = game.gameData['autoclippers'] ?? 0;
-                  final level = (game.gameData['levelSystem'] as Map<String, dynamic>?)?['level'] ?? 1;
+                  final gameData = game.gameData;
+                  final paperclips = gameData['paperclips'] ?? 0;
+                  final money = gameData['money'] ?? 0;
+                  final metal = gameData['metal'] ?? 0;
+                  final autoclippers = gameData['autoclippers'] ?? 0;
+                  final levelSystem = gameData['levelSystem'] as Map<String, dynamic>? ?? {};
+                  final level = levelSystem['level'] ?? 1;
                   final totalPaperclips = game.gameData['totalPaperclipsProduced'] ?? 0;
 
                   return Card(

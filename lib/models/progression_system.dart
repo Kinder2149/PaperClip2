@@ -370,11 +370,24 @@ class LevelSystem extends ChangeNotifier {
     notifyListeners();
   }
   void reset() {
-    // Réinitialisation du système
+    // Réinitialisation des valeurs de base
     _experience = 0;
     _level = 1;
-    // autres réinitialisations nécessaires
+    _currentPath = ProgressionPath.PRODUCTION;
+    _xpMultiplier = 1.0;
+
+    // Réinitialisation des systèmes
+    comboSystem.setComboCount(0);
+    dailyBonus.setClaimed(false);
+    featureUnlocker.reset();  // Utilisation de la nouvelle méthode reset
+
+    // Réinitialisation des callbacks
+    onLevelUp = null;
+
+    // Notification des changements
+    notifyListeners();
   }
+
 
 
   void addManualProduction() {
@@ -485,6 +498,10 @@ class LevelSystem extends ChangeNotifier {
 
 /// Gestionnaire des fonctionnalités débloquables
 class GameFeatureUnlocker {
+  // Map pour stocker l'état des fonctionnalités
+  final Map<UnlockableFeature, bool> _featureStates = {};
+
+  // Map des niveaux requis pour chaque fonctionnalité
   final Map<UnlockableFeature, int> _featureLevelRequirements = {
     UnlockableFeature.MANUAL_PRODUCTION: 1,
     UnlockableFeature.METAL_PURCHASE: 1,
@@ -493,6 +510,14 @@ class GameFeatureUnlocker {
     UnlockableFeature.MARKET_SCREEN: 7,
     UnlockableFeature.MARKET_SALES: 9,
   };
+
+
+  void reset() {
+    // Réinitialiser tous les états des fonctionnalités
+    for (var feature in UnlockableFeature.values) {
+      _featureStates[feature] = false;
+    }
+  }
 
   bool isFeatureUnlocked(UnlockableFeature feature, int currentLevel) {
     return currentLevel >= (_featureLevelRequirements[feature] ?? 100);
@@ -506,6 +531,7 @@ class GameFeatureUnlocker {
         .map((entry) => entry.key)
         .toList();
   }
+
 
   Map<String, bool> getVisibleScreenElements(int currentLevel) {
     return {

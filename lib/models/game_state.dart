@@ -13,7 +13,6 @@ import 'resource_manager.dart';
 import 'game_state_interfaces.dart';
 import '../services/save_manager.dart';
 import 'dart:convert';
-import 'package:flutter/material.dart';
 import '../utils/notification_manager.dart';
 
 class GameState extends ChangeNotifier {
@@ -37,6 +36,7 @@ class GameState extends ChangeNotifier {
   DateTime? _lastSaveTime;
   double _maintenanceCosts = 0.0;
 
+
   // Getters
   bool get isInitialized => _isInitialized;
   bool get isPaused => _isPaused;
@@ -47,17 +47,21 @@ class GameState extends ChangeNotifier {
   double get maintenanceCosts => _maintenanceCosts;
   Map<String, Upgrade> get upgrades => playerManager.upgrades;
   double get maxMetalStorage => playerManager.maxMetalStorage;
-  double get currentMetalPrice => marketManager.currentMetalPrice();
+  PlayerManager get player => playerManager;
+  MarketManager get market => marketManager;
+  ResourceManager get resources => resourceManager;
+  LevelSystem get level => levelSystem;
 
   bool _isInitialized = false;
   late final PlayerManager playerManager;
   late final MarketManager marketManager;
   late final LevelSystem levelSystem;
   late final MissionSystem missionSystem;
+  late final ResourceManager resourceManager;
 
   double get autocliperCost {
-    double baseCost = GameConstants.BASE_AUTOCLIPPER_COST * (1.15 * playerManager.autoclippers);
-    double automationDiscount = 1.0 - ((playerManager.upgrades['automation']?.level ?? 0) * 0.10);
+    double baseCost = GameConstants.BASE_AUTOCLIPPER_COST * (1.15 * player.autoclippers);
+    double automationDiscount = 1.0 - ((player.upgrades['automation']?.level ?? 0) * 0.10);
     return baseCost * automationDiscount;
   }
 
@@ -69,8 +73,8 @@ class GameState extends ChangeNotifier {
   }
 
   void _initializeGame() {
-    if (_isInitialized) return;
 
+    // Initialisation des systèmes dans le bon ordre
     levelSystem = LevelSystem()
       ..onLevelUp = _handleLevelUp;
 
@@ -79,23 +83,32 @@ class GameState extends ChangeNotifier {
     marketManager = MarketManager(MarketDynamics())
       ..updateMarket();
 
+    resourceManager = ResourceManager();  // Initialisation du ResourceManager
+
     missionSystem = MissionSystem()
       ..initialize()
       ..onMissionCompleted = _handleMissionCompleted;
 
     _startTimers();
-    _isInitialized = true;
     notifyListeners();
   }
 
+
   void reset() {
     _stopTimers();
-    playerManager.resetResources();
-    levelSystem.reset();
+    player.resetResources();
+    level.reset();
     marketManager = MarketManager(MarketDynamics());
     missionSystem = MissionSystem()..initialize();
     _startTimers();
+    // Réinitialiser _isInitialized
+    _isInitialized = false;
     notifyListeners();
+  }
+
+  void resetMarket() {
+    marketManager = MarketManager(MarketDynamics());
+    market.updateMarket();
   }
 
   // Gestion des timers
@@ -136,15 +149,15 @@ class GameState extends ChangeNotifier {
     );
   }
   void _applyMaintenanceCosts() {
-    if (playerManager.autoclippers == 0) return;
+    if (player.autoclippers == 0) return;
 
-    _maintenanceCosts = playerManager.autoclippers * GameConstants.STORAGE_MAINTENANCE_RATE;
+    _maintenanceCosts = player.autoclippers * GameConstants.STORAGE_MAINTENANCE_RATE;
 
-    if (playerManager.money >= _maintenanceCosts) {
-      playerManager.money -= _maintenanceCosts;
+    if (player.money >= _maintenanceCosts) {
+      player.updateMoney(player.money - _maintenanceCosts);
       notifyListeners();
     } else {
-      playerManager.autoclippers = (playerManager.autoclippers * 0.9).floor();
+      player.updateAutoclippers((player.autoclippers * 0.9).floor());
       EventManager.instance.addEvent(
           EventType.RESOURCE_DEPLETION,
           "Maintenance impayée !",
@@ -155,14 +168,39 @@ class GameState extends ChangeNotifier {
   }
   Map<String, dynamic> prepareGameData() {
     return {
-      'version': GameConstants.VERSION,
       'playerManager': playerManager.toJson(),
       'marketManager': marketManager.toJson(),
       'levelSystem': levelSystem.toJson(),
       'missionSystem': missionSystem.toJson(),
       'totalTimePlayedInSeconds': _totalTimePlayedInSeconds,
       'totalPaperclipsProduced': _totalPaperclipsProduced,
+      'paperclips': playerManager.paperclips,
+      'money': playerManager.money,
+      'metal': playerManager.metal,
+      'autoclippers': playerManager.autoclippers,
     };
+  }
+  Future<void> loadGame(String name) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedData = prefs.getString('save_$name');
+
+      if (savedData == null) {
+        throw Exception('Sauvegarde non trouvée');
+      }
+
+      final gameData = jsonDecode(savedData);
+      _gameName = name;
+      _loadGameData(gameData);
+      _startTimers();
+
+      // Mettre _isInitialized à true seulement après le chargement réussi
+      _isInitialized = true;
+      notifyListeners();
+    } catch (e) {
+      print('Error loading game: $e');
+      rethrow;
+    }
   }
 
   void _stopTimers() {
@@ -193,42 +231,42 @@ class GameState extends ChangeNotifier {
   }
 
   double _calculateManualProduction(double elapsed) {
-    if (playerManager.metal < GameConstants.METAL_PER_PAPERCLIP) return 0;
+    if (player.metal < GameConstants.METAL_PER_PAPERCLIP) return 0;
 
     double metalUsed = GameConstants.METAL_PER_PAPERCLIP;
-    double efficiencyBonus = 1.0 + (playerManager.upgrades['efficiency']?.level ?? 0) * 0.1;
+    double efficiencyBonus = 1.0 + (player.upgrades['efficiency']?.level ?? 0) * 0.1;
     metalUsed /= efficiencyBonus;
 
-    playerManager.metal -= metalUsed;
+    player.updateMetal(player.metal - metalUsed);
     return 1.0 * elapsed;
   }
 
   double _calculateAutoProduction(double elapsed) {
-    if (playerManager.autoclippers == 0) return 0;
-    if (playerManager.metal < GameConstants.MIN_METAL_CONSUMPTION) return 0;
+    if (player.autoclippers == 0) return 0;
+    if (player.metal < GameConstants.MIN_METAL_CONSUMPTION) return 0;
 
-    double baseProduction = playerManager.autoclippers * elapsed;
-    double efficiencyBonus = 1.0 + (playerManager.upgrades['efficiency']?.level ?? 0) * 0.15;
-    double speedBonus = 1.0 + (playerManager.upgrades['speed']?.level ?? 0) * 0.20;
-    double bulkBonus = 1.0 + (playerManager.upgrades['bulk']?.level ?? 0) * 0.35;
+    double baseProduction = player.autoclippers * elapsed;
+    double efficiencyBonus = 1.0 + (player.upgrades['efficiency']?.level ?? 0) * 0.15;
+    double speedBonus = 1.0 + (player.upgrades['speed']?.level ?? 0) * 0.20;
+    double bulkBonus = 1.0 + (player.upgrades['bulk']?.level ?? 0) * 0.35;
 
     double totalProduction = baseProduction * speedBonus * bulkBonus;
     double metalNeeded = totalProduction * GameConstants.METAL_PER_PAPERCLIP / efficiencyBonus;
 
-    if (metalNeeded > playerManager.metal) {
-      totalProduction = (playerManager.metal * efficiencyBonus) / GameConstants.METAL_PER_PAPERCLIP;
-      metalNeeded = playerManager.metal;
+    if (metalNeeded > player.metal) {
+      totalProduction = (player.metal * efficiencyBonus) / GameConstants.METAL_PER_PAPERCLIP;
+      metalNeeded = player.metal;
     }
 
-    playerManager.metal -= metalNeeded;
+    player.updateMetal(player.metal - metalNeeded);
     return totalProduction;
   }
   void _applyProduction(double amount) {
     if (amount <= 0) return;
 
-    playerManager.paperclips += amount;
+    player.updatePaperclips(player.paperclips + amount);
     _totalPaperclipsProduced += amount.floor();
-    levelSystem.addAutomaticProduction(amount.floor());
+    level.addAutomaticProduction(amount.floor());
 
     missionSystem.updateMissions(
         MissionType.PRODUCE_PAPERCLIPS,
@@ -239,29 +277,29 @@ class GameState extends ChangeNotifier {
   void _processMarket() {
     if (_isPaused) return;
 
-    marketManager.updateMarket();
+    market.updateMarket();
 
-    double demand = marketManager.calculateDemand(
-        playerManager.sellPrice,
-        playerManager.upgrades['marketing']?.level ?? 0
+    double demand = market.calculateDemand(
+        player.sellPrice,
+        player.upgrades['marketing']?.level ?? 0
     );
 
-    int sales = min(demand.floor(), playerManager.paperclips.floor());
+    int sales = min(demand.floor(), player.paperclips.floor());
     if (sales > 0) {
       _processSales(sales);
     }
   }
 
   void _processSales(int quantity) {
-    double qualityBonus = 1.0 + (playerManager.upgrades['quality']?.level ?? 0) * 0.1;
-    double salePrice = playerManager.sellPrice * qualityBonus;
+    double qualityBonus = 1.0 + (player.upgrades['quality']?.level ?? 0) * 0.1;
+    double salePrice = player.sellPrice * qualityBonus;
     double revenue = quantity * salePrice;
 
-    playerManager.paperclips -= quantity;
-    playerManager.money += revenue;
+    player.updatePaperclips(player.paperclips - quantity);
+    player.updateMoney(player.money + revenue);
 
-    marketManager.recordSale(quantity, salePrice);
-    levelSystem.addSale(quantity, salePrice);
+    market.recordSale(quantity, salePrice);
+    level.addSale(quantity, salePrice);
 
     missionSystem.updateMissions(
         MissionType.SELL_PAPERCLIPS,
@@ -271,7 +309,7 @@ class GameState extends ChangeNotifier {
 
   // Gestion des notifications et événements
   void checkMetalStorage() {
-    double stockPercentage = playerManager.metal / playerManager.maxMetalStorage;
+    double stockPercentage = player.metal / player.maxMetalStorage;
     if (stockPercentage >= 0.9) {
       final notification = NotificationEvent(
         title: "Stockage Critique",
@@ -280,15 +318,15 @@ class GameState extends ChangeNotifier {
 Votre stockage de métal atteint ses limites !
 
 État actuel :
-• Capacité totale: ${playerManager.maxMetalStorage}
-• Métal stocké: ${playerManager.metal.toInt()}
+• Capacité totale: ${player.maxMetalStorage}
+• Métal stocké: ${player.metal.toInt()}
 • Taux d'occupation: ${(stockPercentage * 100).toInt()}%
 
 Actions recommandées :
 1. Augmentez votre capacité de stockage
 2. Accélérez la production
 3. Vendez l'excès de métal
-      """,
+            """,
         icon: Icons.warehouse,
         priority: NotificationPriority.HIGH,
       );
@@ -315,13 +353,13 @@ Actions recommandées :
 
   // Actions du jeu
   void buyMetal() {
-    double metalPrice = marketManager.getCurrentPrice();
-    if (playerManager.money >= metalPrice) {
+    double metalPrice = market.currentMetalPrice;
+    if (player.money >= metalPrice) {
       double amount = GameConstants.METAL_PACK_AMOUNT;
 
-      if (playerManager.metal + amount <= playerManager.maxMetalStorage) {
-        playerManager.metal += amount;
-        playerManager.money -= metalPrice;
+      if (player.metal + amount <= player.maxMetalStorage) {
+        player.updateMetal(player.metal + amount);
+        player.updateMoney(player.money - metalPrice);
         notifyListeners();
       } else {
         EventManager.instance.addEvent(
@@ -335,42 +373,39 @@ Actions recommandées :
   }
 
   void buyAutoclipper() {
-    if (playerManager.money >= autocliperCost) {
-      playerManager.money -= autocliperCost;
-      playerManager.autoclippers++;
-      levelSystem.addAutoclipperPurchase();
+    if (player.money >= autocliperCost) {
+      player.updateMoney(player.money - autocliperCost);
+      player.updateAutoclippers(player.autoclippers + 1);
+      level.addAutoclipperPurchase();
       notifyListeners();
     }
   }
 
   void producePaperclip() {
-    if (playerManager.metal >= GameConstants.METAL_PER_PAPERCLIP) {
-      playerManager.paperclips++;
+    if (player.metal >= GameConstants.METAL_PER_PAPERCLIP) {
+      player.updatePaperclips(player.paperclips + 1);
       _totalPaperclipsProduced++;
-      playerManager.metal -= GameConstants.METAL_PER_PAPERCLIP;
-      levelSystem.addManualProduction();
+      player.updateMetal(player.metal - GameConstants.METAL_PER_PAPERCLIP);
+      level.addManualProduction();
       notifyListeners();
     }
   }
 
   void setSellPrice(double newPrice) {
-    if (marketManager.isPriceExcessive(newPrice)) {
+    if (market.isPriceExcessive(newPrice)) {
       final notification = NotificationEvent(
         title: "Prix Excessif!",
         description: "Ce prix pourrait affecter vos ventes",
-        detailedDescription: marketManager.getPriceRecommendation(),
+        detailedDescription: market.getPriceRecommendation(),
         icon: Icons.price_change,
         priority: NotificationPriority.HIGH,
       );
 
       if (_context != null) {
-        NotificationManager.showGameNotification(
-          _context!,
-          event: notification,
-        );
+        NotificationManager.showGameNotification(_context!, event: notification);
       }
     }
-    playerManager.sellPrice = newPrice;
+    player.updateSellPrice(newPrice);  // Utiliser updateSellPrice au lieu de l'affectation directe
     notifyListeners();
   }
 
@@ -386,7 +421,7 @@ Actions recommandées :
           break;
         case UnlockableFeature.AUTOCLIPPERS:
           _showUnlockNotification('Autoclippeuses disponibles !');
-          playerManager.money += GameConstants.BASE_AUTOCLIPPER_COST;
+          player.updateMoney(player.money + GameConstants.BASE_AUTOCLIPPER_COST);  // Utiliser updateMoney
           break;
         case UnlockableFeature.METAL_PURCHASE:
           _showUnlockNotification('Achat de métal débloqué !');
@@ -414,11 +449,16 @@ Actions recommandées :
         importance: EventImportance.MEDIUM
     );
   }
-  void startNewGame(String name) {
+  Future<void> startNewGame(String name) async {
     _gameName = name;
-    _isInitialized = true;
     playerManager.resetResources();
     levelSystem.reset();
+
+    // Sauvegarder l'état initial
+    await saveGame(name);
+
+    // Mettre _isInitialized à true seulement après la création réussie
+    _isInitialized = true;
     notifyListeners();
   }
 
@@ -464,10 +504,46 @@ Actions recommandées :
       rethrow;
     }
   }
+
   Map<String, bool> getVisibleScreenElements() {
     return {
-      'market': levelSystem.level >= 7,
-      'upgrades': levelSystem.level >= 5,
+      // Éléments de base
+      'metalStock': true,  // Toujours visible
+      'paperclipStock': true,  // Toujours visible
+      'manualProductionButton': true,  // Toujours visible
+      'moneyDisplay': true,  // Toujours visible
+
+      // Éléments de marché
+      'market': level.level >= GameConstants.MARKET_UNLOCK_LEVEL,
+      'marketPrice': level.level >= GameConstants.MARKET_UNLOCK_LEVEL,
+      'sellButton': level.level >= GameConstants.MARKET_UNLOCK_LEVEL,
+      'marketStats': level.level >= GameConstants.MARKET_UNLOCK_LEVEL,
+      'priceChart': level.level >= GameConstants.MARKET_UNLOCK_LEVEL,
+
+      // Éléments de production
+      'metalPurchaseButton': level.level >= 1,
+      'autoclippersSection': level.level >= 3,
+      'productionStats': level.level >= 2,
+      'efficiencyDisplay': level.level >= 3,
+
+      // Éléments d'amélioration
+      'upgradesSection': level.level >= GameConstants.UPGRADES_UNLOCK_LEVEL,
+      'upgradesScreen': level.level >= GameConstants.UPGRADES_UNLOCK_LEVEL,
+
+      // Éléments de progression
+      'levelDisplay': true,
+      'experienceBar': true,
+      'comboDisplay': level.level >= 2,
+
+      // Éléments de statistiques
+      'statsSection': level.level >= 4,
+      'achievementsSection': level.level >= 5,
+
+      // Éléments d'interface
+      'settingsButton': true,
+      'musicToggle': true,
+      'notificationButton': true,
+      'saveLoadButtons': true
     };
   }
 

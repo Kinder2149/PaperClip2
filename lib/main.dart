@@ -13,6 +13,7 @@ import './screens/production_screen.dart';
 import './screens/market_screen.dart';
 import './screens/upgrades_screen.dart';
 import './screens/event_log_screen.dart';
+import 'screens/introduction_screen.dart';
 
 // Imports des modèles
 import './models/game_state.dart';
@@ -63,10 +64,10 @@ class MyApp extends StatelessWidget {
       ),
       home: Consumer<GameState>(
         builder: (context, gameState, child) {
-          if (gameState._isInitialized) {
-            return const MainScreen();
-          }
-          return const StartScreen();
+          print('GameState initialized: ${gameState.isInitialized}'); // Pour le debug
+          return gameState.isInitialized
+              ? const MainScreen()
+              : const StartScreen();
         },
       ),
       debugShowCheckedModeBanner: false,
