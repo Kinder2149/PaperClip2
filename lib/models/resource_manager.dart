@@ -13,6 +13,11 @@ class ResourceManager extends ChangeNotifier {
   double _baseStorageEfficiency = 1.0;
   double _marketMetalStock = GameConstants.INITIAL_MARKET_METAL;
 
+
+  // Ajout des getters
+  double get effectiveStorageCapacity => _metalStorageCapacity;
+  double get currentEfficiency => _baseStorageEfficiency;
+
   // Getters
   double get marketMetalStock => _marketMetalStock;
   double get metalStorageCapacity => _metalStorageCapacity;
@@ -23,6 +28,7 @@ class ResourceManager extends ChangeNotifier {
   double calculateEffectiveStorage(int storageUpgradeLevel) {
     return _metalStorageCapacity * (1 + (storageUpgradeLevel * GameConstants.STORAGE_UPGRADE_MULTIPLIER));
   }
+
 
   double calculateStorageEfficiency(int efficiencyUpgradeLevel) {
     return _baseStorageEfficiency * (1 + (efficiencyUpgradeLevel * GameConstants.EFFICIENCY_UPGRADE_MULTIPLIER));
@@ -99,13 +105,15 @@ class ResourceManager extends ChangeNotifier {
   }
 
   // Méthodes d'upgrade
-  void upgradeStorageCapacity(double amount) {
-    _metalStorageCapacity += amount;
+  void upgradeStorageCapacity(int level) {
+    _metalStorageCapacity = GameConstants.INITIAL_STORAGE_CAPACITY *
+        (1 + (level * GameConstants.STORAGE_UPGRADE_MULTIPLIER));
     notifyListeners();
   }
 
-  void improveStorageEfficiency(double amount) {
-    _baseStorageEfficiency += amount;
+  void improveStorageEfficiency(int level) {
+    _baseStorageEfficiency = GameConstants.BASE_EFFICIENCY *
+        (1 + (level * GameConstants.EFFICIENCY_UPGRADE_MULTIPLIER));
     notifyListeners();
   }
 

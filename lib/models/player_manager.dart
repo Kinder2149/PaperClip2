@@ -6,6 +6,7 @@ import 'game_config.dart';
 import 'event_system.dart';
 import 'progression_system.dart';
 import 'resource_manager.dart';
+import 'market.dart';
 
 /// Représente une amélioration du jeu
 class Upgrade {
@@ -151,6 +152,11 @@ class PlayerManager extends ChangeNotifier {
   int _autoclippers = 0;
   double _sellPrice = 0.25;
   double autoclipperPaperclips = 0; // Pour suivre les trombones produits par les autoclippers
+  final ResourceManager resourceManager;
+  final MarketManager marketManager;
+  final LevelSystem levelSystem;
+
+
 
 
   // Getters
@@ -159,6 +165,25 @@ class PlayerManager extends ChangeNotifier {
   double get money => _money;
   int get autoclippers => _autoclippers;
   double get sellPrice => _sellPrice;
+  // Getters
+  Map<String, Upgrade> get upgrades => _upgrades;
+
+
+  Timer? _maintenanceTimer;
+  Timer? _autoSaveTimer;
+  double _maintenanceCosts = 0.0;
+  PlayerManager({
+    required this.levelSystem,
+    required this.resourceManager,
+    required this.marketManager,
+  }) {
+    _initializeUpgrades();
+    _startTimers();
+  }
+
+  // Getters
+  double get maintenanceCosts => _maintenanceCosts;
+
 
 
 
@@ -215,15 +240,16 @@ class PlayerManager extends ChangeNotifier {
     ),
   };
 
+  void _updateProductionMultiplier() {
+    // Utiliser getProductionMultiplier qui existe déjà
+    double multiplier = getProductionMultiplier();
+    // Mettre à jour la production des autoclippeuses
+    autoclipperPaperclips = _autoclippers * GameConstants.BASE_AUTOCLIPPER_PRODUCTION * multiplier;
+    notifyListeners();
+  }
 
-  // Getters
-  Map<String, Upgrade> get upgrades => _upgrades;
 
 
-  final LevelSystem levelSystem;
-  Timer? _maintenanceTimer;
-  Timer? _autoSaveTimer;
-  double _maintenanceCosts = 0.0;
 
 
   void fromJson(Map<String, dynamic> json) {
@@ -277,13 +303,6 @@ class PlayerManager extends ChangeNotifier {
 
   void loadFromJson(Map<String, dynamic> json) => fromJson(json);
 
-  PlayerManager(this.levelSystem) {
-    _initializeUpgrades();
-    _startTimers();
-  }
-
-  // Getters
-  double get maintenanceCosts => _maintenanceCosts;
 
 
 
@@ -343,6 +362,22 @@ class PlayerManager extends ChangeNotifier {
     _money -= cost;
     upgrade.level++;
 
+    // Application des effets des améliorations
+    switch (upgradeId) {
+      case 'storage':
+        resourceManager.upgradeStorageCapacity(upgrade.level);
+        break;
+      case 'efficiency':
+        resourceManager.improveStorageEfficiency(upgrade.level);
+        break;
+      case 'bulk':
+        _updateProductionMultiplier();
+        break;
+      case 'marketing':
+        marketManager.updateMarketingBonus(upgrade.level);
+        break;
+    }
+
     levelSystem.addUpgradePurchase(upgrade.level);
 
     if (upgrade.level == upgrade.maxLevel) {
@@ -356,6 +391,10 @@ class PlayerManager extends ChangeNotifier {
 
     notifyListeners();
     return true;
+  }
+  double getProductionMultiplier() {
+    double bulkBonus = (upgrades['bulk']?.level ?? 0) * GameConstants.BULK_UPGRADE_BASE;
+    return 1.0 + bulkBonus;
   }
 
   bool canBuyAutoclipper() {

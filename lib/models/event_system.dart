@@ -232,6 +232,21 @@ class EventManager {
   final ValueNotifier<int> unreadCount = ValueNotifier<int>(0);
 
   void addNotification(NotificationEvent newNotification) {
+    // Gestion spéciale pour les notifications de déplétion de ressources
+    if (newNotification.type == EventType.RESOURCE_DEPLETION) {
+      // Vérifier si une notification similaire existe déjà avec le même niveau de stock
+      final stockLevel = newNotification.additionalData?['stockLevel'];
+      if (stockLevel != null) {
+        // Ne pas ajouter si une notification pour ce niveau existe déjà
+        bool exists = _notifications.any((n) =>
+        n.type == EventType.RESOURCE_DEPLETION &&
+            n.additionalData?['stockLevel'] == stockLevel
+        );
+        if (exists) return;
+      }
+    }
+
+    // Gestion normale des notifications
     try {
       var existingNotification = _notifications.reversed.firstWhere(
             (n) => n.isSimilarTo(newNotification) &&

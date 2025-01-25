@@ -36,6 +36,8 @@ export 'package:paperclip2/main.dart' show navigatorKey;
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+
   runApp(
     MultiProvider(
       providers: [
@@ -64,10 +66,7 @@ class MyApp extends StatelessWidget {
       ),
       home: Consumer<GameState>(
         builder: (context, gameState, child) {
-          print('GameState initialized: ${gameState.isInitialized}'); // Pour le debug
-          return gameState.isInitialized
-              ? const MainScreen()
-              : const StartScreen();
+          return const StartScreen(); // Toujours commencer par StartScreen
         },
       ),
       debugShowCheckedModeBanner: false,

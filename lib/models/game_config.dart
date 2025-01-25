@@ -2,8 +2,8 @@
 class GameConstants {
   // Constantes de base
   static const double INITIAL_METAL = 100;
-  static const double INITIAL_MONEY = 50;
-  static const double INITIAL_PRICE = 0.25;
+  static const double INITIAL_MONEY = 0;
+  static const double INITIAL_PRICE = 0.20;
   static const double METAL_PER_PAPERCLIP = 0.15;
   static const double METAL_PACK_AMOUNT = 100.0;
   static const double MIN_METAL_PRICE = 14.0;
@@ -11,8 +11,7 @@ class GameConstants {
   static const double INITIAL_STORAGE_CAPACITY = 1000.0;
   static const double BASE_EFFICIENCY = 1.0;
   static const double RESOURCE_DECAY_RATE = 0.01;
-  static const double STORAGE_UPGRADE_MULTIPLIER = 0.5;
-  static const double EFFICIENCY_UPGRADE_MULTIPLIER = 0.1;
+
   static const double MAINTENANCE_EFFICIENCY_MULTIPLIER = 0.1;
 
   //  les constantes d'intro
@@ -26,7 +25,7 @@ class GameConstants {
   static const double BASE_AUTOCLIPPER_COST = 15.0;
   static const double MIN_PRICE = 0.01;
   static const double MAX_PRICE = 0.50;
-  static const double INITIAL_MARKET_METAL = 1500.0;
+  static const double INITIAL_MARKET_METAL = 2000.0;
   static const int MAX_COMBO_COUNT = 5;
   static const double COMBO_MULTIPLIER = 0.1;  // Pour le calcul du multiplicateur de combo
   static const double DAILY_BONUS_AMOUNT = 10.0;
@@ -49,24 +48,39 @@ class GameConstants {
 
 
   //  "Expérience et progression"
-  static const double MANUAL_PRODUCTION_XP = 2.0;
-  static const double AUTO_PRODUCTION_XP = 0.1;
+  static const double MANUAL_PRODUCTION_XP = 1.5;
+  static const double AUTO_PRODUCTION_XP = 0.2;
   static const double SALE_BASE_XP = 0.3;
   static const double AUTOCLIPPER_PURCHASE_XP = 3.0;
   static const double UPGRADE_XP_MULTIPLIER = 2.0;
   static const double XP_BOOST_MULTIPLIER = 2.0;
   // À ajouter dans une nouvelle section "Améliorations"
   static const double EFFICIENCY_UPGRADE_BASE = 0.5;
-  static const double SPEED_UPGRADE_BASE = 0.20;
-  static const double BULK_UPGRADE_BASE = 0.35;
-  static const double QUALITY_UPGRADE_BASE = 0.10;
-  static const double AUTOMATION_DISCOUNT_BASE = 0.10;
+
+
+
+
 
   // Limites système
   static const int MAX_STORED_EVENTS = 100;
   static const double MIN_MARKET_SATURATION = 50.0;
   static const double MAX_MARKET_SATURATION = 150.0;
   static const double COMPETITION_PRICE_VARIATION = 0.2;
+
+  // Constantes pour les améliorations
+  static const double STORAGE_UPGRADE_MULTIPLIER = 0.2;     // 20% par niveau
+  static const double EFFICIENCY_UPGRADE_MULTIPLIER = 0.15; // 15% par niveau
+  static const double BULK_UPGRADE_BASE = 0.25;            // 25% par niveau
+  static const double MARKETING_UPGRADE_BASE = 0.1;        // 10% par niveau
+  static const double QUALITY_UPGRADE_BASE = 0.1;          // existant
+  static const double SPEED_UPGRADE_BASE = 0.2;            // existant
+  static const double AUTOMATION_DISCOUNT_BASE = 0.1;      // existant
+
+  // Limites d'améliorations
+  static const int MAX_STORAGE_LEVEL = 10;
+  static const int MAX_EFFICIENCY_LEVEL = 10;
+  static const int MAX_BULK_LEVEL = 10;
+  static const int MAX_MARKETING_LEVEL = 10;
 
 
 

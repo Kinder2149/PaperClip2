@@ -470,35 +470,9 @@ Fonctionnalités:
     );
   }
 }
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
 
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => GameState()),
-        Provider(create: (_) => BackgroundMusicService()),
-      ],
-      child: const MyApp(),
-    ),
-  );
-}
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
 
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: GameConstants.APP_TITLE,
-      theme: ThemeData(
-        primarySwatch: Colors.deepPurple,
-        visualDensity: VisualDensity.adaptivePlatformDensity,
-      ),
-      home: const StartScreen(), // Changer ici pour commencer avec StartScreen
-    );
-  }
-}
 
 // Widget pour l'écran verrouillé
 class PlaceholderLockedScreen extends StatelessWidget {

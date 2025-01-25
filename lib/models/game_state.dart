@@ -16,42 +16,57 @@ import 'dart:convert';
 import '../utils/notification_manager.dart';
 
 class GameState extends ChangeNotifier {
-  static final GameState _instance = GameState._internal();
-  factory GameState() => _instance;
+  late final PlayerManager _playerManager;
+  late final MarketManager _marketManager;
+  late final ResourceManager _resourceManager;
+  late final LevelSystem _levelSystem;
+  late final MissionSystem _missionSystem;
 
-  // Managers comme propriétés sans 'late'
-  final LevelSystem levelSystem = LevelSystem();
-  PlayerManager? _playerManager;
-  MarketManager? _marketManager;
-  ResourceManager? _resourceManager;
-  MissionSystem? _missionSystem;
-  // Getters sécurisés
-  PlayerManager get playerManager => _playerManager!;
-  MarketManager get marketManager => _marketManager!;
-  ResourceManager get resourceManager => _resourceManager!;
-  MissionSystem get missionSystem => _missionSystem!;
-  DateTime _lastUpdateTime = DateTime.now();
-
-  DateTime? _lastSaveTime;
-  bool _isPaused = false;
-  // État privé
   bool _isInitialized = false;
   String? _gameName;
   BuildContext? _context;
+
+  bool get isInitialized => _isInitialized;
+  String? get gameName => _gameName;
+  PlayerManager get playerManager => _playerManager;
+  MarketManager get marketManager => _marketManager;
+  ResourceManager get resourceManager => _resourceManager;
+  LevelSystem get levelSystem => _levelSystem;
+  MissionSystem get missionSystem => _missionSystem;
+  GameState() {
+    _initializeManagers();
+  }
+  void _initializeManagers() {
+    if (!_isInitialized) {
+      _resourceManager = ResourceManager();
+      _marketManager = MarketManager(MarketDynamics());
+      _levelSystem = LevelSystem()..onLevelUp = _handleLevelUp;
+      _missionSystem = MissionSystem()..initialize();
+
+      _playerManager = PlayerManager(
+        levelSystem: _levelSystem,
+        resourceManager: _resourceManager,
+        marketManager: _marketManager,
+      );
+
+      _isInitialized = true;
+      _startTimers();
+    }
+  }
+
+  DateTime _lastUpdateTime = DateTime.now();
+  DateTime? _lastSaveTime;
+  bool _isPaused = false;
+  // État privé
   int _totalTimePlayedInSeconds = 0;
   int _totalPaperclipsProduced = 0;
   double _maintenanceCosts = 0.0;
   // Constructeur privé
-  GameState._internal() {
-    levelSystem.onLevelUp = _handleLevelUp;
-  }
+
 
   // Gestionnaire de timers centralisé
   final Map<String, Timer> _timers = {};
 
-  // Getters
-  bool get isInitialized => _isInitialized;
-  String? get gameName => _gameName;
   int get totalTimePlayed => _totalTimePlayedInSeconds;
   int get totalPaperclipsProduced => _totalPaperclipsProduced;
   double get maintenanceCosts => _maintenanceCosts;
@@ -68,6 +83,14 @@ class GameState extends ChangeNotifier {
   int _ticksSinceLastMarketUpdate = 0;
   int _ticksSinceLastAutoSave = 0;
   int _ticksSinceLastMaintenance = 0;
+
+
+  void _initialize() {
+    _levelSystem.onLevelUp = _handleLevelUp;
+    _missionSystem.initialize();
+    _startTimers();
+    _isInitialized = true;
+  }
 
 
 
@@ -92,30 +115,20 @@ class GameState extends ChangeNotifier {
 
 
 
-  void _initializeManagers() {
-    _stopAllTimers();
 
-    // Créer de nouvelles instances des managers
-    _playerManager = PlayerManager(levelSystem);
-    _marketManager = MarketManager(MarketDynamics());
-    _resourceManager = ResourceManager();
-    _missionSystem = MissionSystem()..initialize();
-
-    _startTimers();
-    _isInitialized = true;
-  }
 
 
 
 
   void reset() {
     _stopAllTimers();
-    player.resetResources();
-    level.reset();
-    _marketManager = MarketManager(MarketDynamics());  // Utiliser l'affectation avec _
-    _missionSystem = MissionSystem()..initialize();    // Utiliser l'affectation avec _
+
+    // Ne pas réinitialiser les managers, juste leurs états
+    _playerManager.resetResources();
+    _levelSystem.reset();
+    _marketManager.reset();
+
     _startTimers();
-    _isInitialized = false;
     notifyListeners();
   }
 
@@ -460,12 +473,13 @@ class GameState extends ChangeNotifier {
       print('Starting new game with name: $name');
       _gameName = name;
 
+      // Réinitialiser l'état si déjà initialisé
+      if (_isInitialized) {
+        reset();
+      }
+
       // Initialiser les managers
       _initializeManagers();
-
-      // Réinitialiser les ressources
-      _playerManager?.resetResources();
-      levelSystem.reset();
 
       // Sauvegarder l'état initial
       await SaveManager.saveGame(this, name);

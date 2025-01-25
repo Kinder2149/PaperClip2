@@ -96,6 +96,7 @@ class MarketManager extends ChangeNotifier {
   final MarketDynamics dynamics;
   final Random _random = Random();
   final Map<String, CachedValue> _cache = {};
+  double _marketingBonus = 1.0;
 
 
   List<SaleRecord> salesHistory = [];
@@ -167,6 +168,14 @@ class MarketManager extends ChangeNotifier {
     _checkResourceLevels();
     notifyListeners();
   }
+  void updateMarketingBonus(int marketingLevel) {
+    _marketingBonus = 1.0 + (marketingLevel * GameConstants.MARKETING_UPGRADE_BASE);
+    notifyListeners();
+  }
+
+  double getSaleMultiplier() {
+    return _marketingBonus;
+  }
 
 
 
@@ -212,12 +221,31 @@ class MarketManager extends ChangeNotifier {
   }
 
   void _checkMarketDepletion() {
-    if (marketMetalStock <= GameConstants.MARKET_DEPLETION_THRESHOLD) {
+    double stockPercentage = (marketMetalStock / GameConstants.INITIAL_MARKET_METAL) * 100;
+
+    if (marketMetalStock <= 0) {
+      EventManager.instance.addEvent(
+          EventType.RESOURCE_DEPLETION,
+          'Stock de Métal Épuisé',
+          description: 'Les réserves de métal du marché sont épuisées!',
+          importance: EventImportance.CRITICAL,
+          additionalData: {'stockLevel': 'empty'}
+      );
+    } else if (stockPercentage <= 25 && stockPercentage > 0) {
+      EventManager.instance.addEvent(
+          EventType.RESOURCE_DEPLETION,
+          'Rupture Critique des Stocks de Métal',
+          description: 'Les réserves de métal du marché sont à 25% !',
+          importance: EventImportance.CRITICAL,
+          additionalData: {'stockLevel': '25'}
+      );
+    } else if (stockPercentage <= 50 && stockPercentage > 25) {
       EventManager.instance.addEvent(
           EventType.RESOURCE_DEPLETION,
           'Rupture Imminente des Stocks de Métal',
-          description: 'Les réserves de métal du marché sont presque épuisées.',
-          importance: EventImportance.CRITICAL
+          description: 'Les réserves de métal du marché sont à 50% !',
+          importance: EventImportance.HIGH,
+          additionalData: {'stockLevel': '50'}
       );
     }
   }
