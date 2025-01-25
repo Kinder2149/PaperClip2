@@ -144,19 +144,79 @@ class UpgradeManager {
 
 /// Gestionnaire des ressources du joueur
 class PlayerManager extends ChangeNotifier {
-  double _metal = GameConstants.INITIAL_METAL;
-  double _money = GameConstants.INITIAL_MONEY;
-  double _paperclips = 0;
-  int _autoclippers = 0;
-  double _sellPrice = GameConstants.INITIAL_PRICE;
   double maxMetalStorage = 1000.0;
+  double _paperclips = 0.0;
+  double _metal = 100.0;
+  double _money = 0.0;
+  int _autoclippers = 0;
+  double _sellPrice = 0.25;
+  final Map<String, Upgrade> _upgrades = {
+    'efficiency': Upgrade(
+      id: "efficiency",
+      name: 'Metal Efficiency',
+      description: 'Réduit la consommation de métal de 15 %',
+      baseCost: 45.0,
+      maxLevel: 10,
+    ),
+    'marketing': Upgrade(
+      id: "marketing",
+      name: 'Marketing',
+      description: 'Augmente la demande du marché de 30 %',
+      baseCost: 75.0,
+      maxLevel: 8,
+    ),
+    'bulk': Upgrade(
+      id: "bulk",
+      name: 'Bulk Production',
+      description: 'Les autoclippeuses produisent 35 % plus vite',
+      baseCost: 150.0,
+      maxLevel: 8,
+    ),
+    'speed': Upgrade(
+      id: "speed",
+      name: 'Speed Boost',
+      description: 'Augmente la vitesse de production de 20 %',
+      baseCost: 100.0,
+      maxLevel: 5,
+    ),
+    'storage': Upgrade(
+      id: "storage",
+      name: 'Storage Upgrade',
+      description: 'Augmente la capacité de stockage de métal de 50 %',
+      baseCost: 60.0,
+      maxLevel: 5,
+    ),
+    'automation': Upgrade(
+      id: "automation",
+      name: 'Automation',
+      description: 'Réduit le coût des autoclippeuses de 10 % par niveau',
+      baseCost: 200.0,
+      maxLevel: 5,
+    ),
+    'quality': Upgrade(
+      id: "quality",
+      name: 'Quality Control',
+      description: 'Augmente le prix de vente des trombones de 10 % par niveau',
+      baseCost: 80.0,
+      maxLevel: 10,
+    ),
+  };
+
+
+  // Getters
+  double get paperclips => _paperclips;
+  double get metal => _metal;
+  double get money => _money;
+  int get autoclippers => _autoclippers;
+  double get sellPrice => _sellPrice;
+  Map<String, Upgrade> get upgrades => _upgrades;
 
 
   final LevelSystem levelSystem;
   Timer? _maintenanceTimer;
   Timer? _autoSaveTimer;
   double _maintenanceCosts = 0.0;
-  final Map<String, Upgrade> _upgrades = {};
+
 
   void fromJson(Map<String, dynamic> json) {
     try {
@@ -189,6 +249,14 @@ class PlayerManager extends ChangeNotifier {
       _initializeUpgrades();
     }
   }
+  bool consumeMetal(double amount) {
+    if (_metal >= amount) {
+      updateMetal(_metal - amount);
+      return true;
+    }
+    return false;
+  }
+
 
   Map<String, dynamic> toJson() => {
     'paperclips': _paperclips,
@@ -208,11 +276,6 @@ class PlayerManager extends ChangeNotifier {
 
   // Getters
   double get maintenanceCosts => _maintenanceCosts;
-  double get metal => _metal;
-  double get money => _money;
-  double get paperclips => _paperclips;
-  int get autoclippers => _autoclippers;
-  double get sellPrice => _sellPrice;
 
 
 
@@ -329,41 +392,39 @@ class PlayerManager extends ChangeNotifier {
       notifyListeners();
     }
   }
-  void updateMetal(double amount) {
-    if (amount != _metal) {
-      _metal = amount.clamp(0, maxMetalStorage);
+  void updateMetal(double newAmount) {
+    if (_metal != newAmount) {
+      print('Metal update: $_metal -> $newAmount');
+      _metal = newAmount.clamp(0, maxMetalStorage);
       notifyListeners();
     }
   }
 
-  void updateMoney(double amount) {
-    if (amount != _money) {
-      _money = amount;
+  void updateMoney(double newAmount) {
+    if (_money != newAmount) {
+      _money = newAmount;
       notifyListeners();
     }
   }
 
-  void updatePaperclips(double amount) {
-    if (amount != _paperclips) {
-      _paperclips = amount;
+  void updatePaperclips(double newAmount) {
+    if (_paperclips != newAmount) {
+      _paperclips = newAmount;
       notifyListeners();
     }
   }
 
-  void updateAutoclippers(int amount) {
-    if (amount != _autoclippers) {
-      _autoclippers = amount;
+  void updateAutoclippers(int newAmount) {
+    if (_autoclippers != newAmount) {
+      _autoclippers = newAmount;
       notifyListeners();
     }
   }
 
-  void updateSellPrice(double price) {
-    double clampedValue = price.clamp(
-        GameConstants.MIN_PRICE,
-        GameConstants.MAX_PRICE
-    );
-    if (clampedValue != _sellPrice) {
-      _sellPrice = clampedValue;
+
+  void updateSellPrice(double newPrice) {
+    if (_sellPrice != newPrice) {
+      _sellPrice = newPrice;
       notifyListeners();
     }
   }
@@ -371,64 +432,7 @@ class PlayerManager extends ChangeNotifier {
   void _triggerAutoSave() {
     // Implémenter la logique de sauvegarde automatique ici
   }
-  final Map<String, Upgrade> upgrades = {
-    'efficiency': Upgrade(
-      id: "efficency",
-      name: 'Metal Efficiency',
-      description: 'Réduit la consommation de métal de 15 %',
-      baseCost: 45.0,
-      level: 0,
-      maxLevel: 10,
-    ),
-    'marketing': Upgrade(
-      id: "marketing",
-      name: 'Marketing',
-      description: 'Augmente la demande du marché de 30 %',
-      baseCost: 75.0,
-      level: 0,
-      maxLevel: 8,
-    ),
-    'bulk': Upgrade(
-      id: "bulk",
-      name: 'Bulk Production',
-      description: 'Les autoclippeuses produisent 35 % plus vite',
-      baseCost: 150.0,
-      level: 0,
-      maxLevel: 8,
-    ),
-    'speed': Upgrade(
-      id: "speed",
-      name: 'Speed Boost',
-      description: 'Augmente la vitesse de production de 20 %',
-      baseCost: 100.0,
-      level: 0,
-      maxLevel: 5,
-    ),
-    'storage': Upgrade(
-      id: "storage",
-      name: 'Storage Upgrade',
-      description: 'Augmente la capacité de stockage de métal de 50 %',
-      baseCost: 60.0,
-      level: 0,
-      maxLevel: 5,
-    ),
-    'automation': Upgrade(
-      id: "automation",
-      name: 'Automation',
-      description: 'Réduit le coût des autoclippeuses de 10 % par niveau',
-      baseCost: 200.0,
-      level: 0,
-      maxLevel: 5,
-    ),
-    'quality': Upgrade(
-      id: "quality",
-      name: 'Quality Control',
-      description: 'Augmente le prix de vente des trombones de 10 % par niveau',
-      baseCost: 80.0,
-      level: 0,
-      maxLevel: 10,
-    ),
-  };
+
   void updateUpgrade(String id, int level) {
     if (upgrades.containsKey(id)) {
       upgrades[id]!.level = level;

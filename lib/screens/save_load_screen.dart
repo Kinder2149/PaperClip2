@@ -181,6 +181,8 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
       }
     }
   }
+  // Dans votre écran de sauvegarde
+
   Future<void> _confirmDelete(BuildContext context, String gameName) async {
     final result = await showDialog<bool>(
       context: context,

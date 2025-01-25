@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/game_state.dart';
 import '../models/game_config.dart';
+
 class ValidationResult {
   final bool isValid;
   final List<String> errors;
@@ -40,66 +41,106 @@ class SaveDataValidator {
   };
 
   static ValidationResult validate(Map<String, dynamic> data) {
-    final errors = <String>[];
+    List<String> errors = [];  // Correction ici : List<String> au lieu de final errors = <String>();
 
-    // Vérifier les champs requis de base
+    // Vérification de base
     if (!data.containsKey('version') || !data.containsKey('timestamp')) {
       errors.add('Données de base manquantes (version ou timestamp)');
       return ValidationResult(isValid: false, errors: errors);
     }
 
-    // Vérifier chaque section
-    for (var section in _validationRules.keys) {
-      if (!data.containsKey(section)) {
-        errors.add('Section manquante: $section');
+    // Vérification des sections obligatoires
+    if (!_validateMandatorySections(data, errors)) {
+      return ValidationResult(isValid: false, errors: errors);
+    }
+
+    // Vérification des règles pour chaque section
+    for (var sectionName in _validationRules.keys) {
+      if (!data.containsKey(sectionName)) {
+        errors.add('Section manquante: $sectionName');
         continue;
       }
 
-      final sectionData = data[section] as Map<String, dynamic>?;
+      var sectionData = data[sectionName] as Map<String, dynamic>?;
       if (sectionData == null) {
-        errors.add('Section invalide: $section');
+        errors.add('Section invalide: $sectionName');
         continue;
       }
 
       // Vérifier chaque champ de la section
-      for (var field in _validationRules[section]!.keys) {
-        final rules = _validationRules[section]![field];
-        final value = sectionData[field];
-
-        if (value == null) {
-          errors.add('Champ manquant: $section.$field');
+      var rules = _validationRules[sectionName]!;
+      for (var fieldName in rules.keys) {
+        if (!sectionData.containsKey(fieldName)) {
+          errors.add('Champ manquant dans $sectionName: $fieldName');
           continue;
         }
 
-        // Vérification du type
-        if (!_validateType(value, rules['type'])) {
-          errors.add('Type invalide pour $section.$field: attendu ${rules['type']}, reçu ${value.runtimeType}');
-          continue;
-        }
+        var value = sectionData[fieldName];
+        var rule = rules[fieldName];
 
-        // Vérification des limites pour les nombres
-        if (rules['type'] == 'double' || rules['type'] == 'int') {
-          if (rules['min'] != null && value < rules['min']) {
-            errors.add('Valeur trop petite pour $section.$field: minimum ${rules['min']}');
-          }
-          if (rules['max'] != null && value > rules['max']) {
-            errors.add('Valeur trop grande pour $section.$field: maximum ${rules['max']}');
-          }
+        if (!_validateField(value, rule as Map<String, dynamic>, errors, '$sectionName.$fieldName')) {
+          continue;
         }
       }
     }
 
+    // Si pas d'erreurs, les données sont valides
     return ValidationResult(
       isValid: errors.isEmpty,
       errors: errors,
-      validatedData: errors.isEmpty ? data : null,
+      validatedData: data,
     );
+  }
+
+  static bool _validateMandatorySections(Map<String, dynamic> data, List<String> errors) {
+    if (!data.containsKey('playerManager')) {
+      errors.add('Section manquante: playerManager');
+      return false;
+    }
+
+    final playerData = data['playerManager'] as Map<String, dynamic>?;
+    if (playerData == null) {
+      errors.add('Données du joueur invalides');
+      return false;
+    }
+
+    final requiredFields = ['paperclips', 'money', 'metal'];
+    for (var field in requiredFields) {
+      if (!playerData.containsKey(field)) {
+        errors.add('Champ manquant dans playerManager: $field');
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  static bool _validateField(dynamic value, Map<String, dynamic> rule, List<String> errors, String fieldPath) {
+    // Vérification du type
+    if (!_validateType(value, rule['type'] as String)) {
+      errors.add('Type invalide pour $fieldPath');
+      return false;
+    }
+
+    // Vérification des limites pour les nombres
+    if (value is num) {
+      if (rule.containsKey('min') && value < rule['min']) {
+        errors.add('Valeur trop petite pour $fieldPath');
+        return false;
+      }
+      if (rule.containsKey('max') && value > rule['max']) {
+        errors.add('Valeur trop grande pour $fieldPath');
+        return false;
+      }
+    }
+
+    return true;
   }
 
   static bool _validateType(dynamic value, String expectedType) {
     switch (expectedType) {
       case 'double':
-        return value is double || value is int;
+        return value is num;
       case 'int':
         return value is int;
       case 'map':
@@ -134,12 +175,50 @@ class SaveGame {
     required this.version,
   });
 
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> json = {
+      'name': name,
+      'timestamp': lastSaveTime.toIso8601String(),
+      'version': version,
+    };
+
+    // Ajoute les données du jeu à la racine et dans gameData
+    if (gameData.containsKey('playerManager')) {
+      json['playerManager'] = gameData['playerManager'];
+    }
+    if (gameData.containsKey('marketManager')) {
+      json['marketManager'] = gameData['marketManager'];
+    }
+    if (gameData.containsKey('levelSystem')) {
+      json['levelSystem'] = gameData['levelSystem'];
+    }
+
+    // Sauvegarde complète des données
+    json['gameData'] = gameData;
+
+    return json;
+  }
+
   factory SaveGame.fromJson(Map<String, dynamic> json) {
     try {
+      // Si les données sont dans gameData, utilise-les
+      Map<String, dynamic> gameData = json['gameData'] as Map<String, dynamic>? ?? {};
+
+      // Si les données sont à la racine, fusionne-les avec gameData
+      if (json.containsKey('playerManager')) {
+        gameData['playerManager'] = json['playerManager'];
+      }
+      if (json.containsKey('marketManager')) {
+        gameData['marketManager'] = json['marketManager'];
+      }
+      if (json.containsKey('levelSystem')) {
+        gameData['levelSystem'] = json['levelSystem'];
+      }
+
       return SaveGame(
         name: json['name'] as String,
         lastSaveTime: DateTime.parse(json['timestamp'] as String),
-        gameData: (json['gameData'] as Map<String, dynamic>?) ?? {},
+        gameData: gameData,
         version: json['version'] as String? ?? GameConstants.VERSION,
       );
     } catch (e) {
@@ -148,13 +227,6 @@ class SaveGame {
       rethrow;
     }
   }
-
-  Map<String, dynamic> toJson() => {
-    'name': name,
-    'timestamp': lastSaveTime.toIso8601String(),
-    'gameData': gameData,
-    'version': version,
-  };
 }
 
 
@@ -179,7 +251,10 @@ class SaveManager {
 
       final gameData = gameState.prepareGameData();
 
-      // Valider les données avant la sauvegarde
+      // Debug: Vérifions les données avant la validation
+      print('Données préparées pour la sauvegarde:');
+      print('Contains playerManager: ${gameData.containsKey('playerManager')}');
+
       final validationResult = SaveDataValidator.validate(gameData);
       if (!validationResult.isValid) {
         throw SaveError(
@@ -197,13 +272,23 @@ class SaveManager {
 
       final prefs = await SharedPreferences.getInstance();
       final key = _getSaveKey(name);
-      await prefs.setString(key, jsonEncode(saveData.toJson()));
+      final jsonData = saveData.toJson();
+
+      // Debug: Vérifions les données après la conversion
+      print('Données après conversion JSON:');
+      print('Contains playerManager: ${jsonData.containsKey('playerManager')}');
+
+      await prefs.setString(key, jsonEncode(jsonData));
+
+      // Vérification post-sauvegarde
+      await debugSave(name);
 
     } catch (e) {
       print('Erreur lors de la sauvegarde: $e');
       rethrow;
     }
   }
+
   static Future<SaveGameInfo?> getLastSave() async {
     final saves = await listSaves();
     return saves.isNotEmpty ? saves.first : null;
@@ -215,8 +300,42 @@ class SaveManager {
   }
 
 
-  // Charger une partie spécifique
-  // Modifier cette méthode pour retourner un SaveGame au lieu d'un Map
+  static Future<Map<String, dynamic>?> debugSave(String name) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saveKey = _getSaveKey(name);
+      final savedData = prefs.getString(saveKey);
+
+      print('=== Debug Save Data ===');
+      print('Save Key: $saveKey');
+
+      if (savedData == null) {
+        print('Aucune sauvegarde trouvée pour: $name');
+        return null;
+      }
+
+      final jsonData = jsonDecode(savedData) as Map<String, dynamic>;
+      print('Version: ${jsonData['version']}');
+      print('Timestamp: ${jsonData['timestamp']}');
+      print('Contains playerManager: ${jsonData.containsKey('playerManager')}');
+      print('Contains gameData: ${jsonData.containsKey('gameData')}');
+
+      if (jsonData.containsKey('playerManager')) {
+        print('PlayerManager data structure:');
+        final playerData = jsonData['playerManager'] as Map<String, dynamic>;
+        playerData.forEach((key, value) {
+          print('  $key: $value');
+        });
+      }
+
+      print('=====================');
+      return jsonData;
+    } catch (e) {
+      print('Error debugging save: $e');
+      print(e.toString());
+      return null;
+    }
+  }
   static Future<SaveGame?> loadGame(String name) async {
     try {
       final prefs = await SharedPreferences.getInstance();

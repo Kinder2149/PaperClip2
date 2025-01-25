@@ -11,14 +11,13 @@ class ResourceManager extends ChangeNotifier {
   // État des ressources
   double _metalStorageCapacity = 1000.0;
   double _baseStorageEfficiency = 1.0;
-  double _resourceDecayRate = 0.01;
   double _marketMetalStock = GameConstants.INITIAL_MARKET_METAL;
 
   // Getters
   double get marketMetalStock => _marketMetalStock;
   double get metalStorageCapacity => _metalStorageCapacity;
   double get baseStorageEfficiency => _baseStorageEfficiency;
-  double get resourceDecayRate => _resourceDecayRate;
+
 
   // Calculs de capacité
   double calculateEffectiveStorage(int storageUpgradeLevel) {
@@ -92,9 +91,7 @@ class ResourceManager extends ChangeNotifier {
 
   // Calculs de maintenance et d'efficacité
   double calculateMaintenanceCost(int storageUpgradeLevel, double currentMetal) {
-    double baseMaintenanceCost = currentMetal * _resourceDecayRate;
-    double efficiencyFactor = 1.0 / (1 + (storageUpgradeLevel * GameConstants.MAINTENANCE_EFFICIENCY_MULTIPLIER));
-    return baseMaintenanceCost * efficiencyFactor;
+    return 0.0;  // Plus de coût de maintenance
   }
 
   double calculateResourceEfficiency(int efficiencyUpgradeLevel) {
@@ -117,7 +114,6 @@ class ResourceManager extends ChangeNotifier {
     'marketMetalStock': _marketMetalStock,
     'metalStorageCapacity': _metalStorageCapacity,
     'baseStorageEfficiency': _baseStorageEfficiency,
-    'resourceDecayRate': _resourceDecayRate,
   };
 
   void fromJson(Map<String, dynamic> json) {
@@ -127,8 +123,6 @@ class ResourceManager extends ChangeNotifier {
         GameConstants.INITIAL_STORAGE_CAPACITY;
     _baseStorageEfficiency = (json['baseStorageEfficiency'] as num?)?.toDouble() ??
         GameConstants.BASE_EFFICIENCY;
-    _resourceDecayRate = (json['resourceDecayRate'] as num?)?.toDouble() ??
-        GameConstants.RESOURCE_DECAY_RATE;
   }
 
   // Méthodes de restauration et de réinitialisation
@@ -147,7 +141,6 @@ class ResourceManager extends ChangeNotifier {
     _marketMetalStock = GameConstants.INITIAL_MARKET_METAL;
     _metalStorageCapacity = GameConstants.INITIAL_STORAGE_CAPACITY;
     _baseStorageEfficiency = GameConstants.BASE_EFFICIENCY;  // À ajouter dans GameConstants
-    _resourceDecayRate = GameConstants.RESOURCE_DECAY_RATE;
     notifyListeners();
   }
 }

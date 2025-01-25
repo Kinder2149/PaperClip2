@@ -149,43 +149,13 @@ class GameState extends ChangeNotifier {
     _stopAllTimers();
     _lastUpdateTime = DateTime.now();
 
-    _gameLoopTimer = Timer.periodic(GAME_LOOP_INTERVAL, (timer) {
+    _gameLoopTimer = Timer.periodic(GameConstants.GAME_LOOP_INTERVAL, (timer) {
       if (_isPaused) return;
-
-      final now = DateTime.now();
-      final elapsed = now.difference(_lastUpdateTime);
-      _lastUpdateTime = now;
-
-      // Production à chaque tick
       _processProduction();
-
-      // Marché toutes les 2 secondes
-      _ticksSinceLastMarketUpdate += GAME_LOOP_INTERVAL.inMilliseconds;
-      if (_ticksSinceLastMarketUpdate >= MARKET_UPDATE_INTERVAL.inMilliseconds) {
-        _processMarket();
-        _ticksSinceLastMarketUpdate = 0;
-      }
-
-      // Maintenance toutes les minutes
-      _ticksSinceLastMaintenance += GAME_LOOP_INTERVAL.inMilliseconds;
-      if (_ticksSinceLastMaintenance >= MAINTENANCE_INTERVAL.inMilliseconds) {
-        _applyMaintenanceCosts();
-        _ticksSinceLastMaintenance = 0;
-      }
-
-      // Auto-save toutes les 5 minutes
-      _ticksSinceLastAutoSave += GAME_LOOP_INTERVAL.inMilliseconds;
-      if (_ticksSinceLastAutoSave >= AUTOSAVE_INTERVAL.inMilliseconds) {
-        _autoSave();
-        _ticksSinceLastAutoSave = 0;
-      }
-
-      // Mise à jour du temps de jeu
-      _totalTimePlayedInSeconds = elapsed.inSeconds;
-
-      notifyListeners();
     });
   }
+
+
   void _stopAllTimers() {
     _gameLoopTimer?.cancel();
     _gameLoopTimer = null;
@@ -212,18 +182,30 @@ class GameState extends ChangeNotifier {
     }
   }
   Map<String, dynamic> prepareGameData() {
-    return {
-      'playerManager': playerManager.toJson(),
-      'marketManager': marketManager.toJson(),
-      'levelSystem': levelSystem.toJson(),
-      'missionSystem': missionSystem.toJson(),
+    // Préparation des données de base
+    final Map<String, dynamic> baseData = {
+      'version': GameConstants.VERSION,
+      'timestamp': DateTime.now().toIso8601String(),
       'totalTimePlayedInSeconds': _totalTimePlayedInSeconds,
       'totalPaperclipsProduced': _totalPaperclipsProduced,
-      'paperclips': playerManager.paperclips,
-      'money': playerManager.money,
-      'metal': playerManager.metal,
-      'autoclippers': playerManager.autoclippers,
     };
+
+    // Ajout des données des managers
+    try {
+      baseData['playerManager'] = playerManager.toJson();
+      baseData['marketManager'] = marketManager.toJson();
+      baseData['levelSystem'] = levelSystem.toJson();
+      baseData['missionSystem'] = missionSystem?.toJson();
+
+      // Debug
+      print('PrepareGameData - playerManager data:');
+      print(baseData['playerManager']);
+
+      return baseData;
+    } catch (e) {
+      print('Erreur dans prepareGameData: $e');
+      rethrow;
+    }
   }
 
 
@@ -232,46 +214,62 @@ class GameState extends ChangeNotifier {
 
   // Production et marché
   void _processProduction() {
-    if (playerManager.metal < GameConstants.MIN_METAL_CONSUMPTION) return;
+    if (_isPaused || playerManager.autoclippers <= 0) return;
 
-    final now = DateTime.now();
-    final elapsed = now.difference(_lastUpdateTime).inMilliseconds / 1000;
-    _lastUpdateTime = now;
-
-    double production = _calculateProduction(elapsed);
-    _applyProduction(production);
-
-    checkResourceLevels();
-    notifyListeners();
+    // Production par tick (100ms)
+    _calculateAutoProduction();
   }
+
+
 
   double _calculateProduction(double elapsed) {
-    // Calcul optimisé de la production
     double manualProduction = _calculateManualProduction(elapsed);
-    double autoProduction = _calculateAutoProduction(elapsed);
-    return manualProduction + autoProduction;
+    // Supprimez cette ligne car _calculateAutoProduction est void maintenant
+    // double autoProduction = _calculateAutoProduction(elapsed);
+    return manualProduction;
   }
+  void _calculateAutoProduction() {
+    if (playerManager.autoclippers <= 0) return;
 
-  double _calculateAutoProduction(double elapsed) {
-    if (player.autoclippers == 0) return 0;
-    if (player.metal < GameConstants.MIN_METAL_CONSUMPTION) return 0;
+    // Production de base : 0.1 trombone par tick (donc 1 par seconde)
+    double baseProduction = playerManager.autoclippers * GameConstants.BASE_PRODUCTION_PER_TICK;
 
-    double baseProduction = player.autoclippers * elapsed;
-    double efficiencyBonus = 1.0 + (player.upgrades['efficiency']?.level ?? 0) * 0.15;
-    double speedBonus = 1.0 + (player.upgrades['speed']?.level ?? 0) * 0.20;
-    double bulkBonus = 1.0 + (player.upgrades['bulk']?.level ?? 0) * 0.35;
+    // Application des bonus
+    double speedBonus = 1.0 + (playerManager.upgrades['speed']?.level ?? 0) * 0.20;
+    double bulkBonus = 1.0 + (playerManager.upgrades['bulk']?.level ?? 0) * 0.35;
+    double efficiencyBonus = 1.0 + (playerManager.upgrades['efficiency']?.level ?? 0) * 0.15;
 
+    // Production totale
     double totalProduction = baseProduction * speedBonus * bulkBonus;
+
+    // Métal nécessaire
     double metalNeeded = totalProduction * GameConstants.METAL_PER_PAPERCLIP / efficiencyBonus;
 
-    if (metalNeeded > player.metal) {
-      totalProduction = (player.metal * efficiencyBonus) / GameConstants.METAL_PER_PAPERCLIP;
-      metalNeeded = player.metal;
+    // Vérification du métal disponible
+    if (metalNeeded > playerManager.metal) {
+      totalProduction = (playerManager.metal * efficiencyBonus) / GameConstants.METAL_PER_PAPERCLIP;
+      metalNeeded = playerManager.metal;
     }
 
-    player.updateMetal(player.metal - metalNeeded);
-    return totalProduction;
+    if (totalProduction > 0) {
+      // Application de la production
+      playerManager.updateMetal(playerManager.metal - metalNeeded);
+      playerManager.updatePaperclips(playerManager.paperclips + totalProduction);
+
+      // Logs de debug
+      print('AutoClipper Production:');
+      print('- Nombre d\'autoclippers: ${playerManager.autoclippers}');
+      print('- Production par tick: ${totalProduction.toStringAsFixed(2)} trombones');
+      print('- Production par seconde: ${(totalProduction * GameConstants.TICKS_PER_SECOND).toStringAsFixed(2)} trombones/s');
+      print('- Métal utilisé: ${metalNeeded.toStringAsFixed(2)}');
+      print('- Métal restant: ${playerManager.metal.toStringAsFixed(2)}');
+    }
   }
+
+
+
+
+
   void _applyProduction(double amount) {
     if (amount <= 0) return;
 
@@ -335,38 +333,8 @@ class GameState extends ChangeNotifier {
     );
   }
 
-  // Gestion des notifications et événements
-  void checkMetalStorage() {
-    double stockPercentage = player.metal / player.maxMetalStorage;
-    if (stockPercentage >= 0.9) {
-      final notification = NotificationEvent(
-        title: "Stockage Critique",
-        description: "Stockage à ${(stockPercentage * 100).toInt()}%",
-        detailedDescription: """
-Votre stockage de métal atteint ses limites !
 
-État actuel :
-• Capacité totale: ${player.maxMetalStorage}
-• Métal stocké: ${player.metal.toInt()}
-• Taux d'occupation: ${(stockPercentage * 100).toInt()}%
 
-Actions recommandées :
-1. Augmentez votre capacité de stockage
-2. Accélérez la production
-3. Vendez l'excès de métal
-            """,
-        icon: Icons.warehouse,
-        priority: NotificationPriority.HIGH,
-      );
-
-      if (_context != null) {
-        NotificationManager.showGameNotification(
-          _context!,
-          event: notification,
-        );
-      }
-    }
-  }
 
   void checkResourceCrisis() {
     if (marketManager.marketMetalStock <= GameConstants.WARNING_THRESHOLD) {
@@ -412,10 +380,9 @@ Actions recommandées :
   }
 
   void producePaperclip() {
-    if (player.metal >= GameConstants.METAL_PER_PAPERCLIP) {
+    if (player.consumeMetal(GameConstants.METAL_PER_PAPERCLIP)) {
       player.updatePaperclips(player.paperclips + 1);
       _totalPaperclipsProduced++;
-      player.updateMetal(player.metal - GameConstants.METAL_PER_PAPERCLIP);
       level.addManualProduction();
       notifyListeners();
     }
@@ -654,6 +621,7 @@ Actions recommandées :
       ),
     );
   }
+
 
   void togglePause() {
     _isPaused = !_isPaused;
