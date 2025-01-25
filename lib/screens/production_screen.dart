@@ -419,29 +419,7 @@ class ProductionScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildUpgradesSection(GameState gameState) {
-    return Card(
-      elevation: 2,
-      color: Colors.green.shade100,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          children: gameState.player.upgrades.values.map((upgrade) {
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: _buildActionButton(
-                onPressed: gameState.player.money >= upgrade.getCost()
-                    ? () => gameState.purchaseUpgrade(upgrade.name)
-                    : null,
-                label: '${upgrade.name} (${upgrade.getCost().toStringAsFixed(1)} €)',
-                icon: Icons.upgrade,
-              ),
-            );
-          }).toList(),
-        ),
-      ),
-    );
-  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -560,10 +538,6 @@ class ProductionScreen extends StatelessWidget {
                         const SizedBox(height: 16),
                       ],
 
-                      if (visibleElements['upgradesSection'] == true) ...[
-                        _buildUpgradesSection(gameState),
-                        const SizedBox(height: 16),
-                      ],
 
                       _buildActionButton(
                         onPressed: () => _saveGame(context, gameState),

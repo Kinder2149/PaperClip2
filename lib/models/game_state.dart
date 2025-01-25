@@ -58,12 +58,16 @@ class GameState extends ChangeNotifier {
 
 
   // Timers
-  Timer? _productionTimer;
-  Timer? _marketTimer;
-  Timer? _metalPriceTimer;
-  Timer? _playTimeTimer;
-  Timer? _autoSaveTimer;
-  Timer? _maintenanceTimer;
+  // Ajouter après les propriétés existantes (vers ligne 43)
+  static const Duration GAME_LOOP_INTERVAL = Duration(milliseconds: 100);
+  static const Duration MARKET_UPDATE_INTERVAL = Duration(seconds: 2);
+  static const Duration AUTOSAVE_INTERVAL = Duration(minutes: 5);
+  static const Duration MAINTENANCE_INTERVAL = Duration(minutes: 1);
+
+  Timer? _gameLoopTimer;
+  int _ticksSinceLastMarketUpdate = 0;
+  int _ticksSinceLastAutoSave = 0;
+  int _ticksSinceLastMaintenance = 0;
 
 
 
@@ -105,7 +109,7 @@ class GameState extends ChangeNotifier {
 
 
   void reset() {
-    _stopTimers();
+    _stopAllTimers();
     player.resetResources();
     level.reset();
     _marketManager = MarketManager(MarketDynamics());  // Utiliser l'affectation avec _
@@ -142,37 +146,52 @@ class GameState extends ChangeNotifier {
 
   // Gestion des timers
   void _startTimers() {
-    _timers['production'] = Timer.periodic(
-        const Duration(seconds: 2), // Optimisé de 1 à 2 secondes
-            (_) => _processProduction()
-    );
+    _stopAllTimers();
+    _lastUpdateTime = DateTime.now();
 
-    _timers['market'] = Timer.periodic(
-        const Duration(seconds: 1), // Optimisé de 500ms à 1 seconde
-            (_) => _processMarket()
-    );
+    _gameLoopTimer = Timer.periodic(GAME_LOOP_INTERVAL, (timer) {
+      if (_isPaused) return;
 
-    _timers['autoSave'] = Timer.periodic(
-        const Duration(minutes: 10), // Optimisé de 5 à 10 minutes
-            (_) => _autoSave()
-    );
+      final now = DateTime.now();
+      final elapsed = now.difference(_lastUpdateTime);
+      _lastUpdateTime = now;
 
-    _timers['maintenance'] = Timer.periodic(
-        const Duration(minutes: 1),
-            (_) => _applyMaintenanceCosts()
-    );
+      // Production à chaque tick
+      _processProduction();
 
-    _timers['playTime'] = Timer.periodic(
-        const Duration(seconds: 1),
-            (_) {
-          _totalTimePlayedInSeconds++;
-          notifyListeners();
-        }
-    );
+      // Marché toutes les 2 secondes
+      _ticksSinceLastMarketUpdate += GAME_LOOP_INTERVAL.inMilliseconds;
+      if (_ticksSinceLastMarketUpdate >= MARKET_UPDATE_INTERVAL.inMilliseconds) {
+        _processMarket();
+        _ticksSinceLastMarketUpdate = 0;
+      }
+
+      // Maintenance toutes les minutes
+      _ticksSinceLastMaintenance += GAME_LOOP_INTERVAL.inMilliseconds;
+      if (_ticksSinceLastMaintenance >= MAINTENANCE_INTERVAL.inMilliseconds) {
+        _applyMaintenanceCosts();
+        _ticksSinceLastMaintenance = 0;
+      }
+
+      // Auto-save toutes les 5 minutes
+      _ticksSinceLastAutoSave += GAME_LOOP_INTERVAL.inMilliseconds;
+      if (_ticksSinceLastAutoSave >= AUTOSAVE_INTERVAL.inMilliseconds) {
+        _autoSave();
+        _ticksSinceLastAutoSave = 0;
+      }
+
+      // Mise à jour du temps de jeu
+      _totalTimePlayedInSeconds = elapsed.inSeconds;
+
+      notifyListeners();
+    });
   }
   void _stopAllTimers() {
-    _timers.values.forEach((timer) => timer.cancel());
-    _timers.clear();
+    _gameLoopTimer?.cancel();
+    _gameLoopTimer = null;
+    _ticksSinceLastMarketUpdate = 0;
+    _ticksSinceLastAutoSave = 0;
+    _ticksSinceLastMaintenance = 0;
   }
   void _applyMaintenanceCosts() {
     if (player.autoclippers == 0) return;
@@ -208,14 +227,7 @@ class GameState extends ChangeNotifier {
   }
 
 
-  void _stopTimers() {
-    _productionTimer?.cancel();
-    _marketTimer?.cancel();
-    _metalPriceTimer?.cancel();
-    _playTimeTimer?.cancel();
-    _autoSaveTimer?.cancel();
-    _maintenanceTimer?.cancel();
-  }
+
 
 
   // Production et marché
@@ -273,10 +285,11 @@ class GameState extends ChangeNotifier {
     );
   }
   Future<void> _autoSave() async {
-    if (_gameName == null || !_isInitialized) return;
+    if (!_isInitialized || _gameName == null) return;
 
     try {
       await saveGame(_gameName!);
+      _lastSaveTime = DateTime.now();
     } catch (e) {
       print('Erreur lors de la sauvegarde automatique: $e');
       if (_context != null) {
@@ -549,14 +562,7 @@ Actions recommandées :
     _totalPaperclipsProduced = (gameData['totalPaperclipsProduced'] as num?)?.toInt() ?? 0;
   }
 
-  void _startAutoSave() {
-    _autoSaveTimer?.cancel();
-    _autoSaveTimer = Timer.periodic(const Duration(minutes: 5), (_) async {
-      if (_gameName != null) {
-        await saveGame(_gameName!);
-      }
-    });
-  }
+
 
   Future<void> saveGame(String name) async {
     if (!_isInitialized) {
@@ -636,24 +642,17 @@ Actions recommandées :
   // Utilitaires et autres
   void setContext(BuildContext context) {
     _context = context;
-    _startAutoSave();
   }
 
   void _showUnlockNotification(String message) {
-    if (_context != null) {
-      ScaffoldMessenger.of(_context!).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          duration: const Duration(seconds: 3),
-          action: SnackBarAction(
-            label: 'OK',
-            onPressed: () {
-              ScaffoldMessenger.of(_context!).hideCurrentSnackBar();
-            },
-          ),
-        ),
-      );
-    }
+    EventManager.instance.addNotification(
+      NotificationEvent(
+        title: 'Nouveau Déblocage !',
+        description: message,
+        icon: Icons.lock_open,
+        priority: NotificationPriority.HIGH,
+      ),
+    );
   }
 
   void togglePause() {
@@ -680,6 +679,7 @@ Actions recommandées :
   @override
   void dispose() {
     _stopAllTimers();
+    _gameLoopTimer?.cancel();
     playerManager.dispose();
     levelSystem.dispose();
     super.dispose();

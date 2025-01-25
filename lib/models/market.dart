@@ -81,9 +81,22 @@ class MarketSegment {
       );
 }
 
+
+class CachedValue {
+  final dynamic value;
+  final DateTime expiryTime;
+  static const Duration CACHE_DURATION = Duration(milliseconds: 500);
+
+  CachedValue(this.value) : expiryTime = DateTime.now().add(CACHE_DURATION);
+
+  bool get isValid => DateTime.now().isBefore(expiryTime);
+}
+
 class MarketManager extends ChangeNotifier {
   final MarketDynamics dynamics;
   final Random _random = Random();
+  final Map<String, CachedValue> _cache = {};
+
 
   List<SaleRecord> salesHistory = [];
   double reputation = 1.0;
@@ -269,6 +282,13 @@ class MarketManager extends ChangeNotifier {
   }
 
   double calculateDemand(double price, int marketingLevel) {
+    final cacheKey = 'demand_${price}_$marketingLevel';
+    final cached = _cache[cacheKey];
+
+    if (cached != null && cached.isValid) {
+      return cached.value as double;
+    }
+
     _updateDifficultyMultiplier();
 
     double baseDemand = _calculateBaseDemand(price);
@@ -276,12 +296,16 @@ class MarketManager extends ChangeNotifier {
     double difficultyFactor = _calculateDifficultyFactor();
     double marketingFactor = 1.0 + (marketingLevel * 0.2);
 
-    double finalDemand = baseDemand *
-        reputationFactor *
-        difficultyFactor *
-        marketingFactor;
+    double finalDemand = baseDemand * reputationFactor * difficultyFactor * marketingFactor;
+    finalDemand = max(0, min(finalDemand, _marketSaturation));
 
-    return max(0, min(finalDemand, _marketSaturation));
+    _cache[cacheKey] = CachedValue(finalDemand);
+    return finalDemand;
+  }
+
+// Ajouter une méthode de nettoyage du cache
+  void _cleanCache() {
+    _cache.removeWhere((_, value) => !value.isValid);
   }
 
   double _calculateReputationImpact(double price) {

@@ -23,12 +23,10 @@ class _GlobalNotificationOverlayState extends State<GlobalNotificationOverlay> {
   @override
   void initState() {
     super.initState();
-    // Utiliser l'instance au lieu de l'accès statique
     EventManager.instance.notificationStream.addListener(_handleNotification);
   }
 
   void _handleNotification() {
-    // Utiliser l'instance
     final notification = EventManager.instance.notificationStream.value;
     if (notification != null) {
       _showNotificationOverlay(notification);

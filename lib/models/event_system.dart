@@ -4,6 +4,7 @@ import 'dart:async';
 import 'game_config.dart';
 import 'game_state_interfaces.dart';
 import '../main.dart' show navigatorKey;
+import 'package:flutter/foundation.dart';
 
 /// Définition des priorités de notification
 enum NotificationPriority { LOW, MEDIUM, HIGH, CRITICAL }
@@ -19,6 +20,7 @@ class NotificationEvent {
   final Map<String, dynamic>? additionalData;
   final bool canBeSuppressed;
   final Duration? suppressionDuration;
+  final EventType? type;
 
   NotificationEvent({
     required this.title,
@@ -30,6 +32,7 @@ class NotificationEvent {
     this.additionalData,
     this.canBeSuppressed = true,
     this.suppressionDuration = const Duration(minutes: 5),
+    this.type,
   }) : timestamp = timestamp ?? DateTime.now();
 
   Map<String, dynamic> toJson() => {
@@ -157,17 +160,26 @@ class GameEvent {
   }
 }
 
+
 /// Gestionnaire principal des événements
 class EventManager {
   static final EventManager _instance = EventManager._internal();
-  final List<GameEvent> _events = [];
-  final ValueNotifier<NotificationEvent?> _notificationController = ValueNotifier(null);
-  final Map<String, DateTime> _lastNotifications = {};
-
   static EventManager get instance => _instance;
+
+  final List<NotificationEvent> _notifications = [];
+  final ValueNotifier<NotificationEvent?> _notificationController = ValueNotifier(null);
+  final List<GameEvent> _events = [];
+  final Map<String, DateTime> _lastNotifications = {}; // Ajout de cette ligne
+
   ValueNotifier<NotificationEvent?> get notificationStream => _notificationController;
+  List<NotificationEvent> get notifications => List.unmodifiable(_notifications);
 
   EventManager._internal();
+
+  void addNotification(NotificationEvent notification) {
+    _notifications.insert(0, notification);
+    _notificationController.value = notification;
+  }
 
   List<GameEvent> getEvents() => List.unmodifiable(_events);
 
@@ -175,29 +187,50 @@ class EventManager {
       EventType type,
       String title, {
         required String description,
+        String? detailedDescription,
         required EventImportance importance,
-        Map<String, dynamic>? data,
+        Map<String, dynamic>? additionalData,
       }) {
-    final event = GameEvent(
-      type: type,
+    final notification = NotificationEvent(
       title: title,
       description: description,
-      importance: importance,
-      data: data,
+      detailedDescription: detailedDescription,
+      icon: _getEventTypeIcon(type),
+      priority: _importanceToPriority(importance),
+      additionalData: additionalData,
+      type: type,
     );
 
-    _events.add(event);
+    addNotification(notification);
+  }
 
-    if (importance >= EventImportance.HIGH) {
-      showNotification(NotificationEvent(
-        title: title,
-        description: description,
-        icon: event.typeIcon,
-        priority: _convertImportanceToNotificationPriority(importance),
-      ));
+
+  IconData _getEventTypeIcon(EventType type) {
+    switch (type) {
+      case EventType.RESOURCE_DEPLETION:
+        return Icons.warning;
+      case EventType.MARKET_CHANGE:
+        return Icons.trending_up;
+      case EventType.SPECIAL_ACHIEVEMENT:
+        return Icons.star;
+      case EventType.XP_BOOST:
+        return Icons.emoji_events;
+      default:
+        return Icons.notifications;
     }
+  }
 
-    _cleanOldEvents();
+  NotificationPriority _importanceToPriority(EventImportance importance) {
+    switch (importance) {
+      case EventImportance.LOW:
+        return NotificationPriority.LOW;
+      case EventImportance.MEDIUM:
+        return NotificationPriority.MEDIUM;
+      case EventImportance.HIGH:
+        return NotificationPriority.HIGH;
+      case EventImportance.CRITICAL:
+        return NotificationPriority.CRITICAL;
+    }
   }
 
   void showNotification(NotificationEvent notification) {
@@ -244,7 +277,8 @@ class EventManager {
   }
 
   void clearEvents() {
-    _events.clear();
+    _notifications.clear();
+    _notificationController.value = null;
   }
 
   static Duration getPriorityDuration(NotificationPriority priority) {

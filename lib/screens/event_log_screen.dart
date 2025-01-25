@@ -18,19 +18,11 @@ class EventLogScreenState extends State<EventLogScreen> {
   void initState() {
     super.initState();
     eventManager = EventManager.instance;
-    loadNotifications();
-    // On utilise ValueListenable.addListener sur le notificationStream
     eventManager.notificationStream.addListener(_handleNewNotification);
   }
 
   void _handleNewNotification() {
-    // Récupérer la nouvelle notification depuis le ValueNotifier
-    final notification = eventManager.notificationStream.value;
-    if (notification != null) {
-      setState(() {
-        notifications.insert(0, notification);
-      });
-    }
+    setState(() {});
   }
 
   void loadNotifications() {
@@ -100,13 +92,18 @@ class EventLogScreenState extends State<EventLogScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final notifications = eventManager.notifications;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Journal des Événements'),
         actions: [
           IconButton(
             icon: const Icon(Icons.clear_all),
-            onPressed: _clearNotifications,
+            onPressed: () {
+              eventManager.clearEvents();
+              setState(() {});
+            },
             tooltip: 'Effacer toutes les notifications',
           )
         ],
@@ -129,33 +126,56 @@ class EventLogScreenState extends State<EventLogScreen> {
         itemCount: notifications.length,
         itemBuilder: (context, index) {
           final notification = notifications[index];
-          return Card(
-            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            child: ListTile(
-              leading: Icon(
-                notification.icon,
-                color: EventManager.getPriorityColor(notification.priority),
-              ),
-              title: Text(
-                notification.title,
-                style: TextStyle(
-                  fontWeight: notification.priority == NotificationPriority.CRITICAL
-                      ? FontWeight.bold
-                      : FontWeight.normal,
-                ),
-              ),
-              subtitle: Text(notification.description),
-              trailing: Text(
-                _formatEventTime(notification.timestamp),
-                style: const TextStyle(color: Colors.grey, fontSize: 12),
-              ),
-              onTap: () => _showDetailedNotification(context, notification),
-            ),
-          );
+          return _buildNotificationCard(notification);
         },
       ),
     );
   }
+  Widget _buildNotificationCard(NotificationEvent notification) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: ListTile(
+        leading: Icon(
+          notification.icon,
+          color: _getPriorityColor(notification.priority),
+        ),
+        title: Text(
+          notification.title,
+          style: TextStyle(
+            fontWeight: notification.priority == NotificationPriority.CRITICAL
+                ? FontWeight.bold
+                : FontWeight.normal,
+          ),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(notification.description),
+            Text(
+              _formatEventTime(notification.timestamp),
+              style: const TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+          ],
+        ),
+        onTap: () => _showDetailedNotification(context, notification),
+      ),
+    );
+  }
+
+
+  Color _getPriorityColor(NotificationPriority priority) {
+    switch (priority) {
+      case NotificationPriority.LOW:
+        return Colors.grey;
+      case NotificationPriority.MEDIUM:
+        return Colors.blue;
+      case NotificationPriority.HIGH:
+        return Colors.orange;
+      case NotificationPriority.CRITICAL:
+        return Colors.red;
+    }
+  }
+
 
   String _formatEventTime(DateTime timestamp) {
     return '${timestamp.day}/${timestamp.month} ${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}';

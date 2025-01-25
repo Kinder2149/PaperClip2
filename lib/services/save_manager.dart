@@ -4,6 +4,113 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/game_state.dart';
 import '../models/game_config.dart';
+class ValidationResult {
+  final bool isValid;
+  final List<String> errors;
+  final Map<String, dynamic>? validatedData;
+
+  ValidationResult({
+    required this.isValid,
+    this.errors = const [],
+    this.validatedData,
+  });
+}
+
+class SaveDataValidator {
+  static const Map<String, Map<String, dynamic>> _validationRules = {
+    'playerManager': {
+      'money': {'type': 'double', 'min': 0.0},
+      'metal': {'type': 'double', 'min': 0.0},
+      'paperclips': {'type': 'double', 'min': 0.0},
+      'autoclippers': {'type': 'int', 'min': 0},
+      'sellPrice': {'type': 'double', 'min': 0.01, 'max': 1.0},
+      'upgrades': {'type': 'map'},
+    },
+    'marketManager': {
+      'marketMetalStock': {'type': 'double', 'min': 0.0},
+      'reputation': {'type': 'double', 'min': 0.0, 'max': 2.0},
+      'dynamics': {'type': 'map'},
+    },
+    'levelSystem': {
+      'experience': {'type': 'double', 'min': 0.0},
+      'level': {'type': 'int', 'min': 1},
+      'currentPath': {'type': 'int', 'min': 0},
+      'xpMultiplier': {'type': 'double', 'min': 1.0},
+    },
+  };
+
+  static ValidationResult validate(Map<String, dynamic> data) {
+    final errors = <String>[];
+
+    // Vérifier les champs requis de base
+    if (!data.containsKey('version') || !data.containsKey('timestamp')) {
+      errors.add('Données de base manquantes (version ou timestamp)');
+      return ValidationResult(isValid: false, errors: errors);
+    }
+
+    // Vérifier chaque section
+    for (var section in _validationRules.keys) {
+      if (!data.containsKey(section)) {
+        errors.add('Section manquante: $section');
+        continue;
+      }
+
+      final sectionData = data[section] as Map<String, dynamic>?;
+      if (sectionData == null) {
+        errors.add('Section invalide: $section');
+        continue;
+      }
+
+      // Vérifier chaque champ de la section
+      for (var field in _validationRules[section]!.keys) {
+        final rules = _validationRules[section]![field];
+        final value = sectionData[field];
+
+        if (value == null) {
+          errors.add('Champ manquant: $section.$field');
+          continue;
+        }
+
+        // Vérification du type
+        if (!_validateType(value, rules['type'])) {
+          errors.add('Type invalide pour $section.$field: attendu ${rules['type']}, reçu ${value.runtimeType}');
+          continue;
+        }
+
+        // Vérification des limites pour les nombres
+        if (rules['type'] == 'double' || rules['type'] == 'int') {
+          if (rules['min'] != null && value < rules['min']) {
+            errors.add('Valeur trop petite pour $section.$field: minimum ${rules['min']}');
+          }
+          if (rules['max'] != null && value > rules['max']) {
+            errors.add('Valeur trop grande pour $section.$field: maximum ${rules['max']}');
+          }
+        }
+      }
+    }
+
+    return ValidationResult(
+      isValid: errors.isEmpty,
+      errors: errors,
+      validatedData: errors.isEmpty ? data : null,
+    );
+  }
+
+  static bool _validateType(dynamic value, String expectedType) {
+    switch (expectedType) {
+      case 'double':
+        return value is double || value is int;
+      case 'int':
+        return value is int;
+      case 'map':
+        return value is Map;
+      case 'list':
+        return value is List;
+      default:
+        return false;
+    }
+  }
+}
 
 class SaveError implements Exception {
   final String code;
@@ -70,25 +177,31 @@ class SaveManager {
         throw SaveError('INVALID_NAME', 'Le nom de la sauvegarde ne peut pas être vide');
       }
 
-      final prefs = await SharedPreferences.getInstance();
+      final gameData = gameState.prepareGameData();
+
+      // Valider les données avant la sauvegarde
+      final validationResult = SaveDataValidator.validate(gameData);
+      if (!validationResult.isValid) {
+        throw SaveError(
+          'VALIDATION_ERROR',
+          'Données invalides:\n${validationResult.errors.join('\n')}',
+        );
+      }
+
       final saveData = SaveGame(
         name: name,
         lastSaveTime: DateTime.now(),
+        gameData: validationResult.validatedData!,
         version: GameConstants.VERSION,
-        gameData: {
-          'playerManager': gameState.playerManager.toJson(),
-          'marketManager': gameState.marketManager.toJson(),
-          'levelSystem': gameState.levelSystem.toJson(),
-          'totalTimePlayedInSeconds': gameState.totalTimePlayed,
-          'totalPaperclipsProduced': gameState.totalPaperclipsProduced,
-        },
       );
 
+      final prefs = await SharedPreferences.getInstance();
       final key = _getSaveKey(name);
       await prefs.setString(key, jsonEncode(saveData.toJson()));
+
     } catch (e) {
       print('Erreur lors de la sauvegarde: $e');
-      throw SaveError('SAVE_FAILED', 'Erreur lors de la sauvegarde: $e');
+      rethrow;
     }
   }
   static Future<SaveGameInfo?> getLastSave() async {
@@ -116,12 +229,16 @@ class SaveManager {
 
       final jsonData = jsonDecode(savedData) as Map<String, dynamic>;
 
-      // Validation après chargement
-      if (!_validateSaveData(jsonData)) {
-        throw SaveError('CORRUPTED_DATA', 'Les données de sauvegarde sont corrompues');
+      // Validation des données
+      final validationResult = SaveDataValidator.validate(jsonData);
+      if (!validationResult.isValid) {
+        throw SaveError(
+          'VALIDATION_ERROR',
+          'Données corrompues ou invalides:\n${validationResult.errors.join('\n')}',
+        );
       }
 
-      // Créer et retourner un objet SaveGame
+      // Si la validation est OK, créer l'objet SaveGame
       return SaveGame.fromJson(jsonData);
     } catch (e) {
       print('Erreur lors du chargement: $e');
