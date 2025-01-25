@@ -282,6 +282,7 @@ class MarketManager extends ChangeNotifier {
   }
 
   double calculateDemand(double price, int marketingLevel) {
+    // Cache pour optimiser les calculs fréquents
     final cacheKey = 'demand_${price}_$marketingLevel';
     final cached = _cache[cacheKey];
 
@@ -289,17 +290,14 @@ class MarketManager extends ChangeNotifier {
       return cached.value as double;
     }
 
-    _updateDifficultyMultiplier();
-
     double baseDemand = _calculateBaseDemand(price);
+    double marketingBonus = 1.0 + (marketingLevel * 0.30); // +30% par niveau
     double reputationFactor = _calculateReputationImpact(price);
-    double difficultyFactor = _calculateDifficultyFactor();
-    double marketingFactor = 1.0 + (marketingLevel * 0.2);
+    double finalDemand = baseDemand * marketingBonus * reputationFactor;
 
-    double finalDemand = baseDemand * reputationFactor * difficultyFactor * marketingFactor;
-    finalDemand = max(0, min(finalDemand, _marketSaturation));
-
+    // Mise en cache du résultat
     _cache[cacheKey] = CachedValue(finalDemand);
+
     return finalDemand;
   }
 

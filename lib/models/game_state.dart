@@ -149,19 +149,18 @@ class GameState extends ChangeNotifier {
     _stopAllTimers();
     _lastUpdateTime = DateTime.now();
 
-    _gameLoopTimer = Timer.periodic(GameConstants.GAME_LOOP_INTERVAL, (timer) {
+    // Production toutes les secondes exactement
+    _gameLoopTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_isPaused) return;
       _processProduction();
     });
   }
 
 
+
   void _stopAllTimers() {
     _gameLoopTimer?.cancel();
     _gameLoopTimer = null;
-    _ticksSinceLastMarketUpdate = 0;
-    _ticksSinceLastAutoSave = 0;
-    _ticksSinceLastMaintenance = 0;
   }
   void _applyMaintenanceCosts() {
     if (player.autoclippers == 0) return;
@@ -214,11 +213,18 @@ class GameState extends ChangeNotifier {
 
   // Production et marché
   void _processProduction() {
-    if (_isPaused || playerManager.autoclippers <= 0) return;
+    if (_isPaused) return;
 
-    // Production par tick (100ms)
-    _calculateAutoProduction();
+    // Production automatique (1 par seconde par autoclipper)
+    if (playerManager.autoclippers > 0) {
+      _calculateAutoProduction();
+    }
+
+    // Traitement des ventes
+    _processMarket();
   }
+
+
 
 
 
@@ -229,42 +235,34 @@ class GameState extends ChangeNotifier {
     return manualProduction;
   }
   void _calculateAutoProduction() {
-    if (playerManager.autoclippers <= 0) return;
+    // Pour chaque autoclipper
+    for (int i = 0; i < playerManager.autoclippers; i++) {
+      // Calcul du métal nécessaire avec bonus d'efficacité
+      double efficiencyBonus = 1.0 - ((playerManager.upgrades['efficiency']?.level ?? 0) * 0.15);
+      double metalNeeded = GameConstants.METAL_PER_PAPERCLIP * efficiencyBonus;
 
-    // Production de base : 0.1 trombone par tick (donc 1 par seconde)
-    double baseProduction = playerManager.autoclippers * GameConstants.BASE_PRODUCTION_PER_TICK;
+      print('Bonus efficacité: ${(1 - efficiencyBonus) * 100}%'); // Debug
+      print('Métal nécessaire après bonus: $metalNeeded'); // Debug
 
-    // Application des bonus
-    double speedBonus = 1.0 + (playerManager.upgrades['speed']?.level ?? 0) * 0.20;
-    double bulkBonus = 1.0 + (playerManager.upgrades['bulk']?.level ?? 0) * 0.35;
-    double efficiencyBonus = 1.0 + (playerManager.upgrades['efficiency']?.level ?? 0) * 0.15;
+      // Vérification du métal disponible
+      if (playerManager.metal >= metalNeeded) {
+        // Production d'un trombone
+        playerManager.updateMetal(playerManager.metal - metalNeeded);
+        playerManager.updatePaperclips(playerManager.paperclips + 1);
+        _totalPaperclipsProduced++;
+        levelSystem.addAutomaticProduction(1);
 
-    // Production totale
-    double totalProduction = baseProduction * speedBonus * bulkBonus;
-
-    // Métal nécessaire
-    double metalNeeded = totalProduction * GameConstants.METAL_PER_PAPERCLIP / efficiencyBonus;
-
-    // Vérification du métal disponible
-    if (metalNeeded > playerManager.metal) {
-      totalProduction = (playerManager.metal * efficiencyBonus) / GameConstants.METAL_PER_PAPERCLIP;
-      metalNeeded = playerManager.metal;
-    }
-
-    if (totalProduction > 0) {
-      // Application de la production
-      playerManager.updateMetal(playerManager.metal - metalNeeded);
-      playerManager.updatePaperclips(playerManager.paperclips + totalProduction);
-
-      // Logs de debug
-      print('AutoClipper Production:');
-      print('- Nombre d\'autoclippers: ${playerManager.autoclippers}');
-      print('- Production par tick: ${totalProduction.toStringAsFixed(2)} trombones');
-      print('- Production par seconde: ${(totalProduction * GameConstants.TICKS_PER_SECOND).toStringAsFixed(2)} trombones/s');
-      print('- Métal utilisé: ${metalNeeded.toStringAsFixed(2)}');
-      print('- Métal restant: ${playerManager.metal.toStringAsFixed(2)}');
+        // Debug logs
+        print('Production AutoClipper:');
+        print('- Métal consommé: ${metalNeeded.toStringAsFixed(2)}');
+        print('- Métal restant: ${playerManager.metal.toStringAsFixed(2)}');
+        print('- Total trombones: ${playerManager.paperclips}');
+      }
+      notifyListeners();
     }
   }
+
+
 
 
 
@@ -307,30 +305,40 @@ class GameState extends ChangeNotifier {
     marketManager.updateMarket();
     double demand = marketManager.calculateDemand(
         playerManager.sellPrice,
+        playerManager.getMarketingLevel()  // Correct, pas d'argument nécessaire
+    );
+
+    if (playerManager.paperclips > 0) {  // Vérification ajoutée
+      int potentialSales = min(demand.floor(), playerManager.paperclips.floor());
+      if (potentialSales > 0) {
+        double qualityBonus = 1.0 + (playerManager.upgrades['quality']?.level ?? 0) * 0.10;
+        double salePrice = playerManager.sellPrice * qualityBonus;
+        double revenue = potentialSales * salePrice;
+
+        playerManager.updatePaperclips(playerManager.paperclips - potentialSales);
+        playerManager.updateMoney(playerManager.money + revenue);
+
+        marketManager.recordSale(potentialSales, salePrice);
+      }
+    }
+  }
+
+  void _processSales() {
+    if (playerManager.paperclips <= 0) return;
+
+    double demand = marketManager.calculateDemand(
+        playerManager.sellPrice,
         playerManager.getMarketingLevel()
     );
 
     int potentialSales = min(demand.floor(), playerManager.paperclips.floor());
     if (potentialSales > 0) {
-      _processSales(potentialSales);
+      double revenue = potentialSales * playerManager.sellPrice;
+      playerManager.updatePaperclips(playerManager.paperclips - potentialSales);
+      playerManager.updateMoney(playerManager.money + revenue);
+
+      marketManager.recordSale(potentialSales, playerManager.sellPrice);
     }
-  }
-
-  void _processSales(int quantity) {
-    double qualityBonus = 1.0 + (player.upgrades['quality']?.level ?? 0) * 0.1;
-    double salePrice = player.sellPrice * qualityBonus;
-    double revenue = quantity * salePrice;
-
-    player.updatePaperclips(player.paperclips - quantity);
-    player.updateMoney(player.money + revenue);
-
-    market.recordSale(quantity, salePrice);
-    level.addSale(quantity, salePrice);
-
-    missionSystem.updateMissions(
-        MissionType.SELL_PAPERCLIPS,
-        quantity.toDouble()
-    );
   }
 
 
@@ -647,7 +655,6 @@ class GameState extends ChangeNotifier {
   @override
   void dispose() {
     _stopAllTimers();
-    _gameLoopTimer?.cancel();
     playerManager.dispose();
     levelSystem.dispose();
     super.dispose();

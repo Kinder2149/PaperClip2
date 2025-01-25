@@ -199,7 +199,7 @@ class MarketScreen extends StatelessWidget {
                     children: [
                       _buildMarketCard(
                         title: 'Stock de Métal',
-                        value: '${gameState.player.metal.toStringAsFixed(1)}',
+                        value: '${gameState.player.metal.toStringAsFixed(1)} / ${gameState.player.maxMetalStorage}',  // Correction ici
                         icon: Icons.inventory_2,
                         color: Colors.grey.shade200,
                         tooltip: 'Métal disponible pour la production',
@@ -207,16 +207,10 @@ class MarketScreen extends StatelessWidget {
                           context,
                           'Stock de Métal',
                           'Quantité de métal disponible pour la production.\n'
-                              'Capacité maximale: ${gameState.maxMetalStorage}\n'
+                              'Capacité maximale: ${gameState.player.maxMetalStorage}\n'
                               'Prix actuel: ${gameState.market.currentMetalPrice.toStringAsFixed(2)} €',
                         ),
-                        trailing: Text(
-                          '/ ${gameState.maxMetalStorage}',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[600],
-                          ),
-                        ),
+                        trailing: null,
                       ),
                       const SizedBox(height: 8),
 

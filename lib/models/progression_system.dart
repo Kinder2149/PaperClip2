@@ -251,7 +251,7 @@ class LevelSystem extends ChangeNotifier {
   double _experience = 0;
   int _level = 1;
   ProgressionPath _currentPath = ProgressionPath.PRODUCTION;
-  final GameFeatureUnlocker featureUnlocker = GameFeatureUnlocker();
+  final GameFeatureUnlocker _featureUnlocker = GameFeatureUnlocker();
   final XPComboSystem comboSystem = XPComboSystem();
   final DailyXPBonus dailyBonus = DailyXPBonus();
   double _xpMultiplier = 1.0;
@@ -342,6 +342,59 @@ class LevelSystem extends ChangeNotifier {
   Map<int, String> get levelUnlocks {
     return _levelUnlocks.map((key, value) => MapEntry(key, value.description));
   }
+  void _handleLevelUp(int newLevel) {
+    final previousLevel = _level;
+    _level = newLevel;
+
+    // Obtenir les nouvelles fonctionnalités débloquées
+    final newFeatures = _featureUnlocker.getNewlyUnlockedFeatures(previousLevel, newLevel);
+
+    // Pour chaque nouvelle fonctionnalité débloquée
+    for (var feature in newFeatures) {
+      EventManager.instance.addEvent(
+        EventType.LEVEL_UP,
+        'Nouvelle Fonctionnalité Débloquée !',
+        description: 'Niveau $newLevel : ${_getLevelDescription(feature)}',
+        importance: EventImportance.HIGH,
+        additionalData: {
+          'unlockedFeature': feature,
+          'level': newLevel,
+        },
+      );
+    }
+
+    // Notification générale de montée de niveau si aucune fonctionnalité n'est débloquée
+    if (newFeatures.isEmpty) {
+      EventManager.instance.addEvent(
+        EventType.LEVEL_UP,
+        'Niveau $newLevel atteint !',
+        description: 'Continuez votre progression !',
+        importance: EventImportance.MEDIUM,
+      );
+    }
+
+    notifyListeners();
+  }
+
+  String _getLevelDescription(UnlockableFeature feature) {
+    switch (feature) {
+      case UnlockableFeature.MANUAL_PRODUCTION:
+        return "Production manuelle débloquée";
+      case UnlockableFeature.METAL_PURCHASE:
+        return "Achat de métal disponible";
+      case UnlockableFeature.MARKET_SALES:
+        return "Vente sur le marché activée";
+      case UnlockableFeature.MARKET_SCREEN:
+        return "Écran du marché accessible";
+      case UnlockableFeature.AUTOCLIPPERS:
+        return "Autoclippeuses disponibles";
+      case UnlockableFeature.UPGRADES:
+        return "Système d'améliorations débloqué";
+      default:
+        return "Nouvelle fonctionnalité disponible";
+    }
+  }
+
 
   double calculateExperienceRequirement(int level) {
     if (level <= 10) {
@@ -379,7 +432,7 @@ class LevelSystem extends ChangeNotifier {
     // Réinitialisation des systèmes
     comboSystem.setComboCount(0);
     dailyBonus.setClaimed(false);
-    featureUnlocker.reset();  // Utilisation de la nouvelle méthode reset
+    _featureUnlocker.reset();  // Utilisez _featureUnlocker au lieu de featureUnlocker
 
     // Réinitialisation des callbacks
     onLevelUp = null;
@@ -443,7 +496,7 @@ class LevelSystem extends ChangeNotifier {
       _experience -= requiredExperience;
 
       List<UnlockableFeature> newFeatures =
-      featureUnlocker.getNewlyUnlockedFeatures(_level - 1, _level);
+      _featureUnlocker.getNewlyUnlockedFeatures(_level - 1, _level);
 
       _triggerLevelUpEvent(_level, newFeatures);
 
@@ -510,6 +563,20 @@ class GameFeatureUnlocker {
     UnlockableFeature.MARKET_SCREEN: 7,
     UnlockableFeature.MARKET_SALES: 9,
   };
+  List<UnlockableFeature> getNewlyUnlockedFeatures(int previousLevel, int newLevel) {
+    return _featureLevelRequirements.entries
+        .where((entry) =>
+    entry.value > previousLevel &&
+        entry.value <= newLevel)
+        .map((entry) => entry.key)
+        .toList();
+  }
+
+  // Méthode pour vérifier si une fonctionnalité est débloquée
+  bool isFeatureUnlocked(UnlockableFeature feature, int currentLevel) {
+    return currentLevel >= (_featureLevelRequirements[feature] ?? 100);
+  }
+
 
 
   void reset() {
@@ -519,18 +586,9 @@ class GameFeatureUnlocker {
     }
   }
 
-  bool isFeatureUnlocked(UnlockableFeature feature, int currentLevel) {
-    return currentLevel >= (_featureLevelRequirements[feature] ?? 100);
-  }
 
-  List<UnlockableFeature> getNewlyUnlockedFeatures(int previousLevel, int newLevel) {
-    return _featureLevelRequirements.entries
-        .where((entry) =>
-    entry.value > previousLevel &&
-        entry.value <= newLevel)
-        .map((entry) => entry.key)
-        .toList();
-  }
+
+
 
 
   Map<String, bool> getVisibleScreenElements(int currentLevel) {

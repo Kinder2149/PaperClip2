@@ -150,6 +150,19 @@ class PlayerManager extends ChangeNotifier {
   double _money = 0.0;
   int _autoclippers = 0;
   double _sellPrice = 0.25;
+  double autoclipperPaperclips = 0; // Pour suivre les trombones produits par les autoclippers
+
+
+  // Getters
+  double get metal => _metal;
+  double get paperclips => _paperclips;
+  double get money => _money;
+  int get autoclippers => _autoclippers;
+  double get sellPrice => _sellPrice;
+
+
+
+
   final Map<String, Upgrade> _upgrades = {
     'efficiency': Upgrade(
       id: "efficiency",
@@ -204,11 +217,6 @@ class PlayerManager extends ChangeNotifier {
 
 
   // Getters
-  double get paperclips => _paperclips;
-  double get metal => _metal;
-  double get money => _money;
-  int get autoclippers => _autoclippers;
-  double get sellPrice => _sellPrice;
   Map<String, Upgrade> get upgrades => _upgrades;
 
 
@@ -356,8 +364,9 @@ class PlayerManager extends ChangeNotifier {
   }
 
   double calculateAutoclipperCost() {
-    return GameConstants.BASE_AUTOCLIPPER_COST *
-        pow(1.1, _autoclippers);
+    double baseCost = GameConstants.BASE_AUTOCLIPPER_COST;
+    double automationDiscount = 1.0 - ((upgrades['automation']?.level ?? 0) * 0.10);
+    return baseCost * pow(1.1, _autoclippers) * automationDiscount;
   }
 
   bool purchaseAutoclipper() {
@@ -366,10 +375,10 @@ class PlayerManager extends ChangeNotifier {
 
     _money -= cost;
     _autoclippers++;
-    levelSystem.addAutoclipperPurchase();
     notifyListeners();
     return true;
   }
+
 
   void _applyMaintenanceCosts() {
     if (_autoclippers == 0) return;
@@ -399,6 +408,7 @@ class PlayerManager extends ChangeNotifier {
       notifyListeners();
     }
   }
+
 
   void updateMoney(double newAmount) {
     if (_money != newAmount) {

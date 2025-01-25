@@ -1,13 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dart:async';
 import '../models/game_state.dart';
 import '../models/game_config.dart';
 import '../widgets/resource_widgets.dart';
 import '../widgets/level_widgets.dart';
 import '../services/save_manager.dart';
 
-class ProductionScreen extends StatelessWidget {
+class ProductionScreen extends StatefulWidget {
   const ProductionScreen({super.key});
+
+  @override
+  State<ProductionScreen> createState() => _ProductionScreenState();
+}
+class _ProductionScreenState extends State<ProductionScreen> {
+  Timer? _refreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Rafraîchir l'interface toutes les 100ms
+    _refreshTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
 
   String formatNumber(double number, bool isMetal) {
     if (isMetal) {
@@ -17,7 +41,6 @@ class ProductionScreen extends StatelessWidget {
     }
   }
 
-  // Toutes les méthodes précédentes restent identiques
   Widget _buildResourceCard(String title, String value, Color color,
       {VoidCallback? onTap}) {
     return Expanded(
@@ -57,60 +80,6 @@ class ProductionScreen extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  void _showInfoDialog(BuildContext context, String title, String message) {
-    // Méthode inchangée
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) =>
-          AlertDialog(
-            title: Text(title),
-            content: SingleChildScrollView(
-              child: Text(message),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Fermer'),
-              ),
-            ],
-          ),
-    );
-  }
-
-  Future<void> _saveGame(BuildContext context, GameState gameState) async {
-    try {
-      if (gameState.gameName == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Erreur: Aucun nom de partie défini'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-
-      await gameState.saveGame(
-          gameState.gameName!); // Utiliser la méthode de GameState
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Partie sauvegardée avec succès'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
-        ),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Erreur lors de la sauvegarde: $e'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 4),
-        ),
-      );
-    }
   }
 
   Widget _buildActionButton({
@@ -167,6 +136,58 @@ class ProductionScreen extends StatelessWidget {
     );
   }
 
+  void _showInfoDialog(BuildContext context, String title, String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) =>
+          AlertDialog(
+            title: Text(title),
+            content: SingleChildScrollView(
+              child: Text(message),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Fermer'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  Future<void> _saveGame(BuildContext context, GameState gameState) async {
+    try {
+      if (gameState.gameName == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Erreur: Aucun nom de partie défini'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      await gameState.saveGame(gameState.gameName!);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Partie sauvegardée avec succès'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur lors de la sauvegarde: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
   Widget _buildAutoclippersSection(BuildContext context, GameState gameState) {
     double bulkBonus = (gameState.player.upgrades['bulk']?.level ?? 0) * 20;
     double speedBonus = (gameState.player.upgrades['speed']?.level ?? 0) * 15;
@@ -221,10 +242,12 @@ class ProductionScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _buildActionButton(
-              onPressed: gameState.player.money >= gameState.player.calculateAutoclipperCost()
+              onPressed: gameState.player.money >=
+                  gameState.player.calculateAutoclipperCost()
                   ? () => gameState.player.purchaseAutoclipper()
                   : null,
-              label: 'Acheter Autoclipper (${gameState.player.calculateAutoclipperCost().toStringAsFixed(1)} €)',
+              label: 'Acheter Autoclipper (${gameState.player
+                  .calculateAutoclipperCost().toStringAsFixed(1)} €)',
               icon: Icons.add_circle_outline,
             ),
           ],
@@ -248,22 +271,21 @@ class ProductionScreen extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text('Production de base: ${gameState.player
-                      .autoclippers} par cycle'),
+                      .autoclippers} trombone/s'),
                   Text(
                       'Bonus de production: +${bulkBonus.toStringAsFixed(0)}%'),
                   Text('Bonus de vitesse: +${speedBonus.toStringAsFixed(0)}%'),
                   const Divider(),
-                  Text('Production effective: ${(gameState.player.autoclippers *
-                      (1 + bulkBonus / 100) * (1 + speedBonus / 100))
-                      .toStringAsFixed(1)} par cycle'),
+                  Text(
+                      'Production totale: ${gameState.player
+                          .autoclippers} trombones/s\n'
+                          'Consommation métal: ${(GameConstants
+                          .METAL_PER_PAPERCLIP * gameState.player.autoclippers)
+                          .toStringAsFixed(2)}/s'
+                  ),
                   const Divider(),
                   Text('Coûts de maintenance: ${gameState.maintenanceCosts
                       .toStringAsFixed(1)} € par min'),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Note: La maintenance est automatiquement déduite de vos revenus.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
                 ],
               ),
             ),
@@ -277,6 +299,83 @@ class ProductionScreen extends StatelessWidget {
     );
   }
 
+  void _showMarketInfoDialog(BuildContext context, GameState gameState) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Informations du Marché'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Réputation: ${gameState.market.reputation.toStringAsFixed(2)}'),
+              const Text(
+                'Influence les ventes et les prix maximum.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const Divider(),
+              Text('Demande actuelle: ${(gameState.market.calculateDemand(
+                  gameState.player.sellPrice,
+                  gameState.player.getMarketingLevel()) * 100).toStringAsFixed(0)}%'),
+              const Text(
+                'Basée sur le prix et le niveau marketing.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const Divider(),
+              Text('Stock mondial de métal: ${gameState.resources.marketMetalStock.toStringAsFixed(0)}'),
+              const Text(
+                'Influence les prix et la disponibilité.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMarketIndicator(String label, String value, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 16),
+          const SizedBox(width: 8),
+          Text(label),
+          const Spacer(),
+          Text(
+            value,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBonusIndicator(String label, String value, IconData icon) {
+    return Column(
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16),
+            const SizedBox(width: 4),
+            Text(value),
+          ],
+        ),
+        Text(label, style: const TextStyle(fontSize: 12)),
+      ],
+    );
+  }
   Widget _buildMarketInfoCard(BuildContext context, GameState gameState) {
     return Card(
       elevation: 2,
@@ -290,7 +389,8 @@ class ProductionScreen extends StatelessWidget {
               children: [
                 const Icon(Icons.trending_up),
                 const SizedBox(width: 8),
-                const Text('État du Marché',
+                const Text(
+                  'État du Marché',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -311,7 +411,9 @@ class ProductionScreen extends StatelessWidget {
             ),
             _buildMarketIndicator(
               'Demande',
-              '${(gameState.market.calculateDemand(gameState.player.sellPrice, gameState.player.getMarketingLevel()) * 100).toStringAsFixed(0)}%',
+              '${(gameState.market.calculateDemand(
+                  gameState.player.sellPrice,
+                  gameState.player.getMarketingLevel()) * 100).toStringAsFixed(0)}%',
               Icons.people,
             ),
             _buildMarketIndicator(
@@ -325,99 +427,7 @@ class ProductionScreen extends StatelessWidget {
     );
   }
 
-  void _showMarketInfoDialog(BuildContext context, GameState gameState) {
-    showDialog(
-      context: context,
-      builder: (context) =>
-          AlertDialog(
-            title: const Text('Informations du Marché'),
-            content: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('Réputation: ${gameState.market.reputation
-                      .toStringAsFixed(2)}'),
-                  const Text(
-                    'Influence les ventes et les prix maximum.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                  const Divider(),
-                  Text('Demande actuelle: ${(gameState.market.calculateDemand(
-                      gameState.player.sellPrice,
-                      gameState.player.getMarketingLevel()) * 100)
-                      .toStringAsFixed(0)}%'),
-                  const Text(
-                    'Basée sur le prix et le niveau marketing.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                  const Divider(),
-                  Text('Stock mondial de métal: ${gameState.resources
-                      .marketMetalStock.toStringAsFixed(0)}'),
-                  const Text(
-                    'Influence les prix et la disponibilité.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Fermer'),
-              ),
-            ],
-          ),
-    );
-  }
-  Widget _buildBonusIndicator(String label, String value, IconData icon) {
-    return Column(
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16),
-            const SizedBox(width: 4),
-            Text(value),
-          ],
-        ),
-        Text(label, style: const TextStyle(fontSize: 12)),
-      ],
-    );
-  }
-  Widget _buildMarketIndicator(String label, String value, IconData icon) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Icon(icon, size: 16),
-          const SizedBox(width: 8),
-          Text(label),
-          const Spacer(),
-          Text(
-            value,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-  Widget _buildMetalPurchaseButton(GameState gameState) {
-    return Visibility(
-      visible: gameState.getVisibleScreenElements()['metalPurchaseButton'] == true,
-      child: ElevatedButton.icon(
-        icon: const Icon(Icons.shopping_cart),
-        label: Text('Acheter du métal (${gameState.market.currentMetalPrice.toStringAsFixed(2)} €)'),
-        onPressed: () => gameState.buyMetal(),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.blue,
-          foregroundColor: Colors.white,
-        ),
-      ),
-    );
-  }
+
 
 
 
@@ -460,8 +470,14 @@ class ProductionScreen extends StatelessWidget {
                           const SizedBox(width: 16),
                           _buildResourceCard(
                             'Stock Trombones',
-                            formatNumber(gameState.player.paperclips, false),
+                            '${formatNumber(gameState.player.paperclips, false)}',  // On garde juste le total
                             Colors.blue.shade100,
+                            onTap: () => _showInfoDialog(
+                              context,
+                              'Stock de Trombones',
+                              'Total en stock: ${formatNumber(gameState.player.paperclips, false)}\n'
+                                  'Production totale: ${gameState.totalPaperclipsProduced}',
+                            ),
                           ),
                         ],
                       ),
@@ -537,7 +553,6 @@ class ProductionScreen extends StatelessWidget {
                         _buildAutoclippersSection(context, gameState),
                         const SizedBox(height: 16),
                       ],
-
 
                       _buildActionButton(
                         onPressed: () => _saveGame(context, gameState),

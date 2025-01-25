@@ -40,6 +40,12 @@ class GameConstants {
   static const Duration EVENT_MAX_AGE = Duration(days: 1);
 
 
+  static const Duration GAME_LOOP_INTERVAL = Duration(milliseconds: 100);
+  static const double TICKS_PER_SECOND = 10.0; // 1000ms / 100ms
+  static const double BASE_PRODUCTION_PER_SECOND = 1.0; // 1 trombone par seconde
+  static const double BASE_PRODUCTION_PER_TICK = BASE_PRODUCTION_PER_SECOND / TICKS_PER_SECOND; // 0.1 par tick
+
+
 
 
   //  "Expérience et progression"
@@ -66,11 +72,9 @@ class GameConstants {
 
 
   // Intervalles de temps
-  static const Duration GAME_LOOP_INTERVAL = Duration(milliseconds: 100); // 10 fois par seconde
+
   static const double BASE_AUTOCLIPPER_PRODUCTION = 1.0; // 1 trombone par seconde
-  static const double TICKS_PER_SECOND = 10; // 1000ms / 100ms = 10 ticks par seconde
-  static const double BASE_PRODUCTION_PER_SECOND = 1.0; // 1 trombone par seconde
-  static const double BASE_PRODUCTION_PER_TICK = BASE_PRODUCTION_PER_SECOND / TICKS_PER_SECOND; // 0.1 trombone par tick
+
 
   static const Duration AUTOSAVE_INTERVAL = Duration(minutes: 5);
 

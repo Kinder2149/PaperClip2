@@ -313,45 +313,47 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Widget _buildNotificationButton() {
-    return Stack(
-      children: [
-        IconButton(
-          icon: const Icon(Icons.notifications, color: Colors.white),
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const EventLogScreen()),
-          ),
-        ),
-        Positioned(
-          right: 0,
-          top: 0,
-          child: Consumer<GameState>(
-            builder: (context, gameState, child) {
-              final notificationCount = EventManager.instance.getEvents()
-                  .where((event) => event.importance >= EventImportance.HIGH)
-                  .length;
-
-              if (notificationCount == 0) return const SizedBox.shrink();
-
-              return Container(
-                padding: const EdgeInsets.all(4),
-                decoration: const BoxDecoration(
-                  color: Colors.red,
-                  shape: BoxShape.circle,
-                ),
-                child: Text(
-                  '$notificationCount',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
+    return ValueListenableBuilder<int>(
+      valueListenable: EventManager.instance.unreadCount,
+      builder: (context, unreadCount, child) {
+        return Stack(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.notifications, color: Colors.white),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const EventLogScreen()),
+                );
+              },
+            ),
+            if (unreadCount > 0)
+              Positioned(
+                right: 5,
+                top: 5,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  constraints: const BoxConstraints(
+                    minWidth: 16,
+                    minHeight: 16,
+                  ),
+                  child: Text(
+                    unreadCount.toString(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
                 ),
-              );
-            },
-          ),
-        ),
-      ],
+              ),
+          ],
+        );
+      },
     );
   }
 

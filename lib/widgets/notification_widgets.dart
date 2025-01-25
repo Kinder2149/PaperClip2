@@ -118,6 +118,7 @@ class _GlobalNotificationOverlayState extends State<GlobalNotificationOverlay> {
   }
 }
 
+// Dans lib/widgets/notification_widgets.dart
 class EventNotificationOverlay extends StatelessWidget {
   const EventNotificationOverlay({Key? key}) : super(key: key);
 
@@ -131,38 +132,52 @@ class EventNotificationOverlay extends StatelessWidget {
         return Positioned(
           top: MediaQuery.of(context).padding.top + 10,
           right: 10,
-          child: Material(
-            elevation: 8,
-            borderRadius: BorderRadius.circular(8),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(notification.icon, color: Colors.blue),
-                  const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        notification.title,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
+          child: GestureDetector(
+            onTap: () {
+              // Faire disparaître la notification
+              EventManager.instance.notificationStream.value = null;
+            },
+            child: Material(
+              elevation: 8,
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(notification.icon),
+                    const SizedBox(width: 8),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(notification.title),
+                        Text(
+                          notification.description,
+                          style: TextStyle(fontSize: 12),
                         ),
-                      ),
-                      Text(
-                        notification.description,
-                        style: const TextStyle(fontSize: 14),
-                      ),
-                    ],
-                  ),
-                ],
+                        if (notification.occurrences > 1)
+                          Text(
+                            '${notification.occurrences} occurrences',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.grey,
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(
+                      Icons.close,
+                      size: 16,
+                      color: Colors.grey,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
