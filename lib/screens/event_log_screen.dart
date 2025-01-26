@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../models/game_state.dart';
 import '../models/event_system.dart';
 
 class EventLogScreen extends StatefulWidget {
@@ -13,28 +11,40 @@ class EventLogScreen extends StatefulWidget {
 class EventLogScreenState extends State<EventLogScreen> {
   late final EventManager eventManager;
   List<NotificationEvent> notifications = [];
+  NotificationEvent? currentNotification;
 
   @override
   void initState() {
     super.initState();
     eventManager = EventManager.instance;
     eventManager.notificationStream.addListener(_handleNewNotification);
-    _loadNotifications(); // Charge les notifications au démarrage
+    _loadNotifications();
   }
 
   void _handleNewNotification() {
-    _loadNotifications(); // Recharge les notifications quand une nouvelle arrive
+    final notification = eventManager.notificationStream.value;
+    if (notification != null) {
+      setState(() {
+        currentNotification = notification;
+      });
+      _loadNotifications();
+    }
+  }
+
+  void _dismissNotification() {
+    setState(() {
+      currentNotification = null;
+      eventManager.markAsRead(currentNotification!.id);
+    });
   }
 
   void _loadNotifications() {
     setState(() {
-      // Utiliser directement les notifications de l'EventManager
       notifications = List.from(eventManager.notifications);
       _groupSimilarNotifications();
     });
   }
 
-  // Nouvelle méthode pour grouper les notifications similaires
   void _groupSimilarNotifications() {
     final Map<String, NotificationEvent> groupedNotifications = {};
 
@@ -65,110 +75,84 @@ class EventLogScreenState extends State<EventLogScreen> {
     super.dispose();
   }
 
-  void _showDetailedNotification(BuildContext context, NotificationEvent event) {
-    // Marquer la notification comme lue
-    EventManager.instance.markAsRead(event.id);
+  Color _getPriorityColor(NotificationPriority priority) {
+    switch (priority) {
+      case NotificationPriority.LOW:
+        return Colors.grey;
+      case NotificationPriority.MEDIUM:
+        return Colors.blue;
+      case NotificationPriority.HIGH:
+        return Colors.orange;
+      case NotificationPriority.CRITICAL:
+        return Colors.red;
+    }
+  }
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(
-              event.icon,
-              color: _getPriorityColor(event.priority),
-              size: 28,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(event.title),
-                  Text(
-                    _formatEventTime(event.timestamp),
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                event.description,
-                style: const TextStyle(fontSize: 16),
-              ),
-              const SizedBox(height: 16),
-              if (event.detailedDescription != null) ...[
-                const Divider(),
-                const SizedBox(height: 8),
-                Text(
-                  'Détails supplémentaires :',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey[800],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(event.detailedDescription!),
-              ],
-              if (event.occurrences > 1) ...[
-                const Divider(),
-                const SizedBox(height: 8),
-                Text(
-                  'Fréquence :',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey[800],
-                  ),
-                ),
-                Text('Cet événement s\'est produit ${event.occurrences} fois'),
-              ],
-              if (event.additionalData != null &&
-                  event.additionalData!.isNotEmpty) ...[
-                const Divider(),
-                const SizedBox(height: 8),
-                Text(
-                  'Informations complémentaires :',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey[800],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                ...event.additionalData!.entries.map((e) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
+  String _formatEventTime(DateTime timestamp) {
+    final now = DateTime.now();
+    final difference = now.difference(timestamp);
+
+    if (difference.inDays == 0) {
+      return 'Aujourd\'hui ${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}';
+    } else if (difference.inDays == 1) {
+      return 'Hier ${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}';
+    } else {
+      return '${timestamp.day}/${timestamp.month} ${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Event Log'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.clear_all),
+            onPressed: notifications.isEmpty ? null : _clearNotifications,
+            tooltip: 'Effacer toutes les notifications',
+          )
+        ],
+      ),
+      body: Column(
+        children: [
+          if (currentNotification != null)
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Card(
+                color: _getPriorityColor(currentNotification!.priority),
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
                   child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '${e.key} :',
-                        style: const TextStyle(fontWeight: FontWeight.w500),
-                      ),
+                      Icon(currentNotification!.icon, color: Colors.white),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: Text(e.value.toString()),
+                        child: Text(
+                          currentNotification!.title,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white),
+                        onPressed: _dismissNotification,
                       ),
                     ],
                   ),
-                )),
-              ],
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Fermer'),
+                ),
+              ),
+            ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: notifications.length,
+              itemBuilder: (context, index) {
+                final notification = notifications[index];
+                return _buildNotificationCard(notification);
+              },
+            ),
           ),
         ],
       ),
@@ -227,66 +211,8 @@ class EventLogScreenState extends State<EventLogScreen> {
     );
   }
 
-  Color _getPriorityColor(NotificationPriority priority) {
-    switch (priority) {
-      case NotificationPriority.LOW:
-        return Colors.grey;
-      case NotificationPriority.MEDIUM:
-        return Colors.blue;
-      case NotificationPriority.HIGH:
-        return Colors.orange;
-      case NotificationPriority.CRITICAL:
-        return Colors.red;
-    }
-  }
-
-  String _formatEventTime(DateTime timestamp) {
-    final now = DateTime.now();
-    final difference = now.difference(timestamp);
-
-    if (difference.inDays == 0) {
-      return 'Aujourd\'hui ${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}';
-    } else if (difference.inDays == 1) {
-      return 'Hier ${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}';
-    } else {
-      return '${timestamp.day}/${timestamp.month} ${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}';
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Journal des Événements'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.clear_all),
-            onPressed: notifications.isEmpty ? null : _clearNotifications,
-            tooltip: 'Effacer toutes les notifications',
-          )
-        ],
-      ),
-      body: notifications.isEmpty
-          ? const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.notifications_none, size: 100, color: Colors.grey),
-            SizedBox(height: 20),
-            Text(
-              'Aucune notification pour le moment',
-              style: TextStyle(fontSize: 18, color: Colors.grey),
-            )
-          ],
-        ),
-      )
-          : ListView.builder(
-        itemCount: notifications.length,
-        itemBuilder: (context, index) {
-          final notification = notifications[index];
-          return _buildNotificationCard(notification);
-        },
-      ),
-    );
+  void _showDetailedNotification(BuildContext context, NotificationEvent event) {
+    eventManager.markAsRead(event.id);
+    // Display detailed notification
   }
 }

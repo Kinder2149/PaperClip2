@@ -363,25 +363,20 @@ class LevelSystem extends ChangeNotifier {
     }
   }
   void _handleLevelUp(int newLevel) {
-    final List<UnlockableFeature> newFeatures =
-    _featureUnlocker.getNewlyUnlockedFeatures(_level, newLevel);
-    _level = newLevel;
-
-    for (var feature in newFeatures) {
-      final unlockDetails = getUnlockDetails(feature);
-
+    final unlocks = _levelUnlocks[newLevel];
+    if (unlocks != null) {
       EventManager.instance.addEvent(
           EventType.LEVEL_UP,
-          'Nouvelle Fonctionnalité !',
-          description: unlockDetails.name,
-          detailedDescription: _formatUnlockDescription(unlockDetails),
+          "Niveau $newLevel Atteint !",
+          description: unlocks.description,
           importance: EventImportance.HIGH,
           additionalData: {
-            'unlockedFeature': feature,
             'level': newLevel,
+            'unlockedFeatures': unlocks.unlockedFeatures,
           }
       );
     }
+    notifyListeners();
   }
   String _formatUnlockDescription(UnlockDetails details) {
     return '''
@@ -576,6 +571,7 @@ ${details.tips.map((t) => '• $t').join('\n')}
   }
 
   void gainExperience(double amount) {
+    print('Gaining experience: $amount'); // Log initial amount
     double baseAmount = amount * totalXpMultiplier;
     double levelPenalty = _level * 0.02;
     double adjustedAmount = baseAmount * (1 - levelPenalty);
@@ -584,7 +580,12 @@ ${details.tips.map((t) => '• $t').join('\n')}
       adjustedAmount *= 1.1;
     }
 
+    print('Adjusted experience: $adjustedAmount'); // Log adjusted amount
     _experience += max(adjustedAmount, 0.2);
+
+    print('Current experience: $_experience'); // Log current experience
+    print('Experience for next level: ${calculateExperienceRequirement(_level + 1)}'); // Log required experience
+
     comboSystem.incrementCombo();
     _checkLevelUp();
     notifyListeners();
@@ -656,36 +657,62 @@ ${details.tips.map((t) => '• $t').join('\n')}
   }
 
   void _checkLevelUp() {
-    double requiredExperience = calculateExperienceRequirement(_level);
+    while (_experience >= calculateExperienceRequirement(_level)) {
+      double requiredExperience = calculateExperienceRequirement(_level);
 
-    while (_experience >= requiredExperience) {
-      _handleLevelUp(_level);
+      // Subtract required experience before incrementing level
+      _experience -= requiredExperience;
+      _level++;
 
       List<UnlockableFeature> newFeatures =
       _featureUnlocker.getNewlyUnlockedFeatures(_level - 1, _level);
 
+      _handleLevelUp(_level);
       _triggerLevelUpEvent(_level, newFeatures);
 
       if (onLevelUp != null) {
         onLevelUp!(_level, newFeatures);
       }
-
-      requiredExperience = calculateExperienceRequirement(_level);
-      notifyListeners();
     }
+
+    notifyListeners();
   }
 
   void _triggerLevelUpEvent(int newLevel, List<UnlockableFeature> newFeatures) {
-    String featuresDescription = newFeatures.isEmpty
-        ? "Continuez votre progression !"
-        : "Nouvelles fonctionnalités débloquées !";
+    if (newFeatures.isEmpty) {
+      EventManager.instance.addEvent(
+          EventType.LEVEL_UP,
+          "Niveau $newLevel atteint !",
+          description: "Continuez votre progression !",
+          importance: EventImportance.HIGH
+      );
+    } else {
+      for (var feature in newFeatures) {
+        final details = LevelSystem.getUnlockDetails(feature);
+        EventManager.instance.addEvent(
+            EventType.LEVEL_UP,
+            "Niveau $newLevel atteint !",
+            description: details.name,
+            detailedDescription: '''
+${details.description}
 
-    EventManager.instance.addEvent(
-        EventType.LEVEL_UP,
-        "Niveau $newLevel atteint !",
-        description: featuresDescription,
-        importance: EventImportance.HIGH
-    );
+📋 Comment utiliser :
+${details.howToUse}
+
+✨ Avantages :
+${details.benefits.map((b) => '• $b').join('\n')}
+
+💡 Conseils :
+${details.tips.map((t) => '• $t').join('\n')}
+''',
+            importance: EventImportance.HIGH,
+            additionalData: {
+              'unlockedFeature': feature,
+              'level': newLevel,
+            }
+        );
+      }
+    }
   }
 
   Map<String, dynamic> toJson() => {

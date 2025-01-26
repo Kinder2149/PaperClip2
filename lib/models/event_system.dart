@@ -7,6 +7,8 @@ import '../main.dart' show navigatorKey;
 import 'package:flutter/foundation.dart';
 import 'package:paperclip2/screens/event_log_screen.dart';
 import 'progression_system.dart';
+import 'package:flutter/foundation.dart';  // Ajoutez cet import
+import 'dart:async';
 
 /// Définition des priorités de notification
 enum NotificationPriority { LOW, MEDIUM, HIGH, CRITICAL }
@@ -209,8 +211,10 @@ class GameEvent {
 
 
 /// Gestionnaire principal des événements
-class EventManager {
+class EventManager with  ChangeNotifier {
   static final EventManager _instance = EventManager._internal();
+  ValueNotifier<int> _unreadNotificationsCount = ValueNotifier(0);
+
 
   static EventManager get instance => _instance;
   final ValueNotifier<NotificationEvent?> notificationStream = ValueNotifier(
@@ -220,9 +224,14 @@ class EventManager {
   final Set<String> _sentResourceNotifications = {};
   final GameFeatureUnlocker _featureUnlocker = GameFeatureUnlocker();
 
+  final Map<String, DateTime> _lastShownTimes = {};
 
-  final ValueNotifier<
-      NotificationEvent?> _notificationController = ValueNotifier(null);
+  static const Duration _minimumInterval = Duration(seconds: 30);
+  static const int _maxNotifications = 100;
+
+
+
+
   final List<GameEvent> _events = [];
   final Map<String, DateTime> _lastNotifications = {}; // Ajout de cette ligne
 
@@ -244,88 +253,84 @@ class EventManager {
 
   EventManager._internal();
 
-  final Map<String, DateTime> _lastShownTimes = {};
 
-  // Durée minimale entre deux notifications similaires
-  static const Duration _minimumInterval = Duration(minutes: 1);
+
+
 
 
   final ValueNotifier<int> unreadCount = ValueNotifier<int>(0);
 
   void addNotification(NotificationEvent newNotification) {
-// Gestion spéciale pour les notifications de déplétion de ressources
-    if (newNotification.type == EventType.RESOURCE_DEPLETION) {
-      final stockLevel = newNotification.additionalData?['stockLevel'];
-      if (stockLevel != null) {
-// Si c'est la notification de 50%, on l'ignore complètement
-        if (stockLevel == '50') {
-          return;
-        }
-
-// Vérifier si une notification similaire existe déjà
-        bool exists = _notifications.any((n) =>
-        n.type == EventType.RESOURCE_DEPLETION &&
-            n.additionalData?['stockLevel'] == stockLevel
-        );
-
-// Si une notification similaire existe déjà, on l'ignore
-        if (exists) {
-          return;
-        }
-
-// Nettoyer les anciennes notifications de déplétion
-        _notifications.removeWhere((n) =>
-        n.type == EventType.RESOURCE_DEPLETION
-        );
-
-// Ajouter la nouvelle notification
-        _notifications.add(newNotification);
-        _unreadNotificationIds.add(newNotification.id);
-        unreadCount.value = _unreadNotificationIds.length;
-        showNotification(newNotification);
-        return;
-      }
-    }
-
-// Gestion des autres types de notifications
-    try {
-// Rechercher une notification similaire récente
-      var existingNotification = _notifications.reversed.firstWhere(
-            (n) =>
-        n.isSimilarTo(newNotification) &&
-            DateTime.now().difference(n.timestamp) < _minimumInterval,
-      );
-
-// Mettre à jour la notification existante
-      existingNotification.incrementOccurrences();
-      var updatedNotification = NotificationEvent(
-        title: existingNotification.title,
-        description: '${existingNotification
-            .description} (${existingNotification.occurrences}x)',
-        icon: existingNotification.icon,
-        priority: existingNotification.priority,
-        type: existingNotification.type,
-        groupId: existingNotification.groupId,
-        additionalData: existingNotification.additionalData,
-      );
-
-// Remplacer l'ancienne notification par la mise à jour
-      _notifications.remove(existingNotification);
-      _notifications.add(updatedNotification);
-      _unreadNotificationIds.add(updatedNotification.id);
-      unreadCount.value = _unreadNotificationIds.length;
-      showNotification(updatedNotification);
-    } catch (e) {
-// Si aucune notification similaire n'existe, ajouter la nouvelle
+    // Vérifier si une notification similaire a été montrée récemment
+    if (newNotification.type == EventType.LEVEL_UP) {
+      _notifications.removeWhere((n) => n.type == EventType.LEVEL_UP);
       _notifications.add(newNotification);
       _unreadNotificationIds.add(newNotification.id);
-      unreadCount.value = _unreadNotificationIds.length;
-      showNotification(newNotification);
+      _updateUnreadNotificationsCount();
+      notificationStream.value = newNotification;
+      notifyListeners();
+      return;
     }
 
-// Nettoyer les anciennes notifications
-    _cleanOldEvents();
+    // Vérifier si une notification similaire a été montrée récemment
+    final lastShownTime = _lastShownTimes[newNotification.groupId ?? newNotification.title];
+    if (lastShownTime != null &&
+        DateTime.now().difference(lastShownTime) < _minimumInterval) {
+      return;
+    }
+
+    // Mettre à jour le temps de dernière apparition
+    _lastShownTimes[newNotification.groupId ?? newNotification.title] = DateTime.now();
+
+    try {
+      // Chercher une notification similaire existante
+      var existingIndex = _notifications.indexWhere((n) => n.isSimilarTo(newNotification));
+
+      if (existingIndex != -1) {
+        // Mettre à jour la notification existante
+        var existing = _notifications[existingIndex];
+        existing.incrementOccurrences();
+        _notifications.removeAt(existingIndex);
+        _notifications.add(existing);
+      } else {
+        // Ajouter la nouvelle notification
+        _notifications.add(newNotification);
+      }
+
+      // Limiter le nombre de notifications
+      if (_notifications.length > _maxNotifications) {
+        _notifications.removeRange(0, _notifications.length - _maxNotifications);
+      }
+
+      // Marquer comme non lue
+      _unreadNotificationIds.add(newNotification.id);
+
+      // Mettre à jour le compteur
+      notifyListeners();
+
+      // Afficher la notification
+      notificationStream.value = newNotification;
+
+      // Programmer la disparition de la notification
+      Future.delayed(const Duration(seconds: 3), () {
+        if (notificationStream.value?.id == newNotification.id) {
+          notificationStream.value = null;
+        }
+      });
+
+    } catch (e) {
+      print('Erreur lors de l\'ajout de la notification: $e');
+    }
   }
+
+  void clearNotifications() {
+    _notifications.clear();
+    _unreadNotificationIds.clear();
+    _lastShownTimes.clear();
+    notificationStream.value = null;
+    notifyListeners();
+  }
+
 
 
 
@@ -337,7 +342,10 @@ class EventManager {
 
   void markAsRead(String notificationId) {
     _unreadNotificationIds.remove(notificationId);
-    unreadCount.value = _unreadNotificationIds.length;
+    _updateUnreadNotificationsCount();
+  }
+  void _updateUnreadNotificationsCount() {
+    _unreadNotificationsCount.value = _unreadNotificationIds.length;
   }
 
   // Vérifier si une notification est non lue
@@ -459,7 +467,6 @@ ${unlockDetails.tips.map((t) => '• $t').join('\n')}
   void showNotification(NotificationEvent notification) {
     if (_canShowNotification(notification)) {
       _lastNotifications[notification.title] = DateTime.now();
-      _notificationController.value = notification;
     }
   }
 
@@ -501,7 +508,6 @@ ${unlockDetails.tips.map((t) => '• $t').join('\n')}
 
   void clearEvents() {
     _notifications.clear();
-    _notificationController.value = null;
   }
 
   static Duration getPriorityDuration(NotificationPriority priority) {

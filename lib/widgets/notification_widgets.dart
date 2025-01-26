@@ -2,6 +2,8 @@
 import 'package:flutter/material.dart';
 import '../models/event_system.dart';
 import '../main.dart' show navigatorKey;
+import 'dart:async';
+import '../models/game_config.dart';
 
 class GlobalNotificationOverlay extends StatefulWidget {
   final Widget child;
@@ -19,6 +21,7 @@ class GlobalNotificationOverlay extends StatefulWidget {
 
 class _GlobalNotificationOverlayState extends State<GlobalNotificationOverlay> {
   OverlayEntry? _overlayEntry;
+  Timer? _autoHideTimer;
 
   @override
   void initState() {
@@ -30,60 +33,72 @@ class _GlobalNotificationOverlayState extends State<GlobalNotificationOverlay> {
     final notification = EventManager.instance.notificationStream.value;
     if (notification != null) {
       _showNotificationOverlay(notification);
+    } else {
+      _hideNotificationOverlay();
     }
   }
 
   void _showNotificationOverlay(NotificationEvent event) {
     _overlayEntry?.remove();
+    _autoHideTimer?.cancel();
+
     _overlayEntry = OverlayEntry(
         builder: (context) => Positioned(
           top: 50,
           left: 0,
           right: 0,
-          child: Center(
-            child: Material(
-              color: Colors.transparent,
-              child: Container(
-                width: 300,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                    color: Colors.deepPurple,
-                    borderRadius: BorderRadius.circular(10),
-                    boxShadow: [
-                      BoxShadow(
-                          color: Colors.black26,
-                          blurRadius: 10,
-                          offset: const Offset(0, 4)
-                      )
-                    ]
-                ),
-                child: Row(
-                  children: [
-                    Icon(event.icon, color: Colors.white, size: 30),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                              event.title,
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16
-                              )
-                          ),
-                          Text(
+          child: Material(
+            color: Colors.transparent,
+            child: SafeArea(
+              child: GestureDetector(
+                onTap: _hideNotificationOverlay,
+                child: Container(
+                  width: 300,
+                  margin: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                      color: _getPriorityColor(event.priority).withOpacity(0.9),
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: [
+                        BoxShadow(
+                            color: Colors.black26,
+                            blurRadius: 10,
+                            offset: const Offset(0, 4)
+                        )
+                      ]
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(event.icon, color: Colors.white, size: 24),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                                event.title,
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16
+                                )
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
                               event.description,
                               style: const TextStyle(
                                   color: Colors.white70,
                                   fontSize: 14
-                              )
-                          )
-                        ],
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            )
+                          ],
+                        ),
                       ),
-                    )
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -91,15 +106,38 @@ class _GlobalNotificationOverlayState extends State<GlobalNotificationOverlay> {
         )
     );
 
-    if (widget.navigatorKey.currentContext != null) {
-      Overlay.of(widget.navigatorKey.currentContext!).insert(_overlayEntry!);
-
-      Future.delayed(const Duration(seconds: 3), () {
-        _overlayEntry?.remove();
-        _overlayEntry = null;
-      });
+    if (mounted && context.mounted) {
+      Overlay.of(context).insert(_overlayEntry!);
+      // Utilisez une durée plus longue pour les notifications de niveau
+      final duration = event.type == EventType.LEVEL_UP ?
+      const Duration(seconds: 5) :
+      const Duration(seconds: 3);
+      _autoHideTimer = Timer(duration, _hideNotificationOverlay);
     }
   }
+
+  void _hideNotificationOverlay() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+    _autoHideTimer?.cancel();
+    _autoHideTimer = null;
+  }
+
+  Color _getPriorityColor(NotificationPriority priority) {
+    switch (priority) {
+      case NotificationPriority.LOW:
+        return Colors.grey;
+      case NotificationPriority.MEDIUM:
+        return Colors.blue;
+      case NotificationPriority.HIGH:
+        return Colors.orange;
+      case NotificationPriority.CRITICAL:
+        return Colors.red;
+    }
+  }
+
+
+
 
   @override
   Widget build(BuildContext context) {
