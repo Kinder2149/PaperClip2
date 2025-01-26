@@ -50,7 +50,7 @@ class GameConstants {
   //  "Expérience et progression"
   static const double MANUAL_PRODUCTION_XP = 1.5;
   static const double AUTO_PRODUCTION_XP = 0.2;
-  static const double SALE_BASE_XP = 0.3;
+  static const double SALE_BASE_XP = 0.5;
   static const double AUTOCLIPPER_PURCHASE_XP = 3.0;
   static const double UPGRADE_XP_MULTIPLIER = 2.0;
   static const double XP_BOOST_MULTIPLIER = 2.0;

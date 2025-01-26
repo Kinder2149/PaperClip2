@@ -342,39 +342,7 @@ class LevelSystem extends ChangeNotifier {
   Map<int, String> get levelUnlocks {
     return _levelUnlocks.map((key, value) => MapEntry(key, value.description));
   }
-  void _handleLevelUp(int newLevel) {
-    final previousLevel = _level;
-    _level = newLevel;
 
-    // Obtenir les nouvelles fonctionnalités débloquées
-    final newFeatures = _featureUnlocker.getNewlyUnlockedFeatures(previousLevel, newLevel);
-
-    // Pour chaque nouvelle fonctionnalité débloquée
-    for (var feature in newFeatures) {
-      EventManager.instance.addEvent(
-        EventType.LEVEL_UP,
-        'Nouvelle Fonctionnalité Débloquée !',
-        description: 'Niveau $newLevel : ${_getLevelDescription(feature)}',
-        importance: EventImportance.HIGH,
-        additionalData: {
-          'unlockedFeature': feature,
-          'level': newLevel,
-        },
-      );
-    }
-
-    // Notification générale de montée de niveau si aucune fonctionnalité n'est débloquée
-    if (newFeatures.isEmpty) {
-      EventManager.instance.addEvent(
-        EventType.LEVEL_UP,
-        'Niveau $newLevel atteint !',
-        description: 'Continuez votre progression !',
-        importance: EventImportance.MEDIUM,
-      );
-    }
-
-    notifyListeners();
-  }
 
   String _getLevelDescription(UnlockableFeature feature) {
     switch (feature) {
@@ -394,17 +362,216 @@ class LevelSystem extends ChangeNotifier {
         return "Nouvelle fonctionnalité disponible";
     }
   }
+  void _handleLevelUp(int newLevel) {
+    final List<UnlockableFeature> newFeatures =
+    _featureUnlocker.getNewlyUnlockedFeatures(_level, newLevel);
+    _level = newLevel;
+
+    for (var feature in newFeatures) {
+      final unlockDetails = getUnlockDetails(feature);
+
+      EventManager.instance.addEvent(
+          EventType.LEVEL_UP,
+          'Nouvelle Fonctionnalité !',
+          description: unlockDetails.name,
+          detailedDescription: _formatUnlockDescription(unlockDetails),
+          importance: EventImportance.HIGH,
+          additionalData: {
+            'unlockedFeature': feature,
+            'level': newLevel,
+          }
+      );
+    }
+  }
+  String _formatUnlockDescription(UnlockDetails details) {
+    return '''
+${details.description}
+
+📋 Comment utiliser :
+${details.howToUse}
+
+✨ Avantages :
+${details.benefits.map((b) => '• $b').join('\n')}
+
+💡 Conseils :
+${details.tips.map((t) => '• $t').join('\n')}
+''';
+  }
+  void handleFeatureUnlock(UnlockableFeature feature, int level) {
+    final details = getUnlockDetails(feature);
+    if (details != null) {
+      EventManager.instance.addEvent(
+          EventType.LEVEL_UP,
+          'Nouvelle Fonctionnalité Débloquée !',
+          description: details.description,
+          detailedDescription: _formatUnlockDescription(details),
+          importance: EventImportance.HIGH,
+          additionalData: {
+            'unlockedFeature': feature,
+            'level': level,
+            'featureName': details.name,
+            'howToUse': details.howToUse,
+            'benefits': details.benefits.join('\n'),
+            'tips': details.tips.join('\n'),
+          }
+      );
+    }
+  }
+
+  static UnlockDetails getUnlockDetails(UnlockableFeature feature) {
+    switch (feature) {
+      case UnlockableFeature.MANUAL_PRODUCTION:
+        return UnlockDetails(
+          name: 'Production Manuelle',
+          description: 'Démarrez votre empire de trombones en produisant manuellement !',
+          howToUse: '''
+1. Cliquez sur le bouton de production dans l'écran principal
+2. Chaque clic transforme du métal en trombone
+3. Surveillez votre stock de métal pour une production continue''',
+          benefits: [
+            'Production immédiate de trombones',
+            'Gain d\'expérience à chaque production',
+            'Contrôle total sur la production',
+            'Apprentissage des mécaniques de base'
+          ],
+          tips: [
+            'Maintenez un stock de métal suffisant',
+            'Produisez régulièrement pour gagner de l\'expérience',
+            'Observez l\'évolution de votre efficacité'
+          ],
+          icon: Icons.touch_app,
+        );
+
+      case UnlockableFeature.METAL_PURCHASE:
+        return UnlockDetails(
+          name: 'Achat de Métal',
+          description: 'Accédez au marché des matières premières pour acheter du métal !',
+          howToUse: '''
+1. Ouvrez l'onglet Marché
+2. Consultez les prix actuels du métal
+3. Achetez quand les prix sont avantageux''',
+          benefits: [
+            'Approvisionnement constant en matières premières',
+            'Possibilité de stocker pour les moments opportuns',
+            'Gestion stratégique des ressources',
+            'Optimisation des coûts de production'
+          ],
+          tips: [
+            'Achetez en grande quantité quand les prix sont bas',
+            'Surveillez les tendances du marché',
+            'Maintenez une réserve de sécurité',
+            'Calculez votre retour sur investissement'
+          ],
+          icon: Icons.shopping_cart,
+        );
+
+      case UnlockableFeature.MARKET_SALES:
+        return UnlockDetails(
+          name: 'Ventes sur le Marché',
+          description: 'Vendez vos trombones sur le marché mondial !',
+          howToUse: '''
+1. Accédez à l'interface de vente dans l'onglet Marché
+2. Définissez votre prix de vente
+3. Suivez vos statistiques de vente''',
+          benefits: [
+            'Génération de revenus passifs',
+            'Accès aux statistiques de vente',
+            'Influence sur les prix du marché',
+            'Optimisation des profits'
+          ],
+          tips: [
+            'Adaptez vos prix à la demande',
+            'Surveillez la satisfaction client',
+            'Équilibrez production et ventes',
+            'Analysez les tendances du marché'
+          ],
+          icon: Icons.store,
+        );
+
+      case UnlockableFeature.MARKET_SCREEN:
+        return UnlockDetails(
+          name: 'Écran de Marché',
+          description: 'Accédez à des outils avancés d\'analyse de marché !',
+          howToUse: '''
+1. Naviguez vers l'onglet Marché
+2. Explorez les différents graphiques et statistiques
+3. Utilisez les données pour optimiser vos stratégies''',
+          benefits: [
+            'Visualisation détaillée des tendances',
+            'Analyse approfondie du marché',
+            'Prévisions de demande',
+            'Optimisation des stratégies de prix'
+          ],
+          tips: [
+            'Consultez régulièrement les rapports',
+            'Utilisez les graphiques pour anticiper',
+            'Ajustez votre stratégie selon les données',
+            'Surveillez la concurrence'
+          ],
+          icon: Icons.analytics,
+        );
+
+      case UnlockableFeature.AUTOCLIPPERS:
+        return UnlockDetails(
+          name: 'Autoclippeuses',
+          description: 'Automatisez votre production avec des machines intelligentes !',
+          howToUse: '''
+1. Achetez des autoclippeuses dans la section Améliorations
+2. Gérez leur maintenance et leur efficacité
+3. Surveillez leur consommation de ressources''',
+          benefits: [
+            'Production automatique continue',
+            'Augmentation significative de la production',
+            'Libération de temps pour la stratégie',
+            'Production même hors ligne'
+          ],
+          tips: [
+            'Équilibrez le nombre avec vos ressources',
+            'Maintenez-les régulièrement',
+            'Surveillez leur consommation de métal',
+            'Optimisez leur placement'
+          ],
+          icon: Icons.precision_manufacturing,
+        );
+
+      case UnlockableFeature.UPGRADES:
+        return UnlockDetails(
+          name: 'Système d\'Améliorations',
+          description: 'Accédez à un vaste système d\'améliorations pour optimiser votre production !',
+          howToUse: '''
+1. Explorez l'onglet Améliorations
+2. Choisissez les améliorations stratégiques
+3. Combinez les effets pour maximiser les bénéfices''',
+          benefits: [
+            'Personnalisation de votre stratégie',
+            'Améliorations permanentes',
+            'Déblocage de nouvelles fonctionnalités',
+            'Optimisation globale de la production'
+          ],
+          tips: [
+            'Planifiez vos achats d\'amélioration',
+            'Lisez attentivement les effets',
+            'Privilégiez les synergies',
+            'Gardez des ressources pour les urgences'
+          ],
+          icon: Icons.upgrade,
+        );
+
+      default:
+        throw ArgumentError('Détails de déverrouillage non trouvés pour $feature');
+    }
+  }
 
 
   double calculateExperienceRequirement(int level) {
-    if (level <= 10) {
-      return 50 * pow(1.3, level) + (level * level * 4);
-    } else if (level <= 20) {
-      return 50 * pow(1.5, level) + (level * level * 6);
-    } else if (level <= 30) {
-      return 50 * pow(1.7, level) + (level * level * 8);
+    if (level <= 15) {
+      return 50 * pow(1.2, level) + (level * level * 3);
+    } else if (level <= 25) {
+      return 50 * pow(1.3, level) + (level * level * 5);
+    } else if (level <= 35) {
+      return 50 * pow(1.5, level) + (level * level * 7);
     } else {
-      return 50 * pow(2.0, level) + (level * level * 10);
+      return 50 * pow(1.7, level) + (level * level * 8);
     }
   }
 
@@ -492,8 +659,7 @@ class LevelSystem extends ChangeNotifier {
     double requiredExperience = calculateExperienceRequirement(_level);
 
     while (_experience >= requiredExperience) {
-      _level++;
-      _experience -= requiredExperience;
+      _handleLevelUp(_level);
 
       List<UnlockableFeature> newFeatures =
       _featureUnlocker.getNewlyUnlockedFeatures(_level - 1, _level);

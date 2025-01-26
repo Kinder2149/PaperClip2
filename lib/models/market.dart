@@ -97,6 +97,11 @@ class MarketManager extends ChangeNotifier {
   final Random _random = Random();
   final Map<String, CachedValue> _cache = {};
   double _marketingBonus = 1.0;
+  final Set<String> _sentNotifications = {};
+  final Set<String> _sentDepletionNotifications = {};
+  double _lastNotifiedPercentage = 100.0;
+  static const double MARKET_25_PERCENT = GameConstants.INITIAL_MARKET_METAL * 0.25;
+
 
 
   List<SaleRecord> salesHistory = [];
@@ -132,6 +137,8 @@ class MarketManager extends ChangeNotifier {
     'currentMetalPrice': _currentMetalPrice,
     'competitionPrice': _competitionPrice,
     'marketSaturation': _marketSaturation,
+    'sentDepletionNotifications': List<String>.from(_sentDepletionNotifications),
+    'lastNotifiedPercentage': _lastNotifiedPercentage,
     'dynamics': {
       'marketVolatility': dynamics.marketVolatility,
       'marketTrend': dynamics.marketTrend,
@@ -158,6 +165,11 @@ class MarketManager extends ChangeNotifier {
       salesHistory = (json['salesHistory'] as List)
           .map((saleJson) => SaleRecord.fromJson(saleJson as Map<String, dynamic>))
           .toList();
+      _sentDepletionNotifications.clear();
+      _sentDepletionNotifications.addAll(
+          (json['sentDepletionNotifications'] as List<dynamic>?)?.cast<String>() ?? []
+      );
+      _lastNotifiedPercentage = (json['lastNotifiedPercentage'] as num?)?.toDouble() ?? 100.0;
     }
   }
   void updateMarketStock(double amount) {
@@ -223,31 +235,45 @@ class MarketManager extends ChangeNotifier {
   void _checkMarketDepletion() {
     double stockPercentage = (marketMetalStock / GameConstants.INITIAL_MARKET_METAL) * 100;
 
-    if (marketMetalStock <= 0) {
-      EventManager.instance.addEvent(
-          EventType.RESOURCE_DEPLETION,
-          'Stock de Métal Épuisé',
-          description: 'Les réserves de métal du marché sont épuisées!',
-          importance: EventImportance.CRITICAL,
-          additionalData: {'stockLevel': 'empty'}
-      );
-    } else if (stockPercentage <= 25 && stockPercentage > 0) {
-      EventManager.instance.addEvent(
-          EventType.RESOURCE_DEPLETION,
-          'Rupture Critique des Stocks de Métal',
-          description: 'Les réserves de métal du marché sont à 25% !',
-          importance: EventImportance.CRITICAL,
-          additionalData: {'stockLevel': '25'}
-      );
-    } else if (stockPercentage <= 50 && stockPercentage > 25) {
-      EventManager.instance.addEvent(
-          EventType.RESOURCE_DEPLETION,
-          'Rupture Imminente des Stocks de Métal',
-          description: 'Les réserves de métal du marché sont à 50% !',
-          importance: EventImportance.HIGH,
-          additionalData: {'stockLevel': '50'}
-      );
+    // On supprime la notification de 50%
+    if (marketMetalStock <= 0 && !_sentDepletionNotifications.contains('empty')) {
+      _sendNotification('empty');
     }
+    else if (stockPercentage <= 25 && !_sentDepletionNotifications.contains('25')) {
+      _sendNotification('25');
+    }
+  }
+  void _sendNotification(String level) {
+    _sentDepletionNotifications.add(level);
+    String title = level == 'empty' ? 'Stock de Métal Épuisé' : 'Rupture Critique des Stocks de Métal';
+    String description = level == 'empty'
+        ? 'Les réserves de métal du marché sont épuisées!'
+        : 'Les réserves de métal du marché sont à 25% !';
+
+    EventManager.instance.addEvent(
+        EventType.RESOURCE_DEPLETION,
+        title,
+        description: description,
+        importance: level == 'empty' ? EventImportance.CRITICAL : EventImportance.HIGH,
+        additionalData: {'stockLevel': level}
+    );
+  }
+
+  // Ajouter une méthode pour réinitialiser les notifications lors du restock
+  void restockMetal() {
+    if (marketMetalStock < GameConstants.INITIAL_MARKET_METAL * 0.5) {
+      marketMetalStock = GameConstants.INITIAL_MARKET_METAL;
+      _sentDepletionNotifications.clear(); // Reset notifications après restock
+      notifyListeners();
+    }
+  }
+
+  void resetDepletionNotifications() {
+    _sentDepletionNotifications.clear();
+    _lastNotifiedPercentage = 100.0;
+  }
+  void resetNotifications() {
+    _sentNotifications.clear();
   }
 
   bool isMarketDepletedForNextPhase() {
@@ -261,6 +287,7 @@ class MarketManager extends ChangeNotifier {
   }
   void reset() {
     marketMetalStock = GameConstants.INITIAL_MARKET_METAL;
+    resetDepletionNotifications();
     reputation = 1.0;
     _currentMetalPrice = GameConstants.MIN_METAL_PRICE;
     _currentPrice = 1.0;
@@ -273,11 +300,7 @@ class MarketManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  void restockMetal() {
-    if (marketMetalStock < GameConstants.INITIAL_MARKET_METAL * 0.5) {
-      marketMetalStock = GameConstants.INITIAL_MARKET_METAL;
-    }
-  }
+
 
   double _calculatePriceElasticity(double price) {
     if (price <= 0.25) return -1.0;
@@ -386,6 +409,7 @@ class MarketManager extends ChangeNotifier {
 
     dynamics.updateMarketConditions();
     updateMetalPrice();  // Changer _updateMetalPrice en updateMetalPrice
+    _checkMarketDepletion();
 
     if (marketMetalStock <= GameConstants.WARNING_THRESHOLD) {  // Utiliser marketMetalStock au lieu de _marketMetalStock
       EventManager.instance.addEvent(

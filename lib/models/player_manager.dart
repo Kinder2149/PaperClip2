@@ -145,7 +145,6 @@ class UpgradeManager {
 
 /// Gestionnaire des ressources du joueur
 class PlayerManager extends ChangeNotifier {
-  double maxMetalStorage = 1000.0;
   double _paperclips = 0.0;
   double _metal = 100.0;
   double _money = 0.0;
@@ -155,6 +154,10 @@ class PlayerManager extends ChangeNotifier {
   final ResourceManager resourceManager;
   final MarketManager marketManager;
   final LevelSystem levelSystem;
+  double maxMetalStorage = GameConstants.INITIAL_STORAGE_CAPACITY;
+  bool _lowMetalNotified = false;
+  static const double LOW_METAL_THRESHOLD = 20.0;
+
 
 
 
@@ -245,6 +248,10 @@ class PlayerManager extends ChangeNotifier {
     double multiplier = getProductionMultiplier();
     // Mettre à jour la production des autoclippeuses
     autoclipperPaperclips = _autoclippers * GameConstants.BASE_AUTOCLIPPER_PRODUCTION * multiplier;
+    notifyListeners();
+  }
+  void updateMaxMetalStorage(double newCapacity) {
+    maxMetalStorage = newCapacity;
     notifyListeners();
   }
 
@@ -366,6 +373,9 @@ class PlayerManager extends ChangeNotifier {
     switch (upgradeId) {
       case 'storage':
         resourceManager.upgradeStorageCapacity(upgrade.level);
+        // Mise à jour de la capacité de stockage locale
+        updateMaxMetalStorage(GameConstants.INITIAL_STORAGE_CAPACITY *
+            (1 + (upgrade.level * GameConstants.STORAGE_UPGRADE_MULTIPLIER)));
         break;
       case 'efficiency':
         resourceManager.improveStorageEfficiency(upgrade.level);
@@ -442,8 +452,21 @@ class PlayerManager extends ChangeNotifier {
   }
   void updateMetal(double newAmount) {
     if (_metal != newAmount) {
-      print('Metal update: $_metal -> $newAmount');
       _metal = newAmount.clamp(0, maxMetalStorage);
+
+      // Check pour notification de stock bas
+      if (_metal <= LOW_METAL_THRESHOLD && !_lowMetalNotified) {
+        _lowMetalNotified = true;
+        EventManager.instance.addEvent(
+            EventType.RESOURCE_DEPLETION,
+            'Stock Personnel Bas',
+            description: 'Votre stock de métal est inférieur à 20 unités',
+            importance: EventImportance.MEDIUM
+        );
+      } else if (_metal > LOW_METAL_THRESHOLD) {
+        _lowMetalNotified = false;
+      }
+
       notifyListeners();
     }
   }

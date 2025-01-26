@@ -6,6 +6,7 @@ import 'game_state_interfaces.dart';
 import '../main.dart' show navigatorKey;
 import 'package:flutter/foundation.dart';
 import 'package:paperclip2/screens/event_log_screen.dart';
+import 'progression_system.dart';
 
 /// Définition des priorités de notification
 enum NotificationPriority { LOW, MEDIUM, HIGH, CRITICAL }
@@ -210,21 +211,41 @@ class GameEvent {
 /// Gestionnaire principal des événements
 class EventManager {
   static final EventManager _instance = EventManager._internal();
+
   static EventManager get instance => _instance;
-  final ValueNotifier<NotificationEvent?> notificationStream = ValueNotifier(null);
+  final ValueNotifier<NotificationEvent?> notificationStream = ValueNotifier(
+      null);
   final List<NotificationEvent> _notifications = [];
   final Set<String> _unreadNotificationIds = {};
+  final Set<String> _sentResourceNotifications = {};
+  final GameFeatureUnlocker _featureUnlocker = GameFeatureUnlocker();
 
 
-  final ValueNotifier<NotificationEvent?> _notificationController = ValueNotifier(null);
+  final ValueNotifier<
+      NotificationEvent?> _notificationController = ValueNotifier(null);
   final List<GameEvent> _events = [];
   final Map<String, DateTime> _lastNotifications = {}; // Ajout de cette ligne
 
+  final Map<UnlockableFeature, UnlockDetails> _unlockDetailsMap = {
+    // Ajoutez les détails de déverrouillage ici
+    UnlockableFeature.MANUAL_PRODUCTION: UnlockDetails(
+      name: 'Production Manuelle',
+      description: 'Démarrez votre empire de trombones en produisant manuellement !',
+      howToUse: '1. Cliquez sur le bouton de production\n2. Chaque clic transforme du métal en trombone',
+      benefits: ['Production immédiate', 'Gain d\'expérience'],
+      tips: ['Maintenez un stock de métal'],
+      icon: Icons.touch_app,
+    ),
+  };
 
-  List<NotificationEvent> get notifications => List.unmodifiable(_notifications);
+
+  List<NotificationEvent> get notifications =>
+      List.unmodifiable(_notifications);
 
   EventManager._internal();
+
   final Map<String, DateTime> _lastShownTimes = {};
+
   // Durée minimale entre deux notifications similaires
   static const Duration _minimumInterval = Duration(minutes: 1);
 
@@ -232,51 +253,88 @@ class EventManager {
   final ValueNotifier<int> unreadCount = ValueNotifier<int>(0);
 
   void addNotification(NotificationEvent newNotification) {
-    // Gestion spéciale pour les notifications de déplétion de ressources
+// Gestion spéciale pour les notifications de déplétion de ressources
     if (newNotification.type == EventType.RESOURCE_DEPLETION) {
-      // Vérifier si une notification similaire existe déjà avec le même niveau de stock
       final stockLevel = newNotification.additionalData?['stockLevel'];
       if (stockLevel != null) {
-        // Ne pas ajouter si une notification pour ce niveau existe déjà
+// Si c'est la notification de 50%, on l'ignore complètement
+        if (stockLevel == '50') {
+          return;
+        }
+
+// Vérifier si une notification similaire existe déjà
         bool exists = _notifications.any((n) =>
         n.type == EventType.RESOURCE_DEPLETION &&
             n.additionalData?['stockLevel'] == stockLevel
         );
-        if (exists) return;
+
+// Si une notification similaire existe déjà, on l'ignore
+        if (exists) {
+          return;
+        }
+
+// Nettoyer les anciennes notifications de déplétion
+        _notifications.removeWhere((n) =>
+        n.type == EventType.RESOURCE_DEPLETION
+        );
+
+// Ajouter la nouvelle notification
+        _notifications.add(newNotification);
+        _unreadNotificationIds.add(newNotification.id);
+        unreadCount.value = _unreadNotificationIds.length;
+        showNotification(newNotification);
+        return;
       }
     }
 
-    // Gestion normale des notifications
+// Gestion des autres types de notifications
     try {
+// Rechercher une notification similaire récente
       var existingNotification = _notifications.reversed.firstWhere(
-            (n) => n.isSimilarTo(newNotification) &&
+            (n) =>
+        n.isSimilarTo(newNotification) &&
             DateTime.now().difference(n.timestamp) < _minimumInterval,
       );
 
+// Mettre à jour la notification existante
       existingNotification.incrementOccurrences();
       var updatedNotification = NotificationEvent(
         title: existingNotification.title,
-        description: '${existingNotification.description} (${existingNotification.occurrences}x)',
+        description: '${existingNotification
+            .description} (${existingNotification.occurrences}x)',
         icon: existingNotification.icon,
         priority: existingNotification.priority,
         type: existingNotification.type,
         groupId: existingNotification.groupId,
+        additionalData: existingNotification.additionalData,
       );
+
+// Remplacer l'ancienne notification par la mise à jour
       _notifications.remove(existingNotification);
       _notifications.add(updatedNotification);
-      _unreadNotificationIds.add(updatedNotification.id); // Marquer comme non lue
+      _unreadNotificationIds.add(updatedNotification.id);
       unreadCount.value = _unreadNotificationIds.length;
       showNotification(updatedNotification);
-
     } catch (e) {
+// Si aucune notification similaire n'existe, ajouter la nouvelle
       _notifications.add(newNotification);
-      _unreadNotificationIds.add(newNotification.id); // Marquer comme non lue
+      _unreadNotificationIds.add(newNotification.id);
       unreadCount.value = _unreadNotificationIds.length;
       showNotification(newNotification);
     }
 
+// Nettoyer les anciennes notifications
     _cleanOldEvents();
   }
+
+
+
+
+
+  void resetResourceNotifications() {
+    _sentResourceNotifications.clear();
+  }
+
   void markAsRead(String notificationId) {
     _unreadNotificationIds.remove(notificationId);
     unreadCount.value = _unreadNotificationIds.length;
@@ -288,23 +346,22 @@ class EventManager {
   }
 
 
-
   List<GameEvent> getEvents() => List.unmodifiable(_events);
 
-  void addEvent(
-      EventType type,
+  void addEvent(EventType type,
       String title, {
         required String description,
         String? detailedDescription,
         required EventImportance importance,
         Map<String, dynamic>? additionalData,
       }) {
-    if (type == EventType.LEVEL_UP && additionalData?['unlockedFeature'] != null) {
-      final unlockDetails = _getUnlockDetails(additionalData!['unlockedFeature'] as UnlockableFeature);
-      if (unlockDetails != null) {
-        // Supprimer cette ligne qui cause l'erreur
-        // detailedDescription = _formatUnlockDescription(unlockDetails);
+    if (type == EventType.LEVEL_UP &&
+        additionalData?['unlockedFeature'] != null) {
+      // Use the method from LevelSystem
+      final unlockDetails = LevelSystem.getUnlockDetails(
+          additionalData!['unlockedFeature'] as UnlockableFeature);
 
+      if (unlockDetails != null) {
         additionalData = {
           ...additionalData,
           'Fonctionnalité': unlockDetails.name,
@@ -313,7 +370,6 @@ class EventManager {
           'Conseils': unlockDetails.tips.join('\n'),
         };
 
-        // On garde cette partie qui formate déjà la description correctement
         detailedDescription = '''
 ${unlockDetails.description}
 
@@ -333,8 +389,10 @@ ${unlockDetails.tips.map((t) => '• $t').join('\n')}
       title: title,
       description: description,
       detailedDescription: detailedDescription,
-      icon: type == EventType.LEVEL_UP && additionalData?['unlockedFeature'] != null
-          ? _getUnlockFeatureIcon(additionalData!['unlockedFeature'] as UnlockableFeature)
+      icon: type == EventType.LEVEL_UP &&
+          additionalData?['unlockedFeature'] != null
+          ? _getUnlockFeatureIcon(
+          additionalData!['unlockedFeature'] as UnlockableFeature)
           : _getEventTypeIcon(type),
       priority: _importanceToPriority(importance),
       additionalData: additionalData,
@@ -361,146 +419,12 @@ ${unlockDetails.tips.map((t) => '• $t').join('\n')}
     }
   }
 
-  UnlockDetails _getUnlockDetails(UnlockableFeature feature) {
-    switch (feature) {
-      case UnlockableFeature.MANUAL_PRODUCTION:
-        return UnlockDetails(
-          name: 'Production Manuelle',
-          description: 'Démarrez votre empire de trombones en produisant manuellement !',
-          howToUse: '''
-1. Cliquez sur le bouton de production dans l'écran principal
-2. Chaque clic transforme du métal en trombone
-3. Surveillez votre stock de métal pour une production continue''',
-          benefits: [
-            'Production immédiate de trombones',
-            'Gain d\'expérience à chaque production',
-            'Contrôle total sur la production',
-            'Apprentissage des mécaniques de base'
-          ],
-          tips: [
-            'Maintenez un stock de métal suffisant',
-            'Produisez régulièrement pour gagner de l\'expérience',
-            'Observez l\'évolution de votre efficacité'
-          ],
-          icon: Icons.touch_app,
-        );
 
-      case UnlockableFeature.METAL_PURCHASE:
-        return UnlockDetails(
-          name: 'Achat de Métal',
-          description: 'Accédez au marché des matières premières pour acheter du métal !',
-          howToUse: '''
-1. Ouvrez l'onglet Marché
-2. Consultez les prix actuels du métal
-3. Achetez quand les prix sont avantageux''',
-          benefits: [
-            'Approvisionnement constant en matières premières',
-            'Possibilité de stocker pour les moments opportuns',
-            'Gestion stratégique des ressources',
-            'Optimisation des coûts de production'
-          ],
-          tips: [
-            'Achetez en grande quantité quand les prix sont bas',
-            'Surveillez les tendances du marché',
-            'Maintenez une réserve de sécurité',
-            'Calculez votre retour sur investissement'
-          ],
-          icon: Icons.shopping_cart,
-        );
 
-      case UnlockableFeature.MARKET_SALES:
-        return UnlockDetails(
-          name: 'Ventes sur le Marché',
-          description: 'Vendez vos trombones sur le marché mondial !',
-          howToUse: '''
-1. Accédez à l'interface de vente dans l'onglet Marché
-2. Définissez votre prix de vente
-3. Suivez vos statistiques de vente''',
-          benefits: [
-            'Génération de revenus passifs',
-            'Accès aux statistiques de vente',
-            'Influence sur les prix du marché',
-            'Optimisation des profits'
-          ],
-          tips: [
-            'Adaptez vos prix à la demande',
-            'Surveillez la satisfaction client',
-            'Équilibrez production et ventes',
-            'Analysez les tendances du marché'
-          ],
-          icon: Icons.store,
-        );
 
-      case UnlockableFeature.MARKET_SCREEN:
-        return UnlockDetails(
-          name: 'Écran de Marché',
-          description: 'Accédez à des outils avancés d\'analyse de marché !',
-          howToUse: '''
-1. Naviguez vers l'onglet Marché
-2. Explorez les différents graphiques et statistiques
-3. Utilisez les données pour optimiser vos stratégies''',
-          benefits: [
-            'Visualisation détaillée des tendances',
-            'Analyse approfondie du marché',
-            'Prévisions de demande',
-            'Optimisation des stratégies de prix'
-          ],
-          tips: [
-            'Consultez régulièrement les rapports',
-            'Utilisez les graphiques pour anticiper',
-            'Ajustez votre stratégie selon les données',
-            'Surveillez la concurrence'
-          ],
-          icon: Icons.analytics,
-        );
 
-      case UnlockableFeature.AUTOCLIPPERS:
-        return UnlockDetails(
-          name: 'Autoclippeuses',
-          description: 'Automatisez votre production avec des machines intelligentes !',
-          howToUse: '''
-1. Achetez des autoclippeuses dans la section Améliorations
-2. Gérez leur maintenance et leur efficacité
-3. Surveillez leur consommation de ressources''',
-          benefits: [
-            'Production automatique continue',
-            'Augmentation significative de la production',
-            'Libération de temps pour la stratégie',
-            'Production même hors ligne'
-          ],
-          tips: [
-            'Équilibrez le nombre avec vos ressources',
-            'Maintenez-les régulièrement',
-            'Surveillez leur consommation de métal',
-            'Optimisez leur placement'
-          ],
-          icon: Icons.precision_manufacturing,
-        );
 
-      case UnlockableFeature.UPGRADES:
-        return UnlockDetails(
-          name: 'Système d\'Améliorations',
-          description: 'Accédez à un vaste système d\'améliorations pour optimiser votre production !',
-          howToUse: '''
-1. Explorez l'onglet Améliorations
-2. Choisissez les améliorations stratégiques
-3. Combinez les effets pour maximiser les bénéfices''',
-          benefits: [
-            'Personnalisation de votre stratégie',
-            'Améliorations permanentes',
-            'Déblocage de nouvelles fonctionnalités',
-            'Optimisation globale de la production'
-          ],
-          tips: [
-            'Planifiez vos achats d\'amélioration',
-            'Lisez attentivement les effets',
-            'Privilégiez les synergies',
-            'Gardez des ressources pour les urgences'
-          ],
-          icon: Icons.upgrade,
-        );
-    }
-  }
+
 
 
 

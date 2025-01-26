@@ -136,16 +136,8 @@ class GameState extends ChangeNotifier {
     _marketManager = MarketManager(MarketDynamics());
     market.updateMarket();
   }
-  void checkResourceLevels() {
-    if (marketManager.marketMetalStock <= GameConstants.WARNING_THRESHOLD) {
-      EventManager.instance.addEvent(
-          EventType.RESOURCE_DEPLETION,
-          "Ressources en diminution",
-          description: "Les réserves mondiales de métal s'amenuisent",
-          importance: EventImportance.HIGH
-      );
-    }
-  }
+
+
   double _calculateManualProduction(double elapsed) {
     if (playerManager.metal < GameConstants.METAL_PER_PAPERCLIP) return 0;
 
