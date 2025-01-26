@@ -8,51 +8,70 @@ import '../models/game_config.dart';
 class MoneyDisplay extends StatelessWidget {
   const MoneyDisplay({super.key});
 
-  String formatNumber(double number, {bool isInteger = false}) {
+  static String formatNumber(double number, {bool isInteger = false, bool showExactCount = false}) {
+    // Si showExactCount est true, on affiche le nombre exact sans formatage
+    if (showExactCount) {
+      if (isInteger) {
+        return number.toStringAsFixed(0);
+      }
+      return number.toString();
+    }
+
+    // Liste des suffixes pour les grands nombres
     const suffixes = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
 
-    if (number >= 1e12) { // Pour les valeurs supérieures à 1 trillion
-      int index = (log(number) / log(1000)).floor();
-      index = min(index, suffixes.length - 1);
+    // Fonction helper pour formater avec séparateur de milliers
+    String formatWithThousandSeparator(double n) {
+      String str = n.toString();
+      int dotIndex = str.indexOf('.');
+      if (dotIndex == -1) dotIndex = str.length;
 
-      double simplified = number / pow(1000, index);
-      String formatted;
-
-      // Pour les nombres entiers (trombones)
-      if (isInteger) {
-        formatted = simplified.toStringAsFixed(0);
-      } else {
-        // Pour les valeurs monétaires
-        if (simplified >= 100) {
-          formatted = simplified.toStringAsFixed(0);
-        } else if (simplified >= 10) {
-          formatted = simplified.toStringAsFixed(1);
-        } else {
-          formatted = simplified.toStringAsFixed(2);
+      String result = '';
+      for (int i = 0; i < str.length; i++) {
+        if (i < dotIndex && i > 0 && (dotIndex - i) % 3 == 0) {
+          result += '.';
         }
-
-        if (formatted.contains('.')) {
-          formatted = formatted.replaceAll(RegExp(r'\.?0+$'), '');
-        }
+        result += str[i];
       }
-
-      return '$formatted ${suffixes[index]}€';
-    } else if (number >= 1e9) {
-      return isInteger
-          ? '${(number / 1e9).toStringAsFixed(0)}B €'
-          : '${(number / 1e9).toStringAsFixed(2)}B €';
-    } else if (number >= 1e6) {
-      return isInteger
-          ? '${(number / 1e6).toStringAsFixed(0)}M €'
-          : '${(number / 1e6).toStringAsFixed(2)}M €';
-    } else if (number >= 1e3) {
-      return isInteger
-          ? '${(number / 1e3).toStringAsFixed(0)}K €'
-          : '${(number / 1e3).toStringAsFixed(2)}K €';
+      return result;
     }
-    return isInteger
-        ? '${number.toStringAsFixed(0)} €'
-        : '${number.toStringAsFixed(2)} €';
+
+    if (number < 1000) {
+      // Nombres inférieurs à 1000
+      return isInteger
+          ? '${number.toStringAsFixed(0)} €'
+          : '${formatWithThousandSeparator(double.parse(number.toStringAsFixed(2)))} €';
+    }
+
+    // Pour les grands nombres
+    int index = (log(number) / log(1000)).floor();
+    index = min(index, suffixes.length - 1);
+    double simplified = number / pow(1000, index);
+
+    // Formatage avec plus de précision
+    String formatted;
+    if (simplified >= 100) {
+      // Pour les nombres ≥ 100, on montre 3 chiffres significatifs
+      formatted = simplified.toStringAsFixed(3);
+      // Enlever les zéros inutiles après la virgule
+      if (formatted.contains('.')) {
+        formatted = formatted.replaceAll(RegExp(r'\.?0+$'), '');
+      }
+    } else if (simplified >= 10) {
+      // Pour les nombres entre 10 et 100, on montre jusqu'à 4 chiffres significatifs
+      formatted = simplified.toStringAsFixed(3);
+      if (formatted.contains('.')) {
+        formatted = formatted.replaceAll(RegExp(r'\.?0+$'), '');
+      }
+    } else {
+      // Pour les nombres < 10, on montre jusqu'à 4 chiffres significatifs
+      formatted = simplified.toStringAsFixed(3);
+      if (formatted.contains('.')) {
+        formatted = formatted.replaceAll(RegExp(r'\.?0+$'), '');
+      }
+    }
+
+    return '$formatted${suffixes[index]} €';
   }
 
   @override

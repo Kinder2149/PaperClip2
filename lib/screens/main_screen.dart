@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/services.dart';
 
 // Imports des modèles
 import '../models/game_state.dart';
@@ -18,6 +19,7 @@ import '../widgets/level_widgets.dart';
 import '../widgets/resource_widgets.dart';
 import '../widgets/notification_widgets.dart';
 import '../widgets/chart_widgets.dart';
+import 'package:paperclip2/widgets/production_button.dart';
 
 // Imports des écrans
 import 'production_screen.dart';
@@ -218,6 +220,7 @@ class _MainScreenState extends State<MainScreen> {
       builder: (context, gameState, child) {
         final backgroundMusicService = context.watch<BackgroundMusicService>();
         final visibleScreens = gameState.getVisibleScreenElements();
+        final canProduce = gameState.player.metal >= GameConstants.METAL_PER_PAPERCLIP;
 
         return Scaffold(
           appBar: AppBar(
@@ -263,10 +266,98 @@ class _MainScreenState extends State<MainScreen> {
               ),
             ],
           ),
-          bottomNavigationBar: NavigationBar(
-            selectedIndex: _selectedIndex,
-            onDestinationSelected: (index) => setState(() => _selectedIndex = index),
-            destinations: _buildNavigationDestinations(visibleScreens),
+          bottomNavigationBar: SafeArea(
+            child: Container(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 4.0),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 42, // Hauteur réduite
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: canProduce
+                              ? () {
+                            HapticFeedback.mediumImpact();
+                            gameState.producePaperclip();
+                          }
+                              : null,
+                          borderRadius: BorderRadius.circular(16),
+                          child: Ink(
+                            decoration: BoxDecoration(
+                              color: canProduce
+                                  ? Colors.blue.shade400
+                                  : Colors.grey.shade400,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: canProduce
+                                    ? Colors.blue.shade200
+                                    : Colors.grey.shade300,
+                                width: 2,
+                              ),
+                              boxShadow: canProduce
+                                  ? [
+                                BoxShadow(
+                                  color: Colors.blue.withOpacity(0.3),
+                                  spreadRadius: 1,
+                                  blurRadius: 5,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ]
+                                  : null,
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.add_circle_outline,
+                                  color: canProduce ? Colors.white : Colors.grey.shade300,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Produire',
+                                      style: TextStyle(
+                                        color: canProduce ? Colors.white : Colors.grey.shade300,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    Text(
+                                      '${GameConstants.METAL_PER_PAPERCLIP} métal',
+                                      style: TextStyle(
+                                        color: canProduce
+                                            ? Colors.white.withOpacity(0.8)
+                                            : Colors.grey.shade300,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  NavigationBar(
+                    height: 56, // Hauteur réduite
+                    selectedIndex: _selectedIndex,
+                    onDestinationSelected: (index) => setState(() => _selectedIndex = index),
+                    destinations: _buildNavigationDestinations(visibleScreens),
+                  ),
+                ],
+              ),
+            ),
           ),
         );
       },

@@ -6,6 +6,7 @@ import '../models/game_config.dart';
 import '../widgets/resource_widgets.dart';
 import '../widgets/level_widgets.dart';
 import '../services/save_manager.dart';
+import 'package:paperclip2/widgets/resource_widgets.dart'; // Ajustez le chemin selon votre structure
 
 class ProductionScreen extends StatefulWidget {
   const ProductionScreen({super.key});
@@ -453,30 +454,28 @@ class _ProductionScreenState extends State<ProductionScreen> {
                         children: [
                           _buildResourceCard(
                             'Total Trombones',
-                            MoneyDisplay().formatNumber(gameState.totalPaperclipsProduced.toDouble(), isInteger: true).replaceAll(' €', ''),
+                            // Modification ici pour utiliser formatNumber sans le symbole €
+                            MoneyDisplay.formatNumber(gameState.totalPaperclipsProduced.toDouble(), isInteger: true).replaceAll(' €', ''),
                             Colors.purple.shade100,
-                            onTap: () =>
-                                _showInfoDialog(
-                                  context,
-                                  'Statistiques de Production',
-                                  'Total produit: ${gameState
-                                      .totalPaperclipsProduced}\n'
-                                      'Niveau: ${gameState.level.level}\n'
-                                      'Multiplicateur: x${gameState.level
-                                      .productionMultiplier.toStringAsFixed(
-                                      2)}',
-                                ),
+                            onTap: () => _showInfoDialog(
+                              context,
+                              'Statistiques de Production',
+                              'Total produit: ${MoneyDisplay.formatNumber(gameState.totalPaperclipsProduced.toDouble(), isInteger: true).replaceAll(' €', '')}\n'
+                                  'Niveau: ${gameState.level.level}\n'
+                                  'Multiplicateur: x${gameState.level.productionMultiplier.toStringAsFixed(2)}',
+                            ),
                           ),
                           const SizedBox(width: 16),
                           _buildResourceCard(
                             'Stock Trombones',
-                            MoneyDisplay().formatNumber(gameState.player.paperclips, isInteger: true).replaceAll(' €', ''),
+                            // Modification ici pour utiliser formatNumber sans le symbole €
+                            MoneyDisplay.formatNumber(gameState.player.paperclips, isInteger: true).replaceAll(' €', ''),
                             Colors.blue.shade100,
                             onTap: () => _showInfoDialog(
                               context,
                               'Stock de Trombones',
-                              'Total en stock: ${formatNumber(gameState.player.paperclips, false)}\n'
-                                  'Production totale: ${gameState.totalPaperclipsProduced}',
+                              'Total en stock: ${MoneyDisplay.formatNumber(gameState.player.paperclips, isInteger: true).replaceAll(' €', '')}\n'
+                                  'Production totale: ${MoneyDisplay.formatNumber(gameState.totalPaperclipsProduced.toDouble(), isInteger: true).replaceAll(' €', '')}',
                             ),
                           ),
                         ],
@@ -564,21 +563,6 @@ class _ProductionScreenState extends State<ProductionScreen> {
                     ],
                   ),
                 ),
-              ),
-            ),
-
-            Container(
-              padding: const EdgeInsets.all(16),
-              child: _buildActionButton(
-                onPressed: gameState.player.metal >=
-                    GameConstants.METAL_PER_PAPERCLIP
-                    ? () => gameState.producePaperclip()
-                    : null,
-                label: 'Produire un trombone (${GameConstants
-                    .METAL_PER_PAPERCLIP} métal)',
-                icon: Icons.add,
-                backgroundColor: Colors.blue.shade500,
-                textColor: Colors.white,
               ),
             ),
           ],
