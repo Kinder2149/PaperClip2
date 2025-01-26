@@ -2,20 +2,57 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
+import 'dart:math';
 import '../models/game_config.dart';
 
 class MoneyDisplay extends StatelessWidget {
   const MoneyDisplay({super.key});
 
-  String formatNumber(double number) {
-    if (number >= 1e9) {
-      return '${(number / 1e9).toStringAsFixed(2)}B €';
+  String formatNumber(double number, {bool isInteger = false}) {
+    const suffixes = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
+
+    if (number >= 1e12) { // Pour les valeurs supérieures à 1 trillion
+      int index = (log(number) / log(1000)).floor();
+      index = min(index, suffixes.length - 1);
+
+      double simplified = number / pow(1000, index);
+      String formatted;
+
+      // Pour les nombres entiers (trombones)
+      if (isInteger) {
+        formatted = simplified.toStringAsFixed(0);
+      } else {
+        // Pour les valeurs monétaires
+        if (simplified >= 100) {
+          formatted = simplified.toStringAsFixed(0);
+        } else if (simplified >= 10) {
+          formatted = simplified.toStringAsFixed(1);
+        } else {
+          formatted = simplified.toStringAsFixed(2);
+        }
+
+        if (formatted.contains('.')) {
+          formatted = formatted.replaceAll(RegExp(r'\.?0+$'), '');
+        }
+      }
+
+      return '$formatted ${suffixes[index]}€';
+    } else if (number >= 1e9) {
+      return isInteger
+          ? '${(number / 1e9).toStringAsFixed(0)}B €'
+          : '${(number / 1e9).toStringAsFixed(2)}B €';
     } else if (number >= 1e6) {
-      return '${(number / 1e6).toStringAsFixed(2)}M €';
+      return isInteger
+          ? '${(number / 1e6).toStringAsFixed(0)}M €'
+          : '${(number / 1e6).toStringAsFixed(2)}M €';
     } else if (number >= 1e3) {
-      return '${(number / 1e3).toStringAsFixed(2)}K €';
+      return isInteger
+          ? '${(number / 1e3).toStringAsFixed(0)}K €'
+          : '${(number / 1e3).toStringAsFixed(2)}K €';
     }
-    return '${number.toStringAsFixed(2)} €';
+    return isInteger
+        ? '${number.toStringAsFixed(0)} €'
+        : '${number.toStringAsFixed(2)} €';
   }
 
   @override
@@ -41,7 +78,7 @@ class MoneyDisplay extends StatelessWidget {
               const Icon(Icons.euro, size: 20),
               const SizedBox(width: 8),
               Text(
-                formatNumber(gameState.player.money),  // Utilisation du getter
+                formatNumber(gameState.player.money),
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,

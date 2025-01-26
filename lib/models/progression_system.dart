@@ -5,22 +5,29 @@ import 'dart:async';
 import 'dart:math';
 import 'game_config.dart';
 import 'event_system.dart';
+import 'dart:math' show pow;
 
 /// Système de bonus de progression
 class ProgressionBonus {
   static double calculateLevelBonus(int level) {
-    if (level < 35) {
-      return 1.0 + (level * 0.02);
+    if (level < 15) {
+      return 1.0 + (level * 0.03);  // Bonus plus progressif
+    } else if (level < 25) {
+      return 1.45 + ((level - 15) * 0.04);
+    } else if (level < 35) {
+      return 1.85 + ((level - 25) * 0.05);
     } else {
-      return 1.7 + ((level - 35) * 0.01);
+      return 2.35 + ((level - 35) * 0.03);
     }
   }
 
   static double getMilestoneBonus(int level) {
     Map<int, double> milestones = {
-      10: 1.2,
-      20: 1.3,
-      30: 1.4,
+      5: 1.1,   // Premier palier important
+      10: 1.2,  // Accès au marché
+      15: 1.3,  // Maîtrise de la production
+      25: 1.4,  // Maîtrise commerciale
+      35: 1.5,  // Excellence industrielle
     };
     return milestones[level] ?? 1.0;
   }
@@ -271,71 +278,83 @@ class LevelSystem extends ChangeNotifier {
   double get experienceForNextLevel => calculateExperienceRequirement(_level + 1);
   double get experienceProgress => _experience / experienceForNextLevel;
   final Map<int, LevelUnlock> _levelUnlocks = {
+    // Phase d'Introduction
     1: LevelUnlock(
-        description: "Production manuelle débloquée",
+        description: "Début de l'aventure - Production manuelle",
         unlockedFeatures: ['manual_production'],
-        initialExperienceRequirement: 10
+        initialExperienceRequirement: 155
     ),
-    3: LevelUnlock(
-        description: "Première autoclippeuse",
-        unlockedFeatures: ['first_autoclipper'],
+    2: LevelUnlock(
+        description: "Gestion des ressources - Achat de métal",
+        unlockedFeatures: ['metal_purchase'],
         pathOptions: [
-          PathOption(ProgressionPath.PRODUCTION, 0.2),
-          PathOption(ProgressionPath.EFFICIENCY, 0.1)
-        ],
-        initialExperienceRequirement: 150
-    ),
-    5: LevelUnlock(
-        description: "Accès aux améliorations basiques",
-        unlockedFeatures: ['basic_upgrades'],
-        initialExperienceRequirement: 500
-    ),
-    8: LevelUnlock(
-        description: "Marché débloqué",
-        unlockedFeatures: ['market_access'],
-        pathOptions: [
-          PathOption(ProgressionPath.MARKETING, 0.3),
+          PathOption(ProgressionPath.PRODUCTION, 0.3),
           PathOption(ProgressionPath.EFFICIENCY, 0.2)
         ],
-        initialExperienceRequirement: 1000
+        initialExperienceRequirement: 205
     ),
-    12: LevelUnlock(
-        description: "Améliorations avancées",
-        unlockedFeatures: ['advanced_upgrades'],
-        initialExperienceRequirement: 2000
-    ),
-    15: LevelUnlock(
-        description: "Marketing optimisé",
-        unlockedFeatures: ['marketing_boost'],
-        initialExperienceRequirement: 3000
-    ),
-    20: LevelUnlock(
-        description: "Production de masse",
-        unlockedFeatures: ['mass_production'],
+    3: LevelUnlock(
+        description: "Automatisation - Premier autoclippeur",
+        unlockedFeatures: ['first_autoclipper'],
         pathOptions: [
           PathOption(ProgressionPath.PRODUCTION, 0.4),
+          PathOption(ProgressionPath.EFFICIENCY, 0.3)
+        ],
+        initialExperienceRequirement: 260
+    ),
+    5: LevelUnlock(
+        description: "Système d'améliorations débloqué",
+        unlockedFeatures: ['upgrades'],
+        pathOptions: [
+          PathOption(ProgressionPath.EFFICIENCY, 0.4),
           PathOption(ProgressionPath.INNOVATION, 0.3)
         ],
-        initialExperienceRequirement: 5000
+        initialExperienceRequirement: 366
+    ),
+    8: LevelUnlock(
+        description: "Interface du marché débloquée",
+        unlockedFeatures: ['market_screen'],
+        pathOptions: [
+          PathOption(ProgressionPath.MARKETING, 0.5),
+          PathOption(ProgressionPath.EFFICIENCY, 0.3)
+        ],
+        initialExperienceRequirement: 580
+    ),
+    10: LevelUnlock(
+        description: "Accès aux ventes sur le marché",
+        unlockedFeatures: ['market_sales'],
+        pathOptions: [
+          PathOption(ProgressionPath.MARKETING, 0.6),
+          PathOption(ProgressionPath.INNOVATION, 0.4)
+        ],
+        initialExperienceRequirement: 666
+    ),
+    15: LevelUnlock(
+        description: "Optimisation de la production",
+        unlockedFeatures: ['production_mastery'],
+        pathOptions: [
+          PathOption(ProgressionPath.PRODUCTION, 0.5),
+          PathOption(ProgressionPath.EFFICIENCY, 0.5)
+        ],
+        initialExperienceRequirement: 1050
     ),
     25: LevelUnlock(
-        description: "Expertise commerciale",
-        unlockedFeatures: ['trade_mastery'],
-        initialExperienceRequirement: 8000
-    ),
-    30: LevelUnlock(
-        description: "Optimisation ultime",
-        unlockedFeatures: ['ultimate_optimization'],
-        initialExperienceRequirement: 12000
+        description: "Maîtrise commerciale",
+        unlockedFeatures: ['market_mastery'],
+        pathOptions: [
+          PathOption(ProgressionPath.MARKETING, 0.7),
+          PathOption(ProgressionPath.INNOVATION, 0.6)
+        ],
+        initialExperienceRequirement: 1892
     ),
     35: LevelUnlock(
-        description: "Maîtrise totale",
-        unlockedFeatures: ['complete_mastery'],
+        description: "Excellence industrielle",
+        unlockedFeatures: ['industry_mastery'],
         pathOptions: [
-          PathOption(ProgressionPath.INNOVATION, 0.5),
-          PathOption(ProgressionPath.MARKETING, 0.4)
+          PathOption(ProgressionPath.INNOVATION, 0.8),
+          PathOption(ProgressionPath.EFFICIENCY, 0.7)
         ],
-        initialExperienceRequirement: 20000
+        initialExperienceRequirement: 3751
     )
   };
 
@@ -559,15 +578,22 @@ ${details.tips.map((t) => '• $t').join('\n')}
 
 
   double calculateExperienceRequirement(int level) {
-    if (level <= 15) {
-      return 50 * pow(1.2, level) + (level * level * 3);
-    } else if (level <= 25) {
-      return 50 * pow(1.3, level) + (level * level * 5);
-    } else if (level <= 35) {
-      return 50 * pow(1.5, level) + (level * level * 7);
-    } else {
-      return 50 * pow(1.7, level) + (level * level * 8);
-    }
+    double baseXP = 100.0;
+    double linearIncrease = level * 50.0;  // Composante linéaire plus douce
+    double smallExponential = pow(1.05, level).toDouble();  // Conversion explicite en double
+
+    // Facteur de palier pour différentes phases du jeu
+    double tierMultiplier = 1.0;
+
+    // Paliers progressifs
+    if (level > 25) tierMultiplier = 1.2;
+    if (level > 35) tierMultiplier = 1.5;
+
+    // Protection contre les valeurs trop grandes
+    double totalXP = (baseXP + linearIncrease + smallExponential) * tierMultiplier;
+
+    // Arrondi à 1 décimale pour plus de clarté
+    return double.parse(totalXP.toStringAsFixed(1));
   }
 
   void gainExperience(double amount) {
@@ -618,23 +644,23 @@ ${details.tips.map((t) => '• $t').join('\n')}
   }
 
   void addAutomaticProduction(int amount) {
-    double baseXP = 0.1 * amount;
+    double baseXP = 0.15 * amount;
     double bonusXP = ProgressionBonus.getTotalBonus(level);
     gainExperience(baseXP * bonusXP);
   }
 
   void addSale(int quantity, double price) {
-    double baseXP = 0.3 * quantity * (1 + (price - 0.25) * 2);
+    double baseXP = 0.4 * quantity * (1 + (price - 0.25) * 2);
     double bonusXP = ProgressionBonus.getTotalBonus(level);
     gainExperience(baseXP * bonusXP);
   }
 
   void addAutoclipperPurchase() {
-    gainExperience(3);
+    gainExperience(4);
   }
 
   void addUpgradePurchase(int upgradeLevel) {
-    gainExperience(2.0 * upgradeLevel);
+    gainExperience(2.5 * upgradeLevel);
   }
 
   void applyXPBoost(double multiplier, Duration duration) {
@@ -749,12 +775,15 @@ class GameFeatureUnlocker {
 
   // Map des niveaux requis pour chaque fonctionnalité
   final Map<UnlockableFeature, int> _featureLevelRequirements = {
-    UnlockableFeature.MANUAL_PRODUCTION: 1,
-    UnlockableFeature.METAL_PURCHASE: 1,
-    UnlockableFeature.AUTOCLIPPERS: 3,
-    UnlockableFeature.UPGRADES: 5,
-    UnlockableFeature.MARKET_SCREEN: 7,
-    UnlockableFeature.MARKET_SALES: 9,
+    // Phase d'Introduction (1-5)
+    UnlockableFeature.MANUAL_PRODUCTION: 1,    // Production de base
+    UnlockableFeature.METAL_PURCHASE: 2,       // Déplacé du niveau 1 au 2
+    UnlockableFeature.AUTOCLIPPERS: 3,         // Reste au niveau 3
+    UnlockableFeature.UPGRADES: 5,             // Reste au niveau 5
+
+    // Phase de Développement (6-15)
+    UnlockableFeature.MARKET_SCREEN: 8,        // Déplacé du niveau 7 au 8
+    UnlockableFeature.MARKET_SALES: 10,        // Déplacé du niveau 9 au 10
   };
   List<UnlockableFeature> getNewlyUnlockedFeatures(int previousLevel, int newLevel) {
     return _featureLevelRequirements.entries

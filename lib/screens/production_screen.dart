@@ -453,7 +453,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
                         children: [
                           _buildResourceCard(
                             'Total Trombones',
-                            gameState.totalPaperclipsProduced.toString(),
+                            MoneyDisplay().formatNumber(gameState.totalPaperclipsProduced.toDouble(), isInteger: true).replaceAll(' €', ''),
                             Colors.purple.shade100,
                             onTap: () =>
                                 _showInfoDialog(
@@ -470,7 +470,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
                           const SizedBox(width: 16),
                           _buildResourceCard(
                             'Stock Trombones',
-                            '${formatNumber(gameState.player.paperclips, false)}',  // On garde juste le total
+                            MoneyDisplay().formatNumber(gameState.player.paperclips, isInteger: true).replaceAll(' €', ''),
                             Colors.blue.shade100,
                             onTap: () => _showInfoDialog(
                               context,

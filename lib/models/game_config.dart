@@ -109,7 +109,7 @@ class GameConstants {
   static const double OPTIMAL_PRICE_LOW = 0.25;
   static const double OPTIMAL_PRICE_HIGH = 0.35;
   // Niveaux de déblocage
-  static const int MARKET_UNLOCK_LEVEL = 7;
+  static const int MARKET_UNLOCK_LEVEL = 8;
   static const int UPGRADES_UNLOCK_LEVEL = 5;
 
   // Difficultés et multiplicateurs
