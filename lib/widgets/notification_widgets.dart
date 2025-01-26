@@ -4,6 +4,7 @@ import '../models/event_system.dart';
 import '../main.dart' show navigatorKey;
 import 'dart:async';
 import '../models/game_config.dart';
+import '../services/notification_storage_service.dart'; // Nouveau import
 
 class GlobalNotificationOverlay extends StatefulWidget {
   final Widget child;
@@ -21,123 +22,48 @@ class GlobalNotificationOverlay extends StatefulWidget {
 
 class _GlobalNotificationOverlayState extends State<GlobalNotificationOverlay> {
   OverlayEntry? _overlayEntry;
-  Timer? _autoHideTimer;
 
   @override
   void initState() {
     super.initState();
     EventManager.instance.notificationStream.addListener(_handleNotification);
+    // Charger les notifications importantes au démarrage
+    _loadSavedNotifications();
+  }
+
+  // Nouvelle méthode pour charger les notifications sauvegardées
+  Future<void> _loadSavedNotifications() async {
+    final savedNotifications = await NotificationStorageService.getImportantNotifications();
+    for (var notification in savedNotifications) {
+      EventManager.instance.addNotification(notification);
+    }
   }
 
   void _handleNotification() {
     final notification = EventManager.instance.notificationStream.value;
-    if (notification != null) {
+    if (notification != null && mounted) {
       _showNotificationOverlay(notification);
-    } else {
-      _hideNotificationOverlay();
     }
   }
 
   void _showNotificationOverlay(NotificationEvent event) {
     _overlayEntry?.remove();
-    _autoHideTimer?.cancel();
 
     _overlayEntry = OverlayEntry(
-        builder: (context) => Positioned(
-          top: 50,
-          left: 0,
-          right: 0,
-          child: Material(
-            color: Colors.transparent,
-            child: SafeArea(
-              child: GestureDetector(
-                onTap: _hideNotificationOverlay,
-                child: Container(
-                  width: 300,
-                  margin: const EdgeInsets.symmetric(horizontal: 20),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                      color: _getPriorityColor(event.priority).withOpacity(0.9),
-                      borderRadius: BorderRadius.circular(10),
-                      boxShadow: [
-                        BoxShadow(
-                            color: Colors.black26,
-                            blurRadius: 10,
-                            offset: const Offset(0, 4)
-                        )
-                      ]
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(event.icon, color: Colors.white, size: 24),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                                event.title,
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16
-                                )
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              event.description,
-                              style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 14
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            )
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        )
+      builder: (context) => AnimatedNotificationOverlay(
+        event: event,
+        onDismiss: () {
+          _overlayEntry?.remove();
+          _overlayEntry = null;
+          EventManager.instance.notificationStream.value = null;
+        },
+      ),
     );
 
     if (mounted && context.mounted) {
       Overlay.of(context).insert(_overlayEntry!);
-      // Utilisez une durée plus longue pour les notifications de niveau
-      final duration = event.type == EventType.LEVEL_UP ?
-      const Duration(seconds: 5) :
-      const Duration(seconds: 3);
-      _autoHideTimer = Timer(duration, _hideNotificationOverlay);
     }
   }
-
-  void _hideNotificationOverlay() {
-    _overlayEntry?.remove();
-    _overlayEntry = null;
-    _autoHideTimer?.cancel();
-    _autoHideTimer = null;
-  }
-
-  Color _getPriorityColor(NotificationPriority priority) {
-    switch (priority) {
-      case NotificationPriority.LOW:
-        return Colors.grey;
-      case NotificationPriority.MEDIUM:
-        return Colors.blue;
-      case NotificationPriority.HIGH:
-        return Colors.orange;
-      case NotificationPriority.CRITICAL:
-        return Colors.red;
-    }
-  }
-
-
-
 
   @override
   Widget build(BuildContext context) {
@@ -155,66 +81,165 @@ class _GlobalNotificationOverlayState extends State<GlobalNotificationOverlay> {
     super.dispose();
   }
 }
+class AnimatedNotificationOverlay extends StatefulWidget {
+  final NotificationEvent event;
+  final VoidCallback onDismiss;
 
-// Dans lib/widgets/notification_widgets.dart
-class EventNotificationOverlay extends StatelessWidget {
-  const EventNotificationOverlay({Key? key}) : super(key: key);
+  const AnimatedNotificationOverlay({
+    Key? key,
+    required this.event,
+    required this.onDismiss,
+  }) : super(key: key);
+
+  @override
+  _AnimatedNotificationOverlayState createState() => _AnimatedNotificationOverlayState();
+}
+
+class _AnimatedNotificationOverlayState extends State<AnimatedNotificationOverlay>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _slideAnimation;
+  late Animation<double> _fadeAnimation;
+  Timer? _autoHideTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _setupAnimations();
+    _setupAutoHide();
+  }
+
+  void _setupAnimations() {
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+
+    _slideAnimation = Tween<double>(
+      begin: -100.0,
+      end: 0.0,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+    ));
+
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeInOut,
+    ));
+
+    _controller.forward();
+  }
+
+  void _setupAutoHide() {
+    _autoHideTimer = Timer(
+      Duration(seconds: widget.event.type == EventType.LEVEL_UP ? 5 : 3),
+      _hideNotification,
+    );
+  }
+
+  void _hideNotification() {
+    _autoHideTimer?.cancel();
+    _controller.reverse().then((_) {
+      if (mounted) {
+        widget.onDismiss();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _autoHideTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<NotificationEvent?>(
-      valueListenable: EventManager.instance.notificationStream,
-      builder: (context, notification, child) {
-        if (notification == null) return const SizedBox.shrink();
-
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
         return Positioned(
-          top: MediaQuery.of(context).padding.top + 10,
+          top: MediaQuery.of(context).padding.top + 10 + _slideAnimation.value,
           right: 10,
-          child: GestureDetector(
-            onTap: () {
-              // Faire disparaître la notification
-              EventManager.instance.notificationStream.value = null;
-            },
+          child: FadeTransition(
+            opacity: _fadeAnimation,
             child: Material(
               elevation: 8,
               borderRadius: BorderRadius.circular(8),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(notification.icon),
-                    const SizedBox(width: 8),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(notification.title),
-                        Text(
-                          notification.description,
-                          style: TextStyle(fontSize: 12),
-                        ),
-                        if (notification.occurrences > 1)
-                          Text(
-                            '${notification.occurrences} occurrences',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.grey,
+              child: InkWell(
+                onTap: _hideNotification,
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  width: MediaQuery.of(context).size.width * 0.9,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _getPriorityColor(widget.event.priority).withOpacity(0.95),
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black26,
+                        blurRadius: 8,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        widget.event.icon ?? Icons.notifications,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              widget.event.title,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
                             ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(width: 8),
-                    Icon(
-                      Icons.close,
-                      size: 16,
-                      color: Colors.grey,
-                    ),
-                  ],
+                            const SizedBox(height: 4),
+                            Text(
+                              widget.event.description,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 14,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            if (widget.event.occurrences > 1)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Text(
+                                  '${widget.event.occurrences} occurrences',
+                                  style: const TextStyle(
+                                    color: Colors.white60,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        Icons.close,
+                        size: 20,
+                        color: Colors.white70,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -222,5 +247,18 @@ class EventNotificationOverlay extends StatelessWidget {
         );
       },
     );
+  }
+
+  Color _getPriorityColor(NotificationPriority priority) {
+    switch (priority) {
+      case NotificationPriority.LOW:
+        return Colors.grey[700]!;
+      case NotificationPriority.MEDIUM:
+        return Colors.blue[600]!;
+      case NotificationPriority.HIGH:
+        return Colors.orange[800]!;
+      case NotificationPriority.CRITICAL:
+        return Colors.red[700]!;
+    }
   }
 }

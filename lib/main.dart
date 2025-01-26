@@ -35,6 +35,7 @@ export 'package:paperclip2/main.dart' show navigatorKey;
 // Clé globale pour la navigation
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
+// Dans lib/main.dart
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -46,6 +47,8 @@ void main() {
           create: (_) => BackgroundMusicService(),
           dispose: (_, service) => service.dispose(),
         ),
+        // Ajoutez cette ligne pour fournir EventManager
+        ChangeNotifierProvider.value(value: EventManager.instance),
       ],
       child: const MyApp(),
     ),

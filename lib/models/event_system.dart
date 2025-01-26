@@ -7,8 +7,9 @@ import '../main.dart' show navigatorKey;
 import 'package:flutter/foundation.dart';
 import 'package:paperclip2/screens/event_log_screen.dart';
 import 'progression_system.dart';
-import 'package:flutter/foundation.dart';  // Ajoutez cet import
-import 'dart:async';
+
+
+import 'package:paperclip2/services/notification_storage_service.dart';
 
 /// Définition des priorités de notification
 enum NotificationPriority { LOW, MEDIUM, HIGH, CRITICAL }
@@ -205,6 +206,8 @@ class GameEvent {
         return Icons.stars;
       case EventType.XP_BOOST:
         return Icons.speed;
+      case EventType.INFO:
+        return Icons.info_outline; // Ajout du cas manquant
     }
   }
 }
@@ -260,22 +263,19 @@ class EventManager with  ChangeNotifier {
 
   final ValueNotifier<int> unreadCount = ValueNotifier<int>(0);
 
-  void addNotification(NotificationEvent newNotification) {
-    // Vérifier si une notification similaire a été montrée récemment
-    if (newNotification.type == EventType.LEVEL_UP) {
-      _notifications.removeWhere((n) => n.type == EventType.LEVEL_UP);
-      _notifications.add(newNotification);
-      _unreadNotificationIds.add(newNotification.id);
-      _updateUnreadNotificationsCount();
-      notificationStream.value = newNotification;
-      notifyListeners();
-      return;
+  Future<void> addNotification(NotificationEvent newNotification) async {
+       // Sauvegarder les notifications importantes
+    if (newNotification.priority == NotificationPriority.HIGH ||
+        newNotification.priority == NotificationPriority.CRITICAL ||
+        newNotification.type == EventType.LEVEL_UP) {
+      await NotificationStorageService.saveImportantNotification(newNotification);
     }
 
     // Vérifier si une notification similaire a été montrée récemment
     final lastShownTime = _lastShownTimes[newNotification.groupId ?? newNotification.title];
     if (lastShownTime != null &&
-        DateTime.now().difference(lastShownTime) < _minimumInterval) {
+        DateTime.now().difference(lastShownTime) < _minimumInterval &&
+        newNotification.type != EventType.LEVEL_UP) {  // Ne pas appliquer l'intervalle minimum pour les montées de niveau
       return;
     }
 
@@ -283,18 +283,24 @@ class EventManager with  ChangeNotifier {
     _lastShownTimes[newNotification.groupId ?? newNotification.title] = DateTime.now();
 
     try {
-      // Chercher une notification similaire existante
-      var existingIndex = _notifications.indexWhere((n) => n.isSimilarTo(newNotification));
-
-      if (existingIndex != -1) {
-        // Mettre à jour la notification existante
-        var existing = _notifications[existingIndex];
-        existing.incrementOccurrences();
-        _notifications.removeAt(existingIndex);
-        _notifications.add(existing);
-      } else {
-        // Ajouter la nouvelle notification
+      // Pour les notifications de niveau, toujours ajouter une nouvelle entrée
+      if (newNotification.type == EventType.LEVEL_UP) {
         _notifications.add(newNotification);
+        _unreadNotificationIds.add(newNotification.id);
+      } else {
+        // Pour les autres types, chercher une notification similaire existante
+        var existingIndex = _notifications.indexWhere((n) => n.isSimilarTo(newNotification));
+
+        if (existingIndex != -1) {
+          // Mettre à jour la notification existante
+          var existing = _notifications[existingIndex];
+          existing.incrementOccurrences();
+          _notifications.removeAt(existingIndex);
+          _notifications.add(existing);
+        } else {
+          // Ajouter la nouvelle notification
+          _notifications.add(newNotification);
+        }
       }
 
       // Limiter le nombre de notifications
@@ -323,11 +329,25 @@ class EventManager with  ChangeNotifier {
     }
   }
 
+
+  void removeNotification(String notificationId) {
+    _notifications.removeWhere((notification) => notification.id == notificationId);
+    _unreadNotificationIds.remove(notificationId);
+    _updateUnreadNotificationsCount();
+    notifyListeners();
+  }
+
   void clearNotifications() {
     _notifications.clear();
     _unreadNotificationIds.clear();
     _lastShownTimes.clear();
     notificationStream.value = null;
+    notifyListeners();
+  }
+
+  Future<void> loadImportantNotifications() async {
+    final importantNotifications = await NotificationStorageService.getImportantNotifications();
+    _notifications.addAll(importantNotifications);
     notifyListeners();
   }
 

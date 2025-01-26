@@ -249,7 +249,18 @@ class _MainScreenState extends State<MainScreen> {
           body: Stack(
             children: [
               _getCurrentScreen(visibleScreens),
-              const EventNotificationOverlay(),
+              Consumer<EventManager>(
+                builder: (context, eventManager, _) {
+                  final notification = eventManager.notificationStream.value;
+                  if (notification == null) return const SizedBox.shrink();
+                  return AnimatedNotificationOverlay(
+                    event: notification,
+                    onDismiss: () {
+                      eventManager.notificationStream.value = null;
+                    },
+                  );
+                },
+              ),
             ],
           ),
           bottomNavigationBar: NavigationBar(

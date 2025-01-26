@@ -179,7 +179,8 @@ enum EventType {
   RESOURCE_DEPLETION,
   UPGRADE_AVAILABLE,
   SPECIAL_ACHIEVEMENT,
-  XP_BOOST
+  XP_BOOST,
+  INFO,
 }
 
 enum EventImportance {

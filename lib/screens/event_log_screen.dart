@@ -93,11 +93,14 @@ class EventLogScreenState extends State<EventLogScreen> {
     final difference = now.difference(timestamp);
 
     if (difference.inDays == 0) {
-      return 'Aujourd\'hui ${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}';
+      return 'Aujourd\'hui ${timestamp.hour}:${timestamp.minute.toString()
+          .padLeft(2, '0')}';
     } else if (difference.inDays == 1) {
-      return 'Hier ${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}';
+      return 'Hier ${timestamp.hour}:${timestamp.minute.toString().padLeft(
+          2, '0')}';
     } else {
-      return '${timestamp.day}/${timestamp.month} ${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}';
+      return '${timestamp.day}/${timestamp.month} ${timestamp.hour}:${timestamp
+          .minute.toString().padLeft(2, '0')}';
     }
   }
 
@@ -160,41 +163,119 @@ class EventLogScreenState extends State<EventLogScreen> {
   }
 
   Widget _buildNotificationCard(NotificationEvent notification) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      child: ListTile(
-        leading: Badge(
-          label: notification.occurrences > 1
-              ? Text(notification.occurrences.toString(),
-              style: const TextStyle(color: Colors.white, fontSize: 12))
-              : null,
-          child: Icon(
-            notification.icon,
-            color: _getPriorityColor(notification.priority),
-          ),
+    return Dismissible(
+      key: Key(notification.id),
+      background: Container(
+        color: Colors.red,
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        child: const Icon(
+          Icons.delete,
+          color: Colors.white,
         ),
-        title: Text(
-          notification.title,
-          style: TextStyle(
-            fontWeight: notification.priority == NotificationPriority.CRITICAL
-                ? FontWeight.bold
-                : FontWeight.normal,
+      ),
+      direction: DismissDirection.endToStart,
+      onDismissed: (direction) {
+        _removeNotification(notification);
+      },
+      child: Card(
+        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: ListTile(
+          leading: Badge(
+            label: notification.occurrences > 1
+                ? Text(notification.occurrences.toString(),
+                style: const TextStyle(color: Colors.white, fontSize: 12))
+                : null,
+            child: Icon(
+              notification.icon,
+              color: _getPriorityColor(notification.priority),
+            ),
           ),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(notification.description),
-            Row(
-              children: [
-                Text(
-                  _formatEventTime(notification.timestamp),
-                  style: const TextStyle(color: Colors.grey, fontSize: 12),
-                ),
-                if (notification.occurrences > 1) ...[
-                  const SizedBox(width: 8),
+          title: Text(
+            notification.title,
+            style: TextStyle(
+              fontWeight: notification.priority == NotificationPriority.CRITICAL
+                  ? FontWeight.bold
+                  : FontWeight.normal,
+            ),
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(notification.description),
+              Row(
+                children: [
                   Text(
-                    '(${notification.occurrences}x)',
+                    _formatEventTime(notification.timestamp),
+                    style: const TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
+                  if (notification.occurrences > 1) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      '(${notification.occurrences}x)',
+                      style: const TextStyle(
+                        color: Colors.grey,
+                        fontSize: 12,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+          trailing: IconButton(
+            icon: const Icon(Icons.delete_outline),
+            onPressed: () => _removeNotification(notification),
+            tooltip: 'Supprimer cette notification',
+          ),
+          onTap: () => _showDetailedNotification(context, notification),
+        ),
+      ),
+    );
+  }
+
+  void _showDetailedNotification(BuildContext context,
+      NotificationEvent event) {
+    eventManager.markAsRead(event.id);
+
+    showDialog(
+      context: context,
+      builder: (context) =>
+          AlertDialog(
+            title: Row(
+              children: [
+                Icon(
+                  event.icon,
+                  color: _getPriorityColor(event.priority),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(event.title),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    event.description,
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                  const SizedBox(height: 16),
+                  if (event.detailedDescription != null) ...[
+                    const Divider(),
+                    const SizedBox(height: 8),
+                    Text(
+                      event.detailedDescription!,
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  Text(
+                    'Reçu le ${_formatEventTime(event.timestamp)}',
                     style: const TextStyle(
                       color: Colors.grey,
                       fontSize: 12,
@@ -202,17 +283,22 @@ class EventLogScreenState extends State<EventLogScreen> {
                     ),
                   ),
                 ],
-              ],
+              ),
             ),
-          ],
-        ),
-        onTap: () => _showDetailedNotification(context, notification),
-      ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Fermer'),
+              ),
+            ],
+          ),
     );
   }
-
-  void _showDetailedNotification(BuildContext context, NotificationEvent event) {
-    eventManager.markAsRead(event.id);
-    // Display detailed notification
+  void _removeNotification(NotificationEvent notification) {
+    setState(() {
+      notifications.remove(notification);
+      // Mise à jour de l'état dans EventManager
+      eventManager.removeNotification(notification.id);
+    });
   }
 }

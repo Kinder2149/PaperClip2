@@ -14,6 +14,127 @@ class UpgradesScreen extends StatelessWidget {
     return '${hours}h ${minutes}m ${remainingSeconds}s';
   }
 
+  String _formatImpact(double value, {bool isPercentage = true}) {
+    if (isPercentage) {
+      return value >= 0 ? '+${value.toStringAsFixed(1)}%' : '${value.toStringAsFixed(1)}%';
+    }
+    return value.toStringAsFixed(1);
+  }
+
+  Widget _buildUpgradeImpactPreview(String id, Upgrade upgrade, GameState gameState) {
+    Map<String, List<String>> impacts = {};
+
+    // Calculer l'impact actuel et futur
+    switch (id) {
+      case 'speed':
+        double currentSpeed = upgrade.level * 20.0;
+        double nextSpeed = (upgrade.level + 1) * 20.0;
+        impacts['Vitesse de production'] = [
+          _formatImpact(currentSpeed),
+          _formatImpact(nextSpeed)
+        ];
+        break;
+
+      case 'bulk':
+        double currentBulk = upgrade.level * 35.0;
+        double nextBulk = (upgrade.level + 1) * 35.0;
+        impacts['Production par cycle'] = [
+          _formatImpact(currentBulk),
+          _formatImpact(nextBulk)
+        ];
+        break;
+
+      case 'efficiency':
+        double currentEff = -(upgrade.level * 15.0);
+        double nextEff = -((upgrade.level + 1) * 15.0);
+        // Utilisez la constante de votre classe ou du fichier de configuration
+        double metalPerClip = 1.0; // Remplacez par votre valeur de base
+        double currentMetal = metalPerClip * (1 + currentEff/100);
+        double nextMetal = metalPerClip * (1 + nextEff/100);
+        impacts['Consommation de métal'] = [
+          '${_formatImpact(currentMetal, isPercentage: false)} /clip',
+          '${_formatImpact(nextMetal, isPercentage: false)} /clip'
+        ];
+        break;
+
+      case 'storage':
+      // Convertir en double si maxMetalStorage est un double
+        double currentStorage = gameState.player.maxMetalStorage.toDouble();
+        double nextStorage = currentStorage + 100.0;
+        impacts['Capacité de stockage'] = [
+          '${currentStorage.toStringAsFixed(0)}',
+          '${nextStorage.toStringAsFixed(0)}'
+        ];
+        break;
+
+      case 'marketing':
+        double currentMarketing = upgrade.level * 30.0;
+        double nextMarketing = (upgrade.level + 1) * 30.0;
+        impacts['Bonus de demande'] = [
+          _formatImpact(currentMarketing),
+          _formatImpact(nextMarketing)
+        ];
+        break;
+    }
+
+    if (impacts.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: Colors.blue.shade100),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Impact de l\'amélioration',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 4),
+          ...impacts.entries.map((impact) => Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  impact.key,
+                  style: const TextStyle(fontSize: 11, color: Colors.black54),
+                ),
+                Row(
+                  children: [
+                    Text(
+                      impact.value[0],
+                      style: const TextStyle(fontSize: 11, color: Colors.black54),
+                    ),
+                    const Icon(Icons.arrow_forward, size: 12, color: Colors.black54),
+                    Text(
+                      impact.value[1],
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.blue.shade700,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          )).toList(),
+        ],
+      ),
+    );
+  }
+
+
+
   Widget _buildStatisticsCard(GameState gameState) {
     return Card(
       elevation: 2,
@@ -180,6 +301,20 @@ class UpgradesScreen extends StatelessWidget {
     bool canBuy = gameState.player.money >= upgrade.getCost() && upgrade.level < upgrade.maxLevel;
     bool isMaxed = upgrade.level >= upgrade.maxLevel;
 
+    Map<String, bool> requirements = {
+      'Niveau requis: ${upgrade.requiredLevel}':
+      gameState.level.level >= upgrade.requiredLevel!,
+      'Argent requis: ${upgrade.getCost().toStringAsFixed(1)} €':
+      gameState.player.money >= upgrade.getCost(),
+    };
+
+    if (id == 'automation') {
+      requirements['Autoclippers requis: 5'] = gameState.player.autoclippers >= 5;
+    }
+    if (id == 'marketing') {
+      requirements['Production totale: 1000'] = gameState.totalPaperclipsProduced >= 1000;
+    }
+
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8),
       child: InkWell(
@@ -198,13 +333,25 @@ class UpgradesScreen extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      upgrade.name,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: canBuy ? Colors.black87 : Colors.grey,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          upgrade.name,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: canBuy ? Colors.black87 : Colors.grey,
+                          ),
+                        ),
+                        Text(
+                          upgrade.description,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   if (!isMaxed)
@@ -219,14 +366,43 @@ class UpgradesScreen extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
-              Text(
-                upgrade.description,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[600],
+
+              // Affichage de l'aperçu de l'impact
+              if (!isMaxed) _buildUpgradeImpactPreview(id, upgrade, gameState),
+
+              // Affichage des conditions requises
+              if (!canBuy && !isMaxed) ...[
+                const Divider(),
+                const Text(
+                  'Conditions requises :',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
+                const SizedBox(height: 4),
+                ...requirements.entries.map((requirement) => Row(
+                  children: [
+                    Icon(
+                      requirement.value ? Icons.check_circle : Icons.cancel,
+                      size: 16,
+                      color: requirement.value ? Colors.green : Colors.red,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      requirement.key,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: requirement.value ? Colors.green : Colors.red,
+                      ),
+                    ),
+                  ],
+                )).toList(),
+                const SizedBox(height: 8),
+              ],
+
+              // Barre de progression
               Row(
                 children: [
                   Expanded(

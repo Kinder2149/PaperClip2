@@ -6,8 +6,9 @@ import '../models/game_config.dart';
 import '../widgets/chart_widgets.dart';
 import '../widgets/resource_widgets.dart';
 import 'demand_calculation_screen.dart';
-import '../services/save_manager.dart';  // Pour SaveManager
-import '../screens/sales_history_screen.dart';  // Pour SalesHistoryScreen
+import '../services/save_manager.dart';
+import '../screens/sales_history_screen.dart';
+import 'dart:math' show min;
 
 class MarketScreen extends StatelessWidget {
   const MarketScreen({super.key});
@@ -175,6 +176,77 @@ class MarketScreen extends StatelessWidget {
     );
   }
 
+  String _formatBonusText(String name, double bonus) {
+    return '${name}: ${((bonus - 1.0) * 100).toStringAsFixed(1)}%';
+  }
+
+  Widget _buildProductionCard(BuildContext context, GameState gameState, double autoclipperProduction) {
+    List<String> bonuses = [];
+
+    double speedBonus = 1.0 + ((gameState.player.upgrades['speed']?.level ?? 0) * 0.20);
+    double bulkBonus = 1.0 + ((gameState.player.upgrades['bulk']?.level ?? 0) * 0.35);
+    double efficiencyBonus = 1.0 - ((gameState.player.upgrades['efficiency']?.level ?? 0) * 0.15);
+
+    int speedLevel = gameState.player.upgrades['speed']?.level ?? 0;
+    int bulkLevel = gameState.player.upgrades['bulk']?.level ?? 0;
+    int efficiencyLevel = gameState.player.upgrades['efficiency']?.level ?? 0;
+
+    if (speedLevel > 0) {
+      bonuses.add(_formatBonusText('Vitesse', speedBonus));
+    }
+    if (bulkLevel > 0) {
+      bonuses.add(_formatBonusText('Production en masse', bulkBonus));
+    }
+    if (efficiencyLevel > 0) {
+      bonuses.add('Efficacité: -${((1.0 - efficiencyBonus) * 100).toStringAsFixed(1)}%');
+    }
+
+    double baseProduction = gameState.player.autoclippers * 60;
+
+    return _buildMarketCard(
+      title: 'Production des Autoclippers',
+      value: '${autoclipperProduction.toStringAsFixed(1)}/min',
+      icon: Icons.precision_manufacturing,
+      color: Colors.purple.shade100,
+      tooltip: 'Production avec bonus appliqués',
+      onInfoPressed: () => _showInfoDialog(
+        context,
+        'Production Détaillée',
+        'Détails de la production :\n'
+            '- Base (${gameState.player.autoclippers} autoclippers): ${baseProduction.toStringAsFixed(1)}/min\n'
+            '${bonuses.isNotEmpty ? '\nBonus actifs:\n${bonuses.join("\n")}\n' : ''}'
+            '\nMétal utilisé par trombone: ${(GameConstants.METAL_PER_PAPERCLIP * efficiencyBonus).toStringAsFixed(2)} unités'
+            '\n(Efficacité: -${((1.0 - efficiencyBonus) * 100).toStringAsFixed(1)}%)',
+      ),
+    );
+  }
+
+  Widget _buildMetalStatus(BuildContext context, GameState gameState) {
+    double metalPerClip = GameConstants.METAL_PER_PAPERCLIP *
+        (1.0 - ((gameState.player.upgrades['efficiency']?.level ?? 0) * 0.15));
+
+    double currentMetalForClips = gameState.player.metal / metalPerClip;
+
+    return _buildMarketCard(
+      title: 'Stock de Métal',
+      value: '${gameState.player.metal.toStringAsFixed(1)} / ${gameState.player.maxMetalStorage}',
+      icon: Icons.inventory_2,
+      color: Colors.grey.shade200,
+      tooltip: 'Production possible: ${currentMetalForClips.toStringAsFixed(0)} trombones',
+      onInfoPressed: () => _showInfoDialog(
+        context,
+        'Stock de Métal',
+        'Métal disponible pour la production:\n'
+            '- Stock actuel: ${gameState.player.metal.toStringAsFixed(1)} unités\n'
+            '- Capacité maximale: ${gameState.player.maxMetalStorage} unités\n'
+            '- Prix actuel: ${gameState.market.currentMetalPrice.toStringAsFixed(2)} €\n\n'
+            'Production possible:\n'
+            '- Métal par trombone: ${metalPerClip.toStringAsFixed(2)} unités\n'
+            '- Trombones possibles: ${currentMetalForClips.toStringAsFixed(0)} unités',
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer<GameState>(
@@ -184,7 +256,17 @@ class MarketScreen extends StatelessWidget {
             gameState.player.sellPrice,
             gameState.player.getMarketingLevel()
         );
-        double profitability = demand * gameState.player.sellPrice;
+
+        double autoclipperProduction = 0;
+        if (gameState.player.autoclippers > 0) {
+          autoclipperProduction = gameState.player.autoclippers * 60;
+          double speedBonus = 1.0 + ((gameState.player.upgrades['speed']?.level ?? 0) * 0.20);
+          double bulkBonus = 1.0 + ((gameState.player.upgrades['bulk']?.level ?? 0) * 0.35);
+          autoclipperProduction *= speedBonus * bulkBonus;
+        }
+
+        double effectiveProduction = min(demand, autoclipperProduction);
+        double profitability = effectiveProduction * gameState.player.sellPrice;
 
         return Padding(
           padding: const EdgeInsets.all(12.0),
@@ -197,22 +279,13 @@ class MarketScreen extends StatelessWidget {
                 child: SingleChildScrollView(
                   child: Column(
                     children: [
-                      _buildMarketCard(
-                        title: 'Stock de Métal',
-                        value: '${gameState.player.metal.toStringAsFixed(1)} / ${gameState.player.maxMetalStorage}',  // Correction ici
-                        icon: Icons.inventory_2,
-                        color: Colors.grey.shade200,
-                        tooltip: 'Métal disponible pour la production',
-                        onInfoPressed: () => _showInfoDialog(
-                          context,
-                          'Stock de Métal',
-                          'Quantité de métal disponible pour la production.\n'
-                              'Capacité maximale: ${gameState.player.maxMetalStorage}\n'
-                              'Prix actuel: ${gameState.market.currentMetalPrice.toStringAsFixed(2)} €',
-                        ),
-                        trailing: null,
-                      ),
+                      _buildMetalStatus(context, gameState),
                       const SizedBox(height: 8),
+
+                      if (gameState.player.autoclippers > 0) ...[
+                        _buildProductionCard(context, gameState, autoclipperProduction),
+                        const SizedBox(height: 8),
+                      ],
 
                       if (visibleElements['marketPrice'] == true) ...[
                         _buildMarketCard(
@@ -250,13 +323,15 @@ class MarketScreen extends StatelessWidget {
                           value: '${profitability.toStringAsFixed(1)} €/min',
                           icon: Icons.assessment,
                           color: Colors.amber.shade100,
-                          tooltip: 'Basé sur la demande actuelle',
+                          tooltip: 'Basé sur la production et la demande',
                           onInfoPressed: () => _showInfoDialog(
                             context,
                             'Rentabilité',
                             'Estimation des revenus par minute basée sur:\n'
                                 '- Prix de vente: ${gameState.player.sellPrice.toStringAsFixed(2)} €\n'
-                                '- Demande estimée: ${demand.toStringAsFixed(1)} unités/min\n'
+                                '- Production des autoclippers: ${autoclipperProduction.toStringAsFixed(1)} unités/min\n'
+                                '- Demande du marché: ${demand.toStringAsFixed(1)} unités/min\n'
+                                '- Production effective: ${effectiveProduction.toStringAsFixed(1)} unités/min\n'
                                 '- Revenus potentiels: ${profitability.toStringAsFixed(1)} €/min',
                           ),
                         ),
@@ -322,7 +397,6 @@ class MarketScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-
                   if (visibleElements['marketPrice'] == true)
                     Expanded(
                       child: ElevatedButton.icon(
