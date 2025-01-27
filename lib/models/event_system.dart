@@ -207,7 +207,9 @@ class GameEvent {
       case EventType.XP_BOOST:
         return Icons.speed;
       case EventType.INFO:
-        return Icons.info_outline; // Ajout du cas manquant
+        return Icons.info_outline;
+      case EventType.CRISIS_MODE:
+        return Icons.emergency; // Icône pour le mode crise
     }
   }
 }
@@ -255,6 +257,14 @@ class EventManager with  ChangeNotifier {
       List.unmodifiable(_notifications);
 
   EventManager._internal();
+  void addCrisisEvent(String title, String description) {
+    addEvent(
+      EventType.CRISIS_MODE,
+      title,
+      description: description,
+      importance: EventImportance.CRITICAL,
+    );
+  }
 
 
 
@@ -456,6 +466,7 @@ ${unlockDetails.tips.map((t) => '• $t').join('\n')}
 
 
 
+
   IconData _getEventTypeIcon(EventType type) {
     switch (type) {
       case EventType.RESOURCE_DEPLETION:
@@ -555,4 +566,96 @@ ${unlockDetails.tips.map((t) => '• $t').join('\n')}
         return Colors.red;
     }
   }
+  final Map<MarketEvent, CrisisGuide> _crisisGuides = {
+    MarketEvent.MARKET_CRASH: CrisisGuide(
+      title: "Guide : Gérer un Krach du Marché",
+      description: "Le marché s'effondre, voici comment réagir",
+      steps: [
+        "1. Réduisez votre production de 50%",
+        "2. Conservez vos ressources",
+        "3. Attendez que les prix remontent",
+        "4. Profitez des bas prix pour stocker"
+      ],
+      icon: Icons.trending_down,
+      color: Colors.red.shade700,
+    ),
+    MarketEvent.PRICE_WAR: CrisisGuide(
+      title: "Guide : Survivre à une Guerre des Prix",
+      description: "Les concurrents baissent agressivement leurs prix",
+      steps: [
+        "1. Maintenez des prix compétitifs",
+        "2. Focalisez sur l'efficacité",
+        "3. Améliorez votre marketing",
+        "4. Surveillez vos concurrents"
+      ],
+      icon: Icons.currency_exchange,
+      color: Colors.orange.shade800,
+    ),
+    MarketEvent.DEMAND_SPIKE: CrisisGuide(
+      title: "Guide : Profiter d'un Pic de Demande",
+      description: "La demande explose soudainement",
+      steps: [
+        "1. Augmentez votre production",
+        "2. Ajustez vos prix à la hausse",
+        "3. Constituez des stocks",
+        "4. Optimisez vos ventes"
+      ],
+      icon: Icons.trending_up,
+      color: Colors.green.shade700,
+    ),
+    MarketEvent.QUALITY_CONCERNS: CrisisGuide(
+      title: "Guide : Résoudre les Problèmes de Qualité",
+      description: "La qualité de vos produits est remise en question",
+      steps: [
+        "1. Investissez dans la qualité",
+        "2. Baissez temporairement les prix",
+        "3. Améliorez votre réputation",
+        "4. Communiquez sur vos améliorations"
+      ],
+      icon: Icons.warning,
+      color: Colors.purple.shade700,
+    ),
+  };
+
+  CrisisGuide? getGuideForCrisis(MarketEvent event) {
+    return _crisisGuides[event];
+  }
+
+  void addCrisisNotification(MarketEvent event) {
+    final guide = _crisisGuides[event];
+    if (guide == null) return;
+
+    final notification = NotificationEvent(
+      title: guide.title,
+      description: guide.description,
+      detailedDescription: guide.steps.join('\n'),
+      icon: guide.icon,
+      priority: NotificationPriority.HIGH,
+      type: EventType.MARKET_CHANGE,
+      additionalData: {'crisisEvent': event.index},
+      canBeSuppressed: false,
+    );
+
+    addNotification(notification);
+  }
 }
+
+
+
+class CrisisGuide {
+  final String title;
+  final String description;
+  final List<String> steps;
+  final IconData icon;
+  final Color color;
+
+  const CrisisGuide({
+    required this.title,
+    required this.description,
+    required this.steps,
+    required this.icon,
+    required this.color,
+  });
+}
+
+

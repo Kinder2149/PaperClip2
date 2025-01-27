@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
+import '../models/game_config.dart';
+import '../models/market.dart';
 import '../models/event_system.dart';
 
 class EventLogScreen extends StatefulWidget {
@@ -188,15 +191,13 @@ class EventLogScreenState extends State<EventLogScreen> {
                 : null,
             child: Icon(
               notification.icon,
-              color: _getPriorityColor(notification.priority),
+              color: _getNotificationColor(notification),
             ),
           ),
           title: Text(
             notification.title,
             style: TextStyle(
-              fontWeight: notification.priority == NotificationPriority.CRITICAL
-                  ? FontWeight.bold
-                  : FontWeight.normal,
+              fontWeight: _getNotificationFontWeight(notification),
             ),
           ),
           subtitle: Column(
@@ -224,10 +225,24 @@ class EventLogScreenState extends State<EventLogScreen> {
               ),
             ],
           ),
-          trailing: IconButton(
-            icon: const Icon(Icons.delete_outline),
-            onPressed: () => _removeNotification(notification),
-            tooltip: 'Supprimer cette notification',
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (notification.additionalData?['crisisEvent'] != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Icon(
+                    Icons.help_outline,
+                    color: _getNotificationColor(notification),
+                    size: 20,
+                  ),
+                ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline),
+                onPressed: () => _removeNotification(notification),
+                tooltip: 'Supprimer cette notification',
+              ),
+            ],
           ),
           onTap: () => _showDetailedNotification(context, notification),
         ),
@@ -235,64 +250,99 @@ class EventLogScreenState extends State<EventLogScreen> {
     );
   }
 
-  void _showDetailedNotification(BuildContext context,
-      NotificationEvent event) {
+  void _showDetailedNotification(BuildContext context, NotificationEvent event) {
     eventManager.markAsRead(event.id);
+
+    final isCrisisEvent = event.additionalData?['crisisEvent'] != null;
+    final crisisGuide = isCrisisEvent
+        ? EventManager.instance.getGuideForCrisis(
+        MarketEvent.values[event.additionalData!['crisisEvent']])
+        : null;
 
     showDialog(
       context: context,
-      builder: (context) =>
-          AlertDialog(
-            title: Row(
-              children: [
-                Icon(
-                  event.icon,
-                  color: _getPriorityColor(event.priority),
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              event.icon,
+              color: isCrisisEvent && crisisGuide != null
+                  ? crisisGuide.color
+                  : _getPriorityColor(event.priority),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(event.title),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                event.description,
+                style: const TextStyle(fontSize: 16),
+              ),
+              if (isCrisisEvent && crisisGuide != null) ...[
+                const SizedBox(height: 16),
+                const Divider(),
+                const SizedBox(height: 8),
+                Text(
+                  'Guide de résolution :',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: crisisGuide.color,
+                  ),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(event.title),
+                const SizedBox(height: 8),
+                ...crisisGuide.steps.map((step) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Text(
+                    step,
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                )),
+              ] else if (event.detailedDescription != null) ...[
+                const Divider(),
+                const SizedBox(height: 8),
+                Text(
+                  event.detailedDescription!,
+                  style: const TextStyle(fontSize: 14),
                 ),
               ],
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    event.description,
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                  const SizedBox(height: 16),
-                  if (event.detailedDescription != null) ...[
-                    const Divider(),
-                    const SizedBox(height: 8),
-                    Text(
-                      event.detailedDescription!,
-                      style: const TextStyle(fontSize: 14),
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  Text(
-                    'Reçu le ${_formatEventTime(event.timestamp)}',
-                    style: const TextStyle(
-                      color: Colors.grey,
-                      fontSize: 12,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Fermer'),
+              const SizedBox(height: 16),
+              Text(
+                'Reçu le ${_formatEventTime(event.timestamp)}',
+                style: const TextStyle(
+                  color: Colors.grey,
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                ),
               ),
             ],
           ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
     );
+  }
+  Color _getNotificationColor(NotificationEvent notification) {
+    if (notification.additionalData?['crisisEvent'] != null) {
+      final crisisEvent = MarketEvent.values[notification.additionalData!['crisisEvent']];
+      final guide = EventManager.instance.getGuideForCrisis(crisisEvent);
+      if (guide != null) {
+        return guide.color;
+      }
+    }
+    return _getPriorityColor(notification.priority);
   }
   void _removeNotification(NotificationEvent notification) {
     setState(() {
@@ -300,5 +350,12 @@ class EventLogScreenState extends State<EventLogScreen> {
       // Mise à jour de l'état dans EventManager
       eventManager.removeNotification(notification.id);
     });
+  }
+  FontWeight _getNotificationFontWeight(NotificationEvent notification) {
+    if (notification.additionalData?['crisisEvent'] != null ||
+        notification.priority == NotificationPriority.CRITICAL) {
+      return FontWeight.bold;
+    }
+    return FontWeight.normal;
   }
 }

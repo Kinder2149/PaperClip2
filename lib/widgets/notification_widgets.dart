@@ -4,7 +4,8 @@ import '../models/event_system.dart';
 import '../main.dart' show navigatorKey;
 import 'dart:async';
 import '../models/game_config.dart';
-import '../services/notification_storage_service.dart'; // Nouveau import
+import '../services/notification_storage_service.dart';
+import '../models/market.dart';
 
 class GlobalNotificationOverlay extends StatefulWidget {
   final Widget child;
@@ -171,13 +172,15 @@ class _AnimatedNotificationOverlayState extends State<AnimatedNotificationOverla
               elevation: 8,
               borderRadius: BorderRadius.circular(8),
               child: InkWell(
-                onTap: _hideNotification,
+                onTap: widget.event.additionalData?['crisisEvent'] != null
+                    ? () => _showCrisisGuide(context, widget.event)
+                    : _hideNotification,
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
                   width: MediaQuery.of(context).size.width * 0.9,
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _getPriorityColor(widget.event.priority).withOpacity(0.95),
+                    color: _getNotificationColor(widget.event).withOpacity(0.95),
                     borderRadius: BorderRadius.circular(8),
                     boxShadow: const [
                       BoxShadow(
@@ -229,14 +232,29 @@ class _AnimatedNotificationOverlayState extends State<AnimatedNotificationOverla
                                   ),
                                 ),
                               ),
+                            if (widget.event.additionalData?['crisisEvent'] != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Text(
+                                  'Appuyez pour voir le guide',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.8),
+                                    fontSize: 12,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ),
                           ],
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Icon(
-                        Icons.close,
-                        size: 20,
-                        color: Colors.white70,
+                      GestureDetector(
+                        onTap: _hideNotification,
+                        child: Icon(
+                          Icons.close,
+                          size: 20,
+                          color: Colors.white70,
+                        ),
                       ),
                     ],
                   ),
@@ -249,6 +267,58 @@ class _AnimatedNotificationOverlayState extends State<AnimatedNotificationOverla
     );
   }
 
+  void _showCrisisGuide(BuildContext context, NotificationEvent event) {
+    final crisisEvent = MarketEvent.values[event.additionalData!['crisisEvent']];
+    final guide = EventManager.instance.getGuideForCrisis(crisisEvent);
+
+    if (guide == null) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(guide.icon, color: guide.color),
+            const SizedBox(width: 8),
+            Text(guide.title),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(guide.description),
+              const SizedBox(height: 16),
+              ...guide.steps.map((step) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(step),
+              )),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Compris'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _getNotificationColor(NotificationEvent event) {
+    if (event.additionalData?['crisisEvent'] != null) {
+      final crisisEvent = MarketEvent.values[event.additionalData!['crisisEvent']];
+      final guide = EventManager.instance.getGuideForCrisis(crisisEvent);
+      if (guide != null) {
+        return guide.color;
+      }
+    }
+    return _getPriorityColor(event.priority);
+  }
+}
+
   Color _getPriorityColor(NotificationPriority priority) {
     switch (priority) {
       case NotificationPriority.LOW:
@@ -260,5 +330,81 @@ class _AnimatedNotificationOverlayState extends State<AnimatedNotificationOverla
       case NotificationPriority.CRITICAL:
         return Colors.red[700]!;
     }
+  }
+
+
+class MarketCrisisWidget extends StatefulWidget {
+  final MarketEvent event;
+  final Widget child;
+
+  const MarketCrisisWidget({
+    Key? key,
+    required this.event,
+    required this.child,
+  }) : super(key: key);
+
+  @override
+  _MarketCrisisWidgetState createState() => _MarketCrisisWidgetState();
+}
+
+class _MarketCrisisWidgetState extends State<MarketCrisisWidget> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<Color?> _colorAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    )..repeat(reverse: true);
+
+    _colorAnimation = _getColorAnimation();
+  }
+
+  Animation<Color?> _getColorAnimation() {
+    switch (widget.event) {
+      case MarketEvent.MARKET_CRASH:
+        return ColorTween(
+          begin: Colors.red.withOpacity(0.2),
+          end: Colors.red.withOpacity(0.6),
+        ).animate(_controller);
+      case MarketEvent.PRICE_WAR:
+        return ColorTween(
+          begin: Colors.orange.withOpacity(0.2),
+          end: Colors.orange.withOpacity(0.6),
+        ).animate(_controller);
+      case MarketEvent.DEMAND_SPIKE:
+        return ColorTween(
+          begin: Colors.green.withOpacity(0.2),
+          end: Colors.green.withOpacity(0.6),
+        ).animate(_controller);
+      case MarketEvent.QUALITY_CONCERNS:
+        return ColorTween(
+          begin: Colors.purple.withOpacity(0.2),
+          end: Colors.purple.withOpacity(0.6),
+        ).animate(_controller);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Container(
+          decoration: BoxDecoration(
+            color: _colorAnimation.value,
+          ),
+          child: widget.child,
+        );
+      },
+    );
   }
 }

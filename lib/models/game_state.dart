@@ -22,9 +22,16 @@ class GameState extends ChangeNotifier {
   late final ResourceManager _resourceManager;
   late final LevelSystem _levelSystem;
   late final MissionSystem _missionSystem;
-
   bool _isInCrisisMode = false;
+  bool _crisisTransitionComplete = false;
+  DateTime? _crisisStartTime;
+  late final StatisticsManager _statistics;
+  StatisticsManager get statistics => _statistics;
+
   bool get isInCrisisMode => _isInCrisisMode;
+  bool get crisisTransitionComplete => _crisisTransitionComplete;
+
+
 
   bool _isInitialized = false;
   String? _gameName;
@@ -42,6 +49,7 @@ class GameState extends ChangeNotifier {
   }
   void _initializeManagers() {
     if (!_isInitialized) {
+      _statistics = StatisticsManager();  // Garder uniquement cette initialisation
       _resourceManager = ResourceManager();
       _marketManager = MarketManager(MarketDynamics());
       _levelSystem = LevelSystem()..onLevelUp = _handleLevelUp;
@@ -109,10 +117,41 @@ class GameState extends ChangeNotifier {
     return '${seconds}s';
   }
   void enterCrisisMode() {
-    if (_isInCrisisMode) return; // Éviter les activations multiples
+    if (_isInCrisisMode) return;
 
-    print("Entrée en mode crise"); // Debug log
+    print("Début de la transition vers le mode crise");
     _isInCrisisMode = true;
+    _crisisStartTime = DateTime.now();
+
+    // Notifier le changement de mode
+    EventManager.instance.addEvent(
+        EventType.CRISIS_MODE,
+        "Mode Crise Activé",
+        description: "Adaptation nécessaire : plus de métal disponible !",
+        importance: EventImportance.CRITICAL,
+        additionalData: {
+          'timestamp': _crisisStartTime!.toIso8601String(),
+          'marketMetalStock': marketManager.marketMetalStock,
+        }
+    );
+
+    // Activer les nouvelles fonctionnalités
+    _unlockCrisisFeatures();
+
+    notifyListeners();
+  }
+  void _unlockCrisisFeatures() {
+    // Supprimer les références au recyclage
+    _crisisTransitionComplete = true;
+
+    // Notifier le changement de mode
+    EventManager.instance.addEvent(
+        EventType.CRISIS_MODE,
+        "Mode Production Activé",
+        description: "Vous pouvez maintenant produire votre propre métal !",
+        importance: EventImportance.CRITICAL
+    );
+
     notifyListeners();
   }
 
@@ -272,31 +311,25 @@ class GameState extends ChangeNotifier {
     return manualProduction;
   }
   void _calculateAutoProduction() {
-    // Pour chaque autoclipper
     for (int i = 0; i < playerManager.autoclippers; i++) {
-      // Calcul du métal nécessaire avec bonus d'efficacité
       double efficiencyBonus = 1.0 - ((playerManager.upgrades['efficiency']?.level ?? 0) * 0.15);
       double metalNeeded = GameConstants.METAL_PER_PAPERCLIP * efficiencyBonus;
 
-      print('Bonus efficacité: ${(1 - efficiencyBonus) * 100}%'); // Debug
-      print('Métal nécessaire après bonus: $metalNeeded'); // Debug
-
-      // Vérification du métal disponible
       if (playerManager.metal >= metalNeeded) {
-        // Production d'un trombone
         playerManager.updateMetal(playerManager.metal - metalNeeded);
         playerManager.updatePaperclips(playerManager.paperclips + 1);
         _totalPaperclipsProduced++;
         levelSystem.addAutomaticProduction(1);
 
-        // Debug logs
-        print('Production AutoClipper:');
-        print('- Métal consommé: ${metalNeeded.toStringAsFixed(2)}');
-        print('- Métal restant: ${playerManager.metal.toStringAsFixed(2)}');
-        print('- Total trombones: ${playerManager.paperclips}');
+        // Ajout statistiques
+        _statistics.updateProduction(
+          isManual: false,
+          amount: 1,
+          metalUsed: metalNeeded,
+        );
       }
-      notifyListeners();
     }
+    notifyListeners();
   }
 
 
@@ -342,10 +375,10 @@ class GameState extends ChangeNotifier {
     marketManager.updateMarket();
     double demand = marketManager.calculateDemand(
         playerManager.sellPrice,
-        playerManager.getMarketingLevel()  // Correct, pas d'argument nécessaire
+        playerManager.getMarketingLevel()
     );
 
-    if (playerManager.paperclips > 0) {  // Vérification ajoutée
+    if (playerManager.paperclips > 0) {
       int potentialSales = min(demand.floor(), playerManager.paperclips.floor());
       if (potentialSales > 0) {
         double qualityBonus = 1.0 + (playerManager.upgrades['quality']?.level ?? 0) * 0.10;
@@ -354,8 +387,14 @@ class GameState extends ChangeNotifier {
 
         playerManager.updatePaperclips(playerManager.paperclips - potentialSales);
         playerManager.updateMoney(playerManager.money + revenue);
-
         marketManager.recordSale(potentialSales, salePrice);
+
+        // Ajout statistiques
+        _statistics.updateEconomics(
+          moneyEarned: revenue,
+          sales: potentialSales,
+          price: salePrice,
+        );
       }
     }
   }
@@ -374,7 +413,14 @@ class GameState extends ChangeNotifier {
       playerManager.updatePaperclips(playerManager.paperclips - potentialSales);
       playerManager.updateMoney(playerManager.money + revenue);
 
-      marketManager.recordSale(potentialSales, playerManager.sellPrice);
+      market.recordSale(potentialSales, player.sellPrice);
+
+      // Ajout statistiques
+      _statistics.updateEconomics(
+        moneyEarned: revenue,
+        sales: potentialSales,
+        price: player.sellPrice,
+      );
     }
   }
 
@@ -383,10 +429,12 @@ class GameState extends ChangeNotifier {
 
   void checkResourceCrisis() {
     if (marketManager.marketMetalStock <= 0 && !_isInCrisisMode) {
+      print("Déclenchement de la crise - Stock épuisé");
+
       EventManager.instance.addEvent(
           EventType.RESOURCE_DEPLETION,
-          "Ressources épuisées",
-          description: "Les réserves mondiales de métal sont épuisées !",
+          "Stock Mondial Épuisé",
+          description: "Les réserves mondiales de métal sont épuisées.\nDe nouveaux moyens de production doivent être trouvés !",
           importance: EventImportance.CRITICAL,
           additionalData: {'crisisLevel': '0'}
       );
@@ -402,6 +450,20 @@ class GameState extends ChangeNotifier {
       }
     }
   }
+  bool validateCrisisTransition() {
+    if (!_isInCrisisMode) {
+      print("Erreur: Mode crise non activé");
+      return false;
+    }
+
+    if (!_crisisTransitionComplete) {
+      print("Erreur: Transition non terminée");
+      return false;
+    }
+
+    return true;
+  }
+
 
   // Actions du jeu
   void buyMetal() {
@@ -429,6 +491,14 @@ class GameState extends ChangeNotifier {
       print('Stock épuisé - Déclenchement mode crise'); // Debug
       enterCrisisMode();
     }
+    _statistics.updateEconomics(
+      moneySpent: metalPrice,
+      metalBought: amount,
+    );
+
+    if (marketManager.marketMetalStock <= 0) {
+      enterCrisisMode();
+    }
 
     notifyListeners();
   }
@@ -444,10 +514,16 @@ class GameState extends ChangeNotifier {
   }
 
   void buyAutoclipper() {
-    if (player.money >= autocliperCost) {
-      player.updateMoney(player.money - autocliperCost);
+    double cost = autocliperCost;
+    if (player.money >= cost) {
+      player.updateMoney(player.money - cost);
       player.updateAutoclippers(player.autoclippers + 1);
       level.addAutoclipperPurchase();
+
+      // Ajout statistiques
+      _statistics.updateProgression(autoclippersBought: 1);
+      _statistics.updateEconomics(moneySpent: cost);
+
       notifyListeners();
     }
   }
@@ -457,6 +533,12 @@ class GameState extends ChangeNotifier {
       player.updatePaperclips(player.paperclips + 1);
       _totalPaperclipsProduced++;
       level.addManualProduction();
+      // Ajout statistiques
+      _statistics.updateProduction(
+        isManual: true,
+        amount: 1,
+        metalUsed: GameConstants.METAL_PER_PAPERCLIP,
+      );
       notifyListeners();
     }
   }
@@ -598,6 +680,9 @@ class GameState extends ChangeNotifier {
     if (gameData['missionSystem'] != null) {
       missionSystem.fromJson(gameData['missionSystem']);
     }
+    if (gameData['statistics'] != null) {
+      _statistics.fromJson(gameData['statistics']);
+    }
 
     _totalTimePlayedInSeconds = (gameData['totalTimePlayedInSeconds'] as num?)?.toInt() ?? 0;
     _totalPaperclipsProduced = (gameData['totalPaperclipsProduced'] as num?)?.toInt() ?? 0;
@@ -666,11 +751,18 @@ class GameState extends ChangeNotifier {
   bool purchaseUpgrade(String upgradeId) {
     if (!playerManager.canAffordUpgrade(upgradeId)) return false;
 
+    final upgrade = playerManager.upgrades[upgradeId];
+    if (upgrade == null) return false;
+
+    double cost = upgrade.getCost();
     bool success = playerManager.purchaseUpgrade(upgradeId);
+
     if (success) {
-      levelSystem.addUpgradePurchase(
-          playerManager.upgrades[upgradeId]?.level ?? 0
-      );
+      levelSystem.addUpgradePurchase(upgrade.level);
+
+      // Ajout statistiques
+      _statistics.updateProgression(upgradesBought: 1);
+      _statistics.updateEconomics(moneySpent: cost);
     }
 
     return success;

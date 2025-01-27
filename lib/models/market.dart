@@ -9,6 +9,7 @@ import '../dialogs/metal_crisis_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'game_state.dart';
+import 'package:paperclip2/widgets/notification_widgets.dart';
 
 
 
@@ -103,6 +104,7 @@ class MarketManager extends ChangeNotifier {
   final Map<String, CachedValue> _cache = {};
   double _marketingBonus = 1.0;
   final Set<String> _sentNotifications = {};
+  bool _hasTriggeredDepletion = false;
   BuildContext? _context;
   final Set<String> _sentCrisisNotifications = {};  // Ajoutez cette ligne
   final Set<String> _sentDepletionNotifications = {};
@@ -203,26 +205,17 @@ class MarketManager extends ChangeNotifier {
   }
 
   void updateMarketStock(double amount) {
-    print('Stock avant mise à jour: $marketMetalStock'); // Debug
-    print('Montant à retirer: $amount'); // Debug
+    double previousStock = marketMetalStock;
+    marketMetalStock = (marketMetalStock + amount)
+        .clamp(0.0, GameConstants.INITIAL_MARKET_METAL);
 
-    if (amount < 0) {
-      if (marketMetalStock < -amount) {
-        print('Pas assez de métal disponible!'); // Debug
-        return;
-      }
-      marketMetalStock += amount;
-    }
-
-    marketMetalStock = marketMetalStock.clamp(0.0, GameConstants.INITIAL_MARKET_METAL);
-
-    print('Stock après mise à jour: $marketMetalStock'); // Debug
-
-    // Vérifier immédiatement si nous avons atteint un seuil de crise
-    if (marketMetalStock <= 0) {
-      print('Déclenchement crise - Stock épuisé'); // Debug
+    // Vérifier le déclenchement de la crise
+    if (marketMetalStock <= 0 && previousStock > 0 && !_hasTriggeredDepletion) {
+      _hasTriggeredDepletion = true;
+      print('Déclenchement mode crise - Stock épuisé');
       _sendCrisisNotification('0');
     }
+
     notifyListeners();
   }
 
@@ -300,22 +293,15 @@ class MarketManager extends ChangeNotifier {
     if (_sentCrisisNotifications.contains(level)) return;
     _sentCrisisNotifications.add(level);
 
-    switch(level) {
-      case '0':
-        if (_context != null) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            showDialog(
-              context: _context!,
-              barrierDismissible: false,
-              builder: (context) => const MetalCrisisDialog(),
-            );
-          });
-        }
-        break;
-      default:
-        return;
-    }
+    EventManager.instance.addEvent(
+        EventType.RESOURCE_DEPLETION,
+        "Stock Mondial Épuisé",
+        description: "Les réserves mondiales de métal sont épuisées.\nActivez la production de métal !",
+        importance: EventImportance.CRITICAL,
+        additionalData: {'crisisLevel': '0'}
+    );
   }
+
 
   void resetCrisisNotifications() {
     _sentCrisisNotifications.clear();
@@ -505,6 +491,7 @@ class MarketManager extends ChangeNotifier {
     }
   }
 
+  // Dans la classe MarketManager, modifier _handleMarketEvent
   void _handleMarketEvent(MarketEvent event) {
     switch (event) {
       case MarketEvent.PRICE_WAR:
@@ -522,13 +509,12 @@ class MarketManager extends ChangeNotifier {
         break;
     }
 
-    EventManager.instance.addEvent(
-        EventType.MARKET_CHANGE,
-        _getEventTitle(event),
-        description: _getEventDescription(event),
-        importance: EventImportance.MEDIUM
-    );
+    // Ajouter la notification de crise
+    EventManager.instance.addCrisisNotification(event);
+
+    notifyListeners();
   }
+
 
   String _getEventTitle(MarketEvent event) {
     switch (event) {

@@ -30,6 +30,7 @@ import 'save_load_screen.dart';
 import 'start_screen.dart';
 import 'introduction_screen.dart';
 import 'new_metal_production_screen.dart';  // À ajouter en haut
+import 'package:paperclip2/screens/statistics_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -230,10 +231,31 @@ class _MainScreenState extends State<MainScreen> {
 
         // Vérification prioritaire du mode crise
         if (gameState.isInCrisisMode) {
+          final backgroundMusicService = context.watch<BackgroundMusicService>();
           return Scaffold(
             appBar: AppBar(
               title: const Text('Nouveau Mode de Production'),
               backgroundColor: Colors.deepPurple[700],
+              leading: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: _buildLevelIndicator(gameState.level),
+              ),
+              actions: [
+                _buildNotificationButton(),
+                IconButton(
+                  icon: Icon(
+                    backgroundMusicService.isPlaying ? Icons.volume_up : Icons.volume_off,
+                    color: Colors.white,
+                  ),
+                  onPressed: _toggleMusic,
+                  tooltip: 'Activer/Désactiver la musique',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.settings, color: Colors.white),
+                  onPressed: () => _showSettingsMenu(context),
+                  tooltip: 'Paramètres',
+                ),
+              ],
             ),
             body: const NewMetalProductionScreen(),
           );
@@ -488,11 +510,11 @@ class _MainScreenState extends State<MainScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      isScrollControlled: true, // Permet au modal d'être plus grand que la moitié de l'écran
+      isScrollControlled: true,
       builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.6, // Taille initiale (60% de l'écran)
-        minChildSize: 0.3, // Taille minimum (30% de l'écran)
-        maxChildSize: 0.9, // Taille maximum (90% de l'écran)
+        initialChildSize: 0.6,
+        minChildSize: 0.3,
+        maxChildSize: 0.9,
         expand: false,
         builder: (context, scrollController) => Container(
           decoration: const BoxDecoration(
@@ -523,10 +545,10 @@ class _MainScreenState extends State<MainScreen> {
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       child: Row(
-                        children: [
-                          const Icon(Icons.settings, size: 24),
-                          const SizedBox(width: 8),
-                          const Text(
+                        children: const [
+                          Icon(Icons.settings, size: 24),
+                          SizedBox(width: 8),
+                          Text(
                             'Paramètres',
                             style: TextStyle(
                               fontSize: 20,
@@ -564,6 +586,20 @@ class _MainScreenState extends State<MainScreen> {
                             subtitle: Text('${gameState.totalPaperclipsProduced}'),
                           ),
                         ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    // Nouvelle section Statistiques
+                    Card(
+                      elevation: 0,
+                      color: Colors.grey[50],
+                      child: ListTile(
+                        leading: const Icon(Icons.analytics),
+                        title: const Text('Statistiques'),
+                        subtitle: const Text('Voir les statistiques détaillées'),
+                        onTap: () => _showStatistics(context),
                       ),
                     ),
 
@@ -657,6 +693,97 @@ class _MainScreenState extends State<MainScreen> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+// Ajouter cette méthode pour afficher les statistiques
+  void _showStatistics(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          constraints: const BoxConstraints(maxHeight: 600),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Statistiques',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const Divider(),
+              Expanded(
+                child: Consumer<GameState>(
+                  builder: (context, gameState, _) {
+                    final stats = gameState.statistics.getAllStats();
+                    return SingleChildScrollView(
+                      child: Column(
+                        children: [
+                          _buildStatSection('Production', stats['production']!),
+                          const SizedBox(height: 16),
+                          _buildStatSection('Économie', stats['economie']!),
+                          const SizedBox(height: 16),
+                          _buildStatSection('Progression', stats['progression']!),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatSection(String title, Map<String, dynamic> stats) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.deepPurple,
+              ),
+            ),
+            const Divider(),
+            ...stats.entries.map((entry) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(entry.key),
+                  Text(
+                    entry.value.toString(),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            )),
+          ],
         ),
       ),
     );

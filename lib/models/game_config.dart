@@ -1,4 +1,6 @@
 // lib/models/game_config.dart
+import 'package:flutter/material.dart';
+
 class GameConstants {
   // Constantes de base
   static const double INITIAL_METAL = 100;
@@ -14,7 +16,9 @@ class GameConstants {
 
   static const double MAINTENANCE_EFFICIENCY_MULTIPLIER = 0.1;
 
-  //  les constantes d'intro
+  // Ajouter les constantes pour le mode crise
+  static const Duration CRISIS_TRANSITION_DELAY = Duration(milliseconds: 300);
+  static const int CRISIS_MODE_UNLOCK_LEVEL = 5;
 
 
   // Clés de sauvegarde
@@ -99,8 +103,19 @@ class GameConstants {
   static const double DAILY_BONUS_AMOUNT = 10.0;
   static const double REPUTATION_BONUS_RATE = 1.01;
 
-
-
+//Crise passagère
+  static Color getCrisisColor(MarketEvent event) {
+    switch (event) {
+      case MarketEvent.MARKET_CRASH:
+        return Colors.red.shade700;
+      case MarketEvent.PRICE_WAR:
+        return Colors.orange.shade800;
+      case MarketEvent.DEMAND_SPIKE:
+        return Colors.green.shade700;
+      case MarketEvent.QUALITY_CONCERNS:
+        return Colors.purple.shade700;
+    }
+  }
 
 
   // Intervalles de temps
@@ -199,6 +214,7 @@ enum EventType {
   SPECIAL_ACHIEVEMENT,
   XP_BOOST,
   INFO,
+  CRISIS_MODE,
 }
 
 enum EventImportance {
