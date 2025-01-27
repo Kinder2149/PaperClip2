@@ -88,12 +88,7 @@ class ResourceManager extends ChangeNotifier {
       );
     }
   }
-  void restockMetal() {
-    if (_marketMetalStock < GameConstants.INITIAL_MARKET_METAL * 0.5) {
-      _marketMetalStock = GameConstants.INITIAL_MARKET_METAL;
-      notifyListeners();
-    }
-  }
+
 
   // Calculs de maintenance et d'efficacité
   double calculateMaintenanceCost(int storageUpgradeLevel, double currentMetal) {

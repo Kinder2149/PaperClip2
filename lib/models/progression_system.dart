@@ -262,6 +262,8 @@ class LevelSystem extends ChangeNotifier {
   final XPComboSystem comboSystem = XPComboSystem();
   final DailyXPBonus dailyBonus = DailyXPBonus();
   double _xpMultiplier = 1.0;
+  Map<ProgressionPath, double> _pathProgress = {};
+  Map<String, bool> _unlockedMilestones = {};
 
   Function(int level, List<UnlockableFeature> newFeatures)? onLevelUp;
 
@@ -577,6 +579,8 @@ ${details.tips.map((t) => '• $t').join('\n')}
   }
 
 
+
+
   double calculateExperienceRequirement(int level) {
     double baseXP = 100.0;
     double linearIncrease = level * 50.0;  // Composante linéaire plus douce
@@ -601,6 +605,7 @@ ${details.tips.map((t) => '• $t').join('\n')}
     double baseAmount = amount * totalXpMultiplier;
     double levelPenalty = _level * 0.02;
     double adjustedAmount = baseAmount * (1 - levelPenalty);
+
 
     if (_level < 35) {
       adjustedAmount *= 1.1;

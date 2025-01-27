@@ -197,7 +197,7 @@ class PlayerManager extends ChangeNotifier {
       name: 'Metal Efficiency',
       description: 'Réduit la consommation de métal de 15 %',
       baseCost: 45.0,
-      maxLevel: 10,
+      maxLevel: 8,
     ),
     'marketing': Upgrade(
       id: "marketing",

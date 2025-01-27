@@ -25,10 +25,10 @@ class GameConstants {
   static const double BASE_AUTOCLIPPER_COST = 15.0;
   static const double MIN_PRICE = 0.01;
   static const double MAX_PRICE = 0.50;
-  static const double INITIAL_MARKET_METAL = 2000.0;
+  static const double INITIAL_MARKET_METAL = 4000.0;
   static const int MAX_COMBO_COUNT = 5;
   static const double COMBO_MULTIPLIER = 0.1;  // Pour le calcul du multiplicateur de combo
-  static const double DAILY_BONUS_AMOUNT = 10.0;
+
 
   // Durées
   static const Duration AUTO_SAVE_INTERVAL = Duration(minutes: 5);
@@ -69,18 +69,31 @@ class GameConstants {
 
   // Constantes pour les améliorations
   static const double STORAGE_UPGRADE_MULTIPLIER = 0.2;     // 20% par niveau
-  static const double EFFICIENCY_UPGRADE_MULTIPLIER = 0.15; // 15% par niveau
+  static const double EFFICIENCY_UPGRADE_MULTIPLIER = 0.10; // 15% par niveau
   static const double BULK_UPGRADE_BASE = 0.25;            // 25% par niveau
   static const double MARKETING_UPGRADE_BASE = 0.1;        // 10% par niveau
-  static const double QUALITY_UPGRADE_BASE = 0.1;          // existant
-  static const double SPEED_UPGRADE_BASE = 0.2;            // existant
-  static const double AUTOMATION_DISCOUNT_BASE = 0.1;      // existant
+  static const double QUALITY_UPGRADE_BASE = 0.1;          // 10% par niveau
+  static const double SPEED_UPGRADE_BASE = 0.2;            // 20% par niveau
+  static const double AUTOMATION_DISCOUNT_BASE = 0.1;      // 10% par niveau
 
-  // Limites d'améliorations
+  // Niveaux maximum des améliorations
   static const int MAX_STORAGE_LEVEL = 10;
-  static const int MAX_EFFICIENCY_LEVEL = 10;
+  static const int MAX_EFFICIENCY_LEVEL = 8;
   static const int MAX_BULK_LEVEL = 10;
   static const int MAX_MARKETING_LEVEL = 10;
+
+
+
+  // Bonus de progression
+  static const double BASE_XP_MULTIPLIER = 1.0;
+  static const double PATH_XP_MULTIPLIER = 0.2;
+  static const double COMBO_XP_MULTIPLIER = 0.1;
+
+
+  // Bonus quotidiens
+  static const double DAILY_BONUS_AMOUNT = 10.0;
+  static const double REPUTATION_BONUS_RATE = 1.01;
+
 
 
 
@@ -101,7 +114,6 @@ class GameConstants {
   static const double REPUTATION_DECAY_RATE = 0.95;
   static const double REPUTATION_GROWTH_RATE = 1.01;
   static const double REPUTATION_PENALTY_RATE = 0.95;
-  static const double REPUTATION_BONUS_RATE = 1.01;
   static const double MAX_REPUTATION = 2.0;
   static const double MIN_REPUTATION = 0.1;
 
