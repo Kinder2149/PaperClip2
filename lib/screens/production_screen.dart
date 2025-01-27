@@ -453,7 +453,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
                       Row(
                         children: [
                           _buildResourceCard(
-                            'Total Trombones',
+                            'Total Trombones Créés',
                             // Modification ici pour utiliser formatNumber sans le symbole €
                             MoneyDisplay.formatNumber(gameState.totalPaperclipsProduced.toDouble(), isInteger: true).replaceAll(' €', ''),
                             Colors.purple.shade100,
@@ -557,7 +557,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
                         onPressed: () => _saveGame(context, gameState),
                         label: 'Sauvegarder la Partie',
                         icon: Icons.save,
-                        backgroundColor: Colors.purple.shade200,
+                        backgroundColor: Colors.deepPurple,
                         textColor: Colors.white,
                       ),
                     ],

@@ -29,6 +29,7 @@ import 'event_log_screen.dart';
 import 'save_load_screen.dart';
 import 'start_screen.dart';
 import 'introduction_screen.dart';
+import 'new_metal_production_screen.dart';  // À ajouter en haut
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -47,13 +48,14 @@ class _MainScreenState extends State<MainScreen> {
     // Corriger l'ordre des écrans
     _screens = [
       const ProductionScreen(),
-      const MarketScreen(),        // Index 1
-      const UpgradesScreen(),      // Index 2
+      const MarketScreen(), // Index 1
+      const UpgradesScreen(), // Index 2
     ];
     // Retirer PlaceholderLockedScreen de la liste initiale
     _initializeGame();
     _playBackgroundMusic();
   }
+
   Future<void> _initializeGame() async {
     final gameState = context.read<GameState>();
     await Future.delayed(Duration.zero);
@@ -93,7 +95,7 @@ class _MainScreenState extends State<MainScreen> {
   Widget _getCurrentScreen(Map<String, bool> visibleScreens) {
     switch (_selectedIndex) {
       case 0:
-        return _screens[0];  // Production toujours visible
+        return _screens[0]; // Production toujours visible
       case 1:
       // Vérifier si le marché est débloqué
         return visibleScreens['market'] == true
@@ -109,7 +111,8 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
-  List<NavigationDestination> _buildNavigationDestinations(Map<String, bool> visibleScreens) {
+  List<NavigationDestination> _buildNavigationDestinations(
+      Map<String, bool> visibleScreens) {
     return [
       const NavigationDestination(
         icon: Icon(Icons.factory_outlined),
@@ -140,6 +143,7 @@ class _MainScreenState extends State<MainScreen> {
       ),
     ];
   }
+
   Future<void> _saveGame(BuildContext context) async {
     final gameState = context.read<GameState>();
     if (!gameState.isInitialized) {
@@ -183,34 +187,38 @@ class _MainScreenState extends State<MainScreen> {
   void _showLevelInfoDialog(BuildContext context, LevelSystem levelSystem) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Niveau ${levelSystem.level}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('XP: ${levelSystem.experience}/${levelSystem.experienceForNextLevel}'),
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: LinearProgressIndicator(
-                value: levelSystem.experienceProgress,
-                backgroundColor: Colors.grey[200],
-                valueColor: const AlwaysStoppedAnimation<Color>(Colors.green),
-                minHeight: 10,
-              ),
+      builder: (context) =>
+          AlertDialog(
+            title: Text('Niveau ${levelSystem.level}'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('XP: ${levelSystem.experience}/${levelSystem
+                    .experienceForNextLevel}'),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: LinearProgressIndicator(
+                    value: levelSystem.experienceProgress,
+                    backgroundColor: Colors.grey[200],
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                        Colors.green),
+                    minHeight: 10,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text('Multiplicateur: x${levelSystem.productionMultiplier
+                    .toStringAsFixed(1)}'),
+              ],
             ),
-            const SizedBox(height: 16),
-            Text('Multiplicateur: x${levelSystem.productionMultiplier.toStringAsFixed(1)}'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Fermer'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Fermer'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
@@ -218,6 +226,20 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     return Consumer<GameState>(
       builder: (context, gameState, child) {
+        print("Mode crise actif : ${gameState.isInCrisisMode}"); // Debug log
+
+        // Vérification prioritaire du mode crise
+        if (gameState.isInCrisisMode) {
+          return Scaffold(
+            appBar: AppBar(
+              title: const Text('Nouveau Mode de Production'),
+              backgroundColor: Colors.deepPurple[700],
+            ),
+            body: const NewMetalProductionScreen(),
+          );
+        }
+
+        // Le code existant pour l'interface normale
         final backgroundMusicService = context.watch<BackgroundMusicService>();
         final visibleScreens = gameState.getVisibleScreenElements();
         final canProduce = gameState.player.metal >= GameConstants.METAL_PER_PAPERCLIP;
@@ -276,7 +298,7 @@ class _MainScreenState extends State<MainScreen> {
                     padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 4.0),
                     child: SizedBox(
                       width: double.infinity,
-                      height: 42, // Hauteur réduite
+                      height: 42,
                       child: Material(
                         color: Colors.transparent,
                         child: InkWell(
@@ -350,9 +372,10 @@ class _MainScreenState extends State<MainScreen> {
                     ),
                   ),
                   NavigationBar(
-                    height: 56, // Hauteur réduite
+                    height: 56,
                     selectedIndex: _selectedIndex,
-                    onDestinationSelected: (index) => setState(() => _selectedIndex = index),
+                    onDestinationSelected: (index) =>
+                        setState(() => _selectedIndex = index),
                     destinations: _buildNavigationDestinations(visibleScreens),
                   ),
                 ],
@@ -425,7 +448,8 @@ class _MainScreenState extends State<MainScreen> {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const EventLogScreen()),
+                  MaterialPageRoute(
+                      builder: (context) => const EventLogScreen()),
                 );
               },
             ),
@@ -464,15 +488,21 @@ class _MainScreenState extends State<MainScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: SafeArea(
+      isScrollControlled: true, // Permet au modal d'être plus grand que la moitié de l'écran
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.6, // Taille initiale (60% de l'écran)
+        minChildSize: 0.3, // Taille minimum (30% de l'écran)
+        maxChildSize: 0.9, // Taille maximum (90% de l'écran)
+        expand: false,
+        builder: (context, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Barre de glissement
               Container(
                 width: 40,
                 height: 4,
@@ -482,49 +512,147 @@ class _MainScreenState extends State<MainScreen> {
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              ListTile(
-                leading: const Icon(Icons.info),
-                title: Text('Version ${GameConstants.VERSION}'),
-                onTap: () => _showAboutInfo(context),
-              ),
-              ListTile(
-                leading: const Icon(Icons.timer),
-                title: const Text('Temps de jeu'),
-                subtitle: Text(_formatTimePlayed(gameState.totalTimePlayed)),
-              ),
-              ListTile(
-                leading: const Icon(Icons.save),
-                title: const Text('Sauvegarder'),
-                onTap: () async {
-                  if (gameState.gameName != null) {
-                    await gameState.saveGame(gameState.gameName!);
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Partie sauvegardée'),
-                          duration: Duration(seconds: 2),
+
+              // Contenu scrollable
+              Expanded(
+                child: ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  children: [
+                    // En-tête
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.settings, size: 24),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Paramètres',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const Divider(),
+
+                    // Section Informations
+                    Card(
+                      elevation: 0,
+                      color: Colors.grey[50],
+                      child: ExpansionTile(
+                        leading: const Icon(Icons.info_outline),
+                        title: const Text('Informations'),
+                        initiallyExpanded: true,
+                        children: [
+                          ListTile(
+                            leading: const Icon(Icons.timer_outlined),
+                            title: const Text('Temps de jeu'),
+                            subtitle: Text(gameState.formattedPlayTime),
+                          ),
+                          ListTile(
+                            leading: const Icon(Icons.stars_outlined),
+                            title: const Text('Niveau'),
+                            subtitle: Text('${gameState.level.level}'),
+                          ),
+                          ListTile(
+                            leading: const Icon(Icons.inventory_2_outlined),
+                            title: const Text('Trombones produits'),
+                            subtitle: Text('${gameState.totalPaperclipsProduced}'),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    // Section Sauvegarde
+                    Card(
+                      elevation: 0,
+                      color: Colors.grey[50],
+                      child: Column(
+                        children: [
+                          ListTile(
+                            leading: const Icon(Icons.save),
+                            title: const Text('Sauvegarder'),
+                            subtitle: Text(
+                              'Dernière sauvegarde: ${_getLastSaveTimeText(gameState)}',
+                            ),
+                            onTap: () => _saveGame(context),
+                          ),
+                          const Divider(height: 1),
+                          ListTile(
+                            leading: const Icon(Icons.folder_open),
+                            title: const Text('Charger une partie'),
+                            onTap: () {
+                              Navigator.pop(context);
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const SaveLoadScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    // Section Audio
+                    Card(
+                      elevation: 0,
+                      color: Colors.grey[50],
+                      child: Consumer<BackgroundMusicService>(
+                        builder: (context, musicService, _) => SwitchListTile(
+                          secondary: Icon(
+                            musicService.isPlaying
+                                ? Icons.volume_up
+                                : Icons.volume_off,
+                          ),
+                          title: const Text('Musique'),
+                          value: musicService.isPlaying,
+                          onChanged: (value) => _toggleMusic(),
                         ),
-                      );
-                      Navigator.pop(context);
-                    }
-                  } else {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Erreur: Aucun nom de partie défini'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  }
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.folder_open),
-                title: const Text('Charger'),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const SaveLoadScreen()),
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    // Section À propos
+                    Card(
+                      elevation: 0,
+                      color: Colors.grey[50],
+                      child: Column(
+                        children: [
+                          ListTile(
+                            leading: const Icon(Icons.info),
+                            title: Text('Version ${GameConstants.VERSION}'),
+                            onTap: () => _showAboutInfo(context),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('${GameConstants.APP_NAME}'),
+                                const SizedBox(height: 8),
+                                const Text('Un jeu de gestion incrémentale de production de trombones.'),
+                                const SizedBox(height: 8),
+                                const Text('Développé avec ❤️ par Kinder2149'),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+                  ],
                 ),
               ),
             ],
@@ -533,37 +661,92 @@ class _MainScreenState extends State<MainScreen> {
       ),
     );
   }
+  String _getLastSaveTimeText(GameState gameState) {
+    final lastSave = gameState.lastSaveTime;
+    if (lastSave == null) return 'Jamais';
+
+    final now = DateTime.now();
+    final difference = now.difference(lastSave);
+
+    if (difference.inMinutes < 1) {
+      return 'À l\'instant';
+    } else if (difference.inHours < 1) {
+      return 'Il y a ${difference.inMinutes} min';
+    } else if (difference.inDays < 1) {
+      return 'Il y a ${difference.inHours}h';
+    }
+    return '${lastSave.day}/${lastSave.month} ${lastSave.hour}:${lastSave.minute}';
+  }
+
+
+
+// Ajoutez cette méthode pour la gestion de la sauvegarde
+  Future<void> _handleSave(BuildContext context, GameState gameState) async {
+    try {
+      if (gameState.gameName == null) {
+        throw SaveError('NO_NAME', 'Aucun nom de partie défini');
+      }
+      await gameState.saveGame(gameState.gameName!);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Partie sauvegardée'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur de sauvegarde: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   void _showAboutInfo(BuildContext context) {
-    final notification = NotificationEvent(
-      title: 'À propos',
-      description: 'Version ${GameConstants.VERSION}',
-      detailedDescription: """
-PaperClip Game
-Version ${GameConstants.VERSION}
-
-Développé avec ❤️ par Kinder2149
-
-Fonctionnalités:
-• Production de trombones
-• Gestion du marché
-• Système d'améliorations
-• Événements dynamiques
-""",
-      icon: Icons.info,
-      priority: NotificationPriority.LOW,
-      additionalData: {
-        'Version': GameConstants.VERSION,
-        'Développeur': 'Kinder2149',
-        'Date de mise à jour': DateTime.now().toIso8601String(),
-      },
-      canBeSuppressed: false,
+    showDialog(
+      context: context,
+      builder: (context) =>
+          AlertDialog(
+            title: Row(
+              children: [
+                const Icon(Icons.info_outline),
+                const SizedBox(width: 8),
+                const Text('À propos'),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Version ${GameConstants.VERSION}'),
+                const SizedBox(height: 8),
+                const Text('Un jeu incrémental de production de trombones.'),
+                const SizedBox(height: 16),
+                const Text('Fonctionnalités:'),
+                const Text('• Production de trombones'),
+                const Text('• Gestion du marché'),
+                const Text('• Système d\'améliorations'),
+                const Text('• Événements dynamiques'),
+                const SizedBox(height: 16),
+                const Text('Développé avec ❤️ par Kinder2149'),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Fermer'),
+              ),
+            ],
+          ),
     );
 
-    // Utiliser EventManager au lieu de NotificationManager
-    EventManager.instance.notificationStream.value = notification;
-
-    // Ou bien si vous préférez utiliser le système d'événements
+    // Garder la notification si vous le souhaitez
     EventManager.instance.addEvent(
       EventType.SPECIAL_ACHIEVEMENT,
       'À propos',
@@ -572,7 +755,6 @@ Fonctionnalités:
     );
   }
 }
-
 
 
 

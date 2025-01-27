@@ -40,14 +40,7 @@ class ResourceManager extends ChangeNotifier {
     return (currentMetal + amount) <= maxStorage;
   }
 
-  void updateMarketStock(double amount) {
-    _marketMetalStock = (_marketMetalStock + amount).clamp(
-        0.0,
-        GameConstants.INITIAL_MARKET_METAL
-    );
-    _checkResourceLevels();
-    notifyListeners();
-  }
+
   void updateResourceEfficiency(int level) {
     _baseStorageEfficiency = 1.0 + (level * 0.1);
     notifyListeners();
@@ -58,36 +51,22 @@ class ResourceManager extends ChangeNotifier {
     return _marketMetalStock >= amount;
   }
 
+  void updateMarketStock(double amount) {
+    _marketMetalStock = (_marketMetalStock + amount).clamp(
+        0.0,
+        GameConstants.INITIAL_MARKET_METAL
+    );
+    notifyListeners();
+  }
+
   void consumeResources(double amount) {
     if (!hasEnoughResources(amount)) {
       throw Exception('Ressources insuffisantes');
     }
     _marketMetalStock -= amount;
-    _checkResourceLevels();
     notifyListeners();
   }
 
-
-  // Vérifications des niveaux de ressources
-  void _checkResourceLevels() {
-    if (_marketMetalStock <= GameConstants.WARNING_THRESHOLD) {
-      EventManager.instance.addEvent(
-          EventType.RESOURCE_DEPLETION,
-          "Ressources en diminution",
-          description: "Les réserves de métal s'amenuisent",
-          importance: EventImportance.HIGH
-      );
-    }
-
-    if (_marketMetalStock <= GameConstants.CRITICAL_THRESHOLD) {
-      EventManager.instance.addEvent(
-        EventType.RESOURCE_DEPLETION,
-        'Niveau critique !',
-        description: 'Les réserves de métal sont presque épuisées !',
-        importance: EventImportance.CRITICAL,
-      );
-    }
-  }
 
 
   // Calculs de maintenance et d'efficacité

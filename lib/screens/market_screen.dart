@@ -207,7 +207,7 @@ class MarketScreen extends StatelessWidget {
       title: 'Production des Autoclippers',
       value: '${autoclipperProduction.toStringAsFixed(1)}/min',
       icon: Icons.precision_manufacturing,
-      color: Colors.purple.shade100,
+      color: Colors.orange.shade100,
       tooltip: 'Production avec bonus appliqués',
       onInfoPressed: () => _showInfoDialog(
         context,
@@ -307,7 +307,7 @@ class MarketScreen extends StatelessWidget {
                           title: 'Marketing',
                           value: 'Niveau ${gameState.player.getMarketingLevel()}',
                           icon: Icons.campaign,
-                          color: Colors.orange.shade100,
+                          color: Colors.cyan.shade100,
                           tooltip: 'Augmente la visibilité',
                           onInfoPressed: () => _showInfoDialog(
                             context,
@@ -322,7 +322,7 @@ class MarketScreen extends StatelessWidget {
                           title: 'Rentabilité Estimée',
                           value: '${profitability.toStringAsFixed(1)} €/min',
                           icon: Icons.assessment,
-                          color: Colors.amber.shade100,
+                          color: Colors.indigo.shade100,
                           tooltip: 'Basé sur la production et la demande',
                           onInfoPressed: () => _showInfoDialog(
                             context,
@@ -423,7 +423,7 @@ class MarketScreen extends StatelessWidget {
                   icon: const Icon(Icons.save),
                   label: const Text('Sauvegarder'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
+                    backgroundColor: Colors.deepPurple,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),

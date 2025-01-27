@@ -3,7 +3,7 @@ class GameConstants {
   // Constantes de base
   static const double INITIAL_METAL = 100;
   static const double INITIAL_MONEY = 0;
-  static const double INITIAL_PRICE = 0.20;
+  static const double INITIAL_PRICE = 0.25;
   static const double METAL_PER_PAPERCLIP = 0.15;
   static const double METAL_PACK_AMOUNT = 100.0;
   static const double MIN_METAL_PRICE = 14.0;
@@ -25,17 +25,22 @@ class GameConstants {
   static const double BASE_AUTOCLIPPER_COST = 15.0;
   static const double MIN_PRICE = 0.01;
   static const double MAX_PRICE = 0.50;
-  static const double INITIAL_MARKET_METAL = 4000.0;
+  static const double INITIAL_MARKET_METAL = 5000.0;
   static const int MAX_COMBO_COUNT = 5;
   static const double COMBO_MULTIPLIER = 0.1;  // Pour le calcul du multiplicateur de combo
+
+  // Seuils de crise du métal
+  static const double METAL_CRISIS_THRESHOLD_50 = INITIAL_MARKET_METAL * 0.50;  // 50%
+  static const double METAL_CRISIS_THRESHOLD_25 = INITIAL_MARKET_METAL * 0.25;  // 25%
+  static const double METAL_CRISIS_THRESHOLD_0 = 0.0;  // 0%
 
 
   // Durées
   static const Duration AUTO_SAVE_INTERVAL = Duration(minutes: 5);
-  static const Duration MAINTENANCE_INTERVAL = Duration(minutes: 1);
+  static const Duration MAINTENANCE_INTERVAL = Duration(minutes: 5);
   static const Duration MARKET_UPDATE_INTERVAL = Duration(milliseconds: 500);
   static const Duration PRODUCTION_INTERVAL = Duration(seconds: 1);
-  static const Duration METAL_PRICE_UPDATE_INTERVAL = Duration(seconds: 4);
+  static const Duration METAL_PRICE_UPDATE_INTERVAL = Duration(seconds: 6);
   static const Duration EVENT_MAX_AGE = Duration(days: 1);
 
 
@@ -142,8 +147,9 @@ class GameConstants {
 
   // Information de version
   static const String VERSION = '1.0.0';
-  static const String DEVELOPER = 'Kinder2149';
+  static const String AUTHOR = 'Kinder2149';
   static const String LAST_UPDATE = '23/01/2025';
+  static const String APP_NAME = 'PaperClip2';
 
   static const String DEFAULT_GAME_NAME_PREFIX = 'Partie';
   static const String APP_TITLE = 'Paperclip Game';

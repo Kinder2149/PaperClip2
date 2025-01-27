@@ -14,6 +14,7 @@ import 'game_state_interfaces.dart';
 import '../services/save_manager.dart';
 import 'dart:convert';
 import '../utils/notification_manager.dart';
+import '../dialogs/metal_crisis_dialog.dart';
 
 class GameState extends ChangeNotifier {
   late final PlayerManager _playerManager;
@@ -21,6 +22,9 @@ class GameState extends ChangeNotifier {
   late final ResourceManager _resourceManager;
   late final LevelSystem _levelSystem;
   late final MissionSystem _missionSystem;
+
+  bool _isInCrisisMode = false;
+  bool get isInCrisisMode => _isInCrisisMode;
 
   bool _isInitialized = false;
   String? _gameName;
@@ -66,6 +70,7 @@ class GameState extends ChangeNotifier {
 
   // Gestionnaire de timers centralisé
   final Map<String, Timer> _timers = {};
+  DateTime? get lastSaveTime => _lastSaveTime;
 
   int get totalTimePlayed => _totalTimePlayedInSeconds;
   int get totalPaperclipsProduced => _totalPaperclipsProduced;
@@ -90,6 +95,25 @@ class GameState extends ChangeNotifier {
     _missionSystem.initialize();
     _startTimers();
     _isInitialized = true;
+  }
+  String get formattedPlayTime {
+    int hours = _totalTimePlayedInSeconds ~/ 3600;
+    int minutes = (_totalTimePlayedInSeconds % 3600) ~/ 60;
+    int seconds = _totalTimePlayedInSeconds % 60;
+
+    if (hours > 0) {
+      return '${hours}h ${minutes}m ${seconds}s';
+    } else if (minutes > 0) {
+      return '${minutes}m ${seconds}s';
+    }
+    return '${seconds}s';
+  }
+  void enterCrisisMode() {
+    if (_isInCrisisMode) return; // Éviter les activations multiples
+
+    print("Entrée en mode crise"); // Debug log
+    _isInCrisisMode = true;
+    notifyListeners();
   }
 
 
@@ -154,7 +178,15 @@ class GameState extends ChangeNotifier {
     _stopAllTimers();
     _lastUpdateTime = DateTime.now();
 
-    // Production toutes les secondes exactement
+    // Timer pour le temps de jeu (toutes les secondes)
+    _timers['playTime'] = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!_isPaused) {
+        _totalTimePlayedInSeconds++;
+        notifyListeners(); // Important pour mettre à jour l'UI
+      }
+    });
+
+    // Production toutes les secondes
     _gameLoopTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_isPaused) return;
       _processProduction();
@@ -350,26 +382,53 @@ class GameState extends ChangeNotifier {
 
 
   void checkResourceCrisis() {
-    if (marketManager.marketMetalStock <= GameConstants.WARNING_THRESHOLD) {
+    if (marketManager.marketMetalStock <= 0 && !_isInCrisisMode) {
       EventManager.instance.addEvent(
           EventType.RESOURCE_DEPLETION,
-          "Ressources en diminution",
-          description: "Les réserves mondiales de métal s'amenuisent",
-          importance: EventImportance.HIGH
+          "Ressources épuisées",
+          description: "Les réserves mondiales de métal sont épuisées !",
+          importance: EventImportance.CRITICAL,
+          additionalData: {'crisisLevel': '0'}
       );
+
+      if (_context != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          showDialog(
+            context: _context!,
+            barrierDismissible: false,
+            builder: (context) => const MetalCrisisDialog(),
+          );
+        });
+      }
     }
   }
 
   // Actions du jeu
   void buyMetal() {
-    if (!_canBuyMetal()) return;
+    print('Tentative d\'achat de métal'); // Debug
+    print('Stock disponible: ${marketManager.marketMetalStock}'); // Debug
+
+    if (!_canBuyMetal()) {
+      print('Achat impossible - conditions non remplies'); // Debug
+      return;
+    }
 
     double metalPrice = marketManager.currentMetalPrice;
     double amount = GameConstants.METAL_PACK_AMOUNT;
 
+    print('Prix: $metalPrice, Quantité: $amount'); // Debug
+
+    // Le joueur peut payer et stocker le métal
     playerManager.updateMoney(playerManager.money - metalPrice);
     playerManager.updateMetal(playerManager.metal + amount);
-    marketManager.updateMarketStock(-amount);
+    marketManager.updateMarketStock(-amount);  // Important: le signe négatif
+
+    print('Achat effectué - Nouveau stock marché: ${marketManager.marketMetalStock}'); // Debug
+
+    if (marketManager.marketMetalStock <= 0) {
+      print('Stock épuisé - Déclenchement mode crise'); // Debug
+      enterCrisisMode();
+    }
 
     notifyListeners();
   }
@@ -380,7 +439,8 @@ class GameState extends ChangeNotifier {
     double maxStorage = playerManager.maxMetalStorage;
 
     return playerManager.money >= metalPrice &&
-        currentMetal + GameConstants.METAL_PACK_AMOUNT <= maxStorage;
+        currentMetal + GameConstants.METAL_PACK_AMOUNT <= maxStorage &&
+        marketManager.marketMetalStock >= GameConstants.METAL_PACK_AMOUNT;  // Ajout de cette vérification
   }
 
   void buyAutoclipper() {

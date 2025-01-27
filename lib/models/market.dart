@@ -5,6 +5,11 @@ import 'dart:math';
 import 'game_config.dart';
 import 'event_system.dart';
 import 'resource_manager.dart';
+import '../dialogs/metal_crisis_dialog.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'game_state.dart';
+
 
 
 class MarketDynamics {
@@ -98,25 +103,37 @@ class MarketManager extends ChangeNotifier {
   final Map<String, CachedValue> _cache = {};
   double _marketingBonus = 1.0;
   final Set<String> _sentNotifications = {};
+  BuildContext? _context;
+  final Set<String> _sentCrisisNotifications = {};  // Ajoutez cette ligne
   final Set<String> _sentDepletionNotifications = {};
   double _lastNotifiedPercentage = 100.0;
-  static const double MARKET_25_PERCENT = GameConstants.INITIAL_MARKET_METAL * 0.25;
+  static const double MARKET_25_PERCENT = GameConstants.INITIAL_MARKET_METAL *
+      0.25;
 
+  void setContext(BuildContext context) {
+    _context = context;
+  }
 
 
   List<SaleRecord> salesHistory = [];
   double reputation = 1.0;
   double marketMetalStock = GameConstants.INITIAL_MARKET_METAL;
-  int _gameStartDay = DateTime.now().millisecondsSinceEpoch ~/ (1000 * 60 * 60 * 24);
+  int _gameStartDay = DateTime
+      .now()
+      .millisecondsSinceEpoch ~/ (1000 * 60 * 60 * 24);
   double _difficultyMultiplier = GameConstants.BASE_DIFFICULTY;
   double _currentMetalPrice = GameConstants.MIN_METAL_PRICE;
   double _currentPrice = 1.0;
   double _competitionPrice = GameConstants.INITIAL_PRICE;
   double _marketSaturation = 100.0;
+
   double get currentMetalPrice => _currentMetalPrice;
   bool _isPaused = false;
+
   double get currentPrice => _currentPrice;
+
   double get competitionPrice => _competitionPrice;
+
   double get marketSaturation => _marketSaturation;
 
 
@@ -131,66 +148,93 @@ class MarketManager extends ChangeNotifier {
   };
 
   MarketManager(this.dynamics);
-  Map<String, dynamic> toJson() => {
-    'marketMetalStock': marketMetalStock,
-    'reputation': reputation,
-    'currentMetalPrice': _currentMetalPrice,
-    'competitionPrice': _competitionPrice,
-    'marketSaturation': _marketSaturation,
-    'sentDepletionNotifications': List<String>.from(_sentDepletionNotifications),
-    'lastNotifiedPercentage': _lastNotifiedPercentage,
-    'dynamics': {
-      'marketVolatility': dynamics.marketVolatility,
-      'marketTrend': dynamics.marketTrend,
-      'competitorPressure': dynamics.competitorPressure,
-    },
-    'salesHistory': salesHistory.map((sale) => sale.toJson()).toList(),
-  };
+
+  Map<String, dynamic> toJson() =>
+      {
+        'marketMetalStock': marketMetalStock,
+        'reputation': reputation,
+        'currentMetalPrice': _currentMetalPrice,
+        'competitionPrice': _competitionPrice,
+        'marketSaturation': _marketSaturation,
+        'sentDepletionNotifications': List<String>.from(
+            _sentDepletionNotifications),
+        'lastNotifiedPercentage': _lastNotifiedPercentage,
+        'dynamics': {
+          'marketVolatility': dynamics.marketVolatility,
+          'marketTrend': dynamics.marketTrend,
+          'competitorPressure': dynamics.competitorPressure,
+        },
+        'salesHistory': salesHistory.map((sale) => sale.toJson()).toList(),
+      };
 
   void fromJson(Map<String, dynamic> json) {
-    marketMetalStock = (json['marketMetalStock'] as num?)?.toDouble() ?? GameConstants.INITIAL_MARKET_METAL;
+    marketMetalStock = (json['marketMetalStock'] as num?)?.toDouble() ??
+        GameConstants.INITIAL_MARKET_METAL;
     reputation = (json['reputation'] as num?)?.toDouble() ?? 1.0;
-    _currentMetalPrice = (json['currentMetalPrice'] as num?)?.toDouble() ?? GameConstants.MIN_METAL_PRICE;
-    _competitionPrice = (json['competitionPrice'] as num?)?.toDouble() ?? GameConstants.INITIAL_PRICE;
+    _currentMetalPrice = (json['currentMetalPrice'] as num?)?.toDouble() ??
+        GameConstants.MIN_METAL_PRICE;
+    _competitionPrice = (json['competitionPrice'] as num?)?.toDouble() ??
+        GameConstants.INITIAL_PRICE;
     _marketSaturation = (json['marketSaturation'] as num?)?.toDouble() ?? 100.0;
 
     if (json['dynamics'] != null) {
       final dynamicsData = json['dynamics'] as Map<String, dynamic>;
-      dynamics.marketVolatility = (dynamicsData['marketVolatility'] as num?)?.toDouble() ?? 1.0;
-      dynamics.marketTrend = (dynamicsData['marketTrend'] as num?)?.toDouble() ?? 0.0;
-      dynamics.competitorPressure = (dynamicsData['competitorPressure'] as num?)?.toDouble() ?? 1.0;
+      dynamics.marketVolatility =
+          (dynamicsData['marketVolatility'] as num?)?.toDouble() ?? 1.0;
+      dynamics.marketTrend =
+          (dynamicsData['marketTrend'] as num?)?.toDouble() ?? 0.0;
+      dynamics.competitorPressure =
+          (dynamicsData['competitorPressure'] as num?)?.toDouble() ?? 1.0;
     }
 
     if (json['salesHistory'] != null) {
       salesHistory = (json['salesHistory'] as List)
-          .map((saleJson) => SaleRecord.fromJson(saleJson as Map<String, dynamic>))
+          .map((saleJson) =>
+          SaleRecord.fromJson(saleJson as Map<String, dynamic>))
           .toList();
       _sentDepletionNotifications.clear();
       _sentDepletionNotifications.addAll(
-          (json['sentDepletionNotifications'] as List<dynamic>?)?.cast<String>() ?? []
+          (json['sentDepletionNotifications'] as List<dynamic>?)?.cast<
+              String>() ?? []
       );
-      _lastNotifiedPercentage = (json['lastNotifiedPercentage'] as num?)?.toDouble() ?? 100.0;
+      _lastNotifiedPercentage =
+          (json['lastNotifiedPercentage'] as num?)?.toDouble() ?? 100.0;
     }
   }
+
   void updateMarketStock(double amount) {
-    marketMetalStock = (marketMetalStock + amount).clamp(
-        0.0,
-        GameConstants.INITIAL_MARKET_METAL
-    );
-    _checkResourceLevels();
+    print('Stock avant mise à jour: $marketMetalStock'); // Debug
+    print('Montant à retirer: $amount'); // Debug
+
+    if (amount < 0) {
+      if (marketMetalStock < -amount) {
+        print('Pas assez de métal disponible!'); // Debug
+        return;
+      }
+      marketMetalStock += amount;
+    }
+
+    marketMetalStock = marketMetalStock.clamp(0.0, GameConstants.INITIAL_MARKET_METAL);
+
+    print('Stock après mise à jour: $marketMetalStock'); // Debug
+
+    // Vérifier immédiatement si nous avons atteint un seuil de crise
+    if (marketMetalStock <= 0) {
+      print('Déclenchement crise - Stock épuisé'); // Debug
+      _sendCrisisNotification('0');
+    }
     notifyListeners();
   }
+
   void updateMarketingBonus(int marketingLevel) {
-    _marketingBonus = 1.0 + (marketingLevel * GameConstants.MARKETING_UPGRADE_BASE);
+    _marketingBonus =
+        1.0 + (marketingLevel * GameConstants.MARKETING_UPGRADE_BASE);
     notifyListeners();
   }
 
   double getSaleMultiplier() {
     return _marketingBonus;
   }
-
-
-
 
 
   double updateMetalPrice() {
@@ -202,7 +246,6 @@ class MarketManager extends ChangeNotifier {
   }
 
 
-
   bool isPriceExcessive(double price) {
     return price > _currentMetalPrice * 2;
   }
@@ -211,7 +254,8 @@ class MarketManager extends ChangeNotifier {
     return "Prix recommandé : ${(_currentMetalPrice * 1.5).toStringAsFixed(2)}";
   }
 
-  bool canSellMetal(double quantity, int maxMetalStorage, double currentPlayerMetal) {
+  bool canSellMetal(double quantity, int maxMetalStorage,
+      double currentPlayerMetal) {
     return marketMetalStock >= quantity &&
         (currentPlayerMetal + quantity) <= maxMetalStorage;
   }
@@ -222,51 +266,62 @@ class MarketManager extends ChangeNotifier {
     required Function(double) addMetal,
     required Function(double) subtractMoney
   }) {
-    if (canSellMetal(quantity, maxMetalStorage, currentPlayerMetal)) {
-      marketMetalStock -= quantity;
-      addMetal(quantity);
-      subtractMoney(quantity * currentMetalPrice);
-      _checkMarketDepletion();
-      return true;
+    // Vérifie si le marché a assez de métal
+    if (marketMetalStock < quantity) {
+      return false;  // Pas assez de métal dans le marché
     }
-    return false;
+
+    // Vérifie si le joueur peut stocker le métal
+    if ((currentPlayerMetal + quantity) > maxMetalStorage) {
+      return false;  // Capacité de stockage dépassée
+    }
+
+    marketMetalStock -= quantity;
+    addMetal(quantity);
+    subtractMoney(quantity * currentMetalPrice);
+    _checkMarketDepletion();
+    notifyListeners();
+    return true;
   }
 
   void _checkMarketDepletion() {
-    double stockPercentage = (marketMetalStock / GameConstants.INITIAL_MARKET_METAL) * 100;
+    print('Vérification des seuils de crise'); // Debug
+    print('Stock actuel: $marketMetalStock'); // Debug
+    print('Notifications déjà envoyées: $_sentCrisisNotifications'); // Debug
 
-    // On supprime la notification de 50%
-    if (marketMetalStock <= 0 && !_sentDepletionNotifications.contains('empty')) {
-      _sendNotification('empty');
-    }
-    else if (stockPercentage <= 25 && !_sentDepletionNotifications.contains('25')) {
-      _sendNotification('25');
-    }
-  }
-  void _sendNotification(String level) {
-    _sentDepletionNotifications.add(level);
-    String title = level == 'empty' ? 'Stock de Métal Épuisé' : 'Rupture Critique des Stocks de Métal';
-    String description = level == 'empty'
-        ? 'Les réserves de métal du marché sont épuisées!'
-        : 'Les réserves de métal du marché sont à 25% !';
-
-    EventManager.instance.addEvent(
-        EventType.RESOURCE_DEPLETION,
-        title,
-        description: description,
-        importance: level == 'empty' ? EventImportance.CRITICAL : EventImportance.HIGH,
-        additionalData: {'stockLevel': level}
-    );
-  }
-
-  // Ajouter une méthode pour réinitialiser les notifications lors du restock
-  void restockMetal() {
-    if (marketMetalStock < GameConstants.INITIAL_MARKET_METAL * 0.5) {
-      marketMetalStock = GameConstants.INITIAL_MARKET_METAL;
-      _sentDepletionNotifications.clear(); // Reset notifications après restock
-      notifyListeners();
+    if (!_sentCrisisNotifications.contains('0') &&
+        marketMetalStock <= GameConstants.METAL_CRISIS_THRESHOLD_0) {
+      print('Déclenchement notification crise - 0%'); // Debug
+      _sendCrisisNotification('0');
     }
   }
+
+  void _sendCrisisNotification(String level) {
+    if (_sentCrisisNotifications.contains(level)) return;
+    _sentCrisisNotifications.add(level);
+
+    switch(level) {
+      case '0':
+        if (_context != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            showDialog(
+              context: _context!,
+              barrierDismissible: false,
+              builder: (context) => const MetalCrisisDialog(),
+            );
+          });
+        }
+        break;
+      default:
+        return;
+    }
+  }
+
+  void resetCrisisNotifications() {
+    _sentCrisisNotifications.clear();
+  }
+
+
 
   void resetDepletionNotifications() {
     _sentDepletionNotifications.clear();

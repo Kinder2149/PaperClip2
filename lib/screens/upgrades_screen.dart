@@ -48,7 +48,7 @@ class UpgradesScreen extends StatelessWidget {
         double currentEff = -(upgrade.level * 15.0);
         double nextEff = -((upgrade.level + 1) * 15.0);
         // Utilisez la constante de votre classe ou du fichier de configuration
-        double metalPerClip = 1.0; // Remplacez par votre valeur de base
+        double metalPerClip = 1.5; // Remplacez par votre valeur de base
         double currentMetal = metalPerClip * (1 + currentEff/100);
         double nextMetal = metalPerClip * (1 + nextEff/100);
         impacts['Consommation de métal'] = [
