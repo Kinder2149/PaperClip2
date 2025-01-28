@@ -49,16 +49,20 @@ class GameState extends ChangeNotifier {
   }
   void _initializeManagers() {
     if (!_isInitialized) {
-      _statistics = StatisticsManager();  // Garder uniquement cette initialisation
+      // 1. Initialiser d'abord les systèmes indépendants
+      _statistics = StatisticsManager();
       _resourceManager = ResourceManager();
-      _marketManager = MarketManager(MarketDynamics());
       _levelSystem = LevelSystem()..onLevelUp = _handleLevelUp;
       _missionSystem = MissionSystem()..initialize();
 
+      // 2. Initialiser MarketManager qui ne dépend de rien d'autre
+      _marketManager = MarketManager(MarketDynamics());
+
+      // 3. Initialiser PlayerManager en dernier car il dépend des autres managers
       _playerManager = PlayerManager(
-        levelSystem: _levelSystem,
-        resourceManager: _resourceManager,
-        marketManager: _marketManager,
+        levelSystem: _levelSystem,        // Maintenant _levelSystem existe
+        resourceManager: _resourceManager, // Maintenant _resourceManager existe
+        marketManager: _marketManager,     // Maintenant _marketManager existe
       );
 
       _isInitialized = true;
@@ -137,6 +141,11 @@ class GameState extends ChangeNotifier {
 
     // Activer les nouvelles fonctionnalités
     _unlockCrisisFeatures();
+
+    // Sauvegarder l'état de crise
+    if (_gameName != null) {
+      saveGame(_gameName!);
+    }
 
     notifyListeners();
   }
@@ -217,15 +226,22 @@ class GameState extends ChangeNotifier {
     _stopAllTimers();
     _lastUpdateTime = DateTime.now();
 
-    // Timer pour le temps de jeu (toutes les secondes)
-    _timers['playTime'] = Timer.periodic(const Duration(seconds: 1), (timer) {
+    // Ajouter le timer d'auto-sauvegarde
+    _timers['autoSave'] = Timer.periodic(AUTOSAVE_INTERVAL, (timer) {
       if (!_isPaused) {
-        _totalTimePlayedInSeconds++;
-        notifyListeners(); // Important pour mettre à jour l'UI
+        _autoSave();
       }
     });
 
-    // Production toutes les secondes
+    // Timer existant pour le temps de jeu
+    _timers['playTime'] = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!_isPaused) {
+        _totalTimePlayedInSeconds++;
+        notifyListeners();
+      }
+    });
+
+    // Timer de production
     _gameLoopTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_isPaused) return;
       _processProduction();
@@ -235,6 +251,8 @@ class GameState extends ChangeNotifier {
 
 
   void _stopAllTimers() {
+    _timers.forEach((_, timer) => timer.cancel());
+    _timers.clear();
     _gameLoopTimer?.cancel();
     _gameLoopTimer = null;
   }
@@ -696,9 +714,20 @@ class GameState extends ChangeNotifier {
     }
 
     try {
+
+
       await SaveManager.saveGame(this, name);
       _gameName = name;
       _lastSaveTime = DateTime.now();
+
+      // Notification de sauvegarde réussie
+      EventManager.instance.addEvent(
+          EventType.INFO,
+          "Sauvegarde effectuée",
+          description: "Partie sauvegardée avec succès",
+          importance: EventImportance.LOW
+      );
+
       notifyListeners();
     } catch (e) {
       print('Erreur dans GameState.saveGame: $e');

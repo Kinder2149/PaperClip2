@@ -257,6 +257,7 @@ class MissionSystem {
 class LevelSystem extends ChangeNotifier {
   double _experience = 0;
   int _level = 1;
+  List<UnlockableFeature> unlockedFeatures = [];
   ProgressionPath _currentPath = ProgressionPath.PRODUCTION;
   final GameFeatureUnlocker _featureUnlocker = GameFeatureUnlocker();
   final XPComboSystem comboSystem = XPComboSystem();
@@ -276,6 +277,7 @@ class LevelSystem extends ChangeNotifier {
   bool get isDailyBonusAvailable => !dailyBonus.claimed;
   double get productionMultiplier => 1.0 + (level * 0.05);
   double get salesMultiplier => 1.0 + (level * 0.03);
+  double get xpMultiplier => _xpMultiplier;
 
   double get experienceForNextLevel => calculateExperienceRequirement(_level + 1);
   double get experienceProgress => _experience / experienceForNextLevel;
@@ -746,14 +748,16 @@ ${details.tips.map((t) => '• $t').join('\n')}
     }
   }
 
-  Map<String, dynamic> toJson() => {
-    'experience': _experience,
-    'level': _level,
-    'currentPath': _currentPath.index,
-    'xpMultiplier': _xpMultiplier,
-    'comboCount': comboSystem.comboCount,
-    'dailyBonusClaimed': dailyBonus.claimed,
-  };
+  Map<String, dynamic> toJson() {
+    return {
+      'experience': experience,
+      'level': level,
+      'currentPath': currentPath.index,
+      'xpMultiplier': xpMultiplier,
+      // Ajout du champ manquant
+      'unlockedFeatures': unlockedFeatures.map((e) => e.toString()).toList(),
+    };
+  }
 
   void loadFromJson(Map<String, dynamic> json) {
     _experience = (json['experience'] as num?)?.toDouble() ?? 0;

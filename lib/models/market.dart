@@ -109,6 +109,8 @@ class MarketManager extends ChangeNotifier {
   final Set<String> _sentCrisisNotifications = {};  // Ajoutez cette ligne
   final Set<String> _sentDepletionNotifications = {};
   double _lastNotifiedPercentage = 100.0;
+  static const double DEFAULT_MARKET_SATURATION = GameConstants.DEFAULT_MARKET_SATURATION;
+  DateTime lastPriceUpdate = DateTime.now();
   static const double MARKET_25_PERCENT = GameConstants.INITIAL_MARKET_METAL *
       0.25;
 
@@ -155,6 +157,7 @@ class MarketManager extends ChangeNotifier {
       {
         'marketMetalStock': marketMetalStock,
         'reputation': reputation,
+        'lastPriceUpdate': lastPriceUpdate.toIso8601String(),
         'currentMetalPrice': _currentMetalPrice,
         'competitionPrice': _competitionPrice,
         'marketSaturation': _marketSaturation,
@@ -165,6 +168,12 @@ class MarketManager extends ChangeNotifier {
           'marketVolatility': dynamics.marketVolatility,
           'marketTrend': dynamics.marketTrend,
           'competitorPressure': dynamics.competitorPressure,
+          'marketMetalStock': marketMetalStock,
+          'reputation': reputation,
+          'dynamics': dynamics.toJson(),
+          // Ajout du champ manquant
+          'lastPriceUpdate': DateTime.now().toIso8601String(),
+          'marketSaturation': marketSaturation,
         },
         'salesHistory': salesHistory.map((sale) => sale.toJson()).toList(),
       };
@@ -178,6 +187,9 @@ class MarketManager extends ChangeNotifier {
     _competitionPrice = (json['competitionPrice'] as num?)?.toDouble() ??
         GameConstants.INITIAL_PRICE;
     _marketSaturation = (json['marketSaturation'] as num?)?.toDouble() ?? 100.0;
+    lastPriceUpdate = json['lastPriceUpdate'] != null
+        ? DateTime.parse(json['lastPriceUpdate'])
+        : DateTime.now();
 
     if (json['dynamics'] != null) {
       final dynamicsData = json['dynamics'] as Map<String, dynamic>;
@@ -491,7 +503,6 @@ class MarketManager extends ChangeNotifier {
     }
   }
 
-  // Dans la classe MarketManager, modifier _handleMarketEvent
   void _handleMarketEvent(MarketEvent event) {
     switch (event) {
       case MarketEvent.PRICE_WAR:

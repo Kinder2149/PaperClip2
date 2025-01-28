@@ -4,18 +4,84 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/game_state.dart';
 import '../models/game_config.dart';
+import '../models/event_system.dart';
 
-class ValidationResult {
+
+class SaveValidationResult {
   final bool isValid;
   final List<String> errors;
+  final List<String> warnings;
   final Map<String, dynamic>? validatedData;
 
-  ValidationResult({
+  SaveValidationResult({
     required this.isValid,
     this.errors = const [],
+    this.warnings = const [],
     this.validatedData,
   });
 }
+class SaveError implements Exception {
+  final String code;
+  final String message;
+  final dynamic originalError;
+
+  SaveError(this.code, this.message, {this.originalError});
+
+  @override
+  String toString() {
+    if (originalError != null) {
+      return '$code: $message (Cause: $originalError)';
+    }
+    return '$code: $message';
+  }
+}
+class SaveGame {
+  final String name;
+  final DateTime lastSaveTime;
+  final Map<String, dynamic> gameData;
+  final String version;
+
+  SaveGame({
+    required this.name,
+    required this.lastSaveTime,
+    required this.gameData,
+    required this.version,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'timestamp': lastSaveTime.toIso8601String(),
+      'version': version,
+      'gameData': gameData,
+      ...gameData, // Ajoute aussi les données à la racine pour rétrocompatibilité
+    };
+  }
+
+  factory SaveGame.fromJson(Map<String, dynamic> json) {
+    try {
+      Map<String, dynamic> gameData = json['gameData'] as Map<String, dynamic>? ?? {};
+
+      // Rétrocompatibilité : fusion des données racine si présentes
+      for (final key in ['playerManager', 'marketManager', 'levelSystem']) {
+        if (json.containsKey(key)) {
+          gameData[key] = json[key];
+        }
+      }
+
+      return SaveGame(
+        name: json['name'] as String,
+        lastSaveTime: DateTime.parse(json['timestamp'] as String),
+        gameData: gameData,
+        version: json['version'] as String? ?? GameConstants.VERSION,
+      );
+    } catch (e) {
+      print('Error creating SaveGame from JSON: $e');
+      throw SaveError('PARSE_ERROR', 'Erreur lors du chargement de la sauvegarde: $e');
+    }
+  }
+}
+
 
 class SaveDataValidator {
   static const Map<String, Map<String, dynamic>> _validationRules = {
@@ -25,33 +91,47 @@ class SaveDataValidator {
       'paperclips': {'type': 'double', 'min': 0.0},
       'autoclippers': {'type': 'int', 'min': 0},
       'sellPrice': {'type': 'double', 'min': 0.01, 'max': 1.0},
+      'maxMetalStorage': {'type': 'double', 'min': 0.0},
+      'maintenanceCosts': {'type': 'double', 'min': 0.0},
+      'lastMaintenanceTime': {'type': 'datetime'},
       'upgrades': {'type': 'map'},
     },
     'marketManager': {
       'marketMetalStock': {'type': 'double', 'min': 0.0},
       'reputation': {'type': 'double', 'min': 0.0, 'max': 2.0},
+      'lastPriceUpdate': {'type': 'datetime'},
+      'marketSaturation': {'type': 'double', 'min': 0.0, 'max': 100.0},
       'dynamics': {'type': 'map'},
     },
     'levelSystem': {
       'experience': {'type': 'double', 'min': 0.0},
       'level': {'type': 'int', 'min': 1},
       'currentPath': {'type': 'int', 'min': 0},
+      'unlockedFeatures': {'type': 'list'},
       'xpMultiplier': {'type': 'double', 'min': 1.0},
     },
   };
+  static void _validateVersion(String savedVersion, List<String> warnings) {
+    if (savedVersion != GameConstants.VERSION) {
+      warnings.add(
+          'Version différente détectée: $savedVersion (actuelle: ${GameConstants
+              .VERSION})');
+    }
+  }
 
-  static ValidationResult validate(Map<String, dynamic> data) {
-    List<String> errors = [];  // Correction ici : List<String> au lieu de final errors = <String>();
+  static SaveValidationResult validate(Map<String, dynamic> data) {
+    List<String> errors = [];
+    List<String> warnings = [];
 
     // Vérification de base
     if (!data.containsKey('version') || !data.containsKey('timestamp')) {
       errors.add('Données de base manquantes (version ou timestamp)');
-      return ValidationResult(isValid: false, errors: errors);
+      return SaveValidationResult(isValid: false, errors: errors);
     }
 
     // Vérification des sections obligatoires
     if (!_validateMandatorySections(data, errors)) {
-      return ValidationResult(isValid: false, errors: errors);
+      return SaveValidationResult(isValid: false, errors: errors);
     }
 
     // Vérification des règles pour chaque section
@@ -84,13 +164,35 @@ class SaveDataValidator {
       }
     }
 
-    // Si pas d'erreurs, les données sont valides
-    return ValidationResult(
+    // Vérification de la cohérence des données si pas d'erreurs
+    if (errors.isEmpty) {
+      _validateDataConsistency(data, warnings);
+    }
+
+    return SaveValidationResult(
       isValid: errors.isEmpty,
       errors: errors,
-      validatedData: data,
+      warnings: warnings,
+      validatedData: errors.isEmpty ? data : null,
     );
   }
+  static void _validateDataConsistency(Map<String, dynamic> data, List<String> warnings) {
+    final playerData = data['playerManager'] as Map<String, dynamic>;
+    final marketData = data['marketManager'] as Map<String, dynamic>;
+
+    // Vérifier les limites de stockage
+    if (playerData['metal'] > GameConstants.INITIAL_STORAGE_CAPACITY) {
+      warnings.add('Le stock de métal dépasse la capacité maximale initiale');
+    }
+
+    // Vérifier la cohérence des prix
+    if (playerData['sellPrice'] < GameConstants.MIN_PRICE ||
+        playerData['sellPrice'] > GameConstants.MAX_PRICE) {
+      warnings.add('Prix de vente hors limites normales');
+    }
+  }
+
+
 
   static bool _validateMandatorySections(Map<String, dynamic> data, List<String> errors) {
     if (!data.containsKey('playerManager')) {
@@ -117,6 +219,13 @@ class SaveDataValidator {
 
   static bool _validateField(dynamic value, Map<String, dynamic> rule, List<String> errors, String fieldPath) {
     // Vérification du type
+    if (rule['type'] == 'datetime') {
+      if (value == null) {
+        value = DateTime.now().toIso8601String();
+        return true;
+      }
+    }
+
     if (!_validateType(value, rule['type'] as String)) {
       errors.add('Type invalide pour $fieldPath');
       return false;
@@ -147,99 +256,50 @@ class SaveDataValidator {
         return value is Map;
       case 'list':
         return value is List;
+      case 'datetime':
+        if (value is String) {
+          try {
+            DateTime.parse(value);
+            return true;
+          } catch (_) {
+            return false;
+          }
+        }
+        return false;
       default:
         return false;
     }
   }
 }
 
-class SaveError implements Exception {
-  final String code;
-  final String message;
-  SaveError(this.code, this.message);
 
-  @override
-  String toString() => '$code: $message';
-}
 
-class SaveGame {
-  final String name;
-  final DateTime lastSaveTime;
-  final Map<String, dynamic> gameData;
-  final String version;
 
-  SaveGame({
-    required this.name,
-    required this.lastSaveTime,
-    required this.gameData,
-    required this.version,
-  });
 
-  Map<String, dynamic> toJson() {
-    final Map<String, dynamic> json = {
-      'name': name,
-      'timestamp': lastSaveTime.toIso8601String(),
-      'version': version,
-    };
-
-    // Ajoute les données du jeu à la racine et dans gameData
-    if (gameData.containsKey('playerManager')) {
-      json['playerManager'] = gameData['playerManager'];
-    }
-    if (gameData.containsKey('marketManager')) {
-      json['marketManager'] = gameData['marketManager'];
-    }
-    if (gameData.containsKey('levelSystem')) {
-      json['levelSystem'] = gameData['levelSystem'];
-    }
-
-    // Sauvegarde complète des données
-    json['gameData'] = gameData;
-
-    return json;
-  }
-
-  factory SaveGame.fromJson(Map<String, dynamic> json) {
-    try {
-      // Si les données sont dans gameData, utilise-les
-      Map<String, dynamic> gameData = json['gameData'] as Map<String, dynamic>? ?? {};
-
-      // Si les données sont à la racine, fusionne-les avec gameData
-      if (json.containsKey('playerManager')) {
-        gameData['playerManager'] = json['playerManager'];
-      }
-      if (json.containsKey('marketManager')) {
-        gameData['marketManager'] = json['marketManager'];
-      }
-      if (json.containsKey('levelSystem')) {
-        gameData['levelSystem'] = json['levelSystem'];
-      }
-
-      return SaveGame(
-        name: json['name'] as String,
-        lastSaveTime: DateTime.parse(json['timestamp'] as String),
-        gameData: gameData,
-        version: json['version'] as String? ?? GameConstants.VERSION,
-      );
-    } catch (e) {
-      print('Error creating SaveGame from JSON: $e');
-      print('JSON data: $json');
-      rethrow;
-    }
-  }
-}
 
 
 
 
 class SaveManager {
   static const String SAVE_PREFIX = 'paperclip_save_';
+  static const String BACKUP_PREFIX = 'paperclip_backup_';
+  static const String DEFAULT_VERSION = "1.0.0";
+  static const int MAX_BACKUPS = 3;
   static final DateTime CURRENT_DATE = DateTime(2025, 1, 23, 15, 15, 49);
   static const String CURRENT_USER = 'Kinder2149';
   static const String CURRENT_VERSION = '1.0.0';
-  static String _getSaveKey(String gameName) => '$SAVE_PREFIX$gameName';
+
 
   // Obtenir la clé de sauvegarde unique pour une partie
+  static String _getSaveKey(String gameName) {
+    // Nettoyage du nom pour éviter les problèmes de formatage
+    final cleanName = gameName.trim().replaceAll(RegExp(r'[^\w\s-]'), '');
+    final key = '$SAVE_PREFIX$cleanName';
+    print('Génération clé de sauvegarde pour "$gameName": $key');
+    return key;
+  }
+  static String _getBackupKey(String gameName, int index) => '${BACKUP_PREFIX}${gameName}_$index';
+
 
 
   // Sauvegarder une partie
@@ -249,17 +309,28 @@ class SaveManager {
         throw SaveError('INVALID_NAME', 'Le nom de la sauvegarde ne peut pas être vide');
       }
 
+      // Créer une sauvegarde de backup si ce n'est pas une nouvelle partie
+      if (await saveExists(name)) {
+        await _createBackup(name);
+      }
+
       final gameData = gameState.prepareGameData();
-
-      // Debug: Vérifions les données avant la validation
-      print('Données préparées pour la sauvegarde:');
-      print('Contains playerManager: ${gameData.containsKey('playerManager')}');
-
+      // Utiliser SaveDataValidator au lieu de _validateSaveData
       final validationResult = SaveDataValidator.validate(gameData);
+
       if (!validationResult.isValid) {
         throw SaveError(
-          'VALIDATION_ERROR',
-          'Données invalides:\n${validationResult.errors.join('\n')}',
+            'VALIDATION_ERROR',
+            'Données invalides:\n${validationResult.errors.join('\n')}'
+        );
+      }
+
+      if (validationResult.warnings.isNotEmpty) {
+        EventManager.instance.addEvent(
+            EventType.INFO,
+            'Avertissements de sauvegarde',
+            description: validationResult.warnings.join('\n'),
+            importance: EventImportance.MEDIUM
         );
       }
 
@@ -271,17 +342,7 @@ class SaveManager {
       );
 
       final prefs = await SharedPreferences.getInstance();
-      final key = _getSaveKey(name);
-      final jsonData = saveData.toJson();
-
-      // Debug: Vérifions les données après la conversion
-      print('Données après conversion JSON:');
-      print('Contains playerManager: ${jsonData.containsKey('playerManager')}');
-
-      await prefs.setString(key, jsonEncode(jsonData));
-
-      // Vérification post-sauvegarde
-      await debugSave(name);
+      await prefs.setString(_getSaveKey(name), jsonEncode(saveData.toJson()));
 
     } catch (e) {
       print('Erreur lors de la sauvegarde: $e');
@@ -336,54 +397,282 @@ class SaveManager {
       return null;
     }
   }
+  static Future<void> debugListAllSaves() async {
+    final prefs = await SharedPreferences.getInstance();
+    print('\n=== DEBUG: Toutes les sauvegardes ===');
+    for (String key in prefs.getKeys()) {
+      if (key.startsWith(SAVE_PREFIX) || key.startsWith(BACKUP_PREFIX)) {
+        print('Clé: $key');
+        try {
+          final data = jsonDecode(prefs.getString(key) ?? '{}');
+          print('- Version: ${data['version']}');
+          print('- Timestamp: ${data['timestamp']}');
+          print('- Nom: ${data['name']}');
+        } catch (e) {
+          print('- Erreur de lecture: $e');
+        }
+      }
+    }
+    print('===================================\n');
+  }
   static Future<SaveGame?> loadGame(String name) async {
     try {
+      await debugListAllSaves();
       final prefs = await SharedPreferences.getInstance();
-      final key = '$SAVE_PREFIX$name';
-      final savedData = prefs.getString(key);
+      final saveKey = _getSaveKey(name);
+
+      print('Tentative de chargement de la sauvegarde: $saveKey');
+      final savedData = prefs.getString(saveKey);
 
       if (savedData == null) {
-        return null;
+        print('Sauvegarde non trouvée, recherche de backup...');
+        return await _tryLoadBackup(name);
       }
 
-      final jsonData = jsonDecode(savedData) as Map<String, dynamic>;
-
-      // Validation des données
-      final validationResult = SaveDataValidator.validate(jsonData);
-      if (!validationResult.isValid) {
-        throw SaveError(
-          'VALIDATION_ERROR',
-          'Données corrompues ou invalides:\n${validationResult.errors.join('\n')}',
-        );
+      print('Sauvegarde trouvée, décodage des données...');
+      Map<String, dynamic> jsonData;
+      try {
+        jsonData = jsonDecode(savedData);
+      } catch (e) {
+        print('Erreur de décodage JSON, tentative de restauration backup...');
+        return await _tryLoadBackup(name);
       }
 
-      // Si la validation est OK, créer l'objet SaveGame
+      // Vérifie si les données sont dans l'ancien format
+      if (!jsonData.containsKey('gameData')) {
+        print('Ancien format détecté, migration des données...');
+        jsonData = {
+          'name': name,
+          'version': jsonData['version'] ?? DEFAULT_VERSION,
+          'timestamp': jsonData['timestamp'] ?? DateTime.now().toIso8601String(),
+          'gameData': {
+            'playerManager': jsonData['playerManager'] ?? {},
+            'marketManager': jsonData['marketManager'] ?? {},
+            'levelSystem': jsonData['levelSystem'] ?? {},
+          }
+        };
+      }
+
+      // Migration si nécessaire
+      if (SaveVersion.needsMigration(jsonData['version'] as String?)) {
+        print('Migration nécessaire vers ${SaveVersion.CURRENT}...');
+        jsonData = SaveMigration.migrateData(jsonData);
+
+        // Sauvegarde des données migrées
+        await prefs.setString(saveKey, jsonEncode(jsonData));
+        print('Migration terminée et sauvegardée');
+      }
+
       return SaveGame.fromJson(jsonData);
     } catch (e) {
-      print('Erreur lors du chargement: $e');
+      print('Erreur détaillée lors du chargement: $e');
+      print('Stack trace: ${StackTrace.current}');
       rethrow;
     }
   }
+  static Future<void> cleanupCorruptedSave(String name) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saveKey = _getSaveKey(name);
+
+      if (await _hasBackup(name)) {
+        // Restaurer depuis le backup
+        final backup = await _getLatestBackup(name);
+        if (backup != null) {
+          await prefs.setString(saveKey, jsonEncode(backup.toJson()));
+          print('Sauvegarde restaurée depuis backup');
+        }
+      } else {
+        // Supprimer la sauvegarde corrompue
+        await deleteSave(name);
+        print('Sauvegarde corrompue supprimée');
+      }
+    } catch (e) {
+      print('Erreur lors du nettoyage: $e');
+    }
+  }
+  static Future<bool> doesSaveExist(String name) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = _getSaveKey(name);
+    final exists = prefs.containsKey(key);
+    print('Vérification existence sauvegarde "$name" (clé: $key): ${exists ? "existe" : "n'existe pas"}');
+    return exists;
+  }
+
+
+  static Future<SaveGame?> _tryLoadBackup(String name) async {
+    final backup = await _getLatestBackup(name);
+    if (backup != null) {
+      EventManager.instance.addEvent(
+          EventType.INFO,
+          'Restauration depuis backup',
+          description: 'La sauvegarde principale était corrompue',
+          importance: EventImportance.HIGH
+      );
+    }
+    return backup;
+  }
+  static Future<SaveMigrationStatus> checkSaveStatus(String name) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedData = prefs.getString(_getSaveKey(name));
+      if (savedData == null) {
+        return SaveMigrationStatus(exists: false);
+      }
+
+      final jsonData = jsonDecode(savedData) as Map<String, dynamic>;
+      final needsMigration = SaveVersion.needsMigration(jsonData['version'] as String?);
+
+      return SaveMigrationStatus(
+        exists: true,
+        currentVersion: jsonData['version'] as String?,
+        needsMigration: needsMigration,
+        hasBackup: await _hasBackup(name),
+      );
+    } catch (e) {
+      return SaveMigrationStatus(exists: false, error: e.toString());
+    }
+  }
+  static Future<bool> _hasBackup(String name) async {
+    final prefs = await SharedPreferences.getInstance();
+    for (var i = 0; i < MAX_BACKUPS; i++) {
+      if (prefs.containsKey(_getBackupKey(name, i))) {
+        return true;
+      }
+    }
+    return false;
+  }
+  static Future<void> _createBackup(String name) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final currentSave = prefs.getString(_getSaveKey(name));
+      if (currentSave != null) {
+        final backupIndex = DateTime.now().millisecondsSinceEpoch % MAX_BACKUPS;
+        await prefs.setString(_getBackupKey(name, backupIndex), currentSave);
+      }
+    } catch (e) {
+      print('Erreur lors de la création du backup: $e');
+    }
+  }
+  static Future<SaveGame?> _getLatestBackup(String name) async {
+    final prefs = await SharedPreferences.getInstance();
+    SaveGame? latestBackup;
+    DateTime? latestTime;
+
+    for (var i = 0; i < MAX_BACKUPS; i++) {
+      final backupData = prefs.getString(_getBackupKey(name, i));
+      if (backupData != null) {
+        try {
+          final backup = SaveGame.fromJson(jsonDecode(backupData));
+          if (latestTime == null || backup.lastSaveTime.isAfter(latestTime)) {
+            latestTime = backup.lastSaveTime;
+            latestBackup = backup;
+          }
+        } catch (e) {
+          print('Backup invalide: $e');
+        }
+      }
+    }
+    return latestBackup;
+  }
+  // Validation d'une section spécifique
+  static void _validateSection(
+      String section,
+      Map<String, dynamic> data,
+      List<String> errors,
+      List<String> warnings,
+      ) {
+    switch (section) {
+      case 'playerManager':
+        _validatePlayerManager(data, errors, warnings);
+        break;
+      case 'marketManager':
+        _validateMarketManager(data, errors, warnings);
+        break;
+      case 'levelSystem':
+        _validateLevelSystem(data, errors, warnings);
+        break;
+    }
+  }
+
+  // Validation des données du joueur
+  static void _validatePlayerManager(
+      Map<String, dynamic> data,
+      List<String> errors,
+      List<String> warnings,
+      ) {
+    final requiredFields = {
+      'money': 0.0,
+      'metal': 0.0,
+      'paperclips': 0.0,
+      'autoclippers': 0,
+      'sellPrice': GameConstants.MIN_PRICE,
+    };
+
+    requiredFields.forEach((field, defaultValue) {
+      if (!data.containsKey(field)) {
+        warnings.add('Champ manquant dans playerManager: $field (utilisation valeur par défaut)');
+        data[field] = defaultValue;
+      }
+    });
+  }
+
+  // Validation des données du marché
+  static void _validateMarketManager(
+      Map<String, dynamic> data,
+      List<String> errors,
+      List<String> warnings,
+      ) {
+    if (!data.containsKey('marketMetalStock')) {
+      errors.add('Stock de métal du marché manquant');
+    }
+  }
+
+  // Validation du système de niveau
+  static void _validateLevelSystem(
+      Map<String, dynamic> data,
+      List<String> errors,
+      List<String> warnings,
+      ) {
+    if (!data.containsKey('level') || !data.containsKey('experience')) {
+      errors.add('Données de progression manquantes');
+    }
+  }
+
+  // Validation de la cohérence des données
+  static void _validateDataConsistency(Map<String, dynamic> data, List<String> warnings) {
+    final playerData = data['playerManager'] as Map<String, dynamic>;
+    final marketData = data['marketManager'] as Map<String, dynamic>;
+    final levelData = data['levelSystem'] as Map<String, dynamic>;
+
+    // Vérification des limites de stockage
+    if (playerData['metal'] > playerData['maxMetalStorage']) {
+      warnings.add('Le stock de métal dépasse la capacité maximale');
+    }
+
+    // Vérification de la cohérence des coûts de maintenance
+    if (playerData['autoclippers'] > 0 && playerData['maintenanceCosts'] <= 0) {
+      warnings.add('Coûts de maintenance invalides pour le nombre d\'autoclippers');
+    }
+
+    // Vérification de la cohérence du marché
+    if (marketData['marketMetalStock'] < 0) {
+      warnings.add('Stock de métal du marché négatif');
+    }
+
+    // Vérification de la progression
+    if (levelData['level'] > 1 && levelData['unlockedFeatures'].isEmpty) {
+      warnings.add('Niveau supérieur à 1 sans fonctionnalités débloquées');
+    }
+  }
+
+
+
+
 
 
   // Récupérer la dernière sauvegarde
 
-  static Future<void> debugSaveData(String gameName) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final saveKey = _getSaveKey(gameName);
-      final savedData = prefs.getString(saveKey);
-      print('Debug - Save data for $gameName:');
-      print(savedData);
-      if (savedData != null) {
-        final decoded = jsonDecode(savedData);
-        print('Decoded data:');
-        print(decoded);
-      }
-    } catch (e) {
-      print('Debug - Error reading save: $e');
-    }
-  }
   static Future<List<SaveGameInfo>> listSaves() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -406,7 +695,6 @@ class SaveManager {
         }
       }
 
-      // Trier par date de sauvegarde (plus récent d'abord)
       saves.sort((a, b) => b.timestamp.compareTo(a.timestamp));
       return saves;
     } catch (e) {
@@ -416,39 +704,145 @@ class SaveManager {
   }
 
 
+
   // Supprimer une sauvegarde
   static Future<void> deleteSave(String name) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('$SAVE_PREFIX$name');
+      // Supprimer la sauvegarde principale
+      await prefs.remove(_getSaveKey(name));
+      // Supprimer les backups
+      for (var i = 0; i < MAX_BACKUPS; i++) {
+        await prefs.remove(_getBackupKey(name, i));
+      }
     } catch (e) {
       print('Erreur lors de la suppression: $e');
       rethrow;
     }
   }
+}
 
-  // Validation des données
-  static bool _validateSaveData(Map<String, dynamic> data) {
+class SaveVersion {
+  static const String INITIAL = "1.0.0";
+  static const String CURRENT = GameConstants.VERSION;
+
+  static bool needsMigration(String? version) {
+    if (version == null || version.isEmpty) return true;
+    if (version == CURRENT) return false;
+
     try {
-      if (!data.containsKey('version') || !data.containsKey('timestamp')) {
-        return false;
+      final currentParts = CURRENT.split('.').map(int.parse).toList();
+      final versionParts = version.split('.').map(int.parse).toList();
+
+      // Compare les numéros de version
+      for (var i = 0; i < 3; i++) {
+        if (currentParts[i] > versionParts[i]) return true;
+        if (currentParts[i] < versionParts[i]) return false;
       }
-
-      final gameData = data['gameData'] as Map<String, dynamic>?;
-      if (gameData == null) return false;
-
-      final playerManager = gameData['playerManager'] as Map<String, dynamic>?;
-      if (playerManager == null) return false;
-
-      // Vérifier les champs essentiels
-      return playerManager.containsKey('paperclips') &&
-          playerManager.containsKey('money') &&
-          playerManager.containsKey('metal');
-    } catch (e) {
-      print('Erreur de validation: $e');
       return false;
+    } catch (e) {
+      print('Erreur lors de la comparaison des versions: $e');
+      return true;
     }
   }
+}
+
+
+class SaveMigration {
+  static const _defaultValues = {
+    'playerManager': {
+      'maxMetalStorage': GameConstants.INITIAL_STORAGE_CAPACITY,
+      'maintenanceCosts': 0.0,
+      'lastMaintenanceTime': null, // Sera généré au moment de la migration
+      'upgrades': {
+        'efficiency': {'id': 'efficiency', 'level': 0},
+        'marketing': {'id': 'marketing', 'level': 0},
+        'bulk': {'id': 'bulk', 'level': 0},
+        'speed': {'id': 'speed', 'level': 0},
+        'storage': {'id': 'storage', 'level': 0},
+        'automation': {'id': 'automation', 'level': 0},
+        'quality': {'id': 'quality', 'level': 0},
+      },
+    },
+    'marketManager': {
+      'marketSaturation': GameConstants.DEFAULT_MARKET_SATURATION,
+      'lastPriceUpdate': null, // Sera généré au moment de la migration
+      'marketMetalStock': GameConstants.INITIAL_MARKET_METAL,
+      'reputation': 1.0,
+    },
+    'levelSystem': {
+      'unlockedFeatures': ['MANUAL_PRODUCTION'],
+      'xpMultiplier': 1.0,
+      'experience': 0.0,
+      'level': 1,
+      'currentPath': 0,
+    },
+  };
+
+  static Map<String, dynamic> migrateData(Map<String, dynamic> oldData) {
+    final now = DateTime.now().toIso8601String();
+    var newData = Map<String, dynamic>.from(oldData);
+
+    // Migrer chaque section
+    _migrateSection(newData, 'playerManager', now);
+    _migrateSection(newData, 'marketManager', now);
+    _migrateSection(newData, 'levelSystem', now);
+
+    // Mettre à jour la version et le timestamp
+    newData['version'] = SaveVersion.CURRENT;
+    newData['timestamp'] = now;
+
+    return newData;
+  }
+
+  static void _migrateSection(Map<String, dynamic> data, String section, String timestamp) {
+    var sectionData = data[section] as Map<String, dynamic>? ?? {};
+    var defaultSection = _defaultValues[section] as Map<String, dynamic>;
+
+    // Copier les valeurs par défaut manquantes
+    defaultSection.forEach((key, defaultValue) {
+      if (!sectionData.containsKey(key)) {
+        var value = defaultValue;
+        // Gérer les timestamps
+        if (value == null && (key == 'lastMaintenanceTime' || key == 'lastPriceUpdate')) {
+          value = timestamp;
+        }
+        // Gérer les structures imbriquées
+        else if (value is Map) {
+          value = Map<String, dynamic>.from(value);
+        }
+        sectionData[key] = value;
+      }
+    });
+
+    // S'assurer que les upgrades ont tous les champs nécessaires
+    if (section == 'playerManager' && sectionData.containsKey('upgrades')) {
+      var upgrades = sectionData['upgrades'] as Map<String, dynamic>;
+      var defaultUpgrades = defaultSection['upgrades'] as Map<String, dynamic>;
+      defaultUpgrades.forEach((key, defaultValue) {
+        if (!upgrades.containsKey(key)) {
+          upgrades[key] = defaultValue;
+        }
+      });
+    }
+
+    data[section] = sectionData;
+  }
+}
+class SaveMigrationStatus {
+  final bool exists;
+  final String? currentVersion;
+  final bool needsMigration;
+  final bool hasBackup;
+  final String? error;
+
+  SaveMigrationStatus({
+    required this.exists,
+    this.currentVersion,
+    this.needsMigration = false,
+    this.hasBackup = false,
+    this.error,
+  });
 }
 
 class SaveGameInfo {

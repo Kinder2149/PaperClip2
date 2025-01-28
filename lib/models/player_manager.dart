@@ -7,6 +7,7 @@ import 'event_system.dart';
 import 'progression_system.dart';
 import 'resource_manager.dart';
 import 'market.dart';
+import 'package:paperclip2/services/save_manager.dart';
 
 /// Représente une amélioration du jeu
 class Upgrade {
@@ -157,6 +158,8 @@ class PlayerManager extends ChangeNotifier {
   double maxMetalStorage = GameConstants.INITIAL_STORAGE_CAPACITY;
   bool _lowMetalNotified = false;
   static const double LOW_METAL_THRESHOLD = 20.0;
+  double maintenanceCosts = 0.0;
+  DateTime lastMaintenanceTime = DateTime.now();
 
 
 
@@ -183,9 +186,6 @@ class PlayerManager extends ChangeNotifier {
     _initializeUpgrades();
     _startTimers();
   }
-
-  // Getters
-  double get maintenanceCosts => _maintenanceCosts;
 
 
 
@@ -260,36 +260,27 @@ class PlayerManager extends ChangeNotifier {
 
 
   void fromJson(Map<String, dynamic> json) {
-    try {
       _paperclips = (json['paperclips'] as num?)?.toDouble() ?? 0.0;
       _money = (json['money'] as num?)?.toDouble() ?? 0.0;
       _metal = (json['metal'] as num?)?.toDouble() ?? 0.0;
       _autoclippers = (json['autoclippers'] as num?)?.toInt() ?? 0;
       _sellPrice = (json['sellPrice'] as num?)?.toDouble() ?? GameConstants.INITIAL_PRICE;
+      maxMetalStorage = (json['maxMetalStorage'] as num?)?.toDouble() ?? GameConstants.INITIAL_STORAGE_CAPACITY;
+      maintenanceCosts = (json['maintenanceCosts'] as num?)?.toDouble() ?? 0.0;
+      lastMaintenanceTime = json['lastMaintenanceTime'] != null
+          ? DateTime.parse(json['lastMaintenanceTime'])
+          : DateTime.now();
 
-      // Réinitialiser d'abord les upgrades
-      _initializeUpgrades();
-
-      // Charger les upgrades
-      final upgradesData = json['upgrades'] as Map<String, dynamic>? ?? {};
-      upgradesData.forEach((key, value) {
-        try {
-          if (upgrades.containsKey(key)) {
-            upgrades[key]!.level = (value['level'] as num?)?.toInt() ?? 0;
-          }
-        } catch (e) {
-          print('Erreur lors du chargement de l\'upgrade $key: $e');
-        }
-      });
-
-      notifyListeners();
-    } catch (e) {
-      print('Erreur lors du chargement des données du joueur: $e');
-      // En cas d'erreur, réinitialiser aux valeurs par défaut
-      resetResources();
-      _initializeUpgrades();
+      // Chargement des upgrades
+      if (json['upgrades'] != null) {
+        final upgradesJson = json['upgrades'] as Map<String, dynamic>;
+        upgrades.clear();
+        upgradesJson.forEach((key, value) {
+          upgrades[key] = Upgrade.fromJson(value as Map<String, dynamic>);
+        });
+      }
     }
-  }
+
   bool consumeMetal(double amount) {
     if (_metal >= amount) {
       updateMetal(_metal - amount);
@@ -299,17 +290,26 @@ class PlayerManager extends ChangeNotifier {
   }
 
 
-  Map<String, dynamic> toJson() => {
-    'paperclips': _paperclips,
-    'money': _money,
-    'metal': _metal,
-    'autoclippers': _autoclippers,
-    'sellPrice': _sellPrice,
-    'upgrades': upgrades.map((key, value) => MapEntry(key, value.toJson())),
-  };
+  Map<String, dynamic> toJson() {
+    return {
+      'paperclips': paperclips,
+      'money': money,
+      'metal': metal,
+      'autoclippers': autoclippers,
+      'sellPrice': sellPrice,
+      'upgrades': upgrades.map((key, value) => MapEntry(key, value.toJson())),
+      // Ajout des champs manquants
+      'maxMetalStorage': GameConstants.INITIAL_STORAGE_CAPACITY,  // ou la valeur actuelle si vous la gérez
+      'maintenanceCosts': maintenanceCosts,  // Implémentez cette méthode si ce n'est pas déjà fait
+      'lastMaintenanceTime': DateTime.now().toIso8601String(),
+    };
+  }
 
   void loadFromJson(Map<String, dynamic> json) => fromJson(json);
 
+  double calculateMaintenanceCost() {
+    return autoclippers * GameConstants.MAINTENANCE_EFFICIENCY_MULTIPLIER;
+  }
 
 
 
