@@ -47,7 +47,7 @@ mixin GameStateMarket on ChangeNotifier {
   void startMarketTimer() {
     marketTimer?.cancel();
     marketTimer = Timer.periodic(
-      const Duration(milliseconds: 500),
+      const Duration(seconds: 1),
           (timer) => processMarket(),
     );
   }
@@ -193,36 +193,57 @@ class StatisticsManager with ChangeNotifier {
     }
     notifyListeners();
   }
+  void updatePlayTime(Duration elapsed) {
+    _totalPlayTime += elapsed;
+    notifyListeners();
+  }
 
   void updateProgression({
     int? upgradesBought,
     int? autoclippersBought,
-    int? combo,
+    int? maxCombo,
     Duration? playTime,
   }) {
     if (upgradesBought != null) _totalUpgradesBought += upgradesBought;
     if (autoclippersBought != null) _totalAutoclippersBought += autoclippersBought;
-    if (combo != null && combo > _maxComboAchieved) _maxComboAchieved = combo;
+    if (maxCombo != null && maxCombo > _maxComboAchieved) _maxComboAchieved = maxCombo;
     if (playTime != null) _totalPlayTime += playTime;
     notifyListeners();
+  }
+  String _formatNumber(dynamic value) {
+    if (value is double) {
+      if (value >= 1000000) {
+        return '${(value / 1000000).toStringAsFixed(2)}M';
+      } else if (value >= 1000) {
+        return '${(value / 1000).toStringAsFixed(2)}K';
+      }
+      return value.toStringAsFixed(2);
+    } else if (value is int) {
+      if (value >= 1000000) {
+        return '${(value / 1000000).toStringAsFixed(2)}M';
+      } else if (value >= 1000) {
+        return '${(value / 1000).toStringAsFixed(2)}K';
+      }
+    }
+    return value.toString();
   }
 
   // Getters
   Map<String, Map<String, dynamic>> getAllStats() {
     return {
       'production': {
-        'Total Trombones': _totalPaperclipsProduced,
-        'Production Manuelle': _manualPaperclipsProduced,
-        'Production Auto': _autoPaperclipsProduced,
-        'Métal Utilisé': _totalMetalUsed,
+        'Total Trombones': _formatNumber(_totalPaperclipsProduced),
+        'Production Manuelle': _formatNumber(_manualPaperclipsProduced),
+        'Production Auto': _formatNumber(_autoPaperclipsProduced),
+        'Métal Utilisé': _formatNumber(_totalMetalUsed),
       },
       'economie': {
-        'Argent Gagné': _totalMoneyEarned.toStringAsFixed(2),
-        'Argent Dépensé': _totalMoneySpent.toStringAsFixed(2),
-        'Métal Acheté': _totalMetalBought.toStringAsFixed(2),
-        'Ventes Totales': _totalSales,
-        'Prix Max': _highestPrice.toStringAsFixed(2),
-        'Prix Moyen': _averagePrice.toStringAsFixed(2),
+        'Argent Gagné': _formatNumber(_totalMoneyEarned),
+        'Argent Dépensé': _formatNumber(_totalMoneySpent),
+        'Métal Acheté': _formatNumber(_totalMetalBought),
+        'Ventes Totales': _formatNumber(_totalSales),
+        'Prix Max': _formatNumber(_highestPrice),
+        'Prix Moyen': _formatNumber(_averagePrice),
       },
       'progression': {
         'Améliorations Achetées': _totalUpgradesBought,
@@ -265,15 +286,16 @@ class StatisticsManager with ChangeNotifier {
     _manualPaperclipsProduced = json['manualPaperclipsProduced'] ?? 0;
     _autoPaperclipsProduced = json['autoPaperclipsProduced'] ?? 0;
     _totalMetalUsed = json['totalMetalUsed'] ?? 0;
-    _totalMoneyEarned = json['totalMoneyEarned'] ?? 0.0;
-    _totalMoneySpent = json['totalMoneySpent'] ?? 0.0;
-    _totalMetalBought = json['totalMetalBought'] ?? 0.0;
+    _totalMoneyEarned = (json['totalMoneyEarned'] ?? 0).toDouble();
+    _totalMoneySpent = (json['totalMoneySpent'] ?? 0).toDouble();
+    _totalMetalBought = (json['totalMetalBought'] ?? 0).toDouble();
     _totalSales = json['totalSales'] ?? 0;
-    _highestPrice = json['highestPrice'] ?? 0.0;
-    _averagePrice = json['averagePrice'] ?? 0.0;
+    _highestPrice = (json['highestPrice'] ?? 0).toDouble();
+    _averagePrice = (json['averagePrice'] ?? 0).toDouble();
     _totalUpgradesBought = json['totalUpgradesBought'] ?? 0;
     _totalAutoclippersBought = json['totalAutoclippersBought'] ?? 0;
     _maxComboAchieved = json['maxComboAchieved'] ?? 0;
     _totalPlayTime = Duration(seconds: json['totalPlayTime'] ?? 0);
+    notifyListeners();
   }
 }

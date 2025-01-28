@@ -2,8 +2,10 @@
 
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:io';
 import '../models/game_state.dart';
 import '../models/game_config.dart';
+import 'package:archive/archive.dart';
 
 class ValidationResult {
   final bool isValid;
@@ -297,6 +299,35 @@ class SaveManager {
   static Future<bool> saveExists(String name) async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.containsKey(_getSaveKey(name));
+  }
+  // Ajouter ces méthodes
+  static Future<String> compressSaveData(Map<String, dynamic> data) async {
+    final jsonString = jsonEncode(data);
+    final bytes = utf8.encode(jsonString);
+    final gzip = GZipCodec();
+    final compressed = gzip.encode(bytes);
+    return base64Encode(compressed);
+  }
+
+  static Future<Map<String, dynamic>> decompressSaveData(String compressed) async {
+    final decoded = base64Decode(compressed);
+    final gzip = GZipCodec();
+    final decompressed = gzip.decode(decoded);
+    final jsonString = utf8.decode(decompressed);
+    return jsonDecode(jsonString);
+  }
+
+  static Future<bool> restoreFromBackup(String backupName, GameState gameState) async {
+    try {
+      final backup = await loadGame(backupName);
+      if (backup == null) return false;
+
+      await saveGame(gameState, gameState.gameName!);
+      return true;
+    } catch (e) {
+      print('Erreur lors de la restauration: $e');
+      return false;
+    }
   }
 
 

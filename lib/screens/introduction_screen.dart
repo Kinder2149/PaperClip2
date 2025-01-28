@@ -28,7 +28,6 @@ class _IntroductionScreenState extends State<IntroductionScreen> with TickerProv
   int _currentPage = 0;
 
   void _handleNavigation() {
-    // S'assurer que le context est valide
     if (!mounted) return;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -40,7 +39,6 @@ class _IntroductionScreenState extends State<IntroductionScreen> with TickerProv
     });
   }
 
-  // Mise à jour du contenu avec des constantes
   final List<Map<String, String>> _introPages = [
     {
       'title': GameConstants.INTRO_TITLE_1,
@@ -55,19 +53,28 @@ Toutes vos ressources doivent être consacrées à cette mission cruciale.""",
       'title': GameConstants.INTRO_TITLE_2,
       'content': """MÉCANISMES DE PRODUCTION
 
-• Production manuelle et automatisée
-• Gestion des ressources et du métal
-• Système de niveau et progression
-• Marché dynamique et économie""",
+• Production manuelle et 
+  automatisée
+• Gestion des ressources et 
+  du métal
+• Système de niveau et 
+  progression
+• Marché dynamique et 
+  économie""",
     },
     {
       'title': GameConstants.INTRO_TITLE_3,
-      'content': """OPTIMISATION DES OPÉRATIONS
+      'content': """OPTIMISATION 
+DES OPÉRATIONS
 
-• Développez votre production
-• Gérez vos ressources efficacement
-• Surveillez les conditions du marché
-• Améliorez vos capacités de production""",
+• Développez votre 
+  production
+• Gérez vos ressources 
+  efficacement
+• Surveillez les conditions 
+  du marché
+• Améliorez vos capacités 
+  de production""",
     },
   ];
 
@@ -118,7 +125,7 @@ Toutes vos ressources doivent être consacrées à cette mission cruciale.""",
       body: Stack(
         children: [
           Container(
-            padding: const EdgeInsets.all(24.0),
+            padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 24.0),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
@@ -132,117 +139,127 @@ Toutes vos ressources doivent être consacrées à cette mission cruciale.""",
             child: AnimatedBuilder(
               animation: _controller,
               builder: (context, child) {
-                return Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    FadeTransition(
-                      opacity: _fadeIn,
-                      child: Transform.translate(
-                        offset: Offset(0, _slideUp.value),
-                        child: const Icon(
-                          Icons.memory,
-                          size: 80,
-                          color: Colors.white70,
-                        ),
-                      ),
+                return Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.9,
+                      maxHeight: MediaQuery.of(context).size.height * 0.8,
                     ),
-                    const SizedBox(height: 30),
-                    FadeTransition(
-                      opacity: _fadeIn,
-                      child: Transform.translate(
-                        offset: Offset(0, _slideUp.value),
-                        child: Text(
-                          _introPages[_currentPage]['title']!,
-                          style: TextStyle(
-                            fontSize: 24,
-                            letterSpacing: 2,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white.withOpacity(0.9),
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    FadeTransition(
-                      opacity: _fadeIn,
-                      child: Transform.translate(
-                        offset: Offset(0, _slideUp.value),
-                        child: Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.white30),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            _introPages[_currentPage]['content']!,
-                            style: TextStyle(
-                              fontSize: 16,
-                              height: 1.5,
-                              color: Colors.white.withOpacity(0.8),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        FadeTransition(
+                          opacity: _fadeIn,
+                          child: Transform.translate(
+                            offset: Offset(0, _slideUp.value),
+                            child: const Icon(
+                              Icons.memory,
+                              size: 80,
+                              color: Colors.white70,
                             ),
-                            textAlign: TextAlign.center,
                           ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 40),
-                    FadeTransition(
-                      opacity: _fadeIn,
-                      child: Transform.translate(
-                        offset: Offset(0, _slideUp.value),
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              if (_currentPage > 0) ...[
-                                TextButton(
-                                  onPressed: () {
-                                    setState(() {
-                                      _currentPage--;
-                                    });
-                                  },
-                                  child: const Text(
-                                    'PRÉCÉDENT',
-                                    style: TextStyle(color: Colors.white70),
-                                  ),
-                                ),
-                                const SizedBox(width: 20),
-                              ],
-                              ElevatedButton(
-                                onPressed: _currentPage < _introPages.length - 1
-                                    ? () {
-                                  setState(() {
-                                    _currentPage++;
-                                  });
-                                }
-                                    : _handleNavigation,
-                                style: ElevatedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 40,
-                                    vertical: 20,
-                                  ),
-                                  backgroundColor: Colors.white.withOpacity(0.9),
-                                  foregroundColor: Colors.deepPurple[900],
+                        const SizedBox(height: 30),
+                        FadeTransition(
+                          opacity: _fadeIn,
+                          child: Transform.translate(
+                            offset: Offset(0, _slideUp.value),
+                            child: Text(
+                              _introPages[_currentPage]['title']!,
+                              style: TextStyle(
+                                fontSize: 24,
+                                letterSpacing: 2,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white.withOpacity(0.9),
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        Expanded(
+                          child: FadeTransition(
+                            opacity: _fadeIn,
+                            child: Transform.translate(
+                              offset: Offset(0, _slideUp.value),
+                              child: Container(
+                                padding: const EdgeInsets.all(20),
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: Colors.white30),
+                                  borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: Text(
-                                  _currentPage < _introPages.length - 1
-                                      ? 'SUIVANT'
-                                      : 'INITIALISER LE SYSTÈME',
-                                  style: const TextStyle(
+                                  _introPages[_currentPage]['content']!,
+                                  style: TextStyle(
                                     fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 1,
+                                    height: 1.5,
+                                    color: Colors.white.withOpacity(0.8),
                                   ),
+                                  textAlign: TextAlign.left,
                                 ),
                               ),
-                            ],
+                            ),
                           ),
                         ),
-                      ),
+                        const SizedBox(height: 40),
+                        FadeTransition(
+                          opacity: _fadeIn,
+                          child: Transform.translate(
+                            offset: Offset(0, _slideUp.value),
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  if (_currentPage > 0) ...[
+                                    TextButton(
+                                      onPressed: () {
+                                        setState(() {
+                                          _currentPage--;
+                                        });
+                                      },
+                                      child: const Text(
+                                        'PRÉCÉDENT',
+                                        style: TextStyle(color: Colors.white70),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 20),
+                                  ],
+                                  ElevatedButton(
+                                    onPressed: _currentPage < _introPages.length - 1
+                                        ? () {
+                                      setState(() {
+                                        _currentPage++;
+                                      });
+                                    }
+                                        : _handleNavigation,
+                                    style: ElevatedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 40,
+                                        vertical: 20,
+                                      ),
+                                      backgroundColor: Colors.white.withOpacity(0.9),
+                                      foregroundColor: Colors.deepPurple[900],
+                                    ),
+                                    child: Text(
+                                      _currentPage < _introPages.length - 1
+                                          ? 'SUIVANT'
+                                          : 'INITIALISER LE SYSTÈME',
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 1,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 );
               },
             ),
@@ -272,7 +289,7 @@ Toutes vos ressources doivent être consacrées à cette mission cruciale.""",
               top: 40,
               left: 20,
               child: TextButton(
-                onPressed: _handleNavigation,  // Utilisez la même méthode
+                onPressed: _handleNavigation,
                 child: const Text(
                   'PASSER',
                   style: TextStyle(color: Colors.white70),

@@ -52,6 +52,11 @@ class StatisticsScreen extends StatelessWidget {
     );
   }
 
+  String _getDisplayValue(dynamic value) {
+    if (value == null) return '0';
+    return value.toString();
+  }
+
   Widget _buildStatRow(String label, dynamic value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -60,7 +65,7 @@ class StatisticsScreen extends StatelessWidget {
         children: [
           Text(label),
           Text(
-            value.toString(),
+            _getDisplayValue(value),
             style: const TextStyle(
               fontWeight: FontWeight.bold,
             ),
