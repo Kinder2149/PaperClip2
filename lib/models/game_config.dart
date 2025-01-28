@@ -20,7 +20,7 @@ class GameConstants {
   static const Duration CRISIS_TRANSITION_DELAY = Duration(milliseconds: 300);
   static const int CRISIS_MODE_UNLOCK_LEVEL = 5;
 
-
+gi
   // Clés de sauvegarde
   static const String SAVE_KEY = 'paperclip_game_save';
   static const String SAVE_DIR_KEY = 'paperclip_save_directory';
