@@ -2,6 +2,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:flutter/services.dart';
 import 'dart:math';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'game_config.dart';
@@ -87,6 +88,7 @@ class GameState extends ChangeNotifier {
       _levelSystem.onLevelUp = _handleLevelUp;
       _missionSystem.initialize();
       _autoSaveService.initialize();
+      _setupLifecycleListeners();  // Ajouter cette ligne
       _startTimers();
     } catch (e) {
       print('Erreur lors de la configuration: $e');
@@ -802,7 +804,43 @@ class GameState extends ChangeNotifier {
     return success;
   }
 
+  Future<void> checkAndRestoreFromBackup() async {
+    if (!_isInitialized || _gameName == null) return;
 
+    try {
+      final saves = await SaveManager.listSaves();
+      final backups = saves.where((save) =>
+          save.name.startsWith('${_gameName!}_backup_'))
+          .toList();
+
+      if (backups.isEmpty) return;
+
+      // Tenter de charger le dernier backup valide
+      backups.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+      for (var backup in backups) {
+        try {
+          await loadGame(backup.name);
+          print('Restauration réussie depuis le backup: ${backup.name}');
+          return;
+        } catch (e) {
+          print('Échec de la restauration depuis ${backup.name}: $e');
+          continue;
+        }
+      }
+    } catch (e) {
+      print('Erreur lors de la vérification des backups: $e');
+    }
+  }
+  void _setupLifecycleListeners() {
+    SystemChannels.lifecycle.setMessageHandler((String? state) async {
+      if (state == 'paused' || state == 'inactive') {
+        await saveOnImportantEvent();
+        await _autoSaveService.createBackup();
+      }
+      return null;
+    });
+  }
 
 
 

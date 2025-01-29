@@ -128,7 +128,7 @@ class GameConstants {
   // Bonus des améliorations (en pourcentage)
   static const double SPEED_BONUS_PER_LEVEL = 0.20;    // +20% vitesse
   static const double BULK_BONUS_PER_LEVEL = 0.35;     // +35% quantité
-  static const double EFFICIENCY_BONUS_PER_LEVEL = 0.15; // -15% consommation métal
+
 
   // Facteurs de réputation
   static const double REPUTATION_DECAY_RATE = 0.95;

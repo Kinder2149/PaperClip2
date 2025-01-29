@@ -70,6 +70,7 @@ class Upgrade {
           description: 'Réduit la consommation de métal',
           baseCost: 100,
           requiredLevel: 5,
+          maxLevel: 8,
         );
       case 'speed':
         return Upgrade(

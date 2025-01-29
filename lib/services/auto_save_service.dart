@@ -6,43 +6,78 @@ import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import '../models/game_state.dart';
 import '../models/event_system.dart';
-import '../models/game_config.dart'; // Ajout de cette ligne
+import '../models/game_config.dart';
 import 'save_manager.dart';
 import '../utils/update_manager.dart';
 
 class AutoSaveService {
   static const Duration AUTO_SAVE_INTERVAL = Duration(minutes: 5);
   final GameState _gameState;
-  Timer? _autoSaveTimer;
-  Timer? _backupTimer;
+  Timer? _mainTimer;
   DateTime? _lastAutoSave;
   bool _isInitialized = false;
-  static const int MAX_STORAGE_SIZE = 50 * 1024 * 1024; // 50MB total
+  static const int MAX_STORAGE_SIZE = 50 * 1024 * 1024;
   static const Duration MAX_SAVE_AGE = Duration(days: 30);
   final Map<String, int> _saveSizes = {};
   static const int MAX_TOTAL_SAVES = 10;
   static const Duration CLEANUP_INTERVAL = Duration(hours: 24);
+  int _failedSaveAttempts = 0;
+  static const int MAX_FAILED_ATTEMPTS = 3;
 
   AutoSaveService(this._gameState);
 
   Future<void> initialize() async {
     if (_isInitialized) return;
 
-    _setupPeriodicSave();
-    _setupPeriodicBackup();
-    _setupAppLifecycleSave();
-
-    _isInitialized = true;
+    await Future.microtask(() {
+      _setupMainTimer();
+      _setupAppLifecycleSave();
+      _isInitialized = true;
+    });
   }
 
-  void _setupPeriodicSave() {
-    _autoSaveTimer?.cancel();
-    _autoSaveTimer = Timer.periodic(AUTO_SAVE_INTERVAL, (_) => _performAutoSave());
+  void _setupMainTimer() {
+    _mainTimer?.cancel();
+    _mainTimer = Timer.periodic(const Duration(minutes: 5), (_) {
+      // Vérifier si l'UI n'est pas occupée avant de sauvegarder
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _performAutoSave();
+      });
+    });
+  }
+  Future<void> createBackup() async {
+    if (!_isInitialized || _gameState.gameName == null) return;
+
+    try {
+      final backupName = '${_gameState.gameName!}_backup_${DateTime.now().millisecondsSinceEpoch}';
+      // Créer le backup de manière asynchrone pour ne pas bloquer l'UI
+      await Future.microtask(() async {
+        await SaveManager.saveGame(_gameState, backupName);
+      });
+
+      // Nettoyer les vieux backups de manière asynchrone
+      Future.microtask(() => _cleanupOldBackups());
+    } catch (e) {
+      print('Erreur lors de la création du backup: $e');
+    }
   }
 
-  void _setupPeriodicBackup() {
-    _backupTimer?.cancel();
-    _backupTimer = Timer.periodic(const Duration(hours: 24), (_) => _performBackup());
+  Future<void> _cleanupOldBackups() async {
+    try {
+      final saves = await SaveManager.listSaves();
+      final backups = saves.where((save) =>
+          save.name.contains('_backup_')).toList();
+
+      // Garder seulement les 3 derniers backups
+      if (backups.length > 3) {
+        backups.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+        for (var i = 3; i < backups.length; i++) {
+          await SaveManager.deleteSave(backups[i].name);
+        }
+      }
+    } catch (e) {
+      print('Erreur lors du nettoyage des backups: $e');
+    }
   }
 
   void _setupAppLifecycleSave() {
@@ -58,70 +93,31 @@ class AutoSaveService {
     if (!_gameState.isInitialized || _gameState.gameName == null) return;
 
     try {
-      var gameData = _gameState.prepareGameData();
-
-      // Ajouter les métadonnées
-      gameData['metadata'] = {
-        'saveDate': DateTime.now().toIso8601String(),
-        'userLogin': 'Kinder2149',
-        'gameVersion': GameConstants.VERSION,
-        'saveType': 'auto',
-      };
-
-      // Vérifications existantes
-      if (!await _checkSaveSize(gameData)) {
-        throw SaveError('SIZE_ERROR', 'Taille de sauvegarde excessive');
-      }
-
-      final validationResult = SaveIntegrityService.deepValidate(gameData);
-      if (!validationResult.isValid) {
-        throw SaveError('VALIDATION_ERROR', validationResult.errors.join('\n'));
-      }
-
       await SaveManager.saveGame(_gameState, _gameState.gameName!);
+      _failedSaveAttempts = 0;  // Réinitialiser le compteur en cas de succès
       _lastAutoSave = DateTime.now();
-
-      // Notification existante
-      EventManager.instance.addEvent(
-        EventType.INFO,
-        "Sauvegarde Automatique",
-        description: "Partie sauvegardée avec succès",
-        importance: EventImportance.LOW,
-        additionalData: {
-          'silent': true,
-          'timestamp': DateTime.now().toIso8601String(),
-          'saveSize': _saveSizes[_gameState.gameName!],
-        },
-      );
     } catch (e) {
       print('Erreur lors de la sauvegarde automatique: $e');
-      _handleSaveError(e);
+      await _handleSaveError(e);
     }
   }
+
 
   Future<bool> _checkSaveSize(Map<String, dynamic> data) async {
     final jsonString = jsonEncode(data);
     final size = utf8.encode(jsonString).length;
 
-    // Mettre à jour le suivi de la taille
     if (_gameState.gameName != null) {
       _saveSizes[_gameState.gameName!] = size;
     }
 
-    // Vérifier la taille totale
-    int totalSize = _saveSizes.values.fold(0, (sum, size) => sum + size);
-    if (totalSize > MAX_STORAGE_SIZE) {
-      await _cleanupStorage();
-    }
-
     return size <= MAX_STORAGE_SIZE;
   }
+
   Future<void> _cleanupStorage() async {
     final saves = await SaveManager.listSaves();
-    // Trier par date, plus ancien d'abord
     saves.sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
-    // Supprimer les sauvegardes trop anciennes
     final now = DateTime.now();
     for (var save in saves) {
       if (now.difference(save.timestamp) > MAX_SAVE_AGE &&
@@ -139,37 +135,16 @@ class AutoSaveService {
       final backupName = '${_gameState.gameName!}_backup_${DateTime.now().millisecondsSinceEpoch}';
       await SaveManager.saveGame(_gameState, backupName);
       await _cleanupOldBackups();
-
-      EventManager.instance.addEvent(
-        EventType.INFO,
-        "Backup Créé",
-        description: "Sauvegarde de secours créée avec succès",
-        importance: EventImportance.LOW,
-      );
     } catch (e) {
       print('Erreur lors de la création du backup: $e');
     }
   }
 
-  Future<void> _cleanupOldBackups() async {
-    final backups = await SaveManager.listSaves();
-    final gameBackups = backups.where((save) =>
-        save.name.startsWith('${_gameState.gameName!}_backup_'))
-        .toList()
-      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
-
-    if (backups.length > 3) { // Garder seulement les 3 derniers backups
-      for (var i = 3; i < backups.length; i++) {
-        await SaveManager.deleteSave(backups[i].name);
-      }
-    }
-  }
 
   Future<void> _performSaveOnExit() async {
     if (!_gameState.isInitialized || _gameState.gameName == null) return;
 
     try {
-      await _performBackup();
       await SaveManager.saveGame(_gameState, _gameState.gameName!);
       _lastAutoSave = DateTime.now();
     } catch (e) {
@@ -177,138 +152,29 @@ class AutoSaveService {
     }
   }
 
-  void _handleSaveError(dynamic error) {
-    EventManager.instance.addEvent(
-      EventType.RESOURCE_DEPLETION,  // Changé de ERROR à RESOURCE_DEPLETION
-      "Erreur de Sauvegarde",
-      description: "Impossible de sauvegarder la partie",
-      importance: EventImportance.HIGH,
-      additionalData: {'error': error.toString()},
-    );
+  Future<void> _handleSaveError(dynamic error) async {
+    _failedSaveAttempts++;
+
+    if (_failedSaveAttempts >= MAX_FAILED_ATTEMPTS) {
+      await createBackup();
+      _failedSaveAttempts = 0;
+
+      // Changer ERROR pour RESOURCE_DEPLETION ou un autre type existant
+      EventManager.instance.addEvent(
+        EventType.RESOURCE_DEPLETION,  // Au lieu de EventType.ERROR
+        "Problème de sauvegarde",
+        description: "Une sauvegarde de secours a été créée",
+        importance: EventImportance.HIGH,
+      );
+    }
   }
+
 
   DateTime? get lastAutoSave => _lastAutoSave;
 
   void dispose() {
-    _autoSaveTimer?.cancel();
-    _backupTimer?.cancel();
-    _autoSaveTimer = null;
-    _backupTimer = null;
-  }
-}
-class SaveIntegrityService {
-  static const int SAVE_VERSION = 1;
-
-  static bool validateSaveData(Map<String, dynamic> saveData) {
-    if (!_checkRequiredFields(saveData)) {
-      print('Validation échouée: champs requis manquants');
-      return false;
-    }
-
-    if (!_checkDataConsistency(saveData)) {
-      print('Validation échouée: incohérence des données');
-      return false;
-    }
-
-    return true;
-  }
-  static ValidationResult deepValidate(Map<String, dynamic> saveData) {
-    final errors = <String>[];
-
-    if (!_checkRequiredFields(saveData)) {
-      errors.add('Champs requis manquants');
-    }
-
-    if (!_checkDataConsistency(saveData)) {
-      errors.add('Incohérence des données');
-    }
-
-    if (!_validateGameState(saveData)) {
-      errors.add('État de jeu invalide');
-    }
-
-    return ValidationResult(
-      isValid: errors.isEmpty,
-      errors: errors,
-    );
-  }
-
-  // Ajouter cette méthode
-  static bool _validateGameState(Map<String, dynamic> saveData) {
-    try {
-      final playerData = saveData['playerManager'] as Map<String, dynamic>;
-      final marketData = saveData['marketManager'] as Map<String, dynamic>;
-
-      // Vérification des valeurs négatives
-      if ((playerData['money'] as double) < 0 ||
-          (playerData['metal'] as double) < 0 ||
-          (playerData['paperclips'] as double) < 0) {
-        return false;
-      }
-
-      // Vérification des limites
-      if ((playerData['metal'] as double) > (playerData['maxMetalStorage'] as double)) {
-        return false;
-      }
-
-      // Vérification de la cohérence du marché
-      if ((marketData['marketMetalStock'] as double) < 0) {
-        return false;
-      }
-
-      return true;
-    } catch (e) {
-      print('Erreur de validation: $e');
-      return false;
-    }
-  }
-
-
-  static bool _checkRequiredFields(Map<String, dynamic> saveData) {
-    final requiredFields = [
-      'version',
-      'timestamp',
-      'playerManager',
-      'marketManager',
-      'levelSystem',
-      'statistics'
-    ];
-
-    return requiredFields.every((field) => saveData.containsKey(field));
-  }
-
-  static bool _checkDataConsistency(Map<String, dynamic> saveData) {
-    try {
-      // Vérification de la version
-      final version = saveData['version'] as String;
-      if (version != GameConstants.VERSION) {
-        print('Version de sauvegarde incompatible');
-        return false;
-      }
-
-      // Vérification de la cohérence des ressources
-      final playerData = saveData['playerManager'] as Map<String, dynamic>;
-      if (!_validateResourceLimits(playerData)) {
-        return false;
-      }
-
-      return true;
-    } catch (e) {
-      print('Erreur lors de la vérification de cohérence: $e');
-      return false;
-    }
-  }
-
-  static bool _validateResourceLimits(Map<String, dynamic> playerData) {
-    final metal = playerData['metal'] as double? ?? 0.0;
-    final maxStorage = playerData['maxMetalStorage'] as double? ?? 0.0;
-
-    if (metal < 0 || metal > maxStorage) {
-      print('Valeurs de ressources invalides');
-      return false;
-    }
-
-    return true;
+    _mainTimer?.cancel();
+    _mainTimer = null;
   }
 }
 class ValidationResult {

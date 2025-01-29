@@ -6,6 +6,7 @@ import 'dart:io';
 import '../models/game_state.dart';
 import '../models/game_config.dart';
 import 'package:archive/archive.dart';
+import 'package:flutter/foundation.dart';
 
 class ValidationResult {
   final bool isValid;
@@ -138,6 +139,26 @@ class SaveDataValidator {
 
     return true;
   }
+  static Future<bool> quickValidate(Map<String, dynamic> data) async {
+    try {
+      if (!data.containsKey('version') ||
+          !data.containsKey('timestamp') ||
+          !data.containsKey('playerManager')) {
+        return false;
+      }
+
+      // Vérification rapide des données critiques
+      final playerData = data['playerManager'] as Map<String, dynamic>?;
+      if (playerData == null) return false;
+
+      return playerData.containsKey('money') &&
+          playerData.containsKey('metal') &&
+          playerData.containsKey('paperclips');
+    } catch (e) {
+      print('Erreur de validation rapide: $e');
+      return false;
+    }
+  }
 
   static bool _validateType(dynamic value, String expectedType) {
     switch (expectedType) {
@@ -239,6 +260,7 @@ class SaveManager {
   static final DateTime CURRENT_DATE = DateTime(2025, 1, 23, 15, 15, 49);
   static const String CURRENT_USER = 'Kinder2149';
   static const String CURRENT_VERSION = '1.0.0';
+  static const int COMPRESSION_CHUNK_SIZE = 1024 * 512; // 512KB chunks
   static String _getSaveKey(String gameName) => '$SAVE_PREFIX$gameName';
 
   // Obtenir la clé de sauvegarde unique pour une partie
@@ -253,42 +275,31 @@ class SaveManager {
 
       final gameData = gameState.prepareGameData();
 
-      // Debug: Vérifions les données avant la validation
-      print('Données préparées pour la sauvegarde:');
-      print('Contains playerManager: ${gameData.containsKey('playerManager')}');
-
-      final validationResult = SaveDataValidator.validate(gameData);
-      if (!validationResult.isValid) {
-        throw SaveError(
-          'VALIDATION_ERROR',
-          'Données invalides:\n${validationResult.errors.join('\n')}',
-        );
+      // Validation simple et rapide au lieu de la validation complète
+      if (!_quickValidate(gameData)) {
+        throw SaveError('VALIDATION_ERROR', 'Données de base manquantes');
       }
 
       final saveData = SaveGame(
         name: name,
         lastSaveTime: DateTime.now(),
-        gameData: validationResult.validatedData!,
+        gameData: gameData,  // Utiliser directement gameData sans validation supplémentaire
         version: GameConstants.VERSION,
       );
 
       final prefs = await SharedPreferences.getInstance();
       final key = _getSaveKey(name);
-      final jsonData = saveData.toJson();
-
-      // Debug: Vérifions les données après la conversion
-      print('Données après conversion JSON:');
-      print('Contains playerManager: ${jsonData.containsKey('playerManager')}');
-
-      await prefs.setString(key, jsonEncode(jsonData));
-
-      // Vérification post-sauvegarde
-      await debugSave(name);
+      await prefs.setString(key, jsonEncode(saveData.toJson()));
 
     } catch (e) {
       print('Erreur lors de la sauvegarde: $e');
       rethrow;
     }
+  }
+  static bool _quickValidate(Map<String, dynamic> data) {
+    return data.containsKey('playerManager') &&
+        data.containsKey('marketManager') &&
+        data.containsKey('levelSystem');
   }
 
   static Future<SaveGameInfo?> getLastSave() async {
@@ -301,13 +312,19 @@ class SaveManager {
     return prefs.containsKey(_getSaveKey(name));
   }
   // Ajouter ces méthodes
-  static Future<String> compressSaveData(Map<String, dynamic> data) async {
+  Future<String> compressSaveData(Map<String, dynamic> data) async {
     final jsonString = jsonEncode(data);
     final bytes = utf8.encode(jsonString);
-    final gzip = GZipCodec();
-    final compressed = gzip.encode(bytes);
+
+    // Utiliser compute pour déplacer la compression sur un autre thread
+    final compressed = await compute(_compressBytes, bytes);
     return base64Encode(compressed);
   }
+
+  static List<int> _compressBytes(List<int> input) {
+    return GZipEncoder().encode(input) ?? [];
+  }
+
 
   static Future<Map<String, dynamic>> decompressSaveData(String compressed) async {
     final decoded = base64Decode(compressed);
