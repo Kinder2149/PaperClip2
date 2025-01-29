@@ -39,16 +39,15 @@ dev_dependencies:
 
 # Configuration des icônes
 flutter_icons:
-  android: "launcher_icon"
+  android: "ic_launcher" 
   ios: true
-  image_path: "assets/icon/icon.png"
-  adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: "assets/icon/icon_foreground.png"
+  image_path: "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png"
+  adaptive_icon_background: "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_adaptive_back.png"
+  adaptive_icon_foreground: "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_adaptive_fore.png"
 
 flutter:
   assets:
     - assets/
     - assets/audio/ambient-technology.wav
     - assets/audio/screenmusic.wav
-    - assets/icon/
   uses-material-design: true
