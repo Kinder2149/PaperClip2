@@ -8,6 +8,7 @@ import 'save_load_screen.dart';
 import 'introduction_screen.dart';
 import 'main_screen.dart';
 
+
 class StartScreen extends StatefulWidget {
   const StartScreen({super.key});
 
@@ -43,7 +44,8 @@ class _StartScreenState extends State<StartScreen> {
         if (mounted) {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => const MainScreen()),  // MainGame -> MainScreen
+            MaterialPageRoute(builder: (
+                context) => const MainScreen()), // MainGame -> MainScreen
           );
         }
       } else {
@@ -74,101 +76,108 @@ class _StartScreenState extends State<StartScreen> {
 
   void _showNewGameDialog(BuildContext context) async {
     final controller = TextEditingController(
-      text: 'Partie ${DateTime.now().day}/${DateTime.now().month}',
+      text: 'Partie ${DateTime
+          .now()
+          .day}/${DateTime
+          .now()
+          .month}',
     );
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Nouvelle Partie'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: controller,
-              decoration: const InputDecoration(
-                labelText: 'Nom de la partie',
-                hintText: 'Entrez un nom pour votre partie',
-                border: OutlineInputBorder(),
+      builder: (context) =>
+          AlertDialog(
+            title: const Text('Nouvelle Partie'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: controller,
+                  decoration: const InputDecoration(
+                    labelText: 'Nom de la partie',
+                    hintText: 'Entrez un nom pour votre partie',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Cette action créera une nouvelle sauvegarde',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Annuler'),
               ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Cette action créera une nouvelle sauvegarde',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Annuler'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final gameName = controller.text.trim();
-              if (gameName.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Le nom ne peut pas être vide')),
-                );
-                return;
-              }
+              ElevatedButton(
+                onPressed: () async {
+                  final gameName = controller.text.trim();
+                  if (gameName.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text('Le nom ne peut pas être vide')),
+                    );
+                    return;
+                  }
 
-              final exists = await SaveManager.saveExists(gameName);
-              if (exists) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Une partie avec ce nom existe déjà'),
-                      backgroundColor: Colors.orange,
-                    ),
-                  );
-                }
-                return;
-              }
+                  final exists = await SaveManager.saveExists(gameName);
+                  if (exists) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Une partie avec ce nom existe déjà'),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                    }
+                    return;
+                  }
 
-              if (context.mounted) {
-                Navigator.pop(context);
-                setState(() => _isLoading = true);
-                try {
-                  await context.read<GameState>().startNewGame(gameName);
                   if (context.mounted) {
-                    // Créer une classe intermédiaire pour la navigation
-                    final introScreen = IntroductionScreen(
-                      showSkipButton: true,
-                      onStart: () {
+                    Navigator.pop(context);
+                    setState(() => _isLoading = true);
+                    try {
+                      await context.read<GameState>().startNewGame(gameName);
+                      if (context.mounted) {
+                        // Créer une classe intermédiaire pour la navigation
+                        final introScreen = IntroductionScreen(
+                          showSkipButton: true,
+                          onStart: () {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const MainScreen()),
+                            );
+                          },
+                        );
+
                         Navigator.pushReplacement(
                           context,
-                          MaterialPageRoute(builder: (_) => const MainScreen()),
+                          MaterialPageRoute(builder: (_) => introScreen),
                         );
-                      },
-                    );
-
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (_) => introScreen),
-                    );
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Erreur lors de la création: $e'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    } finally {
+                      if (mounted) {
+                        setState(() => _isLoading = false);
+                      }
+                    }
                   }
-                } catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Erreur lors de la création: $e'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                  }
-                } finally {
-                  if (mounted) {
-                    setState(() => _isLoading = false);
-                  }
-                }
-              }
-            },
-            child: const Text('Commencer'),
+                },
+                child: const Text('Commencer'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
@@ -182,8 +191,9 @@ class _StartScreenState extends State<StartScreen> {
             end: Alignment.bottomRight,
             colors: [
               Colors.deepPurple[400]!,
-              Colors.deepPurple[700]!,
+              Colors.deepPurple[800]!,
             ],
+            stops: const [0.3, 1.0],
           ),
         ),
         child: SafeArea(
@@ -192,10 +202,18 @@ class _StartScreenState extends State<StartScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Image.asset(
-                  'assets/icone.png',
-                  width: 120,
-                  height: 120,
+                // Logo et titre
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withOpacity(0.1),
+                  ),
+                  child: const Icon(
+                    Icons.link,  // ou une autre icône qui représente votre app
+                    size: 120,
+                    color: Colors.white,
+                  ),
                 ),
                 const SizedBox(height: 20),
                 const Text(
@@ -210,14 +228,23 @@ class _StartScreenState extends State<StartScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  'v${UpdateManager.CURRENT_VERSION}',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.8),
-                    fontSize: 16,
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text(
+                    'v${UpdateManager.CURRENT_VERSION}',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.8),
+                      fontSize: 16,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 40),
+                // Boutons du menu
                 _buildMenuButton(
                   onPressed: () => _showNewGameDialog(context),
                   icon: Icons.add,
@@ -233,21 +260,33 @@ class _StartScreenState extends State<StartScreen> {
                   color: Colors.deepPurple[600],
                   textColor: Colors.white,
                   trailing: _lastSaveInfo != null
-                      ? Text(
-                    _lastSaveInfo!,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.white70,
+                      ? Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      _lastSaveInfo!,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.white70,
+                      ),
                     ),
                   )
                       : null,
                 ),
                 const SizedBox(height: 16),
                 _buildMenuButton(
-                  onPressed: _isLoading ? null : () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const SaveLoadScreen()),
-                  ),
+                  onPressed: _isLoading ? null : () =>
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => const SaveLoadScreen()),
+                      ),
                   icon: Icons.folder_open,
                   label: 'Charger une partie',
                   color: Colors.deepPurple[500],
@@ -255,8 +294,25 @@ class _StartScreenState extends State<StartScreen> {
                 ),
                 if (_isLoading) ...[
                   const SizedBox(height: 24),
-                  const CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Column(
+                      children: [
+                        CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Chargement...',
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ],
@@ -277,27 +333,43 @@ class _StartScreenState extends State<StartScreen> {
   }) {
     return SizedBox(
       width: double.infinity,
-      child: ElevatedButton.icon(
+      child: ElevatedButton(
         onPressed: onPressed,
-        icon: Icon(icon),
-        label: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label),
-            if (trailing != null) trailing,
-          ],
-        ),
         style: ElevatedButton.styleFrom(
           foregroundColor: textColor,
           backgroundColor: color,
           padding: const EdgeInsets.symmetric(
-            horizontal: 32,
+            horizontal: 24,
             vertical: 16,
           ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(30),
           ),
+          elevation: onPressed != null ? 3 : 0,
           disabledBackgroundColor: color?.withOpacity(0.6),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: textColor?.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            if (trailing != null) trailing,
+          ],
         ),
       ),
     );

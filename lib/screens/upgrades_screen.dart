@@ -140,61 +140,65 @@ class UpgradesScreen extends StatelessWidget {
       elevation: 2,
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Row(
-              children: [
-                const Icon(Icons.bar_chart, size: 24),
-                const SizedBox(width: 8),
-                const Text(
-                  'Niveau de Production',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+            // Section niveau et progression (gauche)
+            Expanded(
+              flex: 2,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.bar_chart, size: 24, color: Colors.blue[700]),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Niveau ${gameState.level.level}',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue[700],
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const Spacer(),
-                Text(
-                  'Niveau ${gameState.level.level}',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue,
+                  const SizedBox(height: 12),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: LinearProgressIndicator(
+                      value: gameState.level.experienceProgress,
+                      minHeight: 12,
+                      backgroundColor: Colors.grey[200],
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.blue[400]!),
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: LinearProgressIndicator(
-                value: gameState.level.experienceProgress,
-                backgroundColor: Colors.grey[200],
-                valueColor: const AlwaysStoppedAnimation<Color>(Colors.green),
-                minHeight: 10,
+                ],
               ),
             ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _buildStatItem(
-                  Icons.precision_manufacturing,
-                  'Production',
-                  '${gameState.totalPaperclipsProduced}',
-                ),
-                _buildStatItem(
-                  Icons.trending_up,
-                  'Multiplicateur',
-                  'x${gameState.level.productionMultiplier.toStringAsFixed(1)}',
-                ),
-                _buildStatItem(
-                  Icons.timer,
-                  'Temps de jeu',
-                  _formatDuration(gameState.totalTimePlayed),
-                ),
-              ],
+            const SizedBox(width: 16),
+            // Section statistiques (droite)
+            Expanded(
+              flex: 3,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _buildStatItem(
+                    Icons.precision_manufacturing,
+                    'Production',
+                    '${gameState.totalPaperclipsProduced}',
+                  ),
+                  _buildStatItem(
+                    Icons.trending_up,
+                    'Multi.',
+                    'x${gameState.level.productionMultiplier.toStringAsFixed(1)}',
+                  ),
+                  _buildStatItem(
+                    Icons.timer,
+                    'Temps',
+                    _formatDuration(gameState.totalTimePlayed),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -205,13 +209,14 @@ class UpgradesScreen extends StatelessWidget {
   Widget _buildStatItem(IconData icon, String label, String value) {
     return Column(
       children: [
-        Icon(icon, size: 20, color: Colors.grey[700]),
+        Icon(icon, size: 24, color: Colors.grey[700]),
         const SizedBox(height: 4),
         Text(
           label,
           style: TextStyle(
             fontSize: 12,
             color: Colors.grey[600],
+            fontWeight: FontWeight.w500,
           ),
         ),
         Text(
@@ -232,6 +237,7 @@ class UpgradesScreen extends StatelessWidget {
         final visibleElements = gameState.getVisibleScreenElements();
 
         if (visibleElements['upgradesSection'] != true) {
+          // Garder votre écran de verrouillage tel quel
           return const Padding(
             padding: EdgeInsets.all(16.0),
             child: Column(
@@ -271,18 +277,24 @@ class UpgradesScreen extends StatelessWidget {
             children: [
               const MoneyDisplay(),
               const SizedBox(height: 16),
+              // Garde la même carte de statistiques mais avec une meilleure organisation
               _buildStatisticsCard(gameState),
               const SizedBox(height: 16),
               Expanded(
-                child: ListView(
-                  children: gameState.player.upgrades.entries
-                      .map((entry) => _buildUpgradeCard(
-                    context,
-                    gameState,
-                    entry.key,
-                    entry.value,
-                  ))
-                      .toList(),
+                child: ListView.builder(
+                  itemCount: gameState.player.upgrades.length,
+                  itemBuilder: (context, index) {
+                    final entry = gameState.player.upgrades.entries.elementAt(index);
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8.0),
+                      child: _buildUpgradeCard(
+                        context,
+                        gameState,
+                        entry.key,
+                        entry.value,
+                      ),
+                    );
+                  },
                 ),
               ),
             ],
@@ -291,16 +303,7 @@ class UpgradesScreen extends StatelessWidget {
       },
     );
   }
-
-  Widget _buildUpgradeCard(
-      BuildContext context,
-      GameState gameState,
-      String id,
-      Upgrade upgrade,
-      ) {
-    bool canBuy = gameState.player.money >= upgrade.getCost() && upgrade.level < upgrade.maxLevel;
-    bool isMaxed = upgrade.level >= upgrade.maxLevel;
-
+  Widget _buildRequirements(GameState gameState, Upgrade upgrade) {
     Map<String, bool> requirements = {
       'Niveau requis: ${upgrade.requiredLevel}':
       gameState.level.level >= upgrade.requiredLevel!,
@@ -308,128 +311,147 @@ class UpgradesScreen extends StatelessWidget {
       gameState.player.money >= upgrade.getCost(),
     };
 
-    if (id == 'automation') {
-      requirements['Autoclippers requis: 5'] = gameState.player.autoclippers >= 5;
-    }
-    if (id == 'marketing') {
-      requirements['Production totale: 1000'] = gameState.totalPaperclipsProduced >= 1000;
-    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Conditions requises :',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Colors.grey,
+          ),
+        ),
+        const SizedBox(height: 4),
+        ...requirements.entries.map((requirement) => Row(
+          children: [
+            Icon(
+              requirement.value ? Icons.check_circle : Icons.cancel,
+              size: 16,
+              color: requirement.value ? Colors.green : Colors.red,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              requirement.key,
+              style: TextStyle(
+                fontSize: 12,
+                color: requirement.value ? Colors.green : Colors.red,
+              ),
+            ),
+          ],
+        )).toList(),
+      ],
+    );
+  }
+  Widget _buildUpgradeCard(BuildContext context, GameState gameState, String id, Upgrade upgrade) {
+    bool canBuy = gameState.player.money >= upgrade.getCost() && upgrade.level < upgrade.maxLevel;
+    bool isMaxed = upgrade.level >= upgrade.maxLevel;
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8),
+      elevation: canBuy ? 3 : 1,
       child: InkWell(
         onTap: canBuy ? () => gameState.purchaseUpgrade(id) : null,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    _getUpgradeIcon(id),
-                    size: 24,
-                    color: canBuy ? Colors.blue : Colors.grey,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          upgrade.name,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: canBuy ? Colors.black87 : Colors.grey,
-                          ),
-                        ),
-                        Text(
-                          upgrade.description,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (!isMaxed)
-                    Text(
-                      '${upgrade.getCost().toStringAsFixed(1)} €',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: canBuy ? Colors.green : Colors.grey,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 8),
-
-              // Affichage de l'aperçu de l'impact
-              if (!isMaxed) _buildUpgradeImpactPreview(id, upgrade, gameState),
-
-              // Affichage des conditions requises
-              if (!canBuy && !isMaxed) ...[
-                const Divider(),
-                const Text(
-                  'Conditions requises :',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                ...requirements.entries.map((requirement) => Row(
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(4),
+            border: canBuy
+                ? Border.all(color: Colors.blue.shade200)
+                : isMaxed
+                ? Border.all(color: Colors.green.shade200)
+                : null,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
                     Icon(
-                      requirement.value ? Icons.check_circle : Icons.cancel,
-                      size: 16,
-                      color: requirement.value ? Colors.green : Colors.red,
+                      _getUpgradeIcon(id),
+                      size: 24,
+                      color: isMaxed ? Colors.green : (canBuy ? Colors.blue : Colors.grey),
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            upgrade.name,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: isMaxed ? Colors.green : (canBuy ? Colors.black87 : Colors.grey),
+                            ),
+                          ),
+                          Text(
+                            upgrade.description,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (!isMaxed)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: canBuy ? Colors.green.shade50 : Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '${upgrade.getCost().toStringAsFixed(1)} €',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: canBuy ? Colors.green[700] : Colors.grey,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                if (!isMaxed) _buildUpgradeImpactPreview(id, upgrade, gameState),
+
+                if (!canBuy && !isMaxed) ...[
+                  const Divider(height: 24),
+                  _buildRequirements(gameState, upgrade),
+                ],
+
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: LinearProgressIndicator(
+                          value: upgrade.level / upgrade.maxLevel,
+                          backgroundColor: Colors.grey[200],
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            isMaxed ? Colors.green : Colors.blue,
+                          ),
+                          minHeight: 8,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
                     Text(
-                      requirement.key,
+                      'Niveau ${upgrade.level}/${upgrade.maxLevel}',
                       style: TextStyle(
-                        fontSize: 12,
-                        color: requirement.value ? Colors.green : Colors.red,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[700],
                       ),
                     ),
                   ],
-                )).toList(),
-                const SizedBox(height: 8),
+                ),
               ],
-
-              // Barre de progression
-              Row(
-                children: [
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: LinearProgressIndicator(
-                        value: upgrade.level / upgrade.maxLevel,
-                        backgroundColor: Colors.grey[200],
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          isMaxed ? Colors.green : Colors.blue,
-                        ),
-                        minHeight: 8,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Niveau ${upgrade.level}/${upgrade.maxLevel}',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
-              ),
-            ],
+            ),
           ),
         ),
       ),

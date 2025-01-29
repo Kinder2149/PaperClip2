@@ -192,6 +192,9 @@ class _ProductionScreenState extends State<ProductionScreen> {
   Widget _buildAutoclippersSection(BuildContext context, GameState gameState) {
     double bulkBonus = (gameState.player.upgrades['bulk']?.level ?? 0) * 20;
     double speedBonus = (gameState.player.upgrades['speed']?.level ?? 0) * 15;
+    double efficiencyBonus = 1.0 -
+        ((gameState.player.upgrades['efficiency']?.level ?? 0) * 0.15);
+    double roi = gameState.player.calculateAutoclipperROI();
 
     return Card(
       elevation: 2,
@@ -205,22 +208,38 @@ class _ProductionScreenState extends State<ProductionScreen> {
                 const Icon(Icons.precision_manufacturing),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    'Autoclippers: ${gameState.player.autoclippers}',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Autoclippers: ${gameState.player.autoclippers}',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      Text(
+                        'Rentabilité: ${(gameState.player
+                            .calculateAutoclipperCost() /
+                            (GameConstants.BASE_AUTOCLIPPER_PRODUCTION *
+                                gameState.player.sellPrice)).toStringAsFixed(
+                            1)}s',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 IconButton(
                   icon: const Icon(Icons.info_outline),
                   onPressed: () =>
                       _showAutoclipperInfoDialog(
-                          context,
-                          gameState,
-                          bulkBonus,
-                          speedBonus
+                        context,
+                        gameState,
+                        bulkBonus,
+                        speedBonus,
                       ),
                 ),
               ],
@@ -238,6 +257,11 @@ class _ProductionScreenState extends State<ProductionScreen> {
                   'Vitesse',
                   '${speedBonus.toStringAsFixed(0)}%',
                   Icons.speed,
+                ),
+                _buildBonusIndicator(
+                  'Efficacité',
+                  '${(efficiencyBonus * 100).toStringAsFixed(0)}%',
+                  Icons.eco,
                 ),
               ],
             ),
@@ -303,42 +327,46 @@ class _ProductionScreenState extends State<ProductionScreen> {
   void _showMarketInfoDialog(BuildContext context, GameState gameState) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Informations du Marché'),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Réputation: ${gameState.market.reputation.toStringAsFixed(2)}'),
-              const Text(
-                'Influence les ventes et les prix maximum.',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
+      builder: (context) =>
+          AlertDialog(
+            title: const Text('Informations du Marché'),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Réputation: ${gameState.market.reputation
+                      .toStringAsFixed(2)}'),
+                  const Text(
+                    'Influence les ventes et les prix maximum.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  const Divider(),
+                  Text('Demande actuelle: ${(gameState.market.calculateDemand(
+                      gameState.player.sellPrice,
+                      gameState.player.getMarketingLevel()) * 100)
+                      .toStringAsFixed(0)}%'),
+                  const Text(
+                    'Basée sur le prix et le niveau marketing.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  const Divider(),
+                  Text('Stock mondial de métal: ${gameState.resources
+                      .marketMetalStock.toStringAsFixed(0)}'),
+                  const Text(
+                    'Influence les prix et la disponibilité.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
               ),
-              const Divider(),
-              Text('Demande actuelle: ${(gameState.market.calculateDemand(
-                  gameState.player.sellPrice,
-                  gameState.player.getMarketingLevel()) * 100).toStringAsFixed(0)}%'),
-              const Text(
-                'Basée sur le prix et le niveau marketing.',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-              const Divider(),
-              Text('Stock mondial de métal: ${gameState.resources.marketMetalStock.toStringAsFixed(0)}'),
-              const Text(
-                'Influence les prix et la disponibilité.',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Fermer'),
               ),
             ],
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Fermer'),
-          ),
-        ],
-      ),
     );
   }
 
@@ -377,6 +405,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
       ],
     );
   }
+
   Widget _buildMarketInfoCard(BuildContext context, GameState gameState) {
     return Card(
       elevation: 2,
@@ -414,7 +443,8 @@ class _ProductionScreenState extends State<ProductionScreen> {
               'Demande',
               '${(gameState.market.calculateDemand(
                   gameState.player.sellPrice,
-                  gameState.player.getMarketingLevel()) * 100).toStringAsFixed(0)}%',
+                  gameState.player.getMarketingLevel()) * 100).toStringAsFixed(
+                  0)}%',
               Icons.people,
             ),
             _buildMarketIndicator(
@@ -428,9 +458,133 @@ class _ProductionScreenState extends State<ProductionScreen> {
     );
   }
 
+  Widget _buildProductionStatsCard(GameState gameState) {
+    double efficiencyBonus = 1.0 -
+        ((gameState.player.upgrades['efficiency']?.level ?? 0) * 0.15);
+    double baseProduction = gameState.player.autoclippers * 60;
+    double actualProduction = baseProduction * efficiencyBonus;
 
-
-
+    return Card(
+      elevation: 2,
+      color: Colors.blue.shade50,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Statistiques de Production',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const Divider(),
+            // Utilisation de Wrap au lieu de Row pour éviter l'overflow
+            Wrap(
+              spacing: 20, // Espace horizontal entre les éléments
+              runSpacing: 10, // Espace vertical entre les lignes
+              children: [
+                // Première colonne
+                SizedBox(
+                  width: 160, // Largeur fixe pour la première colonne
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Production/min:',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                      Text(
+                        baseProduction.toStringAsFixed(1),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Deuxième colonne
+                SizedBox(
+                  width: 160, // Largeur fixe pour la deuxième colonne
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Production effective:',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                      Text(
+                        actualProduction.toStringAsFixed(1),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Troisième colonne
+                SizedBox(
+                  width: 160, // Largeur fixe pour la troisième colonne
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Rendement:',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                      Text(
+                        '${(efficiencyBonus * 100).toStringAsFixed(0)}%',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Quatrième colonne
+                SizedBox(
+                  width: 160, // Largeur fixe pour la quatrième colonne
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Métal utilisé/min:',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                      Text(
+                        (actualProduction * GameConstants.METAL_PER_PAPERCLIP)
+                            .toStringAsFixed(1),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            // Information sur les coûts de maintenance
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'Coût maintenance: ${gameState.maintenanceCosts.toStringAsFixed(
+                    2)} €/min',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -450,33 +604,49 @@ class _ProductionScreenState extends State<ProductionScreen> {
                       const MoneyDisplay(),
                       const SizedBox(height: 16),
 
+                      // Ressources existantes
                       Row(
                         children: [
                           _buildResourceCard(
-                            'Total Trombones Créés',
-                            // Modification ici pour utiliser formatNumber sans le symbole €
-                            MoneyDisplay.formatNumber(gameState.totalPaperclipsProduced.toDouble(), isInteger: true).replaceAll(' €', ''),
+                            'Total Trombones',
+                            MoneyDisplay.formatNumber(
+                                gameState.totalPaperclipsProduced.toDouble(),
+                                isInteger: true).replaceAll(' €', ''),
                             Colors.purple.shade100,
-                            onTap: () => _showInfoDialog(
-                              context,
-                              'Statistiques de Production',
-                              'Total produit: ${MoneyDisplay.formatNumber(gameState.totalPaperclipsProduced.toDouble(), isInteger: true).replaceAll(' €', '')}\n'
-                                  'Niveau: ${gameState.level.level}\n'
-                                  'Multiplicateur: x${gameState.level.productionMultiplier.toStringAsFixed(2)}',
-                            ),
+                            onTap: () =>
+                                _showInfoDialog(
+                                  context,
+                                  'Statistiques de Production',
+                                  'Total produit: ${MoneyDisplay.formatNumber(
+                                      gameState.totalPaperclipsProduced
+                                          .toDouble(), isInteger: true)
+                                      .replaceAll(' €', '')}\n'
+                                      'Niveau: ${gameState.level.level}\n'
+                                      'Multiplicateur: x${gameState.level
+                                      .productionMultiplier.toStringAsFixed(
+                                      2)}',
+                                ),
                           ),
                           const SizedBox(width: 16),
                           _buildResourceCard(
                             'Stock Trombones',
-                            // Modification ici pour utiliser formatNumber sans le symbole €
-                            MoneyDisplay.formatNumber(gameState.player.paperclips, isInteger: true).replaceAll(' €', ''),
+                            MoneyDisplay.formatNumber(
+                                gameState.player.paperclips, isInteger: true)
+                                .replaceAll(' €', ''),
                             Colors.blue.shade100,
-                            onTap: () => _showInfoDialog(
-                              context,
-                              'Stock de Trombones',
-                              'Total en stock: ${MoneyDisplay.formatNumber(gameState.player.paperclips, isInteger: true).replaceAll(' €', '')}\n'
-                                  'Production totale: ${MoneyDisplay.formatNumber(gameState.totalPaperclipsProduced.toDouble(), isInteger: true).replaceAll(' €', '')}',
-                            ),
+                            onTap: () =>
+                                _showInfoDialog(
+                                  context,
+                                  'Stock de Trombones',
+                                  'Total en stock: ${MoneyDisplay.formatNumber(
+                                      gameState.player.paperclips,
+                                      isInteger: true).replaceAll(' €', '')}\n'
+                                      'Production totale: ${MoneyDisplay
+                                      .formatNumber(
+                                      gameState.totalPaperclipsProduced
+                                          .toDouble(), isInteger: true)
+                                      .replaceAll(' €', '')}',
+                                ),
                           ),
                         ],
                       ),
@@ -535,6 +705,11 @@ class _ProductionScreenState extends State<ProductionScreen> {
                       ),
                       const SizedBox(height: 16),
 
+                      if (visibleElements['marketInfo'] == true)
+                        _buildMarketInfoCard(context, gameState),
+                      if (visibleElements['marketInfo'] == true)
+                        const SizedBox(height: 16),
+
                       if (visibleElements['metalPurchaseButton'] == true) ...[
                         _buildActionButton(
                           onPressed: gameState.player.money >=
@@ -560,6 +735,12 @@ class _ProductionScreenState extends State<ProductionScreen> {
                         backgroundColor: Colors.deepPurple,
                         textColor: Colors.white,
                       ),
+
+                      // Statistiques de production déplacées à la fin
+                      if (gameState.player.autoclippers > 0) ...[
+                        const SizedBox(height: 16),
+                        _buildProductionStatsCard(gameState),
+                      ],
                     ],
                   ),
                 ),

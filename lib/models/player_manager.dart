@@ -256,7 +256,14 @@ class PlayerManager extends ChangeNotifier {
     notifyListeners();
   }
 
-
+  double calculateAutoclipperROI() {
+    double cost = calculateAutoclipperCost();
+    double revenuePerSecond = GameConstants.BASE_AUTOCLIPPER_PRODUCTION * _sellPrice;
+    // Si pas de revenu, retourner une valeur infinie
+    if (revenuePerSecond <= 0) return double.infinity;
+    // Retourner le temps en secondes pour rentabiliser l'investissement
+    return cost / revenuePerSecond;
+  }
 
 
 

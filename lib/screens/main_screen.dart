@@ -229,70 +229,54 @@ class _MainScreenState extends State<MainScreen> {
       builder: (context, gameState, child) {
         print("Mode crise actif : ${gameState.isInCrisisMode}"); // Debug log
 
-        // Vérification prioritaire du mode crise
-        if (gameState.isInCrisisMode) {
-          final backgroundMusicService = context.watch<BackgroundMusicService>();
-          return Scaffold(
-            appBar: AppBar(
-              title: const Text('Nouveau Mode de Production'),
-              backgroundColor: Colors.deepPurple[700],
-              leading: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: _buildLevelIndicator(gameState.level),
+        final backgroundMusicService = context.watch<BackgroundMusicService>();
+
+        // Construction de l'AppBar commun
+        final appBar = AppBar(
+          title: Text(
+              gameState.isInCrisisMode
+                  ? 'Nouveau Mode de Production'
+                  : _getTitleForIndex(_selectedIndex),
+              style: const TextStyle(color: Colors.white)
+          ),
+          centerTitle: true,
+          backgroundColor: Colors.deepPurple[700],
+          leading: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: _buildLevelIndicator(gameState.level),
+          ),
+          actions: [
+            _buildNotificationButton(),
+            IconButton(
+              icon: Icon(
+                backgroundMusicService.isPlaying ? Icons.volume_up : Icons.volume_off,
+                color: Colors.white,
               ),
-              actions: [
-                _buildNotificationButton(),
-                IconButton(
-                  icon: Icon(
-                    backgroundMusicService.isPlaying ? Icons.volume_up : Icons.volume_off,
-                    color: Colors.white,
-                  ),
-                  onPressed: _toggleMusic,
-                  tooltip: 'Activer/Désactiver la musique',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.settings, color: Colors.white),
-                  onPressed: () => _showSettingsMenu(context),
-                  tooltip: 'Paramètres',
-                ),
-              ],
+              onPressed: _toggleMusic,
+              tooltip: 'Activer/Désactiver la musique',
             ),
+            IconButton(
+              icon: const Icon(Icons.settings, color: Colors.white),
+              onPressed: () => _showSettingsMenu(context),
+              tooltip: 'Paramètres',
+            ),
+          ],
+        );
+
+        // Construction du contenu selon le mode
+        if (gameState.isInCrisisMode) {
+          return Scaffold(
+            appBar: appBar,
             body: const NewMetalProductionScreen(),
           );
         }
 
-        // Le code existant pour l'interface normale
-        final backgroundMusicService = context.watch<BackgroundMusicService>();
+        // Interface normale
         final visibleScreens = gameState.getVisibleScreenElements();
         final canProduce = gameState.player.metal >= GameConstants.METAL_PER_PAPERCLIP;
 
         return Scaffold(
-          appBar: AppBar(
-            title: Text(_getTitleForIndex(_selectedIndex),
-                style: const TextStyle(color: Colors.white)),
-            centerTitle: true,
-            backgroundColor: Colors.deepPurple[700],
-            leading: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: _buildLevelIndicator(gameState.level),
-            ),
-            actions: [
-              _buildNotificationButton(),
-              IconButton(
-                icon: Icon(
-                  backgroundMusicService.isPlaying ? Icons.volume_up : Icons.volume_off,
-                  color: Colors.white,
-                ),
-                onPressed: _toggleMusic,
-                tooltip: 'Activer/Désactiver la musique',
-              ),
-              IconButton(
-                icon: const Icon(Icons.settings, color: Colors.white),
-                onPressed: () => _showSettingsMenu(context),
-                tooltip: 'Paramètres',
-              ),
-            ],
-          ),
+          appBar: appBar,
           body: Stack(
             children: [
               _getCurrentScreen(visibleScreens),
@@ -316,83 +300,84 @@ class _MainScreenState extends State<MainScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 4.0),
-                    child: SizedBox(
-                      width: double.infinity,
-                      height: 42,
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: canProduce
-                              ? () {
-                            HapticFeedback.mediumImpact();
-                            gameState.producePaperclip();
-                          }
-                              : null,
-                          borderRadius: BorderRadius.circular(16),
-                          child: Ink(
-                            decoration: BoxDecoration(
-                              color: canProduce
-                                  ? Colors.blue.shade400
-                                  : Colors.grey.shade400,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
+                  if (!gameState.isInCrisisMode)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 4.0),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 42,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: canProduce
+                                ? () {
+                              HapticFeedback.mediumImpact();
+                              gameState.producePaperclip();
+                            }
+                                : null,
+                            borderRadius: BorderRadius.circular(16),
+                            child: Ink(
+                              decoration: BoxDecoration(
                                 color: canProduce
-                                    ? Colors.blue.shade200
-                                    : Colors.grey.shade300,
-                                width: 2,
+                                    ? Colors.blue.shade400
+                                    : Colors.grey.shade400,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: canProduce
+                                      ? Colors.blue.shade200
+                                      : Colors.grey.shade300,
+                                  width: 2,
+                                ),
+                                boxShadow: canProduce
+                                    ? [
+                                  BoxShadow(
+                                    color: Colors.blue.withOpacity(0.3),
+                                    spreadRadius: 1,
+                                    blurRadius: 5,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ]
+                                    : null,
                               ),
-                              boxShadow: canProduce
-                                  ? [
-                                BoxShadow(
-                                  color: Colors.blue.withOpacity(0.3),
-                                  spreadRadius: 1,
-                                  blurRadius: 5,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ]
-                                  : null,
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.add_circle_outline,
-                                  color: canProduce ? Colors.white : Colors.grey.shade300,
-                                  size: 20,
-                                ),
-                                const SizedBox(width: 8),
-                                Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Produire',
-                                      style: TextStyle(
-                                        color: canProduce ? Colors.white : Colors.grey.shade300,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.add_circle_outline,
+                                    color: canProduce ? Colors.white : Colors.grey.shade300,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Produire',
+                                        style: TextStyle(
+                                          color: canProduce ? Colors.white : Colors.grey.shade300,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                        ),
                                       ),
-                                    ),
-                                    Text(
-                                      '${GameConstants.METAL_PER_PAPERCLIP} métal',
-                                      style: TextStyle(
-                                        color: canProduce
-                                            ? Colors.white.withOpacity(0.8)
-                                            : Colors.grey.shade300,
-                                        fontSize: 11,
+                                      Text(
+                                        '${GameConstants.METAL_PER_PAPERCLIP} métal',
+                                        style: TextStyle(
+                                          color: canProduce
+                                              ? Colors.white.withOpacity(0.8)
+                                              : Colors.grey.shade300,
+                                          fontSize: 11,
+                                        ),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                              ],
+                                    ],
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
                   NavigationBar(
                     height: 56,
                     selectedIndex: _selectedIndex,

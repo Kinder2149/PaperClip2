@@ -246,6 +246,198 @@ class MarketScreen extends StatelessWidget {
       ),
     );
   }
+  Widget _buildMarketSummaryCard(GameState gameState, double demand, double autoclipperProduction) {
+    double effectiveProduction = min(demand, autoclipperProduction);
+    double profitability = effectiveProduction * gameState.player.sellPrice;
+    double qualityBonus = 1.0 + ((gameState.player.upgrades['quality']?.level ?? 0) * 0.10);
+
+    return Card(
+      elevation: 2,
+      color: Colors.teal.shade50,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Résumé du Marché',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const Divider(),
+            Wrap(
+              spacing: 20,
+              runSpacing: 10,
+              children: [
+                _buildMarketStat(
+                  'Production',
+                  '${autoclipperProduction.toStringAsFixed(1)}/min',
+                  Icons.precision_manufacturing,
+                ),
+                _buildMarketStat(
+                  'Demande',
+                  '${demand.toStringAsFixed(1)}/min',
+                  Icons.trending_up,
+                ),
+                _buildMarketStat(
+                  'Ventes',
+                  '${effectiveProduction.toStringAsFixed(1)}/min',
+                  Icons.shopping_cart,
+                ),
+                _buildMarketStat(
+                  'Revenus',
+                  '${profitability.toStringAsFixed(1)} €/min',
+                  Icons.attach_money,
+                ),
+              ],
+            ),
+            if (qualityBonus > 1.0) ...[
+              const Divider(),
+              Text(
+                'Bonus qualité: +${((qualityBonus - 1.0) * 100).toStringAsFixed(0)}%',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.teal,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMarketStat(String label, String value, IconData icon) {
+    return SizedBox(
+      width: 140,
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: Colors.teal),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  Widget _buildPriceControlCard(GameState gameState) {
+    double qualityBonus = 1.0 + ((gameState.player.upgrades['quality']?.level ?? 0) * 0.10);
+    double effectivePrice = gameState.player.sellPrice * qualityBonus;
+
+    return Card(
+      elevation: 2,
+      color: Colors.green.shade50,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Prix de Vente',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '${gameState.player.sellPrice.toStringAsFixed(2)} €',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    if (qualityBonus > 1.0)
+                      Text(
+                        'Prix effectif: ${effectivePrice.toStringAsFixed(2)} €',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.green[700],
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Min: ${GameConstants.MIN_PRICE.toStringAsFixed(2)} €',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                ),
+                Text(
+                  'Max: ${GameConstants.MAX_PRICE.toStringAsFixed(2)} €',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.remove),
+                  onPressed: () {
+                    double newValue = gameState.player.sellPrice - 0.01;
+                    if (newValue >= GameConstants.MIN_PRICE) {
+                      gameState.player.updateSellPrice(newValue);
+                    }
+                  },
+                ),
+                Expanded(
+                  child: Slider(
+                    value: gameState.player.sellPrice,
+                    min: GameConstants.MIN_PRICE,
+                    max: GameConstants.MAX_PRICE,
+                    divisions: 200,
+                    label: '${gameState.player.sellPrice.toStringAsFixed(2)} €',
+                    onChanged: (value) => gameState.player.updateSellPrice(value),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  onPressed: () {
+                    double newValue = gameState.player.sellPrice + 0.01;
+                    if (newValue <= GameConstants.MAX_PRICE) {
+                      gameState.player.updateSellPrice(newValue);
+                    }
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -253,8 +445,8 @@ class MarketScreen extends StatelessWidget {
       builder: (context, gameState, child) {
         final visibleElements = gameState.getVisibleScreenElements();
         double demand = gameState.market.calculateDemand(
-            gameState.player.sellPrice,
-            gameState.player.getMarketingLevel()
+          gameState.player.sellPrice,
+          gameState.player.getMarketingLevel(),
         );
 
         double autoclipperProduction = 0;
@@ -279,17 +471,31 @@ class MarketScreen extends StatelessWidget {
                 child: SingleChildScrollView(
                   child: Column(
                     children: [
+                      // Production et Stocks
                       _buildMetalStatus(context, gameState),
                       const SizedBox(height: 8),
-
-                      if (gameState.player.autoclippers > 0) ...[
+                      if (gameState.player.autoclippers > 0)
                         _buildProductionCard(context, gameState, autoclipperProduction),
-                        const SizedBox(height: 8),
-                      ],
+                      const SizedBox(height: 12),
 
                       if (visibleElements['marketPrice'] == true) ...[
                         _buildMarketCard(
-                          title: 'Réputation du Marché',
+                          title: 'Demande du Marché',
+                          value: '${demand.toStringAsFixed(1)}/min',
+                          icon: Icons.trending_up,
+                          color: Colors.amber.shade100,
+                          tooltip: 'Demande actuelle',
+                          onInfoPressed: () => _showInfoDialog(
+                            context,
+                            'Demande du Marché',
+                            'Demande actuelle: ${demand.toStringAsFixed(1)} unités/min\n'
+                                'Production effective: ${effectiveProduction.toStringAsFixed(1)} unités/min',
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        _buildMarketCard(
+                          title: 'Réputation',
                           value: '${(gameState.marketManager.reputation * 100).toStringAsFixed(1)}%',
                           icon: Icons.star,
                           color: Colors.blue.shade100,
@@ -329,8 +535,8 @@ class MarketScreen extends StatelessWidget {
                             'Rentabilité',
                             'Estimation des revenus par minute basée sur:\n'
                                 '- Prix de vente: ${gameState.player.sellPrice.toStringAsFixed(2)} €\n'
-                                '- Production des autoclippers: ${autoclipperProduction.toStringAsFixed(1)} unités/min\n'
-                                '- Demande du marché: ${demand.toStringAsFixed(1)} unités/min\n'
+                                '- Production: ${autoclipperProduction.toStringAsFixed(1)} unités/min\n'
+                                '- Demande: ${demand.toStringAsFixed(1)} unités/min\n'
                                 '- Production effective: ${effectiveProduction.toStringAsFixed(1)} unités/min\n'
                                 '- Revenus potentiels: ${profitability.toStringAsFixed(1)} €/min',
                           ),
@@ -433,6 +639,28 @@ class MarketScreen extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+// Helper pour les boutons d'action
+  Widget _buildActionButton({
+    required VoidCallback onPressed,
+    required IconData icon,
+    required String label,
+    required Color color,
+    bool isFullWidth = false,
+  }) {
+    return SizedBox(
+      width: isFullWidth ? double.infinity : null,
+      child: ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon),
+        label: Text(label),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+        ),
+      ),
     );
   }
 }

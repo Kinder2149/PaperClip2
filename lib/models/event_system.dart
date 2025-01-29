@@ -218,7 +218,7 @@ class GameEvent {
 /// Gestionnaire principal des événements
 class EventManager with  ChangeNotifier {
   static final EventManager _instance = EventManager._internal();
-  ValueNotifier<int> _unreadNotificationsCount = ValueNotifier(0);
+
 
 
   static EventManager get instance => _instance;
@@ -320,6 +320,7 @@ class EventManager with  ChangeNotifier {
 
       // Marquer comme non lue
       _unreadNotificationIds.add(newNotification.id);
+      unreadCount.value = _unreadNotificationIds.length;
 
       // Mettre à jour le compteur
       notifyListeners();
@@ -339,19 +340,18 @@ class EventManager with  ChangeNotifier {
     }
   }
 
-
   void removeNotification(String notificationId) {
     _notifications.removeWhere((notification) => notification.id == notificationId);
     _unreadNotificationIds.remove(notificationId);
-    _updateUnreadNotificationsCount();
+    unreadCount.value = _unreadNotificationIds.length;  // Modification ici
     notifyListeners();
   }
 
   void clearNotifications() {
     _notifications.clear();
-    _unreadNotificationIds.clear();
     _lastShownTimes.clear();
     notificationStream.value = null;
+    markAllAsRead(); // Utiliser la nouvelle méthode au lieu de _unreadNotificationIds.clear()
     notifyListeners();
   }
 
@@ -372,11 +372,19 @@ class EventManager with  ChangeNotifier {
 
   void markAsRead(String notificationId) {
     _unreadNotificationIds.remove(notificationId);
-    _updateUnreadNotificationsCount();
+    unreadCount.value = _unreadNotificationIds.length;
   }
-  void _updateUnreadNotificationsCount() {
-    _unreadNotificationsCount.value = _unreadNotificationIds.length;
+  void markAllAsRead() {
+    // Vider la liste des notifications non lues
+    _unreadNotificationIds.clear();
+
+    // Mettre à jour le compteur de notifications non lues
+    unreadCount.value = 0;
+
+    // Notifier les écouteurs du changement
+    notifyListeners();
   }
+
 
   // Vérifier si une notification est non lue
   bool isUnread(String notificationId) {

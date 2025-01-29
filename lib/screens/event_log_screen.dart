@@ -22,6 +22,10 @@ class EventLogScreenState extends State<EventLogScreen> {
     eventManager = EventManager.instance;
     eventManager.notificationStream.addListener(_handleNewNotification);
     _loadNotifications();
+    // Ajouter cette ligne pour marquer toutes les notifications comme lues
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      eventManager.markAllAsRead();
+    });
   }
 
   void _handleNewNotification() {
@@ -69,6 +73,7 @@ class EventLogScreenState extends State<EventLogScreen> {
     setState(() {
       notifications.clear();
       eventManager.clearEvents();
+      eventManager.markAllAsRead();  // Ajouter cette ligne
     });
   }
 
@@ -244,7 +249,10 @@ class EventLogScreenState extends State<EventLogScreen> {
               ),
             ],
           ),
-          onTap: () => _showDetailedNotification(context, notification),
+          onTap: () {
+            eventManager.markAsRead(notification.id);  // Ajouter cette ligne
+            _showDetailedNotification(context, notification);
+          },
         ),
       ),
     );
@@ -347,8 +355,8 @@ class EventLogScreenState extends State<EventLogScreen> {
   void _removeNotification(NotificationEvent notification) {
     setState(() {
       notifications.remove(notification);
-      // Mise à jour de l'état dans EventManager
       eventManager.removeNotification(notification.id);
+      eventManager.markAsRead(notification.id);  // Ajouter cette ligne
     });
   }
   FontWeight _getNotificationFontWeight(NotificationEvent notification) {

@@ -155,25 +155,58 @@ class GameState extends ChangeNotifier {
     if (_isInCrisisMode) return;
 
     print("Début de la transition vers le mode crise");
-    _isInCrisisMode = true;
-    _crisisStartTime = DateTime.now();
 
-    // Notifier le changement de mode
-    EventManager.instance.addEvent(
-        EventType.CRISIS_MODE,
-        "Mode Crise Activé",
-        description: "Adaptation nécessaire : plus de métal disponible !",
-        importance: EventImportance.CRITICAL,
-        additionalData: {
-          'timestamp': _crisisStartTime!.toIso8601String(),
-          'marketMetalStock': marketManager.marketMetalStock,
-        }
-    );
+    // Afficher d'abord le dialogue si on a un contexte
+    if (_context != null) {
+      showDialog(
+        context: _context!,
+        barrierDismissible: false,
+        builder: (context) => MetalCrisisDialog(
+          onTransitionComplete: () {
+            // Activer le mode crise après la fermeture du dialogue
+            _isInCrisisMode = true;
+            _crisisStartTime = DateTime.now();
 
-    // Activer les nouvelles fonctionnalités
-    _unlockCrisisFeatures();
+            // Notifier le changement de mode
+            EventManager.instance.addEvent(
+                EventType.CRISIS_MODE,
+                "Mode Crise Activé",
+                description: "Adaptation nécessaire : plus de métal disponible !",
+                importance: EventImportance.CRITICAL,
+                additionalData: {
+                  'timestamp': _crisisStartTime!.toIso8601String(),
+                  'marketMetalStock': marketManager.marketMetalStock,
+                }
+            );
 
-    notifyListeners();
+            // Activer les nouvelles fonctionnalités
+            _unlockCrisisFeatures();
+
+            saveOnImportantEvent(); // Sauvegarder l'état après la transition
+            notifyListeners();
+          },
+        ),
+      );
+    } else {
+      // Si pas de contexte, activer directement le mode crise
+      _isInCrisisMode = true;
+      _crisisStartTime = DateTime.now();
+
+      EventManager.instance.addEvent(
+          EventType.CRISIS_MODE,
+          "Mode Crise Activé",
+          description: "Adaptation nécessaire : plus de métal disponible !",
+          importance: EventImportance.CRITICAL,
+          additionalData: {
+            'timestamp': _crisisStartTime!.toIso8601String(),
+            'marketMetalStock': marketManager.marketMetalStock,
+          }
+      );
+
+      _unlockCrisisFeatures();
+      saveOnImportantEvent();
+      notifyListeners();
+    }
   }
   void _unlockCrisisFeatures() {
     // Supprimer les références au recyclage
@@ -314,6 +347,12 @@ class GameState extends ChangeNotifier {
       'statistics': _statistics.toJson(),
       'totalTimePlayedInSeconds': _totalTimePlayedInSeconds,
       'totalPaperclipsProduced': _totalPaperclipsProduced,
+      // Données de crise complètes
+      'crisisMode': {
+        'isInCrisisMode': _isInCrisisMode,
+        'crisisStartTime': _crisisStartTime?.toIso8601String(),
+        'crisisTransitionComplete': _crisisTransitionComplete,
+      },
     };
 
     // Ajout des données des managers
@@ -323,9 +362,13 @@ class GameState extends ChangeNotifier {
       baseData['levelSystem'] = levelSystem.toJson();
       baseData['missionSystem'] = missionSystem?.toJson();
 
-      // Debug
-      print('PrepareGameData - playerManager data:');
-      print(baseData['playerManager']);
+      // Debug logs
+      print('PrepareGameData - Sauvegarde des données:');
+      print('Mode crise actif: ${_isInCrisisMode}');
+      print('Début de la crise: ${_crisisStartTime?.toIso8601String()}');
+      print('Transition complète: $_crisisTransitionComplete');
+      print('Données joueur: ${baseData['playerManager']}');
+      print('Données marché: ${baseData['marketManager']}');
 
       return baseData;
     } catch (e) {
@@ -690,6 +733,25 @@ class GameState extends ChangeNotifier {
       // Charger les statistiques globales
       _totalTimePlayedInSeconds = gameData['totalTimePlayedInSeconds'] ?? 0;
       _totalPaperclipsProduced = gameData['totalPaperclipsProduced'] ?? 0;
+
+      // Restaurer l'état du mode crise
+      if (gameData['crisisMode'] != null) {
+        final crisisData = gameData['crisisMode'];
+        _isInCrisisMode = crisisData['isInCrisisMode'] ?? false;
+        if (_isInCrisisMode) {
+          _crisisTransitionComplete = crisisData['crisisTransitionComplete'] ?? true;
+          if (crisisData['crisisStartTime'] != null) {
+            _crisisStartTime = DateTime.parse(crisisData['crisisStartTime']);
+          } else {
+            _crisisStartTime = DateTime.now();
+          }
+
+          // Réactiver les fonctionnalités du mode crise
+          _unlockCrisisFeatures();
+
+          print("Mode crise restauré - Transition vers l'écran de production");
+        }
+      }
 
       _gameName = name;
       _lastSaveTime = saveGame.lastSaveTime;

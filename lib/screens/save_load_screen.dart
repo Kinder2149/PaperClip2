@@ -53,62 +53,164 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Sauvegardes')),
+      appBar: AppBar(
+        title: const Text('Sauvegardes'),
+        elevation: 0,
+      ),
       body: FutureBuilder<List<SaveGameInfo>>(
+        key: _futureBuilderKey,
         future: SaveManager.listSaves(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
           }
 
           if (snapshot.hasError) {
             return Center(
-              child: Text('Erreur: ${snapshot.error}'),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, size: 48, color: Colors.red[300]),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Erreur: ${snapshot.error}',
+                    style: TextStyle(color: Colors.red[700]),
+                  ),
+                ],
+              ),
             );
           }
 
           final saves = snapshot.data ?? [];
           if (saves.isEmpty) {
-            return const Center(
-              child: Text('Aucune sauvegarde'),
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.save_outlined, size: 64, color: Colors.grey[400]),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Aucune sauvegarde',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.grey[600],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
             );
           }
 
           return ListView.builder(
+            padding: const EdgeInsets.all(16),
             itemCount: saves.length,
             itemBuilder: (context, index) {
               final save = saves[index];
-              return Card(
-                margin: const EdgeInsets.all(8.0),
-                child: ListTile(
-                  title: Text(save.name),
-                  subtitle: Text(
-                      'Dernière sauvegarde: ${_formatDateTime(save.timestamp)}\n'
-                          'Trombones: ${save.paperclips.toStringAsFixed(0)} | '
-                          'Argent: ${save.money.toStringAsFixed(2)}€'
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.play_arrow),
-                        onPressed: () => _loadGame(context, save.name),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete),
-                        onPressed: () => _confirmDelete(context, save.name),
-                      ),
-                    ],
-                  ),
-                ),
-              );
+              return _buildSaveCard(save, context);
             },
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showNewGameDialog(context),
-        child: const Icon(Icons.add),
+        icon: const Icon(Icons.add),
+        label: const Text('Nouvelle Partie'),
+        backgroundColor: Colors.deepPurple,
+      ),
+    );
+  }
+  Widget _buildSaveCard(SaveGameInfo save, BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: InkWell(
+        onTap: () => _loadGame(context, save.name),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.save, color: Colors.deepPurple[400]),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      save.name,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  PopupMenuButton(
+                    itemBuilder: (context) => [
+                      PopupMenuItem(
+                        value: 'load',
+                        child: Row(
+                          children: [
+                            const Icon(Icons.play_arrow),
+                            const SizedBox(width: 8),
+                            const Text('Charger'),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(Icons.delete, color: Colors.red[400]),
+                            const SizedBox(width: 8),
+                            Text('Supprimer', style: TextStyle(color: Colors.red[400])),
+                          ],
+                        ),
+                      ),
+                    ],
+                    onSelected: (value) {
+                      if (value == 'load') {
+                        _loadGame(context, save.name);
+                      } else if (value == 'delete') {
+                        _confirmDelete(context, save.name);
+                      }
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _buildInfoRow(
+                'Dernière sauvegarde',
+                _formatDateTime(save.timestamp),
+                Icons.access_time,
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildInfoRow(
+                      'Trombones',
+                      save.paperclips.toStringAsFixed(0),
+                      Icons.shopping_cart,
+                    ),
+                  ),
+                  Expanded(
+                    child: _buildInfoRow(
+                      'Argent',
+                      '${save.money.toStringAsFixed(2)}€',
+                      Icons.euro,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -136,16 +238,33 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
     }
   }
 
-  Widget _buildInfoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-          Text(value),
-        ],
-      ),
+  Widget _buildInfoRow(String label, String value, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: Colors.grey[600]),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                ),
+              ),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -215,37 +334,70 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
       text: 'Partie ${DateTime.now().day}/${DateTime.now().month}',
     );
 
-    final result = await showDialog<String>(
+    return showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Nouvelle partie'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'Nom de la partie',
-          ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Row(
+          children: [
+            Icon(Icons.add_circle, color: Colors.deepPurple[400]),
+            const SizedBox(width: 8),
+            const Text('Nouvelle Partie'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                labelText: 'Nom de la partie',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                prefixIcon: const Icon(Icons.drive_file_rename_outline),
+              ),
+              autofocus: true,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Donnez un nom à votre nouvelle partie',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Annuler'),
           ),
-          TextButton(
+          ElevatedButton(
             onPressed: () => Navigator.pop(context, controller.text),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.deepPurple,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
             child: const Text('Créer'),
           ),
         ],
       ),
-    );
-
-    if (result != null && result.isNotEmpty && context.mounted) {
-      await context.read<GameState>().startNewGame(result);
-      if (context.mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const MainScreen()),
-        );
+    ).then((result) async {
+      if (result != null && result.isNotEmpty && context.mounted) {
+        await context.read<GameState>().startNewGame(result);
+        if (context.mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const MainScreen()),
+          );
+        }
       }
-    }
+    });
   }
 }

@@ -218,6 +218,7 @@ class MarketManager extends ChangeNotifier {
 
     notifyListeners();
   }
+  
 
   void updateMarketingBonus(int marketingLevel) {
     _marketingBonus =

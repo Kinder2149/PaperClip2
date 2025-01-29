@@ -3,7 +3,12 @@ import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 
 class MetalCrisisDialog extends StatelessWidget {
-  const MetalCrisisDialog({Key? key}) : super(key: key);
+  final VoidCallback? onTransitionComplete;
+
+  const MetalCrisisDialog({
+    Key? key,
+    this.onTransitionComplete,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -40,6 +45,7 @@ class MetalCrisisDialog extends StatelessWidget {
   }
 
   Widget _buildHeader() {
+    // Le reste du code reste identique
     return Column(
       children: [
         Container(
@@ -69,6 +75,7 @@ class MetalCrisisDialog extends StatelessWidget {
   }
 
   Widget _buildContent() {
+    // Le reste du code reste identique
     return Column(
       children: [
         const SizedBox(height: 16),
@@ -85,6 +92,7 @@ class MetalCrisisDialog extends StatelessWidget {
   }
 
   Widget _buildNewFeaturesList() {
+    // Le reste du code reste identique
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: const [
@@ -98,7 +106,7 @@ class MetalCrisisDialog extends StatelessWidget {
         SizedBox(height: 8),
         _FeatureItem(
           icon: Icons.engineering,
-          text: 'Production de métal',  // Une seule option au lieu de trois
+          text: 'Production de métal',
         ),
       ],
     );
@@ -131,10 +139,11 @@ class MetalCrisisDialog extends StatelessWidget {
 
       await Future.delayed(const Duration(milliseconds: 300));
 
+      // Appeler le callback après la fermeture du dialogue et le délai
+      onTransitionComplete?.call();
+
       if (context.mounted) {
         final gameState = Provider.of<GameState>(context, listen: false);
-        gameState.enterCrisisMode();
-
         if (gameState.validateCrisisTransition()) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -160,6 +169,7 @@ class MetalCrisisDialog extends StatelessWidget {
 }
 
 class _FeatureItem extends StatelessWidget {
+  // Cette partie reste identique
   final IconData icon;
   final String text;
 
