@@ -34,6 +34,8 @@ class GameState extends ChangeNotifier {
   late final AutoSaveService _autoSaveService;
   bool get isInCrisisMode => _isInCrisisMode;
   bool get crisisTransitionComplete => _crisisTransitionComplete;
+  bool _showingCrisisView = false;
+
 
 
 
@@ -41,6 +43,9 @@ class GameState extends ChangeNotifier {
   String? _gameName;
   BuildContext? _context;
 
+
+  bool get showingCrisisView => _showingCrisisView;
+  DateTime? get crisisStartTime => _crisisStartTime;
   bool get isInitialized => _isInitialized;
   String? get gameName => _gameName;
   PlayerManager get playerManager => _playerManager;
@@ -82,6 +87,7 @@ class GameState extends ChangeNotifier {
       rethrow;
     }
   }
+
 
   void _configureAndStart() {
     try {
@@ -352,6 +358,7 @@ class GameState extends ChangeNotifier {
         'isInCrisisMode': _isInCrisisMode,
         'crisisStartTime': _crisisStartTime?.toIso8601String(),
         'crisisTransitionComplete': _crisisTransitionComplete,
+        'showingCrisisView': _showingCrisisView,  // Ajouter cette ligne
       },
     };
 
@@ -389,15 +396,24 @@ class GameState extends ChangeNotifier {
 
 
   void processProduction() {
+    if (!_isInitialized || _isPaused) return;
+
     // Calcul des bonus
     double speedBonus = 1.0 + ((playerManager.upgrades['speed']?.level ?? 0) * 0.20);
     double bulkBonus = 1.0 + ((playerManager.upgrades['bulk']?.level ?? 0) * 0.35);
-    double efficiencyBonus = 1.0 - ((playerManager.upgrades['efficiency']?.level ?? 0) * 0.15);
+
+    // Nouveau calcul d'efficacité avec 11% par niveau et plafond 85%
+    double efficiencyLevel = (playerManager.upgrades['efficiency']?.level ?? 0).toDouble(); // Correction ici
+    double reduction = min(
+        efficiencyLevel * GameConstants.EFFICIENCY_UPGRADE_MULTIPLIER,
+        GameConstants.EFFICIENCY_MAX_REDUCTION
+    );
+    double efficiencyBonus = 1.0 - reduction;
 
     // Nombre total d'autoclippers avec les bonus
     double totalProduction = playerManager.autoclippers * speedBonus * bulkBonus;
 
-    // Métal nécessaire par trombone
+    // Métal nécessaire par trombone avec efficacité
     double metalPerClip = GameConstants.METAL_PER_PAPERCLIP * efficiencyBonus;
 
     // Nombre maximum de trombones possibles avec le métal disponible
@@ -409,15 +425,19 @@ class GameState extends ChangeNotifier {
     if (actualProduction > 0) {
       // Mise à jour des ressources
       double metalUsed = actualProduction * metalPerClip;
+      double metalSaved = actualProduction * GameConstants.METAL_PER_PAPERCLIP * reduction; // Déplacé ici
+
       playerManager.updateMetal(playerManager.metal - metalUsed);
       playerManager.updatePaperclips(playerManager.paperclips + actualProduction);
       _totalPaperclipsProduced += actualProduction;
 
       // Mise à jour des statistiques
       _statistics.updateProduction(
-        isManual: false,
-        amount: actualProduction,
-        metalUsed: metalUsed,
+          isManual: false,
+          amount: actualProduction,
+          metalUsed: metalUsed,
+          metalSaved: metalSaved,
+          efficiency: reduction * 100
       );
 
       // Expérience pour la production automatique
@@ -426,7 +446,6 @@ class GameState extends ChangeNotifier {
 
     notifyListeners();
   }
-
 
 
 
@@ -709,56 +728,62 @@ class GameState extends ChangeNotifier {
   }
   Future<void> loadGame(String name) async {
     try {
+      print('Starting to load game: $name');
       final saveGame = await SaveManager.loadGame(name);
       if (saveGame == null) throw SaveError('NOT_FOUND', 'Sauvegarde non trouvée');
 
       _stopAllTimers();
+      print('Timers stopped');
 
-      // Initialiser de nouveaux managers
       _initializeManagers();
+      print('Managers initialized');
 
-      // Accéder aux données via l'objet SaveGame
       final gameData = saveGame.gameData;
+      print('Game data loaded: ${gameData.keys}');
 
-      // Charger les données dans les managers
+      // Charger les statistiques en premier
+      if (gameData['statistics'] != null) {
+        print('Loading statistics: ${gameData['statistics']}');
+        _statistics.fromJson(gameData['statistics']);
+      }
+
+      // Charger les autres données
       levelSystem.loadFromJson(gameData['levelSystem'] ?? {});
       _playerManager.fromJson(gameData['playerManager'] ?? {});
       _marketManager.fromJson(gameData['marketManager'] ?? {});
 
-      // Appliquer les effets des améliorations
       _applyUpgradeEffects();
 
-      // Charger les statistiques
-      if (gameData['statistics'] != null) {
-        _statistics.fromJson(gameData['statistics']);
-      }
+      // Charger les données globales avec conversion sécurisée
+      _totalTimePlayedInSeconds = (gameData['totalTimePlayedInSeconds'] as num?)?.toInt() ?? 0;
+      _totalPaperclipsProduced = (gameData['totalPaperclipsProduced'] as num?)?.toInt() ?? 0;
 
-      // Charger les statistiques globales
-      _totalTimePlayedInSeconds = gameData['totalTimePlayedInSeconds'] ?? 0;
-      _totalPaperclipsProduced = gameData['totalPaperclipsProduced'] ?? 0;
-
-      // Restaurer l'état du mode crise
-      if (gameData['crisisMode'] != null) {
-        final crisisData = gameData['crisisMode'];
-        _isInCrisisMode = crisisData['isInCrisisMode'] ?? false;
-        if (_isInCrisisMode) {
-          _crisisTransitionComplete = crisisData['crisisTransitionComplete'] ?? true;
-          if (crisisData['crisisStartTime'] != null) {
-            _crisisStartTime = DateTime.parse(crisisData['crisisStartTime']);
-          } else {
-            _crisisStartTime = DateTime.now();
-          }
-        }
-      }
+      _handleCrisisModeData(gameData);
 
       _gameName = name;
       _lastSaveTime = saveGame.lastSaveTime;
 
+      print('Game loaded successfully');
       _startTimers();
       notifyListeners();
-    } catch (e) {
+    } catch (e, stack) {
       print('Error loading game: $e');
+      print('Stack trace: $stack');
       rethrow;
+    }
+  }
+
+  void _handleCrisisModeData(Map<String, dynamic> gameData) {
+    if (gameData['crisisMode'] != null) {
+      final crisisData = gameData['crisisMode'] as Map<String, dynamic>;
+      _isInCrisisMode = crisisData['isInCrisisMode'] as bool? ?? false;
+      _showingCrisisView = crisisData['showingCrisisView'] as bool? ?? false;
+      if (_isInCrisisMode) {
+        _crisisTransitionComplete = crisisData['crisisTransitionComplete'] as bool? ?? true;
+        if (crisisData['crisisStartTime'] != null) {
+          _crisisStartTime = DateTime.parse(crisisData['crisisStartTime'] as String);
+        }
+      }
     }
   }
   void _applyUpgradeEffects() {
@@ -927,6 +952,15 @@ class GameState extends ChangeNotifier {
         priority: NotificationPriority.HIGH,
       ),
     );
+  }
+  void toggleCrisisInterface() {
+    if (!isInCrisisMode || !crisisTransitionComplete) return;
+
+    _showingCrisisView = !_showingCrisisView;
+
+    EventManager.instance.addInterfaceTransitionEvent(_showingCrisisView);
+
+    notifyListeners();
   }
 
 

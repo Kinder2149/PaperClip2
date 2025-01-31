@@ -144,7 +144,10 @@ class StatisticsManager with ChangeNotifier {
   int _totalPaperclipsProduced = 0;
   int _manualPaperclipsProduced = 0;
   int _autoPaperclipsProduced = 0;
-  int _totalMetalUsed = 0;
+  double _totalMetalUsed = 0.0;
+  double _totalMetalSaved = 0.0;
+  double _currentEfficiency = 0.0;
+
 
   // Statistiques économiques
   double _totalMoneyEarned = 0;
@@ -164,7 +167,9 @@ class StatisticsManager with ChangeNotifier {
   void updateProduction({
     bool isManual = false,
     int amount = 1,
-    double metalUsed = GameConstants.METAL_PER_PAPERCLIP,
+    required double metalUsed,
+    double metalSaved = 0.0,
+    double efficiency = 0.0,
   }) {
     if (isManual) {
       _manualPaperclipsProduced += amount;
@@ -172,7 +177,9 @@ class StatisticsManager with ChangeNotifier {
       _autoPaperclipsProduced += amount;
     }
     _totalPaperclipsProduced += amount;
-    _totalMetalUsed += (metalUsed * amount).round();
+    _totalMetalUsed += metalUsed;
+    _totalMetalSaved += metalSaved;
+    _currentEfficiency = efficiency;
     notifyListeners();
   }
 
@@ -282,20 +289,67 @@ class StatisticsManager with ChangeNotifier {
   }
 
   void fromJson(Map<String, dynamic> json) {
-    _totalPaperclipsProduced = json['totalPaperclipsProduced'] ?? 0;
-    _manualPaperclipsProduced = json['manualPaperclipsProduced'] ?? 0;
-    _autoPaperclipsProduced = json['autoPaperclipsProduced'] ?? 0;
-    _totalMetalUsed = json['totalMetalUsed'] ?? 0;
-    _totalMoneyEarned = (json['totalMoneyEarned'] ?? 0).toDouble();
-    _totalMoneySpent = (json['totalMoneySpent'] ?? 0).toDouble();
-    _totalMetalBought = (json['totalMetalBought'] ?? 0).toDouble();
-    _totalSales = json['totalSales'] ?? 0;
-    _highestPrice = (json['highestPrice'] ?? 0).toDouble();
-    _averagePrice = (json['averagePrice'] ?? 0).toDouble();
-    _totalUpgradesBought = json['totalUpgradesBought'] ?? 0;
-    _totalAutoclippersBought = json['totalAutoclippersBought'] ?? 0;
-    _maxComboAchieved = json['maxComboAchieved'] ?? 0;
-    _totalPlayTime = Duration(seconds: json['totalPlayTime'] ?? 0);
+    try {
+      // Conversion sécurisée avec logs
+      print('Loading statistics data: $json');
+
+      _totalPaperclipsProduced = _safeIntConversion(json['totalPaperclipsProduced']);
+      _manualPaperclipsProduced = _safeIntConversion(json['manualPaperclipsProduced']);
+      _autoPaperclipsProduced = _safeIntConversion(json['autoPaperclipsProduced']);
+      _totalMetalUsed = _safeDoubleConversion(json['totalMetalUsed']);
+      _totalMetalSaved = _safeDoubleConversion(json['totalMetalSaved']);
+      _currentEfficiency = _safeDoubleConversion(json['currentEfficiency']);
+      _totalMoneyEarned = _safeDoubleConversion(json['totalMoneyEarned']);
+      _totalMoneySpent = _safeDoubleConversion(json['totalMoneySpent']);
+      _totalMetalBought = _safeDoubleConversion(json['totalMetalBought']);
+      _totalSales = _safeIntConversion(json['totalSales']);
+      _highestPrice = _safeDoubleConversion(json['highestPrice']);
+      _averagePrice = _safeDoubleConversion(json['averagePrice']);
+      _totalUpgradesBought = _safeIntConversion(json['totalUpgradesBought']);
+      _totalAutoclippersBought = _safeIntConversion(json['totalAutoclippersBought']);
+      _maxComboAchieved = _safeIntConversion(json['maxComboAchieved']);
+      _totalPlayTime = Duration(seconds: _safeIntConversion(json['totalPlayTime']));
+
+      print('Successfully loaded statistics');
+    } catch (e, stack) {
+      print('Error loading statistics: $e');
+      print('Stack trace: $stack');
+      _resetToDefaults();
+    }
     notifyListeners();
+  }
+
+  // Méthodes utilitaires pour conversion sécurisée
+  double _safeDoubleConversion(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is int) return value.toDouble();
+    if (value is double) return value;
+    return 0.0;
+  }
+
+  int _safeIntConversion(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is double) return value.round();
+    return 0;
+  }
+
+  void _resetToDefaults() {
+    _totalPaperclipsProduced = 0;
+    _manualPaperclipsProduced = 0;
+    _autoPaperclipsProduced = 0;
+    _totalMetalUsed = 0.0;
+    _totalMetalSaved = 0.0;
+    _currentEfficiency = 0.0;
+    _totalMoneyEarned = 0.0;
+    _totalMoneySpent = 0.0;
+    _totalMetalBought = 0.0;
+    _totalSales = 0;
+    _highestPrice = 0.0;
+    _averagePrice = 0.0;
+    _totalUpgradesBought = 0;
+    _totalAutoclippersBought = 0;
+    _maxComboAchieved = 0;
+    _totalPlayTime = Duration.zero;
   }
 }

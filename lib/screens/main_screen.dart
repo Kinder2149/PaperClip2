@@ -98,12 +98,10 @@ class _MainScreenState extends State<MainScreen> {
       case 0:
         return _screens[0]; // Production toujours visible
       case 1:
-      // Vérifier si le marché est débloqué
         return visibleScreens['market'] == true
             ? _screens[1]
             : const PlaceholderLockedScreen();
       case 2:
-      // Vérifier si les améliorations sont débloquées
         return visibleScreens['upgradesSection'] == true
             ? _screens[2]
             : const PlaceholderLockedScreen();
@@ -264,10 +262,76 @@ class _MainScreenState extends State<MainScreen> {
         );
 
         // Construction du contenu selon le mode
+        // Dans le build de MainScreen, remplacez la partie du mode crise par :
         if (gameState.isInCrisisMode) {
           return Scaffold(
             appBar: appBar,
-            body: const NewMetalProductionScreen(),
+            body: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              transitionBuilder: (Widget child, Animation<double> animation) {
+                return FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0.0, 0.1),
+                      end: Offset.zero,
+                    ).animate(animation),
+                    child: child,
+                  ),
+                );
+              },
+              child: gameState.crisisTransitionComplete
+                  ? Stack(
+                children: [
+                  gameState.showingCrisisView
+                      ? const NewMetalProductionScreen()
+                      : _getCurrentScreen(gameState.getVisibleScreenElements()),
+                  Positioned(
+                    top: 16,
+                    right: 16,
+                    child: Card(
+                      color: Colors.red.withOpacity(0.9),
+                      child: const Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: Text(
+                          'Mode Crise Actif',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              )
+                  : const NewMetalProductionScreen(),
+            ),
+            bottomNavigationBar: gameState.crisisTransitionComplete
+                ? SafeArea(
+              child: NavigationBar(
+                height: 56,
+                selectedIndex: _selectedIndex,
+                onDestinationSelected: (index) =>
+                    setState(() => _selectedIndex = index),
+                destinations: _buildNavigationDestinations(
+                    gameState.getVisibleScreenElements()
+                ),
+              ),
+            )
+                : null,
+            floatingActionButton: FloatingActionButton(
+              onPressed: () => gameState.toggleCrisisInterface(),
+              backgroundColor: gameState.crisisTransitionComplete
+                  ? Colors.deepPurple
+                  : Colors.blue,
+              child: Icon(
+                gameState.showingCrisisView
+                    ? Icons.shopping_cart
+                    : Icons.factory,
+                color: Colors.white,
+              ),
+            ),
           );
         }
 

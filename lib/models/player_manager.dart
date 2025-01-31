@@ -194,12 +194,15 @@ class PlayerManager extends ChangeNotifier {
 
   final Map<String, Upgrade> _upgrades = {
     'efficiency': Upgrade(
-      id: "efficiency",
-      name: 'Metal Efficiency',
-      description: 'Réduit la consommation de métal de 15 %',
-      baseCost: 45.0,
-      maxLevel: 8,
+      id: 'efficiency',
+      name: 'Efficacité',
+      description: 'Réduit la consommation de métal de 11% par niveau',
+      baseCost: GameConstants.EFFICIENCY_UPGRADE_BASE,
+      costMultiplier: 1.5,
+      maxLevel: GameConstants.MAX_EFFICIENCY_LEVEL,
+      requiredLevel: 5,
     ),
+
     'marketing': Upgrade(
       id: "marketing",
       name: 'Marketing',
@@ -267,6 +270,7 @@ class PlayerManager extends ChangeNotifier {
 
 
 
+  // Dans lib/models/player_manager.dart
   void fromJson(Map<String, dynamic> json) {
     _paperclips = (json['paperclips'] as num?)?.toDouble() ?? 0.0;
     _money = (json['money'] as num?)?.toDouble() ?? 0.0;

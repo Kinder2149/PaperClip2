@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import '../models/player_manager.dart';
 import '../widgets/resource_widgets.dart';
+import 'dart:math' show min;
+import 'package:paperclip2/models/game_config.dart';
 
 class UpgradesScreen extends StatelessWidget {
   const UpgradesScreen({super.key});
@@ -45,12 +47,27 @@ class UpgradesScreen extends StatelessWidget {
         break;
 
       case 'efficiency':
-        double currentEff = -(upgrade.level * 15.0);
-        double nextEff = -((upgrade.level + 1) * 15.0);
-        // Utilisez la constante de votre classe ou du fichier de configuration
-        double metalPerClip = 1.5; // Remplacez par votre valeur de base
-        double currentMetal = metalPerClip * (1 + currentEff/100);
-        double nextMetal = metalPerClip * (1 + nextEff/100);
+      // Nouveau calcul avec 11% par niveau et plafond 85%
+        double currentReduction = min(
+            (upgrade.level * GameConstants.EFFICIENCY_UPGRADE_MULTIPLIER * 100),
+            GameConstants.EFFICIENCY_MAX_REDUCTION * 100
+        );
+
+        double nextReduction = min(
+            ((upgrade.level + 1) * GameConstants.EFFICIENCY_UPGRADE_MULTIPLIER * 100),
+            GameConstants.EFFICIENCY_MAX_REDUCTION * 100
+        );
+
+        // Calcul de la consommation de métal avec les réductions
+        double baseMetalPerClip = GameConstants.METAL_PER_PAPERCLIP;
+        double currentMetal = baseMetalPerClip * (1.0 - currentReduction/100);
+        double nextMetal = baseMetalPerClip * (1.0 - nextReduction/100);
+
+        impacts['Réduction de consommation'] = [
+          _formatImpact(currentReduction),
+          _formatImpact(nextReduction)
+        ];
+
         impacts['Consommation de métal'] = [
           '${_formatImpact(currentMetal, isPercentage: false)} /clip',
           '${_formatImpact(nextMetal, isPercentage: false)} /clip'
@@ -58,7 +75,6 @@ class UpgradesScreen extends StatelessWidget {
         break;
 
       case 'storage':
-      // Convertir en double si maxMetalStorage est un double
         double currentStorage = gameState.player.maxMetalStorage.toDouble();
         double nextStorage = currentStorage + 100.0;
         impacts['Capacité de stockage'] = [
@@ -77,6 +93,7 @@ class UpgradesScreen extends StatelessWidget {
         break;
     }
 
+    // Le reste du widget reste inchangé
     if (impacts.isEmpty) return const SizedBox.shrink();
 
     return Container(

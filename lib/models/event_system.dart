@@ -129,17 +129,19 @@ class GameEvent {
     required this.description,
     this.importance = EventImportance.LOW,
     Map<String, dynamic>? data,
-  }) : timestamp = DateTime.now(),
+  })
+      : timestamp = DateTime.now(),
         this.data = data ?? {};
 
-  Map<String, dynamic> toJson() => {
-    'type': type.index,
-    'title': title,
-    'description': description,
-    'importance': importance.index,
-    'timestamp': timestamp.toIso8601String(),
-    'data': data,
-  };
+  Map<String, dynamic> toJson() =>
+      {
+        'type': type.index,
+        'title': title,
+        'description': description,
+        'importance': importance.index,
+        'timestamp': timestamp.toIso8601String(),
+        'data': data,
+      };
 
   factory GameEvent.fromJson(Map<String, dynamic> json) {
     return GameEvent(
@@ -160,7 +162,8 @@ class GameEvent {
 
   bool matchesFilter(EventType? typeFilter, EventImportance? minImportance) {
     if (typeFilter != null && type != typeFilter) return false;
-    if (minImportance != null && importance.value < minImportance.value) return false;
+    if (minImportance != null && importance.value < minImportance.value)
+      return false;
     return true;
   }
 
@@ -175,7 +178,8 @@ class GameEvent {
     } else if (difference.inDays < 1) {
       return 'Il y a ${difference.inHours}h';
     } else {
-      return '${timestamp.day}/${timestamp.month} ${timestamp.hour}:${timestamp.minute}';
+      return '${timestamp.day}/${timestamp.month} ${timestamp.hour}:${timestamp
+          .minute}';
     }
   }
 
@@ -209,11 +213,12 @@ class GameEvent {
       case EventType.INFO:
         return Icons.info_outline;
       case EventType.CRISIS_MODE:
-        return Icons.emergency; // Icône pour le mode crise
+        return Icons.emergency;
+      case EventType.UI_CHANGE:
+        return Icons.switch_access_shortcut; // ou Icons.swap_horiz
     }
   }
 }
-
 
 /// Gestionnaire principal des événements
 class EventManager with  ChangeNotifier {
@@ -263,6 +268,16 @@ class EventManager with  ChangeNotifier {
       title,
       description: description,
       importance: EventImportance.CRITICAL,
+    );
+  }
+  void addInterfaceTransitionEvent(bool showingCrisisView) {
+    addEvent(
+      EventType.UI_CHANGE,
+      "Changement de vue",
+      description: showingCrisisView
+          ? "Mode Production activé"
+          : "Mode Normal activé",
+      importance: EventImportance.LOW,
     );
   }
 

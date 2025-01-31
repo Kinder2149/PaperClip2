@@ -15,6 +15,7 @@ class GameConstants {
   static const double RESOURCE_DECAY_RATE = 0.01;
 
   static const double MAINTENANCE_EFFICIENCY_MULTIPLIER = 0.1;
+  static const double EFFICIENCY_MAX_REDUCTION = 0.85;
 
   // Ajouter les constantes pour le mode crise
   static const Duration CRISIS_TRANSITION_DELAY = Duration(milliseconds: 300);
@@ -64,7 +65,7 @@ class GameConstants {
   static const double UPGRADE_XP_MULTIPLIER = 2.0;
   static const double XP_BOOST_MULTIPLIER = 2.0;
   // À ajouter dans une nouvelle section "Améliorations"
-  static const double EFFICIENCY_UPGRADE_BASE = 0.5;
+  static const double EFFICIENCY_UPGRADE_BASE = 45.0;
 
 
 
@@ -78,7 +79,7 @@ class GameConstants {
 
   // Constantes pour les améliorations
   static const double STORAGE_UPGRADE_MULTIPLIER = 0.2;     // 20% par niveau
-  static const double EFFICIENCY_UPGRADE_MULTIPLIER = 0.10; // 15% par niveau
+  static const double EFFICIENCY_UPGRADE_MULTIPLIER = 0.11; // 11% par niveau
   static const double BULK_UPGRADE_BASE = 0.25;            // 25% par niveau
   static const double MARKETING_UPGRADE_BASE = 0.1;        // 10% par niveau
   static const double QUALITY_UPGRADE_BASE = 0.1;          // 10% par niveau
@@ -215,6 +216,7 @@ enum EventType {
   XP_BOOST,
   INFO,
   CRISIS_MODE,
+  UI_CHANGE,
 }
 
 enum EventImportance {
