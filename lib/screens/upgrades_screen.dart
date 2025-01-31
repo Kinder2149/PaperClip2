@@ -148,26 +148,33 @@ class UpgradesScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Icon(Icons.bar_chart, size: 24, color: Colors.blue[700]),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Niveau ${gameState.level.level}',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue[700],
+                  // Mise à jour de l'affichage du niveau
+                  Container(
+                    constraints: const BoxConstraints(minHeight: 32), // Hauteur minimale fixe
+                    child: Row(
+                      children: [
+                        Icon(Icons.bar_chart, size: 24, color: Colors.blue[700]),
+                        const SizedBox(width: 8),
+                        Flexible( // Ajout de Flexible pour gérer le débordement
+                          child: Text(
+                            'Niveau ${gameState.level.level}',
+                            style: TextStyle(
+                              fontSize: 20, // Taille réduite
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue[700],
+                            ),
+                            overflow: TextOverflow.ellipsis, // Gestion du débordement
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8), // Espacement réduit
                   ClipRRect(
                     borderRadius: BorderRadius.circular(10),
                     child: LinearProgressIndicator(
                       value: gameState.level.experienceProgress,
-                      minHeight: 12,
+                      minHeight: 10, // Hauteur légèrement réduite
                       backgroundColor: Colors.grey[200],
                       valueColor: AlwaysStoppedAnimation<Color>(Colors.blue[400]!),
                     ),

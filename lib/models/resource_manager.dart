@@ -105,6 +105,8 @@ class ResourceManager extends ChangeNotifier {
         GameConstants.INITIAL_STORAGE_CAPACITY;
     _baseStorageEfficiency = (json['baseStorageEfficiency'] as num?)?.toDouble() ??
         GameConstants.BASE_EFFICIENCY;
+
+    notifyListeners();
   }
 
   // Méthodes de restauration et de réinitialisation

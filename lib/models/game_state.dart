@@ -722,8 +722,11 @@ class GameState extends ChangeNotifier {
 
       // Charger les données dans les managers
       levelSystem.loadFromJson(gameData['levelSystem'] ?? {});
-      _playerManager?.fromJson(gameData['playerManager'] ?? {});
-      _marketManager?.fromJson(gameData['marketManager'] ?? {});
+      _playerManager.fromJson(gameData['playerManager'] ?? {});
+      _marketManager.fromJson(gameData['marketManager'] ?? {});
+
+      // Appliquer les effets des améliorations
+      _applyUpgradeEffects();
 
       // Charger les statistiques
       if (gameData['statistics'] != null) {
@@ -745,11 +748,6 @@ class GameState extends ChangeNotifier {
           } else {
             _crisisStartTime = DateTime.now();
           }
-
-          // Réactiver les fonctionnalités du mode crise
-          _unlockCrisisFeatures();
-
-          print("Mode crise restauré - Transition vers l'écran de production");
         }
       }
 
@@ -761,6 +759,15 @@ class GameState extends ChangeNotifier {
     } catch (e) {
       print('Error loading game: $e');
       rethrow;
+    }
+  }
+  void _applyUpgradeEffects() {
+    if (_playerManager.upgrades['storage'] != null) {
+      int storageLevel = _playerManager.upgrades['storage']!.level;
+      double newCapacity = GameConstants.INITIAL_STORAGE_CAPACITY *
+          (1 + (storageLevel * GameConstants.STORAGE_UPGRADE_MULTIPLIER));
+      _playerManager.updateMaxMetalStorage(newCapacity);
+      _resourceManager.upgradeStorageCapacity(storageLevel);
     }
   }
 

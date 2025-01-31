@@ -268,36 +268,34 @@ class PlayerManager extends ChangeNotifier {
 
 
   void fromJson(Map<String, dynamic> json) {
-    try {
-      _paperclips = (json['paperclips'] as num?)?.toDouble() ?? 0.0;
-      _money = (json['money'] as num?)?.toDouble() ?? 0.0;
-      _metal = (json['metal'] as num?)?.toDouble() ?? 0.0;
-      _autoclippers = (json['autoclippers'] as num?)?.toInt() ?? 0;
-      _sellPrice = (json['sellPrice'] as num?)?.toDouble() ?? GameConstants.INITIAL_PRICE;
+    _paperclips = (json['paperclips'] as num?)?.toDouble() ?? 0.0;
+    _money = (json['money'] as num?)?.toDouble() ?? 0.0;
+    _metal = (json['metal'] as num?)?.toDouble() ?? 0.0;
+    _autoclippers = (json['autoclippers'] as num?)?.toInt() ?? 0;
+    _sellPrice = (json['sellPrice'] as num?)?.toDouble() ?? GameConstants.INITIAL_PRICE;
 
-      // Réinitialiser d'abord les upgrades
-      _initializeUpgrades();
+    // Réinitialiser d'abord les upgrades
+    _initializeUpgrades();
 
-      // Charger les upgrades
-      final upgradesData = json['upgrades'] as Map<String, dynamic>? ?? {};
-      upgradesData.forEach((key, value) {
-        try {
-          if (upgrades.containsKey(key)) {
-            upgrades[key]!.level = (value['level'] as num?)?.toInt() ?? 0;
-          }
-        } catch (e) {
-          print('Erreur lors du chargement de l\'upgrade $key: $e');
+    // Charger les upgrades
+    final upgradesData = json['upgrades'] as Map<String, dynamic>? ?? {};
+    upgradesData.forEach((key, value) {
+      if (_upgrades.containsKey(key)) {
+        _upgrades[key]!.level = (value['level'] as num?)?.toInt() ?? 0;
+
+        // Mise à jour immédiate des effets des améliorations
+        if (key == 'storage') {
+          double newCapacity = GameConstants.INITIAL_STORAGE_CAPACITY *
+              (1 + (_upgrades[key]!.level * GameConstants.STORAGE_UPGRADE_MULTIPLIER));
+          maxMetalStorage = newCapacity;
+          resourceManager.upgradeStorageCapacity(_upgrades[key]!.level);
         }
-      });
+      }
+    });
 
-      notifyListeners();
-    } catch (e) {
-      print('Erreur lors du chargement des données du joueur: $e');
-      // En cas d'erreur, réinitialiser aux valeurs par défaut
-      resetResources();
-      _initializeUpgrades();
-    }
+    notifyListeners();
   }
+
   bool consumeMetal(double amount) {
     if (_metal >= amount) {
       updateMetal(_metal - amount);
