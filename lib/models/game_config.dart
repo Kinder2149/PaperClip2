@@ -30,7 +30,7 @@ class GameConstants {
   static const double BASE_AUTOCLIPPER_COST = 15.0;
   static const double MIN_PRICE = 0.01;
   static const double MAX_PRICE = 0.50;
-  static const double INITIAL_MARKET_METAL = 4000.0;
+  static const double INITIAL_MARKET_METAL = 8000.0;
   static const int MAX_COMBO_COUNT = 5;
   static const double COMBO_MULTIPLIER = 0.1;  // Pour le calcul du multiplicateur de combo
 

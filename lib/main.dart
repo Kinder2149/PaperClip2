@@ -18,6 +18,7 @@ import './screens/market_screen.dart';
 import './screens/upgrades_screen.dart';
 import './screens/event_log_screen.dart';
 import 'screens/introduction_screen.dart';
+import 'env_config.dart';
 
 // Imports des modèles et services
 import './models/game_state.dart';
@@ -44,10 +45,14 @@ final eventManager = EventManager.instance;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Charger les variables d'environnement
+  await EnvConfig.load();
+
   // Initialiser Firebase avec les options
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
 
   // Configurer Crashlytics
   FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterError;

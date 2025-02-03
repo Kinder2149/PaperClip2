@@ -1,11 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.kinder2149.paperclip2">
     
-    <!-- Permissions de base -->
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
+    <!-- Permissions -->
+    <!-- Ne pas inclure WRITE_EXTERNAL_STORAGE et READ_EXTERNAL_STORAGE car obsolètes -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="com.google.android.gms.permission.AD_ID"/>
     
@@ -14,14 +12,20 @@
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     
+    <!-- Permissions pour les versions antérieures à Android 13 -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" 
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
     <application
         android:label="PaperClip2"
-        android:name="${applicationName}"
+        android:name=".Application"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="true"
         android:enableOnBackInvokedCallback="true"
         android:fullBackupContent="@xml/backup_rules"
-        android:networkSecurityConfig="@xml/network_security_config"
+        android:networkSecurityConfig="@xml/network_security_config" 
         android:requestLegacyExternalStorage="true">
         
         <activity
@@ -34,7 +38,6 @@
             android:windowSoftInputMode="adjustResize"
             android:screenOrientation="portrait">
             
-            <!-- Spécifie le thème à utiliser pour l'activité -->
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme"
@@ -51,10 +54,11 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-            
+
         <!-- Configuration Firebase -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="@string/default_notification_channel_id"/>
     </application>
+
 </manifest>
