@@ -3,7 +3,6 @@
     package="com.kinder2149.paperclip2">
     
     <!-- Permissions -->
-    <!-- Ne pas inclure WRITE_EXTERNAL_STORAGE et READ_EXTERNAL_STORAGE car obsolètes -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="com.google.android.gms.permission.AD_ID"/>
     
@@ -28,6 +27,11 @@
         android:networkSecurityConfig="@xml/network_security_config" 
         android:requestLegacyExternalStorage="true">
         
+        <!-- Ajout de la meta-data pour les Services de Jeux -->
+        <meta-data 
+            android:name="com.google.android.gms.games.APP_ID"
+            android:value="@string/game_services_project_id"/>
+        
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -49,16 +53,12 @@
             </intent-filter>
         </activity>
 
-        <!-- Ne pas supprimer la meta-data ci-dessous.
-             Elle est utilisée par l'outil Flutter pour générer GeneratedPluginRegistrant.java -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
 
-        <!-- Configuration Firebase -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="@string/default_notification_channel_id"/>
     </application>
-
 </manifest>

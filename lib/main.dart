@@ -30,6 +30,7 @@ import './services/background_music.dart';
 import './utils/update_manager.dart';
 import './services/firebase_config.dart';  // Ajoutez cette ligne
 import './widgets/notification_widgets.dart';
+import 'services/games_services_controller.dart';
 
 // Export du navigatorKey
 export 'package:paperclip2/main.dart' show navigatorKey;
@@ -52,7 +53,8 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-
+  final gamesServices = GamesServicesController();
+  await gamesServices.initialize();
 
   // Configurer Crashlytics
   FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterError;

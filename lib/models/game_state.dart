@@ -17,6 +17,7 @@ import 'dart:convert';
 import '../utils/notification_manager.dart';
 import '../dialogs/metal_crisis_dialog.dart';
 import '../services/auto_save_service.dart';
+import 'package:paperclip2/services/games_services_controller.dart';
 
 class GameState extends ChangeNotifier {
   late final PlayerManager _playerManager;
@@ -624,6 +625,7 @@ class GameState extends ChangeNotifier {
     if (player.consumeMetal(GameConstants.METAL_PER_PAPERCLIP)) {
       player.updatePaperclips(player.paperclips + 1);
       _totalPaperclipsProduced++;
+      updateLeaderboard();
       level.addManualProduction();
       // Ajout statistiques
       _statistics.updateProduction(
@@ -785,6 +787,10 @@ class GameState extends ChangeNotifier {
         }
       }
     }
+  }
+  void updateLeaderboard() {
+    final score = totalPaperclipsProduced;
+    GamesServicesController().submitScore(score);
   }
   void _applyUpgradeEffects() {
     if (_playerManager.upgrades['storage'] != null) {

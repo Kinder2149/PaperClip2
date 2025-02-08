@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Remplacez par l'ID du projet des services de jeux (nombre à 12 chiffres) -->
+    <string name="game_services_project_id" translatable="false">65117274232</string>
+    <string name="default_notification_channel_id" translatable="false">default_channel</string>
+</resources>

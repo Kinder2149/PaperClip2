@@ -16,6 +16,4 @@
         <item name="android:windowBackground">?android:colorBackground</item>
     </style>
 
-    <!-- Ajout du canal de notification par défaut -->
-    <string name="default_notification_channel_id">default_channel</string>
 </resources>

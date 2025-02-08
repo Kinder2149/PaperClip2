@@ -31,6 +31,7 @@ import 'start_screen.dart';
 import 'introduction_screen.dart';
 import 'new_metal_production_screen.dart';  // À ajouter en haut
 import 'package:paperclip2/screens/statistics_screen.dart';
+import 'package:paperclip2/services/games_services_controller.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -707,6 +708,41 @@ class _MainScreenState extends State<MainScreen> {
                     ),
 
                     const SizedBox(height: 8),
+                    Card(
+                      elevation: 0,
+                      color: Colors.grey[50],
+                      child: Column(
+                        children: [
+                          ListTile(
+                            leading: const Icon(Icons.games),
+                            title: const Text('Services de jeux'),
+                            trailing: FutureBuilder<bool>(
+                              future: GamesServicesController().isSignedIn(),
+                              builder: (context, snapshot) {
+                                final isSignedIn = snapshot.data ?? false;
+                                return Icon(
+                                  isSignedIn ? Icons.check_circle : Icons.error_outline,
+                                  color: isSignedIn ? Colors.green : Colors.grey,
+                                );
+                              },
+                            ),
+                          ),
+                          const Divider(height: 1),
+                          ListTile(
+                            leading: const Icon(Icons.emoji_events),
+                            title: const Text('Succès'),
+                            onTap: () async {
+                              final controller = GamesServicesController();
+                              if (await controller.isSignedIn()) {
+                                controller.showAchievements();
+                              } else {
+                                controller.signIn();
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
 
                     // Section À propos
                     Card(
