@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.kinder2149.paperclip2">
-    
-    <!-- Permissions -->
+
+    <!-- Permissions Internet et Services Google -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="com.google.android.gms.permission.AD_ID"/>
-    
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+
     <!-- Permissions pour Android 13+ (API 33+) -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
@@ -24,14 +25,23 @@
         android:allowBackup="true"
         android:enableOnBackInvokedCallback="true"
         android:fullBackupContent="@xml/backup_rules"
-        android:networkSecurityConfig="@xml/network_security_config" 
-        android:requestLegacyExternalStorage="true">
-        
-        <!-- Ajout de la meta-data pour les Services de Jeux -->
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:requestLegacyExternalStorage="true"
+        android:largeHeap="true"
+        android:hardwareAccelerated="true"
+        android:usesCleartextTraffic="true">
+
+        <!-- Configuration Firebase -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="@string/default_notification_channel_id"/>
+
+        <!-- Configuration des Services de Jeux -->
         <meta-data 
             android:name="com.google.android.gms.games.APP_ID"
             android:value="@string/game_services_project_id"/>
-        
+
+        <!-- Configuration de l'activité principale -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -41,10 +51,16 @@
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize"
             android:screenOrientation="portrait">
-            
+
+            <!-- Configuration du thème Flutter -->
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme"
+            />
+
+            <meta-data
+                android:name="io.flutter.embedding.android.SplashScreenDrawable"
+                android:resource="@drawable/launch_background"
             />
 
             <intent-filter>
@@ -53,12 +69,9 @@
             </intent-filter>
         </activity>
 
+        <!-- Configuration Flutter -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-
-        <meta-data
-            android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="@string/default_notification_channel_id"/>
     </application>
 </manifest>

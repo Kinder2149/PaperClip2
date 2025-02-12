@@ -10,36 +10,32 @@ dependencies:
   flutter:
     sdk: flutter
   provider: ^6.1.1
-  intl: ^0.19.0
-  fl_chart: ^0.66.2
+  intl: ^0.20.2
+  fl_chart: ^0.70.2
   cupertino_icons: ^1.0.2
-  file_picker: ^6.1.1
-  shared_preferences: ^2.2.2
+  file_picker: ^8.3.5
+  shared_preferences: ^2.5.2
   path_provider: ^2.1.2
   file_selector: ^1.0.1
-  just_audio: ^0.9.42
-  archive: ^3.3.0
-  # Ajout des dépendances pour la gestion des erreurs et analytics
-  firebase_core: ^2.24.2
-  firebase_analytics: ^10.7.4
-  firebase_crashlytics: ^3.4.8
-  package_info_plus: ^5.0.1
-  firebase_storage: ^11.6.0
-  firebase_remote_config: ^4.3.8
-  cloud_firestore: ^4.14.0
+  just_audio: ^0.9.46
+  archive: ^4.0.2
+  firebase_core: ^3.11.0
+  firebase_analytics: ^11.4.2
+  firebase_crashlytics: ^4.3.2
+  package_info_plus: ^8.2.1
+  firebase_storage: ^12.4.2
+  firebase_remote_config: ^5.4.0
+  cloud_firestore: ^5.6.3
   flutter_dotenv: ^5.1.0
-  #games_services: ^2.0.0
-
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^2.0.0
-  flutter_launcher_icons: ^0.13.1
+  flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.3
 
-# Configuration des icônes
 flutter_icons:
-  android: "ic_launcher" 
+  android: "ic_launcher"
   ios: true
   image_path: "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png"
   adaptive_icon_background: "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_adaptive_back.png"

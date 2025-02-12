@@ -7,7 +7,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:flutter/services.dart';
 import 'firebase_options.dart';
-import 'dart:ui' as ui show PlatformDispatcher;  // Ajoutez cette ligne en haut du fichier
+import 'dart:ui' as ui show PlatformDispatcher;
 
 // Imports des écrans
 import './screens/start_screen.dart';
@@ -28,7 +28,7 @@ import './models/progression_system.dart';
 import './services/save_manager.dart';
 import './services/background_music.dart';
 import './utils/update_manager.dart';
-import './services/firebase_config.dart';  // Ajoutez cette ligne
+import './services/firebase_config.dart';
 import './widgets/notification_widgets.dart';
 import 'services/games_services_controller.dart';
 
@@ -64,7 +64,6 @@ void main() async {
     FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
     return true;
   };
-
 
   // Forcer l'orientation portrait
   await SystemChrome.setPreferredOrientations([
