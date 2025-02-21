@@ -44,52 +44,77 @@ final backgroundMusicService = BackgroundMusicService();
 final eventManager = EventManager.instance;
 
 void main() async {
+  // Assure que les widgets sont initialisés
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Charger les variables d'environnement
-  await EnvConfig.load();
-
-  // Initialiser Firebase avec les options
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-  final gamesServices = GamesServicesController();
-  await gamesServices.initialize();
-
-  // Configurer Crashlytics
-  FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterError;
-
-  // Capturer les erreurs non gérées (version corrigée)
-  ui.PlatformDispatcher.instance.onError = (error, stack) {
-    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-    return true;
-  };
-
-  // Forcer l'orientation portrait
+  // Forcer l'orientation portrait avant tout
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
   ]);
 
-  // Initialiser Firebase Config
-  await FirebaseConfig.initialize();
+  // Charger les variables d'environnement
+  await EnvConfig.load();
 
-  // Vérifier les backups
-  await gameState.checkAndRestoreFromBackup();
+  try {
+    // Initialiser Firebase avec les options
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
 
-  // Configuration et log de l'analytics
-  final analytics = FirebaseAnalytics.instance;
-  await analytics.logAppOpen();
+    // Initialiser les services de jeu
+    final gamesServices = GamesServicesController();
+    await gamesServices.initialize();
 
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider.value(value: gameState),
-        Provider<BackgroundMusicService>.value(value: backgroundMusicService),
-        ChangeNotifierProvider.value(value: EventManager.instance),
-      ],
-      child: const MyApp(),
-    ),
-  );
+    // Configurer Crashlytics pour les erreurs Flutter
+    FlutterError.onError = (FlutterErrorDetails details) {
+      FirebaseCrashlytics.instance.recordFlutterError(details);
+    };
+
+    // Capturer les erreurs non gérées avec plus de contexte
+    ui.PlatformDispatcher.instance.onError = (error, stack) {
+      FirebaseCrashlytics.instance.recordError(
+        error,
+        stack,
+        fatal: true,
+        reason: 'Unhandled platform error',
+      );
+      return true;
+    };
+
+    // Initialiser Firebase Config
+    await FirebaseConfig.initialize();
+
+    // Vérifier et restaurer les sauvegardes
+    await gameState.checkAndRestoreFromBackup();
+
+    // Configurer et logger l'analytics
+    await FirebaseAnalytics.instance.logAppOpen();
+    await FirebaseAnalytics.instance.setAnalyticsCollectionEnabled(true);
+
+    // Lancer l'application avec la gestion d'erreur
+    runApp(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider.value(value: gameState),
+          Provider<BackgroundMusicService>.value(value: backgroundMusicService),
+          ChangeNotifierProvider.value(value: EventManager.instance),
+          Provider<GamesServicesController>(
+            create: (context) => gamesServices,
+          ),
+        ],
+        child: const MyApp(),
+      ),
+    );
+  } catch (e, stackTrace) {
+    // Log toute erreur d'initialisation
+    FirebaseCrashlytics.instance.recordError(
+      e,
+      stackTrace,
+      reason: 'Error during app initialization',
+      fatal: true,
+    );
+    rethrow; // Relancer l'erreur pour le débogage
+  }
 }
 
 Future<void> _initializeServices() async {

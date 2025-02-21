@@ -1,7 +1,7 @@
 name: paperclip2
 description: Un jeu incrémental de production de trombones avec des mécaniques de gestion et d'optimisation.
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.1+5
 
 environment:
   sdk: '>=3.0.6 <4.0.0'
@@ -9,30 +9,42 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  
+  # Interface utilisateur
   provider: ^6.1.1
-  intl: ^0.20.2
-  fl_chart: ^0.70.2
-  cupertino_icons: ^1.0.2
-  file_picker: ^8.3.5
-  shared_preferences: ^2.5.2
+  fl_chart: ^0.70.0
+  cupertino_icons: ^1.0.6
+  
+  # Stockage et fichiers
+  shared_preferences: ^2.2.0
   path_provider: ^2.1.2
-  file_selector: ^1.0.1
-  just_audio: ^0.9.46
+  file_picker: ^5.5.0
+  file_selector: ^1.0.3
+  
+  # Audio
+  just_audio: ^0.9.36
+  
+  # Utilitaires
   archive: ^4.0.2
-  firebase_core: ^3.11.0
-  firebase_analytics: ^11.4.2
-  firebase_crashlytics: ^4.3.2
-  package_info_plus: ^8.2.1
-  firebase_storage: ^12.4.2
-  firebase_remote_config: ^5.4.0
-  cloud_firestore: ^5.6.3
+  intl: ^0.19.0
+  
+  # Firebase
+  firebase_core: ^2.24.2
+  firebase_analytics: ^10.8.0
+  firebase_crashlytics: ^3.4.9
+  firebase_storage: ^11.6.0
+  firebase_remote_config: ^4.3.8
+  cloud_firestore: ^4.14.0
+  
+  # Configuration
   flutter_dotenv: ^5.1.0
+  package_info_plus: ^4.0.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^5.0.0
-  flutter_launcher_icons: ^0.14.3
+  flutter_lints: ^3.0.1
+  flutter_launcher_icons: ^0.13.1
 
 flutter_icons:
   android: "ic_launcher"
