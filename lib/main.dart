@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -44,29 +45,41 @@ final backgroundMusicService = BackgroundMusicService();
 final eventManager = EventManager.instance;
 
 void main() async {
-  // Assure que les widgets sont initialisés
-  WidgetsFlutterBinding.ensureInitialized();
-
-  // Forcer l'orientation portrait avant tout
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-  ]);
-
-  // Charger les variables d'environnement
-  await EnvConfig.load();
-
   try {
-    // Initialiser Firebase avec les options
+    WidgetsFlutterBinding.ensureInitialized();
+    if (kDebugMode) {
+      print('Flutter binding initialized');
+    }
+
+    await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    if (kDebugMode) {
+      print('Orientation set to portrait');
+    }
+
+    // Chargement des variables d'environnement avec plus de contexte
+    if (kDebugMode) {
+      print('Loading environment variables...');
+    }
+    await EnvConfig.load();
+
+    // Initialisation de Firebase avec vérification
+    if (kDebugMode) {
+      print('Initializing Firebase...');
+    }
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
     // Initialiser les services de jeu
+    // Initialisation des services de jeu
     final gamesServices = GamesServicesController();
     await gamesServices.initialize();
 
-    // Configurer Crashlytics pour les erreurs Flutter
+    // Configuration de Crashlytics
     FlutterError.onError = (FlutterErrorDetails details) {
+      if (kDebugMode) {
+        print('Flutter Error: ${details.exception}');
+      }
       FirebaseCrashlytics.instance.recordFlutterError(details);
     };
 
@@ -106,14 +119,17 @@ void main() async {
       ),
     );
   } catch (e, stackTrace) {
-    // Log toute erreur d'initialisation
+    if (kDebugMode) {
+      print('Fatal error during initialization: $e');
+      print('Stack trace: $stackTrace');
+    }
     FirebaseCrashlytics.instance.recordError(
       e,
       stackTrace,
       reason: 'Error during app initialization',
       fatal: true,
     );
-    rethrow; // Relancer l'erreur pour le débogage
+    rethrow;
   }
 }
 

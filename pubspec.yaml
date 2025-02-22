@@ -58,4 +58,5 @@ flutter:
     - assets/
     - assets/audio/ambient-technology.wav
     - assets/audio/screenmusic.wav
+    - .env
   uses-material-design: true
