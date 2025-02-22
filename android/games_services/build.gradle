@@ -13,12 +13,12 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility rootProject.ext.jdk_version
-        targetCompatibility rootProject.ext.jdk_version
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
     }
 
     kotlinOptions {
-        jvmTarget = rootProject.ext.jdk_version.toString()
+        jvmTarget = '21'
     }
 }
 

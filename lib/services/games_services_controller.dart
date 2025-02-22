@@ -60,7 +60,7 @@ class GamesServicesController {
     try {
       await GamesServices.submitScore(
         score: Score(
-            androidLeaderboardID: 'CgkI-ICryvIBEAIQAg', // À remplacer par votre ID
+            androidLeaderboardID: 'CgkI-Do', // À remplacer par votre ID
             iOSLeaderboardID: 'your_leaderboard_id',     // À remplacer par votre ID
             value: scoreValue
         ),

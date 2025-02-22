@@ -1,7 +1,7 @@
 buildscript {
     ext {
         kotlin_version = '1.9.22'
-        jdk_version = JavaVersion.VERSION_21
+        play_services_version = '23.1.0'  // Version unifiée
     }
     repositories {
         google()
@@ -21,29 +21,13 @@ allprojects {
         google()
         mavenCentral()
     }
-}
 
-subprojects {
-    afterEvaluate { project ->
-        if (project.hasProperty('android')) {
-            android {
-                compileSdkVersion 34
-
-                compileOptions {
-                    sourceCompatibility jdk_version
-                    targetCompatibility jdk_version
-                }
-
-                tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
-                    kotlinOptions {
-                        jvmTarget = jdk_version.toString()
-                    }
-                }
-            }
+    configurations.all {
+        resolutionStrategy {
+            force "com.google.android.gms:play-services-games:$play_services_version"
+            force "com.google.android.gms:play-services-games-v2:$play_services_version"
         }
     }
 }
 
-tasks.register("clean", Delete) {
-    delete rootProject.buildDir
-}
+rootProject.buildDir = '../build'
