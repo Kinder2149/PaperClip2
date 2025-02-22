@@ -24,6 +24,7 @@ android {
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
-    implementation 'com.google.android.gms:play-services-games:23.1.0'
+    // Utiliser uniquement la version v2
+    implementation 'com.google.android.gms:play-services-games-v2:20.1.2'
     implementation 'com.google.android.gms:play-services-auth:20.7.0'
 }
