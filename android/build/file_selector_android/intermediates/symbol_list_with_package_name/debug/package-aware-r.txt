@@ -1,0 +1,1 @@
+dev.flutter.packages.file_selector_android

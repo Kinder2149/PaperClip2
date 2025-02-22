@@ -1,7 +1,7 @@
 buildscript {
     ext {
         kotlin_version = '1.9.22'
-        agp_version = '8.2.1'
+        compileSdkVersion = 34
     }
     repositories {
         google()
@@ -9,7 +9,7 @@ buildscript {
     }
 
     dependencies {
-        classpath "com.android.tools.build:gradle:$agp_version"
+        classpath 'com.android.tools.build:gradle:8.2.1'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
         classpath 'com.google.gms:google-services:4.4.0'
         classpath 'com.google.firebase:firebase-crashlytics-gradle:2.9.9'
@@ -22,41 +22,22 @@ allprojects {
         mavenCentral()
     }
 
-    configurations.all {
-        resolutionStrategy {
-            force 'com.google.android.gms:play-services-games:23.1.0'
-            exclude group: 'com.google.android.gms', module: 'play-services-games-v2'
+    gradle.projectsEvaluated {
+        tasks.withType(JavaCompile) {
+            sourceCompatibility = JavaVersion.VERSION_21
+            targetCompatibility = JavaVersion.VERSION_21
+        }
+
+        tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+            kotlinOptions {
+                jvmTarget = '21'
+            }
         }
     }
 }
 
 subprojects {
-    afterEvaluate { project ->
-        if (project.hasProperty('android')) {
-            android {
-                compileSdkVersion 34
-                
-                compileOptions {
-                    sourceCompatibility JavaVersion.VERSION_21
-                    targetCompatibility JavaVersion.VERSION_21
-                }
-            }
-        }
-        
-        if (project.plugins.hasPlugin('kotlin-android')) {
-            tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
-                kotlinOptions {
-                    jvmTarget = '21'
-                    freeCompilerArgs += [
-                        "-Xjvm-default=all",
-                        "-Xsam-conversions=class"
-                    ]
-                }
-            }
-        }
-    }
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
 }
 
-task clean(type: Delete) {
-    delete rootProject.buildDir
-}
+rootProject.buildDir = '../build'

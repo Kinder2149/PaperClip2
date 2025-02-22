@@ -18,6 +18,8 @@ def flutterSdkPath = localProperties.getProperty('flutter.sdk')
 assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
 
 include ':app'
+include ':games_services'
+project(':games_services').projectDir = new File(rootProject.projectDir, '../games_services/android')
 
 def flutterProjectRoot = rootProject.projectDir.parentFile
 def plugins = new Properties()
