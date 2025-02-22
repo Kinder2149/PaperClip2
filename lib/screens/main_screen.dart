@@ -62,6 +62,10 @@ class _MainScreenState extends State<MainScreen> {
     final gameState = context.read<GameState>();
     await Future.delayed(Duration.zero);
     gameState.setContext(context);
+
+    // Initialiser les services de jeux
+    final gamesServices = GamesServicesController();
+    await gamesServices.initialize();
   }
 
   Future<void> _playBackgroundMusic() async {
@@ -708,11 +712,13 @@ class _MainScreenState extends State<MainScreen> {
                     ),
 
                     const SizedBox(height: 8),
+                    // Section Services de jeux
                     Card(
                       elevation: 0,
                       color: Colors.grey[50],
                       child: Column(
                         children: [
+                          // En-tête avec statut de connexion
                           ListTile(
                             leading: const Icon(Icons.games),
                             title: const Text('Services de jeux'),
@@ -720,14 +726,43 @@ class _MainScreenState extends State<MainScreen> {
                               future: GamesServicesController().isSignedIn(),
                               builder: (context, snapshot) {
                                 final isSignedIn = snapshot.data ?? false;
-                                return Icon(
-                                  isSignedIn ? Icons.check_circle : Icons.error_outline,
-                                  color: isSignedIn ? Colors.green : Colors.grey,
+                                return Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      isSignedIn ? Icons.check_circle : Icons.error_outline,
+                                      color: isSignedIn ? Colors.green : Colors.grey,
+                                    ),
+                                    if (!isSignedIn)
+                                      TextButton(
+                                        onPressed: () => GamesServicesController().signIn(),
+                                        child: const Text('Se connecter'),
+                                      ),
+                                  ],
                                 );
                               },
                             ),
                           ),
                           const Divider(height: 1),
+                          // Classements
+                          ListTile(
+                            leading: const Icon(Icons.leaderboard),
+                            title: const Text('Classement'),
+                            subtitle: Text('Score actuel: ${gameState.totalPaperclipsProduced}'),
+                            onTap: () async {
+                              final controller = GamesServicesController();
+                              if (await controller.isSignedIn()) {
+                                controller.showLeaderboard();
+                              } else {
+                                await controller.signIn();
+                                if (await controller.isSignedIn()) {
+                                  controller.showLeaderboard();
+                                }
+                              }
+                            },
+                          ),
+                          const Divider(height: 1),
+                          // Succès
                           ListTile(
                             leading: const Icon(Icons.emoji_events),
                             title: const Text('Succès'),
@@ -736,7 +771,38 @@ class _MainScreenState extends State<MainScreen> {
                               if (await controller.isSignedIn()) {
                                 controller.showAchievements();
                               } else {
-                                controller.signIn();
+                                await controller.signIn();
+                                if (await controller.isSignedIn()) {
+                                  controller.showAchievements();
+                                }
+                              }
+                            },
+                          ),
+                          // Synchronisation
+                          ListTile(
+                            leading: const Icon(Icons.sync),
+                            title: const Text('Synchroniser le score'),
+                            onTap: () async {
+                              final controller = GamesServicesController();
+                              if (await controller.isSignedIn()) {
+                                gameState.updateLeaderboard();
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Score synchronisé !'),
+                                      duration: Duration(seconds: 2),
+                                    ),
+                                  );
+                                }
+                              } else {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Veuillez vous connecter aux services de jeux'),
+                                      duration: Duration(seconds: 2),
+                                    ),
+                                  );
+                                }
                               }
                             },
                           ),

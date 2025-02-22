@@ -512,7 +512,48 @@ class PlayerManager extends ChangeNotifier {
   }
 
   void _triggerAutoSave() {
-    // Implémenter la logique de sauvegarde automatique ici
+    try {
+      // Création de l'objet de sauvegarde
+      final saveData = {
+        'playerData': toJson(),
+        'timestamp': DateTime.now().toIso8601String(),
+        'upgrades': _upgrades.map((key, value) => MapEntry(key, value.toJson())),
+        'resources': {
+          'metal': _metal,
+          'paperclips': _paperclips,
+          'money': _money,
+          'autoclippers': _autoclippers,
+          'sellPrice': _sellPrice,
+        }
+      };
+
+      // Enregistrer dans les préférences partagées ou le stockage local
+      // Note: Nous devons implémenter cette partie selon le système de stockage utilisé
+      _saveToStorage(saveData);
+
+      // Notification de sauvegarde réussie
+      EventManager.instance.addEvent(
+        EventType.INFO,
+        "Sauvegarde Automatique",
+        description: "Partie sauvegardée avec succès",
+        importance: EventImportance.LOW,
+      );
+    } catch (e) {
+      print('Erreur lors de la sauvegarde automatique: $e');
+      EventManager.instance.addEvent(
+        EventType.INFO,
+        "Erreur de Sauvegarde",
+        description: "La sauvegarde automatique a échoué",
+        importance: EventImportance.HIGH,
+      );
+    }
+  }
+
+// Méthode à implémenter pour le stockage effectif des données
+  Future<void> _saveToStorage(Map<String, dynamic> data) async {
+    // TODO: Implémenter la logique de stockage
+    // Cette méthode devrait être implémentée selon le système de stockage choisi
+    // (SharedPreferences, Hive, SQLite, etc.)
   }
 
   void updateUpgrade(String id, int level) {

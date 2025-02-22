@@ -8,6 +8,9 @@ import '../widgets/chart_widgets.dart';
 import 'upgrades_screen.dart';
 import '../widgets/production_button.dart';
 import '../services/save_manager.dart';
+import '../models/event_system.dart';
+import '../utils/notification_manager.dart';
+
 
 class NewMetalProductionScreen extends StatefulWidget {
   const NewMetalProductionScreen({Key? key}) : super(key: key);
@@ -43,149 +46,32 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
   void _showDetailDialog(BuildContext context, String title, Widget content) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: SingleChildScrollView(child: content),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Fermer'),
+      builder: (context) =>
+          AlertDialog(
+            title: Text(title),
+            content: SingleChildScrollView(child: content),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Fermer'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
   Widget _buildResourcesTab(GameState gameState) {
+    bool allMissionsCompleted = gameState.missionSystem.dailyMissions
+        .every((mission) => mission.isCompleted);
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          _buildInfoCard(
-            title: 'Argent',
-            value: '${gameState.player.money.toStringAsFixed(2)} €',
-            icon: Icons.attach_money,
-            color: Colors.green.shade100,
-            onTap: () => _showDetailDialog(
-              context,
-              'Finances',
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('Solde actuel: ${gameState.player.money.toStringAsFixed(2)} €'),
-                  Text('Dépenses/min: ${gameState.maintenanceCosts.toStringAsFixed(2)} €'),
-                  Text('Prix de vente: ${gameState.player.sellPrice.toStringAsFixed(2)} €'),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Production Totale et Stock
-          Row(
-            children: [
-              Expanded(
-                child: _buildInfoCard(
-                  title: 'Total Produit',
-                  value: formatNumber(gameState.totalPaperclipsProduced.toDouble()),
-                  icon: Icons.all_inclusive,
-                  color: Colors.purple.shade100,
-                  onTap: () => _showDetailDialog(
-                    context,
-                    'Production Totale',
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('Total produit: ${formatNumber(gameState.totalPaperclipsProduced.toDouble())}'),
-                        Text('Production/min: ${(gameState.player.autoclippers * 60).toStringAsFixed(1)}'),
-                        Text('Multiplicateur: x${gameState.level.productionMultiplier.toStringAsFixed(2)}'),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildInfoCard(
-                  title: 'Stock',
-                  value: formatNumber(gameState.player.paperclips),
-                  icon: Icons.inventory_2,
-                  color: Colors.blue.shade100,
-                  onTap: () => _showDetailDialog(
-                    context,
-                    'Stock de Trombones',
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('En stock: ${formatNumber(gameState.player.paperclips)}'),
-                        Text('Prix de vente: ${gameState.player.sellPrice.toStringAsFixed(2)} €'),
-                        Text('Valeur totale: ${(gameState.player.paperclips * gameState.player.sellPrice).toStringAsFixed(2)} €'),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // Métal et Prix de Vente
-          Row(
-            children: [
-              Expanded(
-                child: _buildInfoCard(
-                  title: 'Métal',
-                  value: '${formatNumber(gameState.player.metal)}/${gameState.player.maxMetalStorage}',
-                  icon: Icons.inventory,
-                  color: Colors.grey.shade200,
-                  onTap: () => _showDetailDialog(
-                    context,
-                    'Stock de Métal',
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('Stock: ${formatNumber(gameState.player.metal)}'),
-                        Text('Capacité max: ${gameState.player.maxMetalStorage}'),
-                        Text('Efficacité: ${((1 - ((gameState.player.upgrades["efficiency"]?.level ?? 0) * 0.15)) * 100).toStringAsFixed(0)}%'),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildInfoCard(
-                  title: 'Prix Vente',
-                  value: '${gameState.player.sellPrice.toStringAsFixed(2)} €',
-                  icon: Icons.price_change,
-                  color: Colors.green.shade100,
-                  onTap: () => _showDetailDialog(
-                    context,
-                    'Prix de Vente',
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('Prix actuel: ${gameState.player.sellPrice.toStringAsFixed(2)} €'),
-                        Text('Prix min: ${GameConstants.MIN_PRICE.toStringAsFixed(2)} €'),
-                        Text('Prix max: ${GameConstants.MAX_PRICE.toStringAsFixed(2)} €'),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // Autoclippers
-          if (gameState.player.autoclippers > 0)
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
             Card(
-              color: Colors.orange.shade100,
+              color: Colors.purple.shade50,
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -195,141 +81,127 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Autoclippers',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.orange.shade900,
+                          'Missions Journalières',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            color: Colors.deepPurple,
                           ),
                         ),
-                        Text(
-                          '${gameState.player.autoclippers} actifs',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.deepOrange,
+                        if (allMissionsCompleted)
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              gameState.levelSystem.gainExperience(
+                                  GameConstants.DAILY_BONUS_AMOUNT * 2
+                              );
+                              // Utiliser le système de notification
+                              gameState.missionSystem.onMissionSystemRefresh?.call();
+                            },
+                            icon: const Icon(Icons.stars, color: Colors.amber),
+                            label: const Text('Réclamer Bonus'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.deepPurple,
+                              foregroundColor: Colors.white,
+                            ),
                           ),
-                        ),
                       ],
                     ),
                     const Divider(),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _buildBonusIndicator(
-                          'Production',
-                          '${(gameState.player.autoclippers * 60).toStringAsFixed(1)}/min',
-                          Icons.speed,
+                    // Liste des missions avec progression
+                    ...gameState.missionSystem.dailyMissions.map((mission) =>
+                        Card(
+                          color: mission.isCompleted ? Colors.green.shade50 : Colors.white,
+                          child: Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                ListTile(
+                                  leading: Icon(
+                                    mission.isCompleted ? Icons.check_circle : Icons.pending,
+                                    color: mission.isCompleted ? Colors.green : Colors.orange,
+                                    size: 32,
+                                  ),
+                                  title: Text(
+                                    mission.title,
+                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                  subtitle: Text(mission.description),
+                                  trailing: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        '${mission.experienceReward} XP',
+                                        style: const TextStyle(
+                                          color: Colors.deepPurple,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${(mission.progress / mission.target * 100).toInt()}%',
+                                        style: TextStyle(
+                                          color: mission.isCompleted ? Colors.green : Colors.grey,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                LinearProgressIndicator(
+                                  value: mission.progress / mission.target,
+                                  backgroundColor: Colors.grey.shade200,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    mission.isCompleted ? Colors.green : Colors.deepPurple,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                        _buildBonusIndicator(
-                          'Efficacité',
-                          '${((1 - ((gameState.player.upgrades["efficiency"]?.level ?? 0) * 0.15)) * 100).toStringAsFixed(0)}%',
-                          Icons.eco,
+                    ).toList(),
+
+                    // Section des statistiques
+                    const SizedBox(height: 16),
+                    Card(
+                      color: Colors.blue.shade50,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Statistiques des Missions',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
+                            ),
+                            const Divider(),
+                            _buildStatisticsRow(
+                              'Production Manuelle',
+                              gameState.statistics.getAllStats()['production']!['Production Manuelle']!.toString(),
+                              Icons.touch_app,
+                            ),
+                            _buildStatisticsRow(
+                              'Ventes Totales',
+                              gameState.statistics.getAllStats()['economie']!['Ventes Totales']!.toString(),
+                              Icons.shopping_cart,
+                            ),
+                            _buildStatisticsRow(
+                              'Autoclippers',
+                              gameState.statistics.getAllStats()['progression']!['Autoclippers Achetés']!.toString(),
+                              Icons.precision_manufacturing,
+                            ),
+                            _buildStatisticsRow(
+                              'Expérience',
+                              gameState.levelSystem.experience.toStringAsFixed(1),
+                              Icons.star,
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
                   ],
                 ),
-              ),
-            ),
-          const SizedBox(height: 24),  // Espace supplémentaire avant le bouton de sauvegarde
-
-          // Bouton de sauvegarde
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () async {
-                try {
-                  if (gameState.gameName == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Erreur: Aucun nom de partie défini'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                    return;
-                  }
-
-                  await SaveManager.saveGame(gameState, gameState.gameName!);
-
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Partie sauvegardée avec succès'),
-                      backgroundColor: Colors.green,
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
-                } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Erreur lors de la sauvegarde: $e'),
-                      backgroundColor: Colors.red,
-                      duration: const Duration(seconds: 4),
-                    ),
-                  );
-                }
-              },
-              icon: const Icon(Icons.save),
-              label: const Text('Sauvegarder'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepPurple,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMetalProductionTab(GameState gameState) {
-    bool canProduce = gameState.player.metal + 100 <= gameState.player.maxMetalStorage;
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              'Production de Métal',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[800],
-              ),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: canProduce ? () => gameState.player.updateMetal(gameState.player.metal + 100) : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 24),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              child: Column(
-                children: [
-                  const Icon(Icons.add_circle_outline, size: 64, color: Colors.white),
-                  const SizedBox(height: 16),
-                  Text(
-                    '+100 Métal',
-                    style: const TextStyle(
-                      fontSize: 24,
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Text(
-                    'Gratuit',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.grey[100],
-                    ),
-                  ),
-                ],
               ),
             ),
           ],
@@ -338,56 +210,274 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
     );
   }
 
-  Widget _buildUpgradesTab(GameState gameState) {
-    var availableUpgrades = gameState.player.upgrades.entries
-        .where((entry) => entry.value.level < entry.value.maxLevel)
-        .toList();
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
+  Widget _buildStatisticsRow(String label, String value, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          ...availableUpgrades.map((entry) => Card(
-            margin: const EdgeInsets.only(bottom: 16),
-            child: ListTile(
-              leading: Icon(
-                _getUpgradeIcon(entry.key),
-                color: Colors.blue,
-                size: 32,
-              ),
-              title: Text(
-                entry.value.name,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(entry.value.description),
-                  const SizedBox(height: 4),
-                  LinearProgressIndicator(
-                    value: entry.value.level / entry.value.maxLevel,
-                    backgroundColor: Colors.grey[200],
-                    valueColor: const AlwaysStoppedAnimation<Color>(Colors.blue),
-                  ),
-                  Text(
-                    'Niveau ${entry.value.level}/${entry.value.maxLevel}',
-                    style: TextStyle(color: Colors.grey[600]),
-                  ),
-                ],
-              ),
-              trailing: ElevatedButton(
-                onPressed: gameState.player.money >= entry.value.getCost()
-                    ? () => gameState.purchaseUpgrade(entry.key)
-                    : null,
-                child: Text('${entry.value.getCost().toStringAsFixed(1)} €'),
-              ),
-              isThreeLine: true,
+          Row(
+            children: [
+              Icon(icon, size: 16, color: Colors.blue),
+              const SizedBox(width: 8),
+              Text(label),
+            ],
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.blue,
             ),
-          )).toList(),
+          ),
         ],
       ),
     );
   }
+
+  Widget _buildMissionStat(String label, String value, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: Colors.blue),
+              const SizedBox(width: 8),
+              Text(label),
+            ],
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.blue,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetalProductionTab(GameState gameState) {
+    bool canProduce = gameState.player.metal + 100 <=
+        gameState.player.maxMetalStorage;
+    double remainingStorage = gameState.player.maxMetalStorage -
+        gameState.player.metal;
+    int possibleProductions = (remainingStorage / 100).floor();
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  'Productions restantes : $possibleProductions',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: possibleProductions > 5 ? Colors.green : Colors
+                        .orange,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: canProduce
+                      ? () =>
+                      gameState.player.updateMetal(gameState.player.metal + 100)
+                      : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 48, vertical: 24),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.add_circle_outline, size: 64,
+                          color: Colors.white),
+                      const SizedBox(height: 16),
+                      const Text(
+                        '+100 Métal',
+                        style: TextStyle(
+                          fontSize: 24,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        'Gratuit',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Colors.grey[100],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 32),
+
+          // Statistiques de production
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Statistiques de Production',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Divider(),
+                  _buildStatRow('Métal Stocké',
+                      '${formatNumber(gameState.player.metal)}/${formatNumber(
+                          gameState.player.maxMetalStorage)}'),
+                  _buildStatRow('Coût de Maintenance',
+                      '${gameState.player.maintenanceCosts.toStringAsFixed(
+                          2)} €/min'),
+                  _buildStatRow('Niveau de Production',
+                      '${gameState.level}'),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label),
+          Text(
+            value,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUpgradesTab(GameState gameState) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          // Progression vers le mode crise
+          Card(
+            color: Colors.blue.shade50,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Progression vers le Mode Crise',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  LinearProgressIndicator(
+                    value: gameState.marketManager.marketMetalStock /
+                        GameConstants.INITIAL_MARKET_METAL,
+                    backgroundColor: Colors.grey.shade200,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      _getCrisisProgressColor(
+                          gameState.marketManager.marketMetalStock),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Stock de Métal Mondial: ${(gameState.marketManager
+                        .marketMetalStock / GameConstants.INITIAL_MARKET_METAL *
+                        100).toStringAsFixed(1)}%',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Statistiques
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Statistiques Générales',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Divider(),
+                  _buildStatRow('Argent Total',
+                      '${gameState.player.money.toStringAsFixed(2)} €'),
+                  _buildStatRow('Autoclippers',
+                      '${gameState.player.autoclippers}'),
+                  _buildStatRow('Niveau',
+                      '${gameState.level}'),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _getCrisisProgressColor(double stock) {
+    if (stock <= GameConstants.METAL_CRISIS_THRESHOLD_0) return Colors.red;
+    if (stock <= GameConstants.METAL_CRISIS_THRESHOLD_25) return Colors.orange;
+    if (stock <= GameConstants.METAL_CRISIS_THRESHOLD_50) return Colors.yellow;
+    return Colors.green;
+  }
+
+  Widget _buildRankingItem(String label, dynamic value, IconData icon,
+      Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(icon, color: color),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(label),
+          ),
+          Text(
+            value.toString(),
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
 
   Widget _buildInfoCard({
     required String title,
@@ -487,61 +577,78 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
   Widget build(BuildContext context) {
     return Consumer<GameState>(
       builder: (context, gameState, child) {
-        return Column(
-          children: [
-            TabBar(
-              controller: _tabController,
-              tabs: const [
-                Tab(icon: Icon(Icons.dashboard), text: 'Aperçu'),
-                Tab(icon: Icon(Icons.precision_manufacturing), text: 'Production'),
-                Tab(icon: Icon(Icons.upgrade), text: 'Améliorations'),
-              ],
-            ),
-            Expanded(
-              child: TabBarView(
+        return Scaffold(
+          body: Column(
+            children: [
+              TabBar(
                 controller: _tabController,
-                children: [
-                  _buildResourcesTab(gameState),
-                  _buildMetalProductionTab(gameState),
-                  _buildUpgradesTab(gameState),
+                tabs: const [
+                  Tab(icon: Icon(Icons.dashboard), text: 'Aperçu'),
+                  Tab(icon: Icon(Icons.precision_manufacturing),
+                      text: 'Production'),
+                  Tab(icon: Icon(Icons.upgrade), text: 'Améliorations'),
                 ],
               ),
-            ),
-            // Ajout des boutons de production
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              color: Theme.of(context).scaffoldBackgroundColor,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Bouton Autoclipper
-                  if (gameState.getVisibleScreenElements()['autoclippersSection'] == true)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: gameState.player.money >= gameState.autocliperCost
-                              ? () => gameState.buyAutoclipper()
-                              : null,
-                          icon: const Icon(Icons.precision_manufacturing),
-                          label: Text(
-                            'Acheter Autoclipper (${gameState.autocliperCost.toStringAsFixed(2)} €)',
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.deepPurple,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    SingleChildScrollView(
+                      child: _buildResourcesTab(gameState),
+                    ),
+                    SingleChildScrollView(
+                      child: _buildMetalProductionTab(gameState),
+                    ),
+                    SingleChildScrollView(
+                      child: _buildUpgradesTab(gameState),
+                    ),
+                  ],
+                ),
+              ),
+              // Bottom section
+              SafeArea(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  color: Theme
+                      .of(context)
+                      .scaffoldBackgroundColor,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (gameState
+                          .getVisibleScreenElements()['autoclippersSection'] ==
+                          true)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16.0, vertical: 8.0),
+                          child: SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: gameState.player.money >=
+                                  gameState.autocliperCost
+                                  ? () => gameState.buyAutoclipper()
+                                  : null,
+                              icon: const Icon(Icons.precision_manufacturing),
+                              label: Text(
+                                'Acheter Autoclipper (${gameState.autocliperCost
+                                    .toStringAsFixed(2)} €)',
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.deepPurple,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 12),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                  // Bouton de production de trombone
-                  const ProductionButton(), // Ne pas oublier d'importer '../widgets/production_button.dart'
-                ],
+                      const ProductionButton(),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         );
       },
     );

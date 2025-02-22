@@ -18,29 +18,19 @@ if (flutterRoot == null) {
     throw new GradleException("Flutter SDK not found. Define location with flutter.sdk in local.properties")
 }
 
-apply plugin: 'com.android.application'
-apply plugin: 'kotlin-android'
+plugins {
+    id 'com.android.application'
+    id 'kotlin-android'
+    id 'com.google.gms.google-services'
+    id 'com.google.firebase.crashlytics'
+}
+
 apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
-apply plugin: 'com.google.gms.google-services'
-apply plugin: 'com.google.firebase.crashlytics'
 
 android {
     namespace "com.kinder2149.paperclip2"
     compileSdkVersion 34
     ndkVersion flutter.ndkVersion
-
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_21
-        targetCompatibility JavaVersion.VERSION_21
-    }
-
-    kotlinOptions {
-        jvmTarget = '21'
-    }
-
-    sourceSets {
-        main.java.srcDirs += 'src/main/kotlin'
-    }
 
     defaultConfig {
         applicationId "com.kinder2149.paperclip2"
@@ -49,6 +39,19 @@ android {
         versionCode 6
         versionName "1.0.1"
         multiDexEnabled true
+    }
+
+    compileOptions {
+        sourceCompatibility rootProject.ext.jdk_version
+        targetCompatibility rootProject.ext.jdk_version
+    }
+
+    kotlinOptions {
+        jvmTarget = rootProject.ext.jdk_version.toString()
+    }
+
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
     }
 
     signingConfigs {
@@ -75,7 +78,7 @@ dependencies {
     implementation 'androidx.multidex:multidex:2.0.1'
     implementation 'com.google.firebase:firebase-analytics-ktx'
     implementation 'com.google.firebase:firebase-crashlytics-ktx'
-    implementation 'com.google.android.gms:play-services-games-v2:17.0.0'
+    implementation 'com.google.android.gms:play-services-games:23.1.0'
     implementation 'com.google.android.play:app-update:2.1.0'
     implementation 'com.google.android.play:app-update-ktx:2.1.0'
 }

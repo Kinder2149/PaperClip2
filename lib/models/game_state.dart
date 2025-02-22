@@ -625,17 +625,22 @@ class GameState extends ChangeNotifier {
     if (player.consumeMetal(GameConstants.METAL_PER_PAPERCLIP)) {
       player.updatePaperclips(player.paperclips + 1);
       _totalPaperclipsProduced++;
-      updateLeaderboard();
+
+      // Mettre à jour le leaderboard périodiquement
+      if (_totalPaperclipsProduced % 100 == 0) {
+        updateLeaderboard();
+      }
+
       level.addManualProduction();
-      // Ajout statistiques
       _statistics.updateProduction(
         isManual: true,
         amount: 1,
-        metalUsed: GameConstants.METAL_PER_PAPERCLIP,  // Cette valeur est bien passée
+        metalUsed: GameConstants.METAL_PER_PAPERCLIP,
       );
       notifyListeners();
     }
   }
+
 
   void setSellPrice(double newPrice) {
     if (market.isPriceExcessive(newPrice)) {
@@ -683,6 +688,7 @@ class GameState extends ChangeNotifier {
     saveOnImportantEvent();
     checkMilestones();
     notifyListeners();
+    updateLeaderboard();
   }
 
   void _handleMissionCompleted(Mission mission) {
@@ -789,9 +795,18 @@ class GameState extends ChangeNotifier {
     }
   }
   void updateLeaderboard() {
+    if (!_isInitialized) return;
     final score = totalPaperclipsProduced;
     GamesServicesController().submitScore(score);
   }
+  void showLeaderboard() {
+    GamesServicesController().showLeaderboard();
+  }
+
+  void showAchievements() {
+    GamesServicesController().showAchievements();
+  }
+
   void _applyUpgradeEffects() {
     if (_playerManager.upgrades['storage'] != null) {
       int storageLevel = _playerManager.upgrades['storage']!.level;

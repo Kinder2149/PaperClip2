@@ -1,5 +1,8 @@
 buildscript {
-    ext.kotlin_version = '1.9.22'
+    ext {
+        kotlin_version = '1.9.22'
+        jdk_version = JavaVersion.VERSION_21
+    }
     repositories {
         google()
         mavenCentral()
@@ -20,9 +23,25 @@ allprojects {
     }
 }
 
-rootProject.buildDir = '../build'
 subprojects {
-    project.buildDir = "${rootProject.buildDir}/${project.name}"
+    afterEvaluate { project ->
+        if (project.hasProperty('android')) {
+            android {
+                compileSdkVersion 34
+
+                compileOptions {
+                    sourceCompatibility jdk_version
+                    targetCompatibility jdk_version
+                }
+
+                tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+                    kotlinOptions {
+                        jvmTarget = jdk_version.toString()
+                    }
+                }
+            }
+        }
+    }
 }
 
 tasks.register("clean", Delete) {
