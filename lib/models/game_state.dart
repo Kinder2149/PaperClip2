@@ -705,7 +705,15 @@ class GameState extends ChangeNotifier {
 
     // Mise à jour de l'achievement progressif
     final gamesServices = GamesServicesController();
-    gamesServices.incrementAchievement(levelSystem);  // Maintenant on passe directement levelSystem
+    gamesServices.incrementAchievement(
+      Achievement(
+        androidID: 'CgkI-ICryvIBEAIQAQ',
+        steps: (levelSystem.experience ~/ 100).clamp(0, 100),
+        name: 'Progression globale',  // Ajouté
+        description: 'Progression du joueur dans le jeu',  // Ajouté
+        totalSteps: 100,  // Ajouté
+      ),
+    );
 
     saveOnImportantEvent();
     checkMilestones();

@@ -106,7 +106,7 @@ class GamesServicesController {
   }
 
 
-  // Dans games_services_controller.dart
+
 
   Future<double?> getAchievementProgress(String achievementId) async {
     if (!_isSignedIn) return null;
@@ -119,24 +119,25 @@ class GamesServicesController {
             (a) => a.id == achievementId,
         orElse: () => AchievementItemData(
           id: achievementId,
-          isComplete: false,
-          currentSteps: 0,
-          totalSteps: 100,
+          name: 'Achievement',  // Requis
+          description: 'Achievement Description',  // Requis
+          completedSteps: 0,  // Requis
+          totalSteps: 100,  // Requis
+          unlocked: false,  // Requis
         ),
       );
 
-      // Calculer le pourcentage basé sur les étapes actuelles et totales
+      // Calcul du pourcentage basé sur les étapes complétées
       if (achievement.totalSteps > 0) {
-        return (achievement.currentSteps / achievement.totalSteps);
+        return (achievement.completedSteps / achievement.totalSteps);
       }
-      return achievement.isComplete ? 1.0 : 0.0;
+      return achievement.unlocked ? 1.0 : 0.0;
     } catch (e, stack) {
       debugPrint('Error getting achievement progress: $e');
       FirebaseCrashlytics.instance.recordError(e, stack);
       return null;
     }
   }
-
   // Méthode pour soumettre le score de production
   Future<void> submitProductionScore(int paperclips) async {
     if (!_isSignedIn) return;
@@ -163,8 +164,11 @@ class GamesServicesController {
 
       await GamesServices.increment(
           achievement: Achievement(
-              androidID: 'CgkI-ICryvIBEAIQAQ',
-              steps: progress
+            androidID: 'CgkI-ICryvIBEAIQAQ',
+            steps: progress,
+            name: 'Progression du joueur',  // Ajouté
+            description: 'Progression globale du joueur dans le jeu',  // Ajouté
+            totalSteps: 100,  // Ajouté
           )
       );
       debugPrint('Achievement progress updated to: $progress%');
@@ -264,5 +268,45 @@ class GamesServicesController {
     );
     await submitProductionScore(gameState.totalPaperclipsProduced);
     await submitBankerScore(gameState.statistics.getTotalMoneyEarned().toInt());
+  }
+}
+
+class AchievementConstants {
+  static const String PROGRESSION_ID = 'CgkI-ICryvIBEAIQAQ';
+
+  static Achievement createProgressionAchievement({
+    required int currentSteps,
+    String? customName,
+    String? customDescription
+  }) {
+    return Achievement(
+      androidID: PROGRESSION_ID,
+      steps: currentSteps.clamp(0, 100),
+      name: customName ?? 'Progression du joueur',
+      description: customDescription ?? 'Progression globale dans le jeu',
+      totalSteps: 100,
+    );
+  }
+
+  static AchievementItemData createDefaultAchievementData(String id) {
+    return AchievementItemData(
+      id: id,
+      name: 'Achievement',
+      description: 'Achievement Description',
+      completedSteps: 0,
+      totalSteps: 100,
+      unlocked: false,
+    );
+  }
+}
+
+extension AchievementExtensions on AchievementItemData {
+  double getProgress() {
+    if (totalSteps <= 0) return unlocked ? 1.0 : 0.0;
+    return completedSteps / totalSteps;
+  }
+
+  bool isInProgress() {
+    return completedSteps > 0 && completedSteps < totalSteps;
   }
 }

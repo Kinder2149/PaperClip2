@@ -27,7 +27,8 @@ dependencies:
   # Utilitaires
   archive: ^4.0.2
   intl: ^0.19.0
-  games_services: ^4.0.0
+  games_services: ^4.0.3
+
   
   # Firebase
   firebase_core: ^2.24.2
