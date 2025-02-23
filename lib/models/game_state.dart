@@ -368,6 +368,9 @@ class GameState extends ChangeNotifier {
         'crisisTransitionComplete': _crisisTransitionComplete,
         'showingCrisisView': _showingCrisisView,  // Ajouter cette ligne
       },
+      'achievements': {
+        'last_sync': DateTime.now().toIso8601String(),
+      }
     };
 
     // Ajout des données des managers
@@ -702,12 +705,7 @@ class GameState extends ChangeNotifier {
 
     // Mise à jour de l'achievement progressif
     final gamesServices = GamesServicesController();
-    gamesServices.incrementAchievement(
-      Achievement(
-        androidID: 'CgkI-ICryvIBEAIQAQ',
-        steps: (levelSystem.experience ~/ 100).clamp(0, 100),
-      ),
-    );
+    gamesServices.incrementAchievement(levelSystem);  // Maintenant on passe directement levelSystem
 
     saveOnImportantEvent();
     checkMilestones();

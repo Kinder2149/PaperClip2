@@ -76,6 +76,7 @@ class ResourceManager extends ChangeNotifier {
 
   double calculateResourceEfficiency(int efficiencyUpgradeLevel) {
     return 1.0 + (efficiencyUpgradeLevel * 0.15);
+    return 1.0 + (efficiencyUpgradeLevel * 0.15);
   }
 
   // Méthodes d'upgrade

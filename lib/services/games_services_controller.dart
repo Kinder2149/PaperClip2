@@ -2,6 +2,21 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:games_services/games_services.dart';
 import 'package:paperclip2/models/game_state.dart';
+import 'package:paperclip2/models/progression_system.dart';
+
+class LeaderboardInfo {
+  final int currentScore;
+  final int bestScore;
+  final int? rank;
+  final String leaderboardName;
+
+  LeaderboardInfo({
+    required this.currentScore,
+    required this.bestScore,
+    this.rank,
+    required this.leaderboardName,
+  });
+}
 
 class GamesServicesController {
   static final GamesServicesController _instance = GamesServicesController._internal();
@@ -71,6 +86,56 @@ class GamesServicesController {
       FirebaseCrashlytics.instance.recordError(e, stack);
     }
   }
+  // Cette méthode doit être modifiée car getLeaderboardScores n'existe pas
+  Future<LeaderboardInfo?> getLeaderboardInfo(String leaderboardId, String name) async {
+    if (!_isSignedIn) return null;
+
+    try {
+      // Pour l'instant, retourner des valeurs de base
+      return LeaderboardInfo(
+        currentScore: 0,
+        bestScore: 0,
+        rank: null,
+        leaderboardName: name,
+      );
+    } catch (e, stack) {
+      debugPrint('Error getting leaderboard info: $e');
+      FirebaseCrashlytics.instance.recordError(e, stack);
+      return null;
+    }
+  }
+
+
+  // Dans games_services_controller.dart
+
+  Future<double?> getAchievementProgress(String achievementId) async {
+    if (!_isSignedIn) return null;
+
+    try {
+      final achievements = await GamesServices.loadAchievements();
+      if (achievements == null) return 0.0;
+
+      final achievement = achievements.firstWhere(
+            (a) => a.id == achievementId,
+        orElse: () => AchievementItemData(
+          id: achievementId,
+          isComplete: false,
+          currentSteps: 0,
+          totalSteps: 100,
+        ),
+      );
+
+      // Calculer le pourcentage basé sur les étapes actuelles et totales
+      if (achievement.totalSteps > 0) {
+        return (achievement.currentSteps / achievement.totalSteps);
+      }
+      return achievement.isComplete ? 1.0 : 0.0;
+    } catch (e, stack) {
+      debugPrint('Error getting achievement progress: $e');
+      FirebaseCrashlytics.instance.recordError(e, stack);
+      return null;
+    }
+  }
 
   // Méthode pour soumettre le score de production
   Future<void> submitProductionScore(int paperclips) async {
@@ -90,16 +155,21 @@ class GamesServicesController {
     }
   }
 
-  Future<void> incrementAchievement(Achievement achievement) async {
+  Future<void> incrementAchievement(LevelSystem levelSystem) async {
     if (!_isSignedIn) return;
 
     try {
+      final progress = ((levelSystem.level * 10) + (levelSystem.experience / levelSystem.experienceForNextLevel * 10)).clamp(0, 100).toInt();
+
       await GamesServices.increment(
-        achievement: achievement,
+          achievement: Achievement(
+              androidID: 'CgkI-ICryvIBEAIQAQ',
+              steps: progress
+          )
       );
-      debugPrint('Achievement ${achievement.androidID} incremented to ${achievement.steps} steps');
+      debugPrint('Achievement progress updated to: $progress%');
     } catch (e, stack) {
-      debugPrint('Error incrementing achievement: $e');
+      debugPrint('Error updating achievement progress: $e');
       FirebaseCrashlytics.instance.recordError(e, stack);
     }
   }
@@ -142,6 +212,7 @@ class GamesServicesController {
   }
 
   // Méthode pour afficher les achievements
+  // Méthode pour afficher les achievements
   Future<void> showAchievements() async {
     try {
       await GamesServices.showAchievements();
@@ -152,11 +223,14 @@ class GamesServicesController {
   }
 
   // Méthode pour afficher les leaderboards
-  Future<void> showLeaderboard({String? specificLeaderboard}) async {
+  Future<void> showLeaderboard({String? specificLeaderboard, bool friendsOnly = false}) async {
+    if (!_isSignedIn) return;
+
     try {
       await GamesServices.showLeaderboards(
-          androidLeaderboardID: specificLeaderboard ?? _generalLeaderboardId
+        androidLeaderboardID: specificLeaderboard ?? _generalLeaderboardId,
       );
+      debugPrint('Showing leaderboard: ${specificLeaderboard ?? _generalLeaderboardId}');
     } catch (e, stack) {
       debugPrint('Error showing leaderboard: $e');
       FirebaseCrashlytics.instance.recordError(e, stack);
@@ -164,13 +238,19 @@ class GamesServicesController {
   }
 
   // Méthode pour afficher le classement de production
-  Future<void> showProductionLeaderboard() async {
-    await showLeaderboard(specificLeaderboard: _productionLeaderboardId);
+  Future<void> showProductionLeaderboard({bool friendsOnly = false}) async {
+    await showLeaderboard(
+      specificLeaderboard: _productionLeaderboardId,
+      friendsOnly: friendsOnly,
+    );
   }
 
   // Méthode pour afficher le classement bancaire
-  Future<void> showBankerLeaderboard() async {
-    await showLeaderboard(specificLeaderboard: _bankerLeaderboardId);
+  Future<void> showBankerLeaderboard({bool friendsOnly = false}) async {
+    await showLeaderboard(
+      specificLeaderboard: _bankerLeaderboardId,
+      friendsOnly: friendsOnly,
+    );
   }
 
   // Méthode pour mettre à jour tous les classements d'un coup

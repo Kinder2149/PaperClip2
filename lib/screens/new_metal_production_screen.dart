@@ -9,6 +9,7 @@ import '../widgets/production_button.dart';
 import '../services/save_manager.dart';
 import '../models/event_system.dart';
 import '../utils/notification_manager.dart';
+import 'package:paperclip2/services/games_services_controller.dart';
 
 class NewMetalProductionScreen extends StatefulWidget {
   const NewMetalProductionScreen({Key? key}) : super(key: key);
@@ -264,7 +265,13 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
                     secondaryValue: gameState.formattedPlayTime,
                     secondaryLabel: 'Temps de jeu',
                     color: Colors.blue.shade100,
-                    onTap: () => gameState.updateLeaderboard(),
+                    leaderboardId: 'CgkI-ICryvIBEAIQAg',
+                    onTap: (bool friendsOnly) async {
+                      final controller = GamesServicesController();
+                      if (await controller.isSignedIn()) {
+                        controller.showLeaderboard(friendsOnly: friendsOnly);
+                      }
+                    },
                   ),
                   const SizedBox(height: 16),
                   _buildLeaderboardCard(
@@ -275,7 +282,13 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
                     secondaryValue: '${gameState.player.autoclippers}',
                     secondaryLabel: 'Autoclippers',
                     color: Colors.green.shade100,
-                    onTap: () => gameState.showProductionLeaderboard(),
+                    leaderboardId: 'CgkI-ICryvIBEAIQAw', // Ajouter cet ID
+                    onTap: (bool friendsOnly) async {
+                      final controller = GamesServicesController();
+                      if (await controller.isSignedIn()) {
+                        controller.showProductionLeaderboard(friendsOnly: friendsOnly);
+                      }
+                    },
                   ),
                   const SizedBox(height: 16),
                   _buildLeaderboardCard(
@@ -286,7 +299,13 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
                     secondaryValue: formatNumber(gameState.player.money),
                     secondaryLabel: 'Fortune Actuelle',
                     color: Colors.amber.shade100,
-                    onTap: () => gameState.showBankerLeaderboard(),
+                    leaderboardId: 'CgkI-ICryvIBEAIQBA', // Ajouter cet ID
+                    onTap: (bool friendsOnly) async {
+                      final controller = GamesServicesController();
+                      if (await controller.isSignedIn()) {
+                        controller.showBankerLeaderboard(friendsOnly: friendsOnly);
+                      }
+                    },
                   ),
                 ],
               ),
@@ -322,6 +341,54 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
       ),
     );
   }
+  Widget _buildAchievementSection() {
+    return Card(
+      color: Colors.purple.shade50,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Progression des succès',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.deepPurple,
+              ),
+            ),
+            const Divider(),
+            FutureBuilder<double?>(
+              future: GamesServicesController().getAchievementProgress('CgkI-ICryvIBEAIQAQ'),
+              builder: (context, snapshot) {
+                if (snapshot.hasData) {
+                  return Column(
+                    children: [
+                      LinearProgressIndicator(
+                        value: snapshot.data,
+                        backgroundColor: Colors.grey.shade200,
+                        valueColor: const AlwaysStoppedAnimation<Color>(Colors.deepPurple),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${(snapshot.data! * 100).toInt()}%',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.deepPurple,
+                        ),
+                      ),
+                    ],
+                  );
+                }
+                return const CircularProgressIndicator();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  // Dans new_metal_production_screen.dart
 
   Widget _buildLeaderboardCard({
     required String title,
@@ -331,76 +398,110 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
     required String secondaryValue,
     required String secondaryLabel,
     required Color color,
-    required VoidCallback onTap,
+    required Function(bool) onTap,
+    required String leaderboardId,
   }) {
     return Card(
       color: color,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(icon, size: 24),
-                  const SizedBox(width: 8),
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 24),
+                const SizedBox(width: 8),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
                   ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            FutureBuilder<LeaderboardInfo?>(
+              future: GamesServicesController().getLeaderboardInfo(leaderboardId, title),
+              builder: (context, snapshot) {
+                if (snapshot.hasData && snapshot.data != null) {
+                  return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        mainValue,
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      // Score actuel
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Score actuel',
+                            style: TextStyle(color: Colors.grey.shade700),
+                          ),
+                          Text(
+                            formatNumber(snapshot.data!.currentScore.toDouble()),
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ],
                       ),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey.shade700,
-                        ),
+                      const SizedBox(height: 8),
+                      // Meilleur score
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Meilleur score',
+                            style: TextStyle(color: Colors.grey.shade700),
+                          ),
+                          Text(
+                            formatNumber(snapshot.data!.bestScore.toDouble()),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green,
+                            ),
+                          ),
+                        ],
                       ),
+                      if (snapshot.data!.rank != null) ...[
+                        const SizedBox(height: 8),
+                        // Rang actuel
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('Rang mondial',
+                              style: TextStyle(color: Colors.grey.shade700),
+                            ),
+                            Text(
+                              '#${snapshot.data!.rank}',
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        secondaryValue,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        secondaryLabel,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey.shade700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ],
-          ),
+                  );
+                }
+                return const Center(
+                  child: CircularProgressIndicator(),
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+            // Boutons Global/Amis
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton.icon(
+                  icon: const Icon(Icons.public),
+                  label: const Text('Global'),
+                  onPressed: () => onTap(false),
+                ),
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  icon: const Icon(Icons.people),
+                  label: const Text('Amis'),
+                  onPressed: () => onTap(true),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
