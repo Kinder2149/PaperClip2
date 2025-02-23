@@ -8,6 +8,9 @@
 -keep class io.flutter.plugin.editing.** { *; }
 -dontwarn io.flutter.embedding.**
 
+# Pour file_picker
+-keep class com.mr.flutter.plugin.filepicker.** { *; }
+
 # Kotlin
 -keep class kotlin.** { *; }
 -keep class kotlin.Metadata { *; }
@@ -36,6 +39,9 @@
 -keep class com.google.android.play.core.tasks.** { *; }
 -keep class com.google.android.play.core.internal.** { *; }
 -dontwarn com.google.android.play.core.**
+-keep class com.google.android.gms.games.** { *; }
+-keep class com.google.android.gms.games.internal.** { *; }
+-dontwarn com.google.android.gms.games.**
 
 # Multidex
 -keep class androidx.multidex.** { *; }

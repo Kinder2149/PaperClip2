@@ -713,6 +713,7 @@ class _MainScreenState extends State<MainScreen> {
 
                     const SizedBox(height: 8),
                     // Section Services de jeux
+                    // Section Services de jeux
                     Card(
                       elevation: 0,
                       color: Colors.grey[50],
@@ -744,14 +745,16 @@ class _MainScreenState extends State<MainScreen> {
                             ),
                           ),
                           const Divider(height: 1),
-                          // Classements
+
+                          // Classement général
                           ListTile(
                             leading: const Icon(Icons.leaderboard),
-                            title: const Text('Classement'),
-                            subtitle: Text('Score actuel: ${gameState.totalPaperclipsProduced}'),
+                            title: const Text('Classement Général'),
+                            subtitle: Text('Score global: ${gameState.totalPaperclipsProduced}'),
                             onTap: () async {
                               final controller = GamesServicesController();
                               if (await controller.isSignedIn()) {
+                                gameState.updateLeaderboard();
                                 controller.showLeaderboard();
                               } else {
                                 await controller.signIn();
@@ -762,10 +765,30 @@ class _MainScreenState extends State<MainScreen> {
                             },
                           ),
                           const Divider(height: 1),
+
+                          // Classement production
+                          ListTile(
+                            leading: const Icon(Icons.precision_manufacturing),
+                            title: const Text('Meilleurs Producteurs'),
+                            subtitle: Text('Production totale: ${gameState.totalPaperclipsProduced}'),
+                            onTap: () => gameState.showProductionLeaderboard(),
+                          ),
+                          const Divider(height: 1),
+
+                          // Classement banquier
+                          ListTile(
+                            leading: const Icon(Icons.attach_money),
+                            title: const Text('Plus Grandes Fortunes'),
+                            subtitle: Text('Fortune: ${gameState.statistics.getTotalMoneyEarned().toInt()}'),
+                            onTap: () => gameState.showBankerLeaderboard(),
+                          ),
+                          const Divider(height: 1),
+
                           // Succès
                           ListTile(
                             leading: const Icon(Icons.emoji_events),
                             title: const Text('Succès'),
+                            subtitle: const Text('Voir vos accomplissements'),
                             onTap: () async {
                               final controller = GamesServicesController();
                               if (await controller.isSignedIn()) {
@@ -778,10 +801,13 @@ class _MainScreenState extends State<MainScreen> {
                               }
                             },
                           ),
+                          const Divider(height: 1),
+
                           // Synchronisation
                           ListTile(
                             leading: const Icon(Icons.sync),
-                            title: const Text('Synchroniser le score'),
+                            title: const Text('Synchroniser les scores'),
+                            subtitle: const Text('Mettre à jour tous les classements'),
                             onTap: () async {
                               final controller = GamesServicesController();
                               if (await controller.isSignedIn()) {
@@ -789,7 +815,7 @@ class _MainScreenState extends State<MainScreen> {
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
-                                      content: Text('Score synchronisé !'),
+                                      content: Text('Scores synchronisés !'),
                                       duration: Duration(seconds: 2),
                                     ),
                                   );

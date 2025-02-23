@@ -48,35 +48,41 @@ android {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
+        debug {
+            minifyEnabled false
+        }
     }
 
-    lintOptions {
+    lint {
         disable 'InvalidPackage'
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 }
 
 dependencies {
-    // Firebase
-    implementation platform('com.google.firebase:firebase-bom:32.7.2')
-    implementation 'com.google.firebase:firebase-core:21.1.1'
-    implementation 'com.google.firebase:firebase-analytics-ktx'
-    implementation 'com.google.firebase:firebase-crashlytics-ktx'
-    
     // Kotlin
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
     
     // Android Support
-    implementation 'androidx.multidex:multidex:2.0.1'
     implementation 'androidx.core:core-ktx:1.12.0'
-    implementation 'androidx.media:media:1.7.0'
+    implementation 'androidx.multidex:multidex:2.0.1'
     
-    // Google Play Services
-    implementation 'com.google.android.gms:play-services-games:23.1.0'
-    implementation 'com.google.android.gms:play-services-games-v2:20.1.2'
+    // Firebase
+    implementation platform('com.google.firebase:firebase-bom:32.7.2')
+    implementation 'com.google.firebase:firebase-analytics-ktx'
+    implementation 'com.google.firebase:firebase-crashlytics-ktx'
+    
+    // Google Play Services - Une seule version
+    implementation 'com.google.android.gms:play-services-games-v2:17.0.0'
     implementation 'com.google.android.gms:play-services-auth:20.7.0'
-    implementation 'com.google.android.gms:play-services-base:18.3.0'
-    
-    // App Update
-    implementation 'com.google.android.play:app-update:2.1.0'
-    implementation 'com.google.android.play:app-update-ktx:2.1.0'
+}
+
+configurations.all {
+    resolutionStrategy {
+        // Exclure explicitement l'ancienne version
+        exclude group: 'com.google.android.gms', module: 'play-services-games'
+    }
 }

@@ -163,6 +163,10 @@ class StatisticsManager with ChangeNotifier {
   int _maxComboAchieved = 0;
   Duration _totalPlayTime = Duration.zero;
 
+  double getTotalMoneyEarned() {
+    return _totalMoneyEarned;
+  }
+
   // Méthodes de mise à jour
   void updateProduction({
     bool isManual = false,

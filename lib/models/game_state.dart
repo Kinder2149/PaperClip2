@@ -18,6 +18,7 @@ import '../utils/notification_manager.dart';
 import '../dialogs/metal_crisis_dialog.dart';
 import '../services/auto_save_service.dart';
 import 'package:paperclip2/services/games_services_controller.dart';
+import 'package:games_services/games_services.dart';
 
 class GameState extends ChangeNotifier {
   late final PlayerManager _playerManager;
@@ -88,7 +89,13 @@ class GameState extends ChangeNotifier {
       rethrow;
     }
   }
-
+  void _updateLeaderboardsOnMilestone() {
+    if (_totalPaperclipsProduced % 100 == 0 ||     // Tous les 100 trombones
+        levelSystem.level % 5 == 0 ||               // Tous les 5 niveaux
+        _totalTimePlayedInSeconds % 3600 == 0) {    // Toutes les heures
+      updateLeaderboard();
+    }
+  }
 
   void _configureAndStart() {
     try {
@@ -443,6 +450,7 @@ class GameState extends ChangeNotifier {
 
       // Expérience pour la production automatique
       levelSystem.addAutomaticProduction(actualProduction);
+      _updateLeaderboardsOnMilestone();
     }
 
     notifyListeners();
@@ -493,13 +501,16 @@ class GameState extends ChangeNotifier {
     );
 
     if (playerManager.paperclips > 0) {
-      int potentialSales = min(demand.floor(), playerManager.paperclips.floor());
+      int potentialSales = min(
+          demand.floor(), playerManager.paperclips.floor());
       if (potentialSales > 0) {
-        double qualityBonus = 1.0 + (playerManager.upgrades['quality']?.level ?? 0) * 0.10;
+        double qualityBonus = 1.0 +
+            (playerManager.upgrades['quality']?.level ?? 0) * 0.10;
         double salePrice = playerManager.sellPrice * qualityBonus;
         double revenue = potentialSales * salePrice;
 
-        playerManager.updatePaperclips(playerManager.paperclips - potentialSales);
+        playerManager.updatePaperclips(
+            playerManager.paperclips - potentialSales);
         playerManager.updateMoney(playerManager.money + revenue);
         marketManager.recordSale(potentialSales, salePrice);
 
@@ -509,6 +520,9 @@ class GameState extends ChangeNotifier {
           sales: potentialSales,
           price: salePrice,
         );
+        if (revenue >= 1000) { // Seuil arbitraire de 1000
+          updateLeaderboard();
+        }
       }
     }
   }
@@ -626,7 +640,7 @@ class GameState extends ChangeNotifier {
       player.updatePaperclips(player.paperclips + 1);
       _totalPaperclipsProduced++;
 
-      // Mettre à jour le leaderboard périodiquement
+      // Mettre à jour le leaderboard tous les 100 trombones
       if (_totalPaperclipsProduced % 100 == 0) {
         updateLeaderboard();
       }
@@ -672,7 +686,7 @@ class GameState extends ChangeNotifier {
           break;
         case UnlockableFeature.AUTOCLIPPERS:
           _showUnlockNotification('Autoclippeuses disponibles !');
-          player.updateMoney(player.money + GameConstants.BASE_AUTOCLIPPER_COST);  // Utiliser updateMoney
+          player.updateMoney(player.money + GameConstants.BASE_AUTOCLIPPER_COST);
           break;
         case UnlockableFeature.METAL_PURCHASE:
           _showUnlockNotification('Achat de métal débloqué !');
@@ -685,6 +699,16 @@ class GameState extends ChangeNotifier {
           break;
       }
     }
+
+    // Mise à jour de l'achievement progressif
+    final gamesServices = GamesServicesController();
+    gamesServices.incrementAchievement(
+      Achievement(
+        androidID: 'CgkI-ICryvIBEAIQAQ',
+        steps: (levelSystem.experience ~/ 100).clamp(0, 100),
+      ),
+    );
+
     saveOnImportantEvent();
     checkMilestones();
     notifyListeners();
@@ -794,10 +818,24 @@ class GameState extends ChangeNotifier {
       }
     }
   }
-  void updateLeaderboard() {
-    if (!_isInitialized) return;
-    final score = totalPaperclipsProduced;
-    GamesServicesController().submitScore(score);
+  void updateLeaderboard() async {
+    final gamesServices = GamesServicesController();
+    if (await gamesServices.isSignedIn()) {
+      await gamesServices.updateAllLeaderboards(this);
+    }
+  }
+  void showProductionLeaderboard() async {
+    final gamesServices = GamesServicesController();
+    if (await gamesServices.isSignedIn()) {
+      await gamesServices.showProductionLeaderboard();
+    }
+  }
+
+  void showBankerLeaderboard() async {
+    final gamesServices = GamesServicesController();
+    if (await gamesServices.isSignedIn()) {
+      await gamesServices.showBankerLeaderboard();
+    }
   }
   void showLeaderboard() {
     GamesServicesController().showLeaderboard();
