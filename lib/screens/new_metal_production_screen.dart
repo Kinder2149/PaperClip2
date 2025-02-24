@@ -359,19 +359,21 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
             ),
             const Divider(),
             FutureBuilder<double?>(
+              // Utilisez la constante du contrôleur pour l'ID
               future: GamesServicesController().getAchievementProgress('CgkI-ICryvIBEAIQAQ'),
               builder: (context, snapshot) {
                 if (snapshot.hasData) {
+                  final progress = snapshot.data ?? 0.0;
                   return Column(
                     children: [
                       LinearProgressIndicator(
-                        value: snapshot.data,
+                        value: progress,
                         backgroundColor: Colors.grey.shade200,
                         valueColor: const AlwaysStoppedAnimation<Color>(Colors.deepPurple),
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        '${(snapshot.data! * 100).toInt()}%',
+                        '${(progress * 100).toInt()}%',
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           color: Colors.deepPurple,
@@ -409,6 +411,7 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Icon(icon, size: 24),
                 const SizedBox(width: 8),
@@ -425,66 +428,59 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
             FutureBuilder<LeaderboardInfo?>(
               future: GamesServicesController().getLeaderboardInfo(leaderboardId, title),
               builder: (context, snapshot) {
-                if (snapshot.hasData && snapshot.data != null) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Score actuel
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Score actuel',
+                          style: TextStyle(color: Colors.grey.shade700),
+                        ),
+                        Text(
+                          mainValue,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Meilleur score',
+                          style: TextStyle(color: Colors.grey.shade700),
+                        ),
+                        Text(
+                          snapshot.hasData && snapshot.data != null
+                              ? formatNumber(snapshot.data!.bestScore.toDouble())
+                              : mainValue,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (snapshot.hasData && snapshot.data?.rank != null) ...[
+                      const SizedBox(height: 8),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Score actuel',
+                          Text('Rang mondial',
                             style: TextStyle(color: Colors.grey.shade700),
                           ),
                           Text(
-                            formatNumber(snapshot.data!.currentScore.toDouble()),
+                            '#${snapshot.data!.rank}',
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      // Meilleur score
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('Meilleur score',
-                            style: TextStyle(color: Colors.grey.shade700),
-                          ),
-                          Text(
-                            formatNumber(snapshot.data!.bestScore.toDouble()),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green,
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (snapshot.data!.rank != null) ...[
-                        const SizedBox(height: 8),
-                        // Rang actuel
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('Rang mondial',
-                              style: TextStyle(color: Colors.grey.shade700),
-                            ),
-                            Text(
-                              '#${snapshot.data!.rank}',
-                              style: const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                      ],
                     ],
-                  );
-                }
-                return const Center(
-                  child: CircularProgressIndicator(),
+                  ],
                 );
               },
             ),
             const SizedBox(height: 16),
-            // Boutons Global/Amis
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [

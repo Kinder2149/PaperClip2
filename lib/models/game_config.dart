@@ -162,9 +162,9 @@ class GameConstants {
   static const double MARKET_EVENT_CHANCE = 0.05;
 
   // Information de version
-  static const String VERSION = '1.0.0';
+  static const String VERSION = '1.0.2';
   static const String AUTHOR = 'Kinder2149';
-  static const String LAST_UPDATE = '23/01/2025';
+  static const String LAST_UPDATE = '23/02/2025';
   static const String APP_NAME = 'PaperClip2';
 
   static const String DEFAULT_GAME_NAME_PREFIX = 'Partie';

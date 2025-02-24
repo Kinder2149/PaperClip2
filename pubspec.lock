@@ -202,7 +202,7 @@ packages:
     source: hosted
     version: "0.5.3+1"
   file_selector_linux:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: file_selector_linux
       sha256: "54cbbd957e1156d29548c7d9b9ec0c0ebb6de0a90452198683a7d23aed617a33"
@@ -210,7 +210,7 @@ packages:
     source: hosted
     version: "0.9.3+2"
   file_selector_macos:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: file_selector_macos
       sha256: "271ab9986df0c135d45c3cdb6bd0faa5db6f4976d3e4b437cf7d0f258d941bfc"
@@ -234,7 +234,7 @@ packages:
     source: hosted
     version: "0.9.4+2"
   file_selector_windows:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: file_selector_windows
       sha256: "320fcfb6f33caa90f0b58380489fc5ac05d99ee94b61aa96ec2bff0ba81d3c2b"

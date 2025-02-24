@@ -20,6 +20,11 @@ class LeaderboardInfo {
 
 class GamesServicesController {
   static final GamesServicesController _instance = GamesServicesController._internal();
+  // IDs des classements (à remplacer par vos vrais IDs de la Console Play)
+  static const String _generalLeaderboardId = 'CgkI-ICryvIBEAIQAg'; // Remplacer par votre ID
+  static const String _productionLeaderboardId = 'CgkI-ICryvIBEAIQAw';
+  static const String _bankerLeaderboardId = 'CgkI-ICryvIBEAIQBA';
+  static const String _progressionAchievementId = 'CgkI-ICryvIBEAIQAQ';
 
   factory GamesServicesController() {
     return _instance;
@@ -27,10 +32,7 @@ class GamesServicesController {
 
   GamesServicesController._internal();
 
-  // IDs des classements (à remplacer par vos vrais IDs de la Console Play)
-  static const String _generalLeaderboardId = 'CgkI-ICryvIBEAIQAg'; // Remplacer par votre ID
-  static const String _productionLeaderboardId = 'CgkI-ICryvIBEAIQAw';
-  static const String _bankerLeaderboardId = 'CgkI-ICryvIBEAIQBA';
+
 
   bool _isInitialized = false;
   bool _isSignedIn = false;
@@ -117,21 +119,12 @@ class GamesServicesController {
 
       final achievement = achievements.firstWhere(
             (a) => a.id == achievementId,
-        orElse: () => AchievementItemData(
+        orElse: () => AchievementManager.createDefaultAchievement(
           id: achievementId,
-          name: 'Achievement',  // Requis
-          description: 'Achievement Description',  // Requis
-          completedSteps: 0,  // Requis
-          totalSteps: 100,  // Requis
-          unlocked: false,  // Requis
         ),
       );
 
-      // Calcul du pourcentage basé sur les étapes complétées
-      if (achievement.totalSteps > 0) {
-        return (achievement.completedSteps / achievement.totalSteps);
-      }
-      return achievement.unlocked ? 1.0 : 0.0;
+      return achievement.getProgress();
     } catch (e, stack) {
       debugPrint('Error getting achievement progress: $e');
       FirebaseCrashlytics.instance.recordError(e, stack);
@@ -160,15 +153,14 @@ class GamesServicesController {
     if (!_isSignedIn) return;
 
     try {
-      final progress = ((levelSystem.level * 10) + (levelSystem.experience / levelSystem.experienceForNextLevel * 10)).clamp(0, 100).toInt();
+      final progress = ((levelSystem.level * 10) +
+          (levelSystem.experience / levelSystem.experienceForNextLevel * 10))
+          .clamp(0, 100).toInt();
 
       await GamesServices.increment(
           achievement: Achievement(
-            androidID: 'CgkI-ICryvIBEAIQAQ',
-            steps: progress,
-            name: 'Progression du joueur',  // Ajouté
-            description: 'Progression globale du joueur dans le jeu',  // Ajouté
-            totalSteps: 100,  // Ajouté
+              androidID: _progressionAchievementId, // Utilisation de la constante
+              steps: progress
           )
       );
       debugPrint('Achievement progress updated to: $progress%');
@@ -271,31 +263,29 @@ class GamesServicesController {
   }
 }
 
-class AchievementConstants {
-  static const String PROGRESSION_ID = 'CgkI-ICryvIBEAIQAQ';
-
-  static Achievement createProgressionAchievement({
-    required int currentSteps,
+class AchievementManager {
+  static AchievementItemData createDefaultAchievement({
+    required String id,
     String? customName,
-    String? customDescription
+    String? customDescription,
   }) {
-    return Achievement(
-      androidID: PROGRESSION_ID,
-      steps: currentSteps.clamp(0, 100),
-      name: customName ?? 'Progression du joueur',
-      description: customDescription ?? 'Progression globale dans le jeu',
-      totalSteps: 100,
-    );
-  }
-
-  static AchievementItemData createDefaultAchievementData(String id) {
     return AchievementItemData(
       id: id,
-      name: 'Achievement',
-      description: 'Achievement Description',
+      name: customName ?? 'Achievement',
+      description: customDescription ?? 'Achievement Description',
       completedSteps: 0,
       totalSteps: 100,
       unlocked: false,
+    );
+  }
+
+  static Achievement createProgressAchievement({
+    required String androidID,
+    required int steps,
+  }) {
+    return Achievement(
+      androidID: androidID,
+      steps: steps,
     );
   }
 }
