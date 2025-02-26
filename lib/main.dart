@@ -36,13 +36,13 @@ import 'services/games_services_controller.dart';
 // Export du navigatorKey
 export 'package:paperclip2/main.dart' show navigatorKey;
 
-// Clé globale pour la navigation
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 
 // Services globaux
 final gameState = GameState();
 final backgroundMusicService = BackgroundMusicService();
 final eventManager = EventManager.instance;
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   try {

@@ -7,6 +7,7 @@ import '../models/game_state.dart';
 import '../models/game_config.dart';
 import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 
 class ValidationResult {
   final bool isValid;
@@ -186,23 +187,39 @@ class SaveError implements Exception {
 }
 
 class SaveGame {
+  final String id; // UUID unique
   final String name;
   final DateTime lastSaveTime;
   final Map<String, dynamic> gameData;
   final String version;
+  bool isSyncedWithCloud;
+  String? cloudId;
+  GameMode gameMode;
 
   SaveGame({
+    String? id,
     required this.name,
     required this.lastSaveTime,
     required this.gameData,
     required this.version,
-  });
+    this.isSyncedWithCloud = false,
+    this.cloudId,
+    GameMode? gameMode,
+  }) :
+        id = id ?? const Uuid().v4(),
+        gameMode = gameMode ?? (gameData['gameMode'] != null
+            ? GameMode.values[gameData['gameMode'] as int]
+            : GameMode.INFINITE);
 
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> json = {
+      'id': id,
       'name': name,
       'timestamp': lastSaveTime.toIso8601String(),
       'version': version,
+      'isSyncedWithCloud': isSyncedWithCloud,
+      'cloudId': cloudId,
+      'gameMode': gameMode.index,
     };
 
     // Ajoute les données du jeu à la racine et dans gameData
@@ -238,11 +255,25 @@ class SaveGame {
         gameData['levelSystem'] = json['levelSystem'];
       }
 
+      // Déterminer le mode de jeu
+      GameMode mode = GameMode.INFINITE;
+      if (json['gameMode'] != null) {
+        int modeIndex = json['gameMode'] as int;
+        mode = GameMode.values[modeIndex];
+      } else if (gameData['gameMode'] != null) {
+        int modeIndex = gameData['gameMode'] as int;
+        mode = GameMode.values[modeIndex];
+      }
+
       return SaveGame(
+        id: json['id'] as String? ?? const Uuid().v4(),
         name: json['name'] as String,
         lastSaveTime: DateTime.parse(json['timestamp'] as String),
         gameData: gameData,
         version: json['version'] as String? ?? GameConstants.VERSION,
+        isSyncedWithCloud: json['isSyncedWithCloud'] as bool? ?? false,
+        cloudId: json['cloudId'] as String?,
+        gameMode: mode,
       );
     } catch (e) {
       print('Error creating SaveGame from JSON: $e');
@@ -254,7 +285,6 @@ class SaveGame {
 
 
 
-
 class SaveManager {
   static const String SAVE_PREFIX = 'paperclip_save_';
   static final DateTime CURRENT_DATE = DateTime(2025, 1, 23, 15, 15, 49);
@@ -263,39 +293,18 @@ class SaveManager {
   static const int COMPRESSION_CHUNK_SIZE = 1024 * 512; // 512KB chunks
   static String _getSaveKey(String gameName) => '$SAVE_PREFIX$gameName';
 
-  // Obtenir la clé de sauvegarde unique pour une partie
-
-
   // Sauvegarder une partie
-  static Future<void> saveGame(GameState gameState, String name) async {
+  static Future<void> saveGame(SaveGame saveGame) async {
     try {
-      if (name.isEmpty) {
-        throw SaveError('INVALID_NAME', 'Le nom de la sauvegarde ne peut pas être vide');
-      }
-
-      final gameData = gameState.prepareGameData();
-
-      // Validation simple et rapide au lieu de la validation complète
-      if (!_quickValidate(gameData)) {
-        throw SaveError('VALIDATION_ERROR', 'Données de base manquantes');
-      }
-
-      final saveData = SaveGame(
-        name: name,
-        lastSaveTime: DateTime.now(),
-        gameData: gameData,  // Utiliser directement gameData sans validation supplémentaire
-        version: GameConstants.VERSION,
-      );
-
       final prefs = await SharedPreferences.getInstance();
-      final key = _getSaveKey(name);
-      await prefs.setString(key, jsonEncode(saveData.toJson()));
-
+      final key = _getSaveKey(saveGame.name);
+      await prefs.setString(key, jsonEncode(saveGame.toJson()));
     } catch (e) {
       print('Erreur lors de la sauvegarde: $e');
       rethrow;
     }
   }
+
   static bool _quickValidate(Map<String, dynamic> data) {
     return data.containsKey('playerManager') &&
         data.containsKey('marketManager') &&
@@ -339,7 +348,18 @@ class SaveManager {
       final backup = await loadGame(backupName);
       if (backup == null) return false;
 
-      await saveGame(gameState, gameState.gameName!);
+      // Au lieu de : await saveGame(gameState, gameState.gameName!);
+      // Créer un objet SaveGame avec les données actuelles du jeu
+      final currentGameData = gameState.prepareGameData();
+      final currentSave = SaveGame(
+        name: gameState.gameName!,
+        lastSaveTime: DateTime.now(),
+        gameData: currentGameData,
+        version: GameConstants.VERSION,
+        gameMode: gameState.gameMode,
+      );
+
+      await saveGame(currentSave);
       return true;
     } catch (e) {
       print('Erreur lors de la restauration: $e');
@@ -384,6 +404,36 @@ class SaveManager {
       return null;
     }
   }
+  // Méthode pour assurer la compatibilité avec l'ancien code
+  // Ajouter cette méthode à la classe SaveManager
+  static Future<void> saveGameState(GameState gameState, String name) async {
+    try {
+      if (name.isEmpty) {
+        throw SaveError('INVALID_NAME', 'Le nom de la sauvegarde ne peut pas être vide');
+      }
+
+      final gameData = gameState.prepareGameData();
+
+      // Validation simple et rapide
+      if (!_quickValidate(gameData)) {
+        throw SaveError('VALIDATION_ERROR', 'Données de base manquantes');
+      }
+
+      final saveData = SaveGame(
+        name: name,
+        lastSaveTime: DateTime.now(),
+        gameData: gameData,
+        version: GameConstants.VERSION,
+        gameMode: gameState.gameMode,
+      );
+
+      await saveGame(saveData);
+    } catch (e) {
+      print('Erreur lors de la sauvegarde: $e');
+      rethrow;
+    }
+  }
+
   static Future<SaveGame?> loadGame(String name) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -413,7 +463,6 @@ class SaveManager {
     }
   }
 
-
   // Récupérer la dernière sauvegarde
 
   static Future<void> debugSaveData(String gameName) async {
@@ -440,13 +489,29 @@ class SaveManager {
       for (final key in prefs.getKeys()) {
         if (key.startsWith(SAVE_PREFIX)) {
           try {
-            final data = jsonDecode(prefs.getString(key) ?? '{}');
+            final savedData = prefs.getString(key) ?? '{}';
+            final data = jsonDecode(savedData);
+
+            // Extraction du mode de jeu
+            GameMode gameMode = GameMode.INFINITE;
+            if (data['gameMode'] != null) {
+              int modeIndex = data['gameMode'] as int;
+              gameMode = GameMode.values[modeIndex];
+            } else if (data['gameData']?['gameMode'] != null) {
+              int modeIndex = data['gameData']['gameMode'] as int;
+              gameMode = GameMode.values[modeIndex];
+            }
+
             saves.add(SaveGameInfo(
+              id: data['id'] ?? key.substring(SAVE_PREFIX.length),
               name: key.substring(SAVE_PREFIX.length),
               timestamp: DateTime.parse(data['timestamp'] ?? ''),
               version: data['version'] ?? '',
               paperclips: data['gameData']?['playerManager']?['paperclips'] ?? 0,
               money: data['gameData']?['playerManager']?['money'] ?? 0,
+              isSyncedWithCloud: data['isSyncedWithCloud'] ?? false,
+              cloudId: data['cloudId'],
+              gameMode: gameMode,
             ));
           } catch (e) {
             print('Erreur lors du chargement de la sauvegarde $key: $e');
@@ -499,18 +564,27 @@ class SaveManager {
   }
 }
 
+
 class SaveGameInfo {
+  final String id;
   final String name;
   final DateTime timestamp;
   final String version;
   final double paperclips;
   final double money;
+  final bool isSyncedWithCloud;
+  final String? cloudId;
+  final GameMode gameMode;
 
   SaveGameInfo({
+    required this.id,
     required this.name,
     required this.timestamp,
     required this.version,
     required this.paperclips,
     required this.money,
+    this.isSyncedWithCloud = false,
+    this.cloudId,
+    required this.gameMode,
   });
 }

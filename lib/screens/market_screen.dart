@@ -92,6 +92,8 @@ class MarketScreen extends StatelessWidget {
     );
   }
 
+  // Dans lib/screens/market_screen.dart
+
   Future<void> _saveGame(BuildContext context, GameState gameState) async {
     try {
       if (gameState.gameName == null) {
@@ -104,7 +106,7 @@ class MarketScreen extends StatelessWidget {
         return;
       }
 
-      await SaveManager.saveGame(gameState, gameState.gameName!);
+      await gameState.saveGame(gameState.gameName!);
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

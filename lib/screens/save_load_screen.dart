@@ -1,15 +1,26 @@
+// Continuation de lib/screens/save_load_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
-import '../services/save_manager.dart';
 import '../models/game_config.dart';
 import 'package:paperclip2/screens/main_screen.dart';
+import 'package:paperclip2/services/games_services_controller.dart';
+import 'package:paperclip2/services/save_manager.dart';
 
 class SaveLoadScreen extends StatefulWidget {
   const SaveLoadScreen({Key? key}) : super(key: key);
 
   @override
   State<SaveLoadScreen> createState() => _SaveLoadScreenState();
+}
+
+enum SaveFilter {
+  ALL,
+  LOCAL,
+  CLOUD,
+  COMPETITIVE,
+  INFINITE
 }
 
 class _SaveLoadScreenState extends State<SaveLoadScreen> {
@@ -19,11 +30,116 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
     return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour}:${dateTime.minute}';
   }
 
+  // Variables d'état
+  SaveFilter _currentFilter = SaveFilter.ALL;
+  bool _isSyncing = false;
+
+  List<SaveGameInfo> _filterSaves(List<SaveGameInfo> saves) {
+    switch (_currentFilter) {
+      case SaveFilter.LOCAL:
+        return saves.where((save) => !save.isSyncedWithCloud).toList();
+      case SaveFilter.CLOUD:
+        return saves.where((save) => save.isSyncedWithCloud).toList();
+      case SaveFilter.COMPETITIVE:
+        return saves.where((save) => save.gameMode == GameMode.COMPETITIVE).toList();
+      case SaveFilter.INFINITE:
+        return saves.where((save) => save.gameMode == GameMode.INFINITE).toList();
+      case SaveFilter.ALL:
+      default:
+        return saves;
+    }
+  }
+
+  Future<void> _syncSaves() async {
+    setState(() {
+      _isSyncing = true;
+    });
+
+    try {
+      final gamesServices = GamesServicesController();
+      final isSignedIn = await gamesServices.isSignedIn();
+
+      if (!isSignedIn) {
+        await gamesServices.signIn();
+      }
+
+      final success = await gamesServices.syncSaves();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(success
+                ? 'Sauvegardes synchronisées avec succès'
+                : 'Échec de la synchronisation des sauvegardes'),
+            backgroundColor: success ? Colors.green : Colors.red,
+          ),
+        );
+
+        // Rafraîchir la liste
+        _refreshSaves();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur lors de la synchronisation: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSyncing = false;
+        });
+      }
+    }
+  }
+
+  // Méthode pour charger une sauvegarde
+  Future<void> _loadGame(BuildContext context, SaveGameInfo saveInfo) async {
+    try {
+      final gameState = Provider.of<GameState>(context, listen: false);
+
+      // Si c'est une sauvegarde cloud sans version locale, la télécharger d'abord
+      if (saveInfo.isSyncedWithCloud && saveInfo.cloudId != null && !await SaveManager.saveExists(saveInfo.name)) {
+        final gamesServices = GamesServicesController();
+        final cloudSave = await gamesServices.loadGameFromCloud(saveInfo.cloudId!);
+
+        if (cloudSave != null) {
+          await SaveManager.saveGame(cloudSave);
+        } else {
+          throw SaveError('CLOUD_ERROR', 'Impossible de charger la sauvegarde depuis le cloud');
+        }
+      }
+
+      // Chargement normal
+      await gameState.loadGame(saveInfo.name);
+
+      if (context.mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const MainScreen()),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur de chargement: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   void _refreshSaves() {
     setState(() {
       _futureBuilderKey = UniqueKey(); // Créer une nouvelle clé force le rebuild
     });
   }
+
   Future<void> _createNewGame(BuildContext context, String gameName) async {
     try {
       print('Creating new game: $gameName');
@@ -56,6 +172,52 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
       appBar: AppBar(
         title: const Text('Sauvegardes'),
         elevation: 0,
+        actions: [
+          // Bouton de synchronisation
+          IconButton(
+            icon: _isSyncing
+                ? const CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              strokeWidth: 2,
+            )
+                : const Icon(Icons.sync),
+            onPressed: _isSyncing ? null : _syncSaves,
+            tooltip: 'Synchroniser avec le cloud',
+          ),
+
+          // Menu de filtres
+          PopupMenuButton<SaveFilter>(
+            icon: const Icon(Icons.filter_list),
+            tooltip: 'Filtrer les sauvegardes',
+            onSelected: (filter) {
+              setState(() {
+                _currentFilter = filter;
+              });
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: SaveFilter.ALL,
+                child: Text('Toutes les sauvegardes'),
+              ),
+              const PopupMenuItem(
+                value: SaveFilter.LOCAL,
+                child: Text('Sauvegardes locales'),
+              ),
+              const PopupMenuItem(
+                value: SaveFilter.CLOUD,
+                child: Text('Sauvegardes cloud'),
+              ),
+              const PopupMenuItem(
+                value: SaveFilter.COMPETITIVE,
+                child: Text('Mode Compétitif'),
+              ),
+              const PopupMenuItem(
+                value: SaveFilter.INFINITE,
+                child: Text('Mode Infini'),
+              ),
+            ],
+          ),
+        ],
       ),
       body: FutureBuilder<List<SaveGameInfo>>(
         key: _futureBuilderKey,
@@ -83,8 +245,10 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
             );
           }
 
-          final saves = snapshot.data ?? [];
-          if (saves.isEmpty) {
+          final allSaves = snapshot.data ?? [];
+          final filteredSaves = _filterSaves(allSaves);
+
+          if (filteredSaves.isEmpty) {
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -92,7 +256,9 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                   Icon(Icons.save_outlined, size: 64, color: Colors.grey[400]),
                   const SizedBox(height: 16),
                   Text(
-                    'Aucune sauvegarde',
+                    _currentFilter == SaveFilter.ALL
+                        ? 'Aucune sauvegarde'
+                        : 'Aucune sauvegarde correspondant au filtre',
                     style: TextStyle(
                       fontSize: 18,
                       color: Colors.grey[600],
@@ -104,13 +270,55 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
             );
           }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: saves.length,
-            itemBuilder: (context, index) {
-              final save = saves[index];
-              return _buildSaveCard(save, context);
-            },
+          return Column(
+            children: [
+              // Afficher le filtre actif
+              if (_currentFilter != SaveFilter.ALL)
+                Container(
+                  margin: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.deepPurple.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Colors.deepPurple.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.filter_list, size: 16),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Filtre: ${_currentFilter.toString().split('.').last}',
+                        style: const TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(width: 8),
+                      InkWell(
+                        onTap: () {
+                          setState(() {
+                            _currentFilter = SaveFilter.ALL;
+                          });
+                        },
+                        child: const Icon(Icons.close, size: 16),
+                      ),
+                    ],
+                  ),
+                ),
+
+              // Liste des sauvegardes
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: filteredSaves.length,
+                  itemBuilder: (context, index) {
+                    final save = filteredSaves[index];
+                    return _buildSaveCard(save, context);
+                  },
+                ),
+              ),
+            ],
           );
         },
       ),
@@ -122,15 +330,21 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
       ),
     );
   }
+
   Widget _buildSaveCard(SaveGameInfo save, BuildContext context) {
+    final bool isCompetitive = save.gameMode == GameMode.COMPETITIVE;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
+        side: isCompetitive
+            ? BorderSide(color: Colors.amber.shade700, width: 2)
+            : BorderSide.none,
       ),
       child: InkWell(
-        onTap: () => _loadGame(context, save.name),
+        onTap: () => _loadGame(context, save),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -139,7 +353,15 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
             children: [
               Row(
                 children: [
-                  Icon(Icons.save, color: Colors.deepPurple[400]),
+                  // Icône différente selon le type de sauvegarde
+                  Icon(
+                    isCompetitive
+                        ? Icons.emoji_events
+                        : Icons.save,
+                    color: isCompetitive
+                        ? Colors.amber.shade700
+                        : Colors.deepPurple[400],
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
@@ -150,18 +372,46 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                       ),
                     ),
                   ),
+
+                  // Indicateur de synchronisation cloud
+                  if (save.isSyncedWithCloud)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: Tooltip(
+                        message: 'Sauvegarde synchronisée avec le cloud',
+                        child: Icon(
+                          Icons.cloud_done,
+                          color: Colors.blue[400],
+                          size: 20,
+                        ),
+                      ),
+                    ),
+
+                  // Menu d'options
                   PopupMenuButton(
                     itemBuilder: (context) => [
                       PopupMenuItem(
                         value: 'load',
                         child: Row(
-                          children: [
-                            const Icon(Icons.play_arrow),
-                            const SizedBox(width: 8),
-                            const Text('Charger'),
+                          children: const [
+                            Icon(Icons.play_arrow),
+                            SizedBox(width: 8),
+                            Text('Charger'),
                           ],
                         ),
                       ),
+                      // Option de synchronisation cloud pour les sauvegardes non synchronisées
+                      if (!save.isSyncedWithCloud)
+                        PopupMenuItem(
+                          value: 'cloud_sync',
+                          child: Row(
+                            children: [
+                              Icon(Icons.cloud_upload, color: Colors.blue[400]),
+                              const SizedBox(width: 8),
+                              const Text('Synchroniser'),
+                            ],
+                          ),
+                        ),
                       PopupMenuItem(
                         value: 'delete',
                         child: Row(
@@ -173,9 +423,33 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                         ),
                       ),
                     ],
-                    onSelected: (value) {
+                    onSelected: (value) async {
                       if (value == 'load') {
-                        _loadGame(context, save.name);
+                        _loadGame(context, save);
+                      } else if (value == 'cloud_sync') {
+                        // Synchroniser avec le cloud
+                        final gamesServices = GamesServicesController();
+                        if (await gamesServices.isSignedIn()) {
+                          // Charger la sauvegarde complète
+                          final fullSave = await SaveManager.loadGame(save.name);
+                          if (fullSave != null) {
+                            final success = await gamesServices.saveGameToCloud(fullSave);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(success
+                                      ? 'Sauvegarde synchronisée avec succès'
+                                      : 'Échec de la synchronisation'),
+                                  backgroundColor: success ? Colors.green : Colors.red,
+                                ),
+                              );
+                              _refreshSaves();
+                            }
+                          }
+                        } else {
+                          // Demander la connexion
+                          await gamesServices.signIn();
+                        }
                       } else if (value == 'delete') {
                         _confirmDelete(context, save.name);
                       }
@@ -208,34 +482,38 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                   ),
                 ],
               ),
+              // Affichage du mode de jeu
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isCompetitive
+                      ? Colors.amber.withOpacity(0.1)
+                      : Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                    color: isCompetitive
+                        ? Colors.amber.shade300
+                        : Colors.blue.shade300,
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  isCompetitive ? 'Mode Compétitif' : 'Mode Infini',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isCompetitive
+                        ? Colors.amber.shade800
+                        : Colors.blue.shade800,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
             ],
           ),
         ),
       ),
     );
-  }
-
-  Future<void> _loadGame(BuildContext context, String name) async {
-    try {
-      final gameState = Provider.of<GameState>(context, listen: false);
-      await gameState.loadGame(name);
-
-      if (context.mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const MainScreen()),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erreur de chargement: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
   }
 
   Widget _buildInfoRow(String label, String value, IconData icon) {
@@ -268,40 +546,6 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
     );
   }
 
-  Future<void> _showDeleteConfirmation(
-      BuildContext context,
-      String gameName,
-      ) async {
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Supprimer la partie ?'),
-        content: Text('Voulez-vous vraiment supprimer la partie "$gameName" ?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Annuler'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Supprimer'),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-          ),
-        ],
-      ),
-    );
-
-    if (result == true && context.mounted) {
-      await SaveManager.deleteSave(gameName);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Partie supprimée')),
-        );
-      }
-    }
-  }
-  // Dans votre écran de sauvegarde
-
   Future<void> _confirmDelete(BuildContext context, String gameName) async {
     final result = await showDialog<bool>(
       context: context,
@@ -327,7 +571,6 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
       _refreshSaves();
     }
   }
-
 
   Future<void> _showNewGameDialog(BuildContext context) async {
     final controller = TextEditingController(

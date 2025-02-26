@@ -1,6 +1,10 @@
 // lib/models/game_state.dart
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+// lib/models/game_state.dart
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import '../screens/competitive_result_screen.dart';
 import 'dart:async';
 import 'package:flutter/services.dart';
 import 'dart:math';
@@ -12,13 +16,16 @@ import 'market.dart';
 import 'progression_system.dart';
 import 'resource_manager.dart';
 import 'game_state_interfaces.dart';
-import '../services/save_manager.dart';
 import 'dart:convert';
 import '../utils/notification_manager.dart';
 import '../dialogs/metal_crisis_dialog.dart';
 import '../services/auto_save_service.dart';
 import 'package:paperclip2/services/games_services_controller.dart';
-import 'package:games_services/games_services.dart';
+import 'package:games_services/games_services.dart' hide SaveGame;
+import '../screens/main_screen.dart';
+import 'package:paperclip2/services/cloud_save_manager.dart';
+import 'package:games_services/games_services.dart' as gs;
+import '../services/save_manager.dart' show SaveGame, SaveError, SaveGameInfo, SaveManager;
 
 class GameState extends ChangeNotifier {
   late final PlayerManager _playerManager;
@@ -38,7 +45,13 @@ class GameState extends ChangeNotifier {
   bool get crisisTransitionComplete => _crisisTransitionComplete;
   bool _showingCrisisView = false;
 
+  // Mode de jeu (infini ou compétitif)
+  GameMode _gameMode = GameMode.INFINITE;
+  DateTime? _competitiveStartTime;
 
+  // Getters
+  GameMode get gameMode => _gameMode;
+  DateTime? get competitiveStartTime => _competitiveStartTime;
 
 
   bool _isInitialized = false;
@@ -68,6 +81,11 @@ class GameState extends ChangeNotifier {
 
       _isInitialized = true;
     }
+  }
+
+  Duration get competitivePlayTime {
+    if (_competitiveStartTime == null) return Duration.zero;
+    return DateTime.now().difference(_competitiveStartTime!);
   }
 
   void _createManagers() {
@@ -109,16 +127,7 @@ class GameState extends ChangeNotifier {
       rethrow;
     }
   }
-  Future<void> saveOnImportantEvent() async {
-    if (!_isInitialized || _gameName == null) return;
 
-    try {
-      await SaveManager.saveGame(this, _gameName!);
-      _lastSaveTime = DateTime.now();
-    } catch (e) {
-      print('Erreur lors de la sauvegarde événementielle: $e');
-    }
-  }
 
   DateTime _lastUpdateTime = DateTime.now();
   DateTime? _lastSaveTime;
@@ -165,12 +174,189 @@ class GameState extends ChangeNotifier {
     }
     return '${seconds}s';
   }
+
+  void handleCompetitiveGameEnd() {
+    if (_gameMode != GameMode.COMPETITIVE || !_isInCrisisMode) return;
+
+    // Calculer les métriques de la partie compétitive
+    final competitiveScore = calculateCompetitiveScore();
+
+    // Mise à jour des classements
+    final gamesServices = GamesServicesController();
+    gamesServices.submitCompetitiveScore(
+        score: competitiveScore,
+        paperclips: _totalPaperclipsProduced,
+        money: playerManager.money,
+        timePlayed: competitivePlayTime.inSeconds,
+        level: levelSystem.level,
+        efficiency: calculateEfficiencyRating()
+    );
+
+    // Déverrouiller les succès compétitifs si nécessaire
+    _checkCompetitiveAchievements(competitiveScore);
+
+    // Afficher le résultat si on a un contexte
+    if (_context != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.of(_context!).push(
+          MaterialPageRoute(
+            builder: (context) => CompetitiveResultScreen(
+              score: competitiveScore,
+              paperclips: _totalPaperclipsProduced,
+              money: playerManager.money,
+              playTime: competitivePlayTime,
+              level: levelSystem.level,
+              efficiency: calculateEfficiencyRating(),
+              onNewGame: () => _startNewCompetitiveGame(context),
+              onShowLeaderboard: () => gamesServices.showCompetitiveLeaderboard(),
+            ),
+          ),
+        );
+      });
+    }
+  }
+
+  // Méthode pour démarrer une nouvelle partie compétitive
+  void _startNewCompetitiveGame(BuildContext context) {
+    final gameName = 'Compétition_${DateTime.now().day}_${DateTime.now().month}_${DateTime.now().hour}${DateTime.now().minute}';
+    startNewGame(gameName, mode: GameMode.COMPETITIVE).then((_) {
+      // Retourner à l'écran principal avec la nouvelle partie
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const MainScreen()),
+      );
+    });
+  }
+
+  // Méthode pour calculer le score compétitif
+  int calculateCompetitiveScore() {
+    if (_gameMode != GameMode.COMPETITIVE) return 0;
+
+    // Base: production de trombones (50% du score)
+    double productionScore = _totalPaperclipsProduced * 10;
+
+    // Argent gagné (25% du score)
+    double moneyScore = playerManager.money * 5;
+
+    // Niveau atteint (15% du score)
+    double levelScore = levelSystem.level * 1000;
+
+    // Bonus d'efficacité (10% du score)
+    double efficiencyBonus = calculateEfficiencyRating() * 500;
+
+    // Temps de jeu - bonus inversement proportionnel
+    // Plus c'est rapide, plus le bonus est élevé
+    int minutes = competitivePlayTime.inMinutes;
+    double timeMultiplier = 1.0;
+    if (minutes > 0) {
+      // Multiplicateur qui diminue avec le temps, mais pas trop vite
+      timeMultiplier = 2.0 / (1 + (minutes / 30));
+    }
+
+    // Score final
+    int finalScore = ((productionScore + moneyScore + levelScore + efficiencyBonus) * timeMultiplier).toInt();
+
+    print('Score compétitif calculé: $finalScore (Prod: $productionScore, Argent: $moneyScore, Niveau: $levelScore, Efficacité: $efficiencyBonus, Temps: $timeMultiplier)');
+
+    return finalScore;
+  }
+
+  // Méthode pour calculer l'efficacité (ratio trombones/métal)
+  double calculateEfficiencyRating() {
+    // Obtenir la consommation totale de métal depuis les statistiques
+    double totalMetalUsed = _statistics.getTotalMetalUsed();
+    if (totalMetalUsed <= 0) return 1.0;
+
+    // Ratio trombones/métal (ajusté pour être significatif)
+    return _totalPaperclipsProduced / totalMetalUsed;
+  }
+
+  // Vérification des réalisations (achievements) compétitifs
+  void _checkCompetitiveAchievements(int score) {
+    final gamesServices = GamesServicesController();
+
+    // Vérifier les seuils de score
+    if (score >= 100000) {
+      gamesServices.unlockCompetitiveAchievement(CompetitiveAchievement.SCORE_100K);
+    } else if (score >= 50000) {
+      gamesServices.unlockCompetitiveAchievement(CompetitiveAchievement.SCORE_50K);
+    } else if (score >= 10000) {
+      gamesServices.unlockCompetitiveAchievement(CompetitiveAchievement.SCORE_10K);
+    }
+
+    // Vérifier le temps de jeu (parties rapides)
+    if (competitivePlayTime.inMinutes < 10 && _isInCrisisMode) {
+      gamesServices.unlockCompetitiveAchievement(CompetitiveAchievement.SPEED_RUN);
+    }
+
+    // Vérifier l'efficacité
+    if (calculateEfficiencyRating() > 8.0) {
+      gamesServices.unlockCompetitiveAchievement(CompetitiveAchievement.EFFICIENCY_MASTER);
+    }
+  }
+  Future<bool> syncSavesToCloud() async {
+    final gamesServices = GamesServicesController();
+    if (!await gamesServices.isSignedIn()) {
+      if (_context != null) {
+        ScaffoldMessenger.of(_context!).showSnackBar(
+          const SnackBar(
+            content: Text('Connectez-vous à Google Play Games pour synchroniser'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return false;
+    }
+
+    try {
+      return await gamesServices.syncSaves();
+    } catch (e) {
+      print('Erreur lors de la synchronisation: $e');
+      if (_context != null) {
+        ScaffoldMessenger.of(_context!).showSnackBar(
+          SnackBar(
+            content: Text('Erreur de synchronisation: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return false;
+    }
+  }
+
   void enterCrisisMode() {
     if (_isInCrisisMode) return;
 
     print("Début de la transition vers le mode crise");
 
-    // Afficher d'abord le dialogue si on a un contexte
+    // Gérer spécifiquement le mode compétitif
+    if (_gameMode == GameMode.COMPETITIVE) {
+      // Enregistrer que la crise est active
+      _isInCrisisMode = true;
+      _crisisStartTime = DateTime.now();
+
+      // Notifier le changement de mode
+      EventManager.instance.addEvent(
+          EventType.CRISIS_MODE,
+          "Mode Crise Activé",
+          description: "Fin de partie compétitive : plus de métal disponible !",
+          importance: EventImportance.CRITICAL,
+          additionalData: {
+            'timestamp': _crisisStartTime!.toIso8601String(),
+            'marketMetalStock': marketManager.marketMetalStock,
+            'competitiveMode': true,
+          }
+      );
+
+      // Sauvegarder l'état avant d'afficher les résultats
+      saveOnImportantEvent();
+
+      // Gérer la fin de partie compétitive
+      handleCompetitiveGameEnd();
+      return;
+    }
+
+    // Code existant pour le mode infini...
     if (_context != null) {
       showDialog(
         context: _context!,
@@ -361,12 +547,14 @@ class GameState extends ChangeNotifier {
       'statistics': _statistics.toJson(),
       'totalTimePlayedInSeconds': _totalTimePlayedInSeconds,
       'totalPaperclipsProduced': _totalPaperclipsProduced,
+      'gameMode': _gameMode.index,
+      'competitiveStartTime': _competitiveStartTime?.toIso8601String(),
       // Données de crise complètes
       'crisisMode': {
         'isInCrisisMode': _isInCrisisMode,
         'crisisStartTime': _crisisStartTime?.toIso8601String(),
         'crisisTransitionComplete': _crisisTransitionComplete,
-        'showingCrisisView': _showingCrisisView,  // Ajouter cette ligne
+        'showingCrisisView': _showingCrisisView,
       },
       'achievements': {
         'last_sync': DateTime.now().toIso8601String(),
@@ -382,6 +570,7 @@ class GameState extends ChangeNotifier {
 
       // Debug logs
       print('PrepareGameData - Sauvegarde des données:');
+      print('Mode de jeu: ${_gameMode == GameMode.INFINITE ? "Infini" : "Compétitif"}');
       print('Mode crise actif: ${_isInCrisisMode}');
       print('Début de la crise: ${_crisisStartTime?.toIso8601String()}');
       print('Transition complète: $_crisisTransitionComplete');
@@ -724,10 +913,17 @@ class GameState extends ChangeNotifier {
     );
   }
   // Dans GameState, ajoutez un logger pour le debug
-  Future<void> startNewGame(String name) async {
+  // Mise à jour pour prendre en charge la synchronisation cloud
+  Future<void> startNewGame(String name, {GameMode mode = GameMode.INFINITE, bool syncToCloud = false}) async {
     try {
-      print('Starting new game with name: $name');
+      print('Starting new game with name: $name, mode: $mode, syncToCloud: $syncToCloud');
       _gameName = name;
+      _gameMode = mode;
+
+      // Si mode compétitif, initialiser le timer
+      if (_gameMode == GameMode.COMPETITIVE) {
+        _competitiveStartTime = DateTime.now();
+      }
 
       // Réinitialiser l'état si déjà initialisé
       if (_isInitialized) {
@@ -737,9 +933,30 @@ class GameState extends ChangeNotifier {
       // Initialiser les managers
       _initializeManagers();
 
-      // Sauvegarder l'état initial
-      await SaveManager.saveGame(this, name);
-      saveOnImportantEvent();
+      // Préparer les données de sauvegarde
+      final gameData = prepareGameData();
+
+      // Créer un nouvel objet SaveGame
+      final saveGame = SaveGame(
+        name: name,
+        lastSaveTime: DateTime.now(),
+        gameData: gameData,
+        version: GameConstants.VERSION,
+        gameMode: mode,
+        isSyncedWithCloud: false,
+      );
+
+      // Sauvegarder localement
+      await SaveManager.saveGame(saveGame);
+
+      // Synchroniser avec le cloud si demandé
+      if (syncToCloud) {
+        final gamesServices = GamesServicesController();
+        if (await gamesServices.isSignedIn()) {
+          await gamesServices.saveGameToCloud(saveGame);
+        }
+      }
+
       notifyListeners();
     } catch (e) {
       print('Error starting new game: $e');
@@ -756,11 +973,28 @@ class GameState extends ChangeNotifier {
       _loadGameData(gameData);
     }
   }
-  Future<void> loadGame(String name) async {
+  Future<void> loadGame(String name, {String? cloudId}) async {
     try {
-      print('Starting to load game: $name');
-      final saveGame = await SaveManager.loadGame(name);
-      if (saveGame == null) throw SaveError('NOT_FOUND', 'Sauvegarde non trouvée');
+      print('Starting to load game: $name, cloudId: $cloudId');
+
+      SaveGame? saveGame;
+
+      // Tentative de chargement depuis le cloud si un cloudId est fourni
+      if (cloudId != null) {
+        final gamesServices = GamesServicesController();
+        saveGame = await gamesServices.loadGameFromCloud(cloudId);
+
+        if (saveGame == null) {
+          throw SaveError('CLOUD_ERROR', 'Erreur lors du chargement depuis le cloud');
+        }
+
+        // Sauvegarder localement la version cloud
+        await SaveManager.saveGame(saveGame);
+      } else {
+        // Chargement local normal
+        saveGame = await SaveManager.loadGame(name);
+        if (saveGame == null) throw SaveError('NOT_FOUND', 'Sauvegarde non trouvée');
+      }
 
       _stopAllTimers();
       print('Timers stopped');
@@ -782,6 +1016,16 @@ class GameState extends ChangeNotifier {
       _playerManager.fromJson(gameData['playerManager'] ?? {});
       _marketManager.fromJson(gameData['marketManager'] ?? {});
 
+      // Charger le mode de jeu
+      _gameMode = gameData['gameMode'] != null
+          ? GameMode.values[gameData['gameMode'] as int]
+          : GameMode.INFINITE;
+
+      // Charger le temps de départ en mode compétitif
+      if (gameData['competitiveStartTime'] != null) {
+        _competitiveStartTime = DateTime.parse(gameData['competitiveStartTime'] as String);
+      }
+
       _applyUpgradeEffects();
 
       // Charger les données globales avec conversion sécurisée
@@ -802,6 +1046,45 @@ class GameState extends ChangeNotifier {
       rethrow;
     }
   }
+  Future<void> showCloudSaveSelector() async {
+    try {
+      final gamesServices = GamesServicesController();
+      if (!await gamesServices.isSignedIn()) {
+        await gamesServices.signIn();
+      }
+
+      if (await gamesServices.isSignedIn()) {
+        final selectedSave = await gamesServices.showSaveSelector();
+        if (selectedSave != null && _context != null) {
+          // Sauvegarder d'abord la partie actuelle si elle existe
+          if (_isInitialized && _gameName != null) {
+            await saveGame(_gameName!);
+          }
+
+          // Charger la partie sélectionnée
+          await loadGame(selectedSave.name, cloudId: selectedSave.cloudId);
+
+          // Naviguer vers l'écran principal
+          if (_context != null && _context!.mounted) {
+            Navigator.of(_context!).pushReplacement(
+              MaterialPageRoute(builder: (_) => const MainScreen()),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      print('Erreur lors de l\'affichage du sélecteur cloud: $e');
+      if (_context != null) {
+        ScaffoldMessenger.of(_context!).showSnackBar(
+          SnackBar(
+            content: Text('Erreur: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
 
   void _handleCrisisModeData(Map<String, dynamic> gameData) {
     if (gameData['crisisMode'] != null) {
@@ -876,19 +1159,62 @@ class GameState extends ChangeNotifier {
 
 
 
-  Future<void> saveGame(String name) async {
+  Future<void> saveGame(String name, {bool syncToCloud = true}) async {
     if (!_isInitialized) {
       throw SaveError('NOT_INITIALIZED', 'Le jeu n\'est pas initialisé');
     }
 
     try {
-      await SaveManager.saveGame(this, name);
+      // Préparation des données de jeu
+      final gameData = prepareGameData();
+
+      // Création de l'objet SaveGame
+      final saveData = SaveGame(
+        name: name,
+        lastSaveTime: DateTime.now(),
+        gameData: gameData,
+        version: GameConstants.VERSION,
+        gameMode: _gameMode,
+        isSyncedWithCloud: false,  // Sera mis à jour après la synchronisation
+      );
+
+      // Sauvegarde locale
+      await SaveManager.saveGame(saveData);
       _gameName = name;
       _lastSaveTime = DateTime.now();
+
+      // Synchronisation avec le cloud si demandé et connecté
+      if (syncToCloud) {
+        final gamesServices = GamesServicesController();
+        if (await gamesServices.isSignedIn()) {
+          final success = await gamesServices.saveGameToCloud(saveData);
+          if (success && _context != null) {
+            ScaffoldMessenger.of(_context!).showSnackBar(
+              const SnackBar(
+                content: Text('Partie sauvegardée et synchronisée avec le cloud'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        }
+      }
+
       notifyListeners();
     } catch (e) {
       print('Erreur dans GameState.saveGame: $e');
       rethrow;
+    }
+  }
+
+  Future<void> saveOnImportantEvent() async {
+    if (!_isInitialized || _gameName == null) return;
+
+    try {
+      await saveGame(_gameName!);
+      _lastSaveTime = DateTime.now();
+    } catch (e) {
+      print('Erreur lors de la sauvegarde événementielle: $e');
     }
   }
 

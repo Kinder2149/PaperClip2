@@ -1,8 +1,13 @@
+// lib/dialogs/metal_crisis_dialog.dart
+// Modifier le dialogue de crise pour tenir compte du mode compétitif
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
+import '../models/game_config.dart';
+import '../screens/competitive_result_screen.dart';
 
-class MetalCrisisDialog extends StatelessWidget {
+class MetalCrisisDialog extends StatefulWidget {
   final VoidCallback? onTransitionComplete;
 
   const MetalCrisisDialog({
@@ -11,186 +16,223 @@ class MetalCrisisDialog extends StatelessWidget {
   }) : super(key: key);
 
   @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
-      elevation: 0,
-      backgroundColor: Colors.transparent,
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.rectangle,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black26,
-              blurRadius: 10.0,
-              offset: const Offset(0.0, 10.0),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildHeader(),
-            _buildContent(),
-            _buildActionButton(context),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    // Le reste du code reste identique
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.red.shade100,
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            Icons.warning_amber_rounded,
-            size: 48,
-            color: Colors.red.shade700,
-          ),
-        ),
-        const SizedBox(height: 20),
-        const Text(
-          'Crise Mondiale du Métal !',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Colors.red,
-          ),
-          textAlign: TextAlign.center,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildContent() {
-    // Le reste du code reste identique
-    return Column(
-      children: [
-        const SizedBox(height: 16),
-        const Text(
-          'Les réserves mondiales de métal sont épuisées.\n'
-              'De nouvelles stratégies doivent être développées !',
-          style: TextStyle(fontSize: 16),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 16),
-        _buildNewFeaturesList(),
-      ],
-    );
-  }
-
-  Widget _buildNewFeaturesList() {
-    // Le reste du code reste identique
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: const [
-        Text(
-          'Nouvelle option disponible :',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        SizedBox(height: 8),
-        _FeatureItem(
-          icon: Icons.engineering,
-          text: 'Production de métal',
-        ),
-      ],
-    );
-  }
-
-  Widget _buildActionButton(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.deepPurple,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        onPressed: () => _handleCrisisTransition(context),
-        child: const Text(
-          'Adapter la production',
-          style: TextStyle(fontSize: 18),
-        ),
-      ),
-    );
-  }
-
-  void _handleCrisisTransition(BuildContext context) async {
-    try {
-      Navigator.pop(context);
-
-      await Future.delayed(const Duration(milliseconds: 300));
-
-      // Appeler le callback après la fermeture du dialogue et le délai
-      onTransitionComplete?.call();
-
-      if (context.mounted) {
-        final gameState = Provider.of<GameState>(context, listen: false);
-        if (gameState.validateCrisisTransition()) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Nouvelles options de production débloquées !'),
-              backgroundColor: Colors.green,
-              duration: Duration(seconds: 3),
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      print("Erreur de transition : $e");
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erreur lors de la transition : $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
+  State<MetalCrisisDialog> createState() => _MetalCrisisDialogState();
 }
 
-class _FeatureItem extends StatelessWidget {
-  // Cette partie reste identique
-  final IconData icon;
-  final String text;
+class _MetalCrisisDialogState extends State<MetalCrisisDialog> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _fadeIn;
+  late Animation<double> _scale;
+  bool _showButtons = false;
 
-  const _FeatureItem({
-    required this.icon,
-    required this.text,
-  });
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(seconds: 3),
+      vsync: this,
+    );
+
+    _fadeIn = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.0, 0.7, curve: Curves.easeIn),
+      ),
+    );
+
+    _scale = Tween<double>(begin: 0.5, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.2, 0.8, curve: Curves.elasticOut),
+      ),
+    );
+
+    _controller.forward();
+
+    // Afficher les boutons après l'animation
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) {
+        setState(() {
+          _showButtons = true;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Icon(icon, size: 20),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(text),
+    return Consumer<GameState>(
+      builder: (context, gameState, _) {
+        final isCompetitiveMode = gameState.gameMode == GameMode.COMPETITIVE;
+
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(16),
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) {
+              return FadeTransition(
+                opacity: _fadeIn,
+                child: ScaleTransition(
+                  scale: _scale,
+                  child: Container(
+                    width: double.infinity,
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.9,
+                      maxHeight: MediaQuery.of(context).size.height * 0.8,
+                    ),
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Colors.red.shade800,
+                          Colors.deepOrange.shade900,
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.5),
+                          blurRadius: 15,
+                          spreadRadius: 5,
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Titre
+                        Text(
+                          isCompetitiveMode
+                              ? 'FIN DE PARTIE COMPÉTITIVE'
+                              : 'ALERTE MONDIALE',
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                            letterSpacing: 2,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+
+                        const SizedBox(height: 20),
+
+                        // Icône d'alerte
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            isCompetitiveMode ? Icons.emoji_events : Icons.warning,
+                            size: 50,
+                            color: Colors.white,
+                          ),
+                        ),
+
+                        const SizedBox(height: 20),
+
+                        // Description
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.3),
+                              width: 1,
+                            ),
+                          ),
+                          child: Text(
+                            isCompetitiveMode
+                                ? 'Les ressources mondiales de métal sont épuisées. Votre partie compétitive est terminée.\n\nVotre score a été calculé et enregistré!'
+                                : 'ALERTE : Les ressources mondiales de métal sont épuisées.\n\nVotre système va entrer dans une nouvelle phase d\'adaptation.',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              height: 1.5,
+                              color: Colors.white,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+
+                        const SizedBox(height: 30),
+
+                        // Boutons (apparaissent après l'animation)
+                        AnimatedOpacity(
+                          opacity: _showButtons ? 1.0 : 0.0,
+                          duration: const Duration(milliseconds: 500),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: isCompetitiveMode
+                                ? [
+                              // Bouton pour voir les résultats en mode compétitif
+                              ElevatedButton(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  // Calculer le score et afficher l'écran de résultats
+                                  gameState.handleCompetitiveGameEnd();
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.amber,
+                                  foregroundColor: Colors.black,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 30,
+                                    vertical: 15,
+                                  ),
+                                ),
+                                child: const Text(
+                                  'VOIR MES RÉSULTATS',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ]
+                                : [
+                              // Bouton pour continuer en mode infini
+                              ElevatedButton(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  // Appeler le callback de transition si fourni
+                                  widget.onTransitionComplete?.call();
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.white,
+                                  foregroundColor: Colors.deepOrange.shade900,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 30,
+                                    vertical: 15,
+                                  ),
+                                ),
+                                child: const Text(
+                                  'CONTINUER',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

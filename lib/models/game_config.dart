@@ -13,6 +13,7 @@ class GameConstants {
   static const double INITIAL_STORAGE_CAPACITY = 1000.0;
   static const double BASE_EFFICIENCY = 1.0;
   static const double RESOURCE_DECAY_RATE = 0.01;
+  static const String GAME_MODE_KEY = 'game_mode';
 
   static const double MAINTENANCE_EFFICIENCY_MULTIPLIER = 0.1;
   static const double EFFICIENCY_MAX_REDUCTION = 0.85;
@@ -30,7 +31,7 @@ class GameConstants {
   static const double BASE_AUTOCLIPPER_COST = 15.0;
   static const double MIN_PRICE = 0.01;
   static const double MAX_PRICE = 0.50;
-  static const double INITIAL_MARKET_METAL = 200.0; //80000
+  static const double INITIAL_MARKET_METAL = 80000.0; //80000
   static const int MAX_COMBO_COUNT = 5;
   static const double COMBO_MULTIPLIER = 0.1;  // Pour le calcul du multiplicateur de combo
 
@@ -162,13 +163,13 @@ class GameConstants {
   static const double MARKET_EVENT_CHANCE = 0.05;
 
   // Information de version
-  static const String VERSION = '1.0.2';
+  static const String VERSION = '1.0.3';
   static const String AUTHOR = 'Kinder2149';
-  static const String LAST_UPDATE = '23/02/2025';
+  static const String LAST_UPDATE = '25/02/2025';
   static const String APP_NAME = 'PaperClip2';
 
   static const String DEFAULT_GAME_NAME_PREFIX = 'Partie';
-  static const String APP_TITLE = 'Paperclip Game';
+  static const String APP_TITLE = 'ClipFactory Empire';
   static const String INTRO_TITLE_1 = "INITIALISATION";
   static const String INTRO_TITLE_2 = "PRODUCTION";
   static const String INTRO_TITLE_3 = "OPTIMISATION";
@@ -231,6 +232,10 @@ enum EventImportance {
   bool operator >=(EventImportance other) {
     return value >= other.value;
   }
+}
+enum GameMode {
+  INFINITE,    // Mode infini, comme le jeu actuel
+  COMPETITIVE  // Mode compétitif, avec focus sur les statistiques et scores
 }
 
 enum UnlockableFeature {

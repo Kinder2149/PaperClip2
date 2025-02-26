@@ -187,6 +187,10 @@ class StatisticsManager with ChangeNotifier {
     notifyListeners();
   }
 
+  double getTotalMetalUsed() {
+    return _totalMetalUsed;
+  }
+
   void updateEconomics({
     double? moneyEarned,
     double? moneySpent,

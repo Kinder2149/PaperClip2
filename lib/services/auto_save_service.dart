@@ -8,7 +8,6 @@ import '../models/game_state.dart';
 import '../models/event_system.dart';
 import '../models/game_config.dart';
 import 'save_manager.dart';
-import '../utils/update_manager.dart';
 
 class AutoSaveService {
   static const Duration AUTO_SAVE_INTERVAL = Duration(minutes: 5);
@@ -45,14 +44,25 @@ class AutoSaveService {
       });
     });
   }
+
   Future<void> createBackup() async {
     if (!_isInitialized || _gameState.gameName == null) return;
 
     try {
       final backupName = '${_gameState.gameName!}_backup_${DateTime.now().millisecondsSinceEpoch}';
+
+      // Créer un objet SaveGame pour le backup
+      final saveData = SaveGame(
+        name: backupName,
+        lastSaveTime: DateTime.now(),
+        gameData: _gameState.prepareGameData(),
+        version: GameConstants.VERSION,
+        gameMode: _gameState.gameMode,
+      );
+
       // Créer le backup de manière asynchrone pour ne pas bloquer l'UI
       await Future.microtask(() async {
-        await SaveManager.saveGame(_gameState, backupName);
+        await SaveManager.saveGame(saveData);
       });
 
       // Nettoyer les vieux backups de manière asynchrone
@@ -93,7 +103,16 @@ class AutoSaveService {
     if (!_gameState.isInitialized || _gameState.gameName == null) return;
 
     try {
-      await SaveManager.saveGame(_gameState, _gameState.gameName!);
+      // Créer un objet SaveGame pour la sauvegarde automatique
+      final saveData = SaveGame(
+        name: _gameState.gameName!,
+        lastSaveTime: DateTime.now(),
+        gameData: _gameState.prepareGameData(),
+        version: GameConstants.VERSION,
+        gameMode: _gameState.gameMode,
+      );
+
+      await SaveManager.saveGame(saveData);
       _failedSaveAttempts = 0;  // Réinitialiser le compteur en cas de succès
       _lastAutoSave = DateTime.now();
     } catch (e) {
@@ -101,7 +120,6 @@ class AutoSaveService {
       await _handleSaveError(e);
     }
   }
-
 
   Future<bool> _checkSaveSize(Map<String, dynamic> data) async {
     final jsonString = jsonEncode(data);
@@ -133,19 +151,37 @@ class AutoSaveService {
 
     try {
       final backupName = '${_gameState.gameName!}_backup_${DateTime.now().millisecondsSinceEpoch}';
-      await SaveManager.saveGame(_gameState, backupName);
+
+      // Créer un objet SaveGame pour le backup
+      final saveData = SaveGame(
+        name: backupName,
+        lastSaveTime: DateTime.now(),
+        gameData: _gameState.prepareGameData(),
+        version: GameConstants.VERSION,
+        gameMode: _gameState.gameMode,
+      );
+
+      await SaveManager.saveGame(saveData);
       await _cleanupOldBackups();
     } catch (e) {
       print('Erreur lors de la création du backup: $e');
     }
   }
 
-
   Future<void> _performSaveOnExit() async {
     if (!_gameState.isInitialized || _gameState.gameName == null) return;
 
     try {
-      await SaveManager.saveGame(_gameState, _gameState.gameName!);
+      // Créer un objet SaveGame pour la sauvegarde à la sortie
+      final saveData = SaveGame(
+        name: _gameState.gameName!,
+        lastSaveTime: DateTime.now(),
+        gameData: _gameState.prepareGameData(),
+        version: GameConstants.VERSION,
+        gameMode: _gameState.gameMode,
+      );
+
+      await SaveManager.saveGame(saveData);
       _lastAutoSave = DateTime.now();
     } catch (e) {
       print('Erreur lors de la sauvegarde de sortie: $e');
@@ -169,7 +205,6 @@ class AutoSaveService {
     }
   }
 
-
   DateTime? get lastAutoSave => _lastAutoSave;
 
   void dispose() {
@@ -177,6 +212,7 @@ class AutoSaveService {
     _mainTimer = null;
   }
 }
+
 class ValidationResult {
   final bool isValid;
   final List<String> errors;

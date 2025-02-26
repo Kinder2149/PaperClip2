@@ -1,7 +1,7 @@
 import '../models/game_config.dart';  // Ajustez le chemin selon votre structure de dossiers
 
 class UpdateManager {
-  static const String CURRENT_VERSION = "1.0.2";  // Mise à jour de la version
+  static const String CURRENT_VERSION = "1.0.3";  // Mise à jour de la version
   static const int CURRENT_BUILD_NUMBER = 3;      // Incrémenté
 
   static const Map<String, List<String>> CHANGES = {
