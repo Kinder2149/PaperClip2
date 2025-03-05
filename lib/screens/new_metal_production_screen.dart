@@ -269,7 +269,8 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
                     onTap: (bool friendsOnly) async {
                       final controller = GamesServicesController();
                       if (await controller.isSignedIn()) {
-                        controller.showLeaderboard(friendsOnly: friendsOnly);
+                        // Utilisez 'CgkI-ICryvIBEAIQAg' directement ici au lieu de leaderboardId
+                        controller.showLeaderboard(leaderboardID: 'CgkI-ICryvIBEAIQAg');
                       }
                     },
                   ),

@@ -13,6 +13,7 @@ class GoogleProfileButton extends StatefulWidget {
 class _GoogleProfileButtonState extends State<GoogleProfileButton> {
   bool _isSignedIn = false;
   bool _isLoading = true;
+  String? _playerName;
 
   @override
   void initState() {
@@ -23,32 +24,64 @@ class _GoogleProfileButtonState extends State<GoogleProfileButton> {
   Future<void> _checkSignInStatus() async {
     setState(() => _isLoading = true);
 
-    final gamesServices = GamesServicesController();
-    final isSignedIn = await gamesServices.isSignedIn();
+    try {
+      final gamesServices = GamesServicesController();
+      final isSignedIn = await gamesServices.isSignedIn();
 
-    setState(() {
-      _isSignedIn = isSignedIn;
-      _isLoading = false;
-    });
+      // Essayer de récupérer les informations du joueur si connecté
+      String? displayName;
+      if (isSignedIn) {
+        final playerInfo = await gamesServices.getCurrentPlayerInfo();
+        displayName = playerInfo?.displayName;
+      }
+
+      setState(() {
+        _isSignedIn = isSignedIn;
+        _playerName = displayName ?? "Joueur Google";
+        _isLoading = false;
+      });
+    } catch (e) {
+      print("Erreur lors de la vérification du statut: $e");
+      setState(() {
+        _isSignedIn = false;
+        _isLoading = false;
+      });
+    }
   }
 
   Future<void> _handleTap() async {
     if (_isLoading) return;
 
-    final gamesServices = GamesServicesController();
+    setState(() => _isLoading = true);
 
-    if (!_isSignedIn) {
-      // Si pas de profil connecté, se connecter
-      await gamesServices.signIn();
-    } else {
-      // Si déjà connecté, montrer le menu pour changer de compte
-      _showAccountOptions();
-    }
+    try {
+      final gamesServices = GamesServicesController();
 
-    await _checkSignInStatus();
+      if (!_isSignedIn) {
+        // Si pas connecté, tenter de se connecter
+        final success = await gamesServices.signIn();
 
-    if (widget.onProfileUpdated != null) {
-      widget.onProfileUpdated!();
+        if (success) {
+          // Si connecté avec succès, récupérer les infos du joueur
+          final playerInfo = await gamesServices.getCurrentPlayerInfo();
+          setState(() {
+            _isSignedIn = true;
+            _playerName = playerInfo?.displayName ?? "Joueur Google";
+          });
+        }
+      } else {
+        // Si déjà connecté, montrer les options
+        _showAccountOptions();
+      }
+    } catch (e) {
+      print("Erreur lors de la gestion du tap: $e");
+      // Montrer message d'erreur si nécessaire
+    } finally {
+      setState(() => _isLoading = false);
+
+      if (widget.onProfileUpdated != null) {
+        widget.onProfileUpdated!();
+      }
     }
   }
 
@@ -60,7 +93,7 @@ class _GoogleProfileButtonState extends State<GoogleProfileButton> {
         children: [
           ListTile(
             leading: const CircleAvatar(child: Icon(Icons.person)),
-            title: const Text('Joueur Google Play'),
+            title: Text(_playerName ?? 'Joueur Google Play'),
             subtitle: const Text('Compte connecté'),
           ),
           const Divider(),
@@ -69,9 +102,20 @@ class _GoogleProfileButtonState extends State<GoogleProfileButton> {
             title: const Text('Changer de compte'),
             onTap: () async {
               Navigator.pop(context);
+              setState(() => _isLoading = true);
+
               final gamesServices = GamesServicesController();
-              await gamesServices.switchAccount();
-              await _checkSignInStatus();
+              final success = await gamesServices.switchAccount();
+
+              if (success) {
+                final playerInfo = await gamesServices.getCurrentPlayerInfo();
+                setState(() {
+                  _playerName = playerInfo?.displayName ?? "Joueur Google";
+                });
+              }
+
+              setState(() => _isLoading = false);
+
               if (widget.onProfileUpdated != null) {
                 widget.onProfileUpdated!();
               }
@@ -82,11 +126,15 @@ class _GoogleProfileButtonState extends State<GoogleProfileButton> {
             title: const Text('Déconnexion'),
             onTap: () async {
               Navigator.pop(context);
-              // Comme signOut n'est pas disponible, on peut simplement réinitialiser l'état
+              setState(() => _isLoading = true);
+
+              // Comme signOut n'est pas disponible, on force une reconnexion
               final gamesServices = GamesServicesController();
-              // On appelle signIn et l'utilisateur peut choisir de ne pas se connecter
               await gamesServices.signIn();
               await _checkSignInStatus();
+
+              setState(() => _isLoading = false);
+
               if (widget.onProfileUpdated != null) {
                 widget.onProfileUpdated!();
               }
@@ -153,7 +201,7 @@ class _GoogleProfileButtonState extends State<GoogleProfileButton> {
                 children: [
                   Text(
                     _isSignedIn
-                        ? 'Compte Google Play'
+                        ? _playerName ?? 'Joueur Google Play'
                         : 'Se connecter',
                     style: const TextStyle(
                       color: Colors.white,

@@ -398,7 +398,7 @@ class _StartScreenState extends State<StartScreen> {
                 ),
                 const SizedBox(height: 20),
                 const Text(
-                  'Paperclip Game',
+                  'ClipFactory Empire',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 48,

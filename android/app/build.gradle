@@ -48,24 +48,32 @@ android {
     }
 
     signingConfigs {
-        release {
-            keyAlias keystoreProperties['keyAlias']
-            keyPassword keystoreProperties['keyPassword']
-            storeFile file(keystoreProperties['storeFile'])
-            storePassword keystoreProperties['storePassword']
-        }
+    release {
+        keyAlias keystoreProperties['keyAlias']
+        keyPassword keystoreProperties['keyPassword']
+        storeFile file(keystoreProperties['storeFile'])
+        storePassword keystoreProperties['storePassword']
     }
+    debug {
+        // Utiliser la même configuration que pour release
+        keyAlias keystoreProperties['keyAlias']
+        keyPassword keystoreProperties['keyPassword']
+        storeFile file(keystoreProperties['storeFile'])
+        storePassword keystoreProperties['storePassword']
+    }
+}
 
     buildTypes {
-        release {
-            signingConfig signingConfigs.release  // Ajout de cette ligne
-            minifyEnabled true
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-        }
-        debug {
-            minifyEnabled false
-        }
+    release {
+        signingConfig signingConfigs.release
+        minifyEnabled true
+        proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
     }
+    debug {
+        signingConfig signingConfigs.debug  // Ajoutez cette ligne
+        minifyEnabled false
+    }
+}
 
     lint {
         disable 'InvalidPackage'
@@ -96,8 +104,9 @@ dependencies {
 
 configurations.all {
     resolutionStrategy {
-        // Exclure explicitement l'ancienne version
-        exclude group: 'com.google.android.gms', module: 'play-services-games'
+        // Forcer les versions spécifiques
+        force 'com.google.android.gms:play-services-games-v2:17.0.0'
+        force 'com.google.android.gms:play-services-auth:20.7.0'
     }
 }
 

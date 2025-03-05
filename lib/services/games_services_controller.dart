@@ -48,9 +48,9 @@ class GamesServicesController {
       ._internal();
 
   // IDs des classements
-  static const String _generalLeaderboardId = 'CgkI-ICryvIBEAIQAg';
-  static const String _productionLeaderboardId = 'CgkI-ICryvIBEAIQAw';
-  static const String _bankerLeaderboardId = 'CgkI-ICryvIBEAIQBA';
+  static const String generalLeaderboardID = "CgkI-ICryvIBEAIQAg";
+  static const String productionLeaderboardID = "CgkI-ICryvIBEAIQAw";
+  static const String bankerLeaderboardID = "CgkI-ICryvIBEAIQBA";
   static const String _progressionAchievementId = 'CgkI-ICryvIBEAIQAQ';
 
   static const String _competitiveScore10kId = 'CgkI-ICryvIBEAIQBQ';
@@ -83,17 +83,55 @@ class GamesServicesController {
     }
   }
 
-  // lib/services/games_services_controller.dart (suite)
 
-  Future<void> signIn() async {
+  Future<bool> signIn() async {
     try {
+      // Diagnostic de débogage
+      print("Tentative de connexion à Google Play Games Services");
+      print("Package de l'application: com.kinder2149.paperclip2");
+      print("ID des jeux: 65117274232");
+
       await GamesServices.signIn();
-      _isSignedIn = true;
-      debugPrint('Sign in successful');
-    } catch (e, stack) {
-      _isSignedIn = false;
-      debugPrint('Error signing in to GameServices: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
+      final signedIn = await GamesServices.isSignedIn;
+
+      if (signedIn) {
+        _isSignedIn = true;
+        print("Connexion aux services de jeu réussie");
+        return true;
+      } else {
+        print("La connexion n'a pas abouti, mais aucune erreur n'a été lancée");
+
+        // Tenter à nouveau après une courte pause, cela peut parfois aider
+        await Future.delayed(Duration(seconds: 1));
+        await GamesServices.signIn();
+
+        final secondAttempt = await GamesServices.isSignedIn;
+        _isSignedIn = secondAttempt;
+
+        if (secondAttempt) {
+          print("Connexion réussie à la seconde tentative");
+          return true;
+        }
+
+        print("Échec même après seconde tentative");
+        print("Vérifiez dans Google Play Console que les empreintes SHA-1 suivantes sont enregistrées:");
+        print("Débogage: 94:95:FD:94:32:6F:9D:6C:1A:64:99:91:9E:41:47:7C:FB:84:F7:54");
+        print("Publication: 98:3F:EC:A7:2B:C0:EA:65:7C:A0:1B:41:EA:CC:C4:1E:C6:B0:42:25");
+
+        return false;
+      }
+    } catch (e, stackTrace) {
+      print("Erreur explicite lors de la connexion aux services de jeu: $e");
+      print("Stack trace: $stackTrace");
+
+      try {
+        FirebaseCrashlytics.instance.recordError(e, stackTrace,
+            reason: 'Erreur Google Play Games Sign In');
+      } catch (_) {
+        // Ignorer si l'erreur ne peut pas être enregistrée
+      }
+
+      return false;
     }
   }
 
@@ -206,7 +244,7 @@ class GamesServicesController {
       // 1. Soumettre le score principal
       await GamesServices.submitScore(
         score: Score(
-            androidLeaderboardID: _generalLeaderboardId,
+            androidLeaderboardID: generalLeaderboardID,
             value: score
         ),
       );
@@ -214,7 +252,7 @@ class GamesServicesController {
       // 2. Soumettre le score de production
       await GamesServices.submitScore(
         score: Score(
-            androidLeaderboardID: _productionLeaderboardId,
+            androidLeaderboardID: productionLeaderboardID,
             value: paperclips
         ),
       );
@@ -222,14 +260,13 @@ class GamesServicesController {
       // 3. Soumettre le score d'argent
       await GamesServices.submitScore(
         score: Score(
-            androidLeaderboardID: _bankerLeaderboardId,
+            androidLeaderboardID: bankerLeaderboardID,
             value: money.toInt()
         ),
       );
 
       debugPrint('Competitive scores submitted successfully');
-      debugPrint('Score: $score, Paperclips: $paperclips, Money: ${money
-          .toInt()}, Time: $timePlayed, Level: $level, Efficiency: $efficiency');
+      debugPrint('Score: $score, Paperclips: $paperclips, Money: ${money.toInt()}, Time: $timePlayed, Level: $level, Efficiency: $efficiency');
     } catch (e, stack) {
       debugPrint('Error submitting competitive scores: $e');
       FirebaseCrashlytics.instance.recordError(e, stack);
@@ -278,16 +315,13 @@ class GamesServicesController {
     }
   }
 
-  // Afficher les classements avec un focus sur les scores compétitifs
+
   Future<void> showCompetitiveLeaderboard() async {
-    await showLeaderboard(
-      specificLeaderboard: _generalLeaderboardId,
-    );
+    await showLeaderboard(leaderboardID: generalLeaderboardID);
   }
 
-  // Méthode pour soumettre le score général
-  Future<void> submitGeneralScore(int paperclips, int money,
-      int playTime) async {
+
+  Future<void> submitGeneralScore(int paperclips, int money, int playTime) async {
     if (!_isSignedIn) return;
 
     try {
@@ -296,13 +330,49 @@ class GamesServicesController {
 
       await GamesServices.submitScore(
         score: Score(
-            androidLeaderboardID: _generalLeaderboardId,
+            androidLeaderboardID: generalLeaderboardID,
             value: score
         ),
       );
       debugPrint('General score submitted: $score');
     } catch (e, stack) {
       debugPrint('Error submitting general score: $e');
+      FirebaseCrashlytics.instance.recordError(e, stack);
+    }
+  }
+
+// Méthode pour soumettre le score de production
+  Future<void> submitProductionScore(int paperclips) async {
+    if (!_isSignedIn) return;
+
+    try {
+      await GamesServices.submitScore(
+        score: Score(
+            androidLeaderboardID: productionLeaderboardID,
+            value: paperclips
+        ),
+      );
+      debugPrint('Production score submitted: $paperclips');
+    } catch (e, stack) {
+      debugPrint('Error submitting production score: $e');
+      FirebaseCrashlytics.instance.recordError(e, stack);
+    }
+  }
+
+// Méthode pour soumettre le score bancaire
+  Future<void> submitBankerScore(int totalMoney) async {
+    if (!_isSignedIn) return;
+
+    try {
+      await GamesServices.submitScore(
+        score: Score(
+            androidLeaderboardID: bankerLeaderboardID,
+            value: totalMoney
+        ),
+      );
+      debugPrint('Banker score submitted: $totalMoney');
+    } catch (e, stack) {
+      debugPrint('Error submitting banker score: $e');
       FirebaseCrashlytics.instance.recordError(e, stack);
     }
   }
@@ -351,23 +421,8 @@ class GamesServicesController {
     }
   }
 
-  // Méthode pour soumettre le score de production
-  Future<void> submitProductionScore(int paperclips) async {
-    if (!_isSignedIn) return;
 
-    try {
-      await GamesServices.submitScore(
-        score: Score(
-            androidLeaderboardID: _productionLeaderboardId,
-            value: paperclips
-        ),
-      );
-      debugPrint('Production score submitted: $paperclips');
-    } catch (e, stack) {
-      debugPrint('Error submitting production score: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
-    }
-  }
+
 
   Future<void> incrementAchievement(LevelSystem levelSystem) async {
     if (!_isSignedIn) return;
@@ -390,23 +445,7 @@ class GamesServicesController {
     }
   }
 
-  // Méthode pour soumettre le score bancaire
-  Future<void> submitBankerScore(int totalMoney) async {
-    if (!_isSignedIn) return;
 
-    try {
-      await GamesServices.submitScore(
-        score: Score(
-            androidLeaderboardID: _bankerLeaderboardId,
-            value: totalMoney
-        ),
-      );
-      debugPrint('Banker score submitted: $totalMoney');
-    } catch (e, stack) {
-      debugPrint('Error submitting banker score: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
-    }
-  }
 
   // Calcul du score général
   int _calculateGeneralScore(int paperclips, int money, int playTime) {
@@ -436,37 +475,46 @@ class GamesServicesController {
   }
 
   // Méthode pour afficher les leaderboards
-  Future<void> showLeaderboard(
-      {String? specificLeaderboard, bool friendsOnly = false}) async {
-    if (!_isSignedIn) return;
-
+  Future<void> showLeaderboard({required String leaderboardID, bool friendsOnly = false}) async {
     try {
+      final signedIn = await GamesServices.isSignedIn;
+      if (!signedIn) {
+        print("L'utilisateur n'est pas connecté, tentative de connexion...");
+        await signIn();
+      }
+
+      // Correction ici - utiliser la syntaxe correcte pour la version 4.0.3
       await GamesServices.showLeaderboards(
-        androidLeaderboardID: specificLeaderboard ?? _generalLeaderboardId,
+        // Utiliser leaderboardID directement, sans le nommer
+        androidLeaderboardID: leaderboardID,
+        // Si vous avez besoin d'iOS, ajoutez aussi
+        // iOSLeaderboardID: leaderboardID,
       );
-      debugPrint('Showing leaderboard: ${specificLeaderboard ??
-          _generalLeaderboardId}');
-    } catch (e, stack) {
-      debugPrint('Error showing leaderboard: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
+    } catch (e) {
+      print("Erreur lors de l'affichage du classement: $e");
+      await FirebaseCrashlytics.instance.recordError(
+        e,
+        StackTrace.current,
+        reason: 'Erreur d\'affichage du classement',
+      );
     }
   }
 
-  // Méthode pour afficher le classement de production
-  Future<void> showProductionLeaderboard({bool friendsOnly = false}) async {
-    await showLeaderboard(
-      specificLeaderboard: _productionLeaderboardId,
-      friendsOnly: friendsOnly,
-    );
+  Future<void> showGeneralLeaderboard({bool friendsOnly = false}) async {
+    await showLeaderboard(leaderboardID: generalLeaderboardID);
   }
 
-  // Méthode pour afficher le classement bancaire
-  Future<void> showBankerLeaderboard({bool friendsOnly = false}) async {
-    await showLeaderboard(
-      specificLeaderboard: _bankerLeaderboardId,
-      friendsOnly: friendsOnly,
-    );
+// Méthode pour afficher le classement de production
+  Future<void> showProductionLeaderboard({bool friendsOnly = false}) async {
+    await showLeaderboard(leaderboardID: productionLeaderboardID);
   }
+
+// Méthode pour afficher le classement bancaire
+  Future<void> showBankerLeaderboard({bool friendsOnly = false}) async {
+    await showLeaderboard(leaderboardID: bankerLeaderboardID);
+  }
+
+
 
   // Méthode pour mettre à jour tous les classements d'un coup
   Future<void> updateAllLeaderboards(GameState gameState) async {
@@ -501,36 +549,44 @@ class GamesServicesController {
       FirebaseCrashlytics.instance.recordError(e, stack, fatal: false);
     }
   }
+  // Dans games_services_controller.dart
+
   Future<GooglePlayerInfo?> getCurrentPlayerInfo() async {
-    if (!_isSignedIn) return null;
+    if (!await isSignedIn()) return null;
 
     try {
-      // Comme getPlayerInfo n'est pas disponible, on utilise un placeholder
-      // Dans une version future, vous pourriez implémenter cette méthode si elle devient disponible
+      // L'API actuelle ne fournit pas directement le moyen d'obtenir les infos du joueur
+      // Essayons d'utiliser une approche différente
       return GooglePlayerInfo(
-        id: 'player_id', // ID placeholder
-        displayName: 'Joueur Google Play', // Nom placeholder
-        iconImageUrl: null, // Pas d'image disponible
+        id: 'player_id',
+        displayName: 'Joueur connecté', // Nommer génériquement pour l'instant
+        iconImageUrl: null,
       );
-    } catch (e, stack) {
-      debugPrint('Error getting player info: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
+    } catch (e, stackTrace) {
+      print("Erreur lors de la récupération des infos du joueur: $e");
+      FirebaseCrashlytics.instance.recordError(e, stackTrace);
       return null;
     }
   }
 
   Future<bool> switchAccount() async {
     try {
-      // Comme signOut n'est pas disponible, on utilise une approche alternative
-      // On peut se déconnecter puis reconnecter pour forcer la sélection d'un compte
+      // Pour forcer la sélection d'un compte, nous pouvons nous déconnecter temporairement
+      // (cela n'est pas directement supporté par l'API, mais nous pouvons simuler)
       _isSignedIn = false;
+      // Supprimez cette ligne : notifyListeners();
 
-      // Montrer l'UI de sélection de compte Google
-      await signIn();
+      // Attendre un peu pour s'assurer que le changement d'état est pris en compte
+      await Future.delayed(Duration(milliseconds: 500));
+
+      // Réinitialiser toute instance/état stocké en cache
+      final result = await GamesServices.signIn();
+      _isSignedIn = await GamesServices.isSignedIn == true;
+
       return _isSignedIn;
-    } catch (e, stack) {
-      debugPrint('Error switching account: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
+    } catch (e, stackTrace) {
+      print("Erreur lors du changement de compte: $e");
+      FirebaseCrashlytics.instance.recordError(e, stackTrace);
       return false;
     }
   }

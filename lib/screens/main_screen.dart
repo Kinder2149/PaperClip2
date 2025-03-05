@@ -1095,11 +1095,11 @@ class _MainScreenState extends State<MainScreen> {
                                       final controller = GamesServicesController();
                                       if (await controller.isSignedIn()) {
                                         gameState.updateLeaderboard();
-                                        controller.showLeaderboard();
+                                        controller.showLeaderboard(leaderboardID: GamesServicesController.generalLeaderboardID);
                                       } else {
                                         await controller.signIn();
                                         if (await controller.isSignedIn()) {
-                                          controller.showLeaderboard();
+                                          controller.showLeaderboard(leaderboardID: GamesServicesController.generalLeaderboardID);
                                         }
                                       }
                                     },

@@ -1119,7 +1119,8 @@ class GameState extends ChangeNotifier {
     }
   }
   void showLeaderboard() {
-    GamesServicesController().showLeaderboard();
+    // Ajouter le paramètre manquant
+    GamesServicesController().showLeaderboard(leaderboardID: GamesServicesController.generalLeaderboardID);
   }
 
   void showAchievements() {
