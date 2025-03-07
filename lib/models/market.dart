@@ -1,3 +1,4 @@
+// lib/models/market.dart
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:math';
@@ -8,70 +9,70 @@ import '../dialogs/metal_crisis_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'game_state.dart';
-import '../widgets/notification_widgets.dart';
+import 'package:paperclip2/widgets/notification_widgets.dart';
+import 'interfaces/market_interface.dart';
+import 'constants/game_constants.dart';
+import 'dart:math' as math;
+import 'types/game_types.dart';
+
+
 
 class MarketDynamics {
-  double volatility;
-  double trend;
-  double competitorPressure;
-  DateTime lastUpdate;
-
-  MarketDynamics({
-    this.volatility = GameConstants.MARKET_VOLATILITY,
-    this.trend = 0.0,
-    this.competitorPressure = 0.0,
-  }) : lastUpdate = DateTime.now();
+  double marketVolatility = 1.0;
+  double marketTrend = 0.0;
+  double competitorPressure = 1.0;
 
   Map<String, dynamic> toJson() => {
-    'volatility': volatility,
-    'trend': trend,
+    'marketVolatility': marketVolatility,
+    'marketTrend': marketTrend,
     'competitorPressure': competitorPressure,
-    'lastUpdate': lastUpdate.toIso8601String(),
   };
 
-  factory MarketDynamics.fromJson(Map<String, dynamic> json) {
-    return MarketDynamics(
-      volatility: (json['volatility'] as num?)?.toDouble() ?? GameConstants.MARKET_VOLATILITY,
-      trend: (json['trend'] as num?)?.toDouble() ?? 0.0,
-      competitorPressure: (json['competitorPressure'] as num?)?.toDouble() ?? 0.0,
-    )..lastUpdate = DateTime.parse(json['lastUpdate'] as String);
+  void fromJson(Map<String, dynamic> json) {
+    marketVolatility = (json['marketVolatility'] as num?)?.toDouble() ?? 1.0;
+    marketTrend = (json['marketTrend'] as num?)?.toDouble() ?? 0.0;
+    competitorPressure = (json['competitorPressure'] as num?)?.toDouble() ?? 1.0;
   }
 
+
+
   void updateMarketConditions() {
-    volatility = 0.8 + (Random().nextDouble() * 0.4);
-    trend = -0.2 + (Random().nextDouble() * 0.4);
+    marketVolatility = 0.8 + (Random().nextDouble() * 0.4);
+    marketTrend = -0.2 + (Random().nextDouble() * 0.4);
     competitorPressure = 0.9 + (Random().nextDouble() * 0.2);
   }
 
   double getMarketConditionMultiplier() {
-    return volatility * (1 + trend) * competitorPressure;
+    return marketVolatility * (1 + marketTrend) * competitorPressure;
   }
 }
 
 class SaleRecord {
   final DateTime timestamp;
-  final int quantity;
+  final double amount;
   final double price;
   final double revenue;
 
   SaleRecord({
     required this.timestamp,
-    required this.quantity,
+    required this.amount,
     required this.price,
-  }) : revenue = quantity * price;
+    required this.revenue,
+  });
 
   Map<String, dynamic> toJson() => {
     'timestamp': timestamp.toIso8601String(),
-    'quantity': quantity,
+    'amount': amount,
     'price': price,
     'revenue': revenue,
   };
 
   factory SaleRecord.fromJson(Map<String, dynamic> json) {
     return SaleRecord(
-      timestamp: DateTime.parse(json['timestamp'] as String),
-      quantity: json['quantity'] as int,
-      price: (json['price'] as num).toDouble(),
+      timestamp: DateTime.parse(json['timestamp']),
+      amount: json['amount'].toDouble(),
+      price: json['price'].toDouble(),
+      revenue: json['revenue'].toDouble(),
     );
   }
 }
@@ -81,315 +82,636 @@ class MarketSegment {
   final double elasticity;
   final double maxPrice;
   final double marketShare;
-  final double qualityThreshold;
 
-  MarketSegment({
-    required this.name,
-    required this.elasticity,
-    required this.maxPrice,
-    required this.marketShare,
-    required this.qualityThreshold,
-  });
-
-  double calculateDemand(double price, double quality) {
-    if (quality < qualityThreshold) return 0;
-    final priceRatio = price / maxPrice;
-    return marketShare * (1 - pow(priceRatio, elasticity));
-  }
+  const MarketSegment(
+      this.name,
+      this.elasticity,
+      this.maxPrice,
+      this.marketShare
+      );
 }
 
-class CachedValue<T> {
-  T value;
-  DateTime lastUpdate;
-  Duration validityDuration;
 
-  CachedValue(this.value, this.validityDuration) : lastUpdate = DateTime.now();
+class CachedValue {
+  final dynamic value;
+  final DateTime expiryTime;
+  static const Duration CACHE_DURATION = Duration(milliseconds: 500);
 
-  bool get isValid => DateTime.now().difference(lastUpdate) < validityDuration;
+  CachedValue(this.value) : expiryTime = DateTime.now().add(CACHE_DURATION);
 
-  void update(T newValue) {
-    value = newValue;
-    lastUpdate = DateTime.now();
-  }
+  bool get isValid => DateTime.now().isBefore(expiryTime);
 }
 
 class MarketManager extends ChangeNotifier {
-  final MarketDynamics _dynamics;
-  double _marketMetalStock;
-  double _currentMetalPrice;
-  double _reputation;
-  final List<SaleRecord> _salesHistory;
-  int _marketingLevel;
-  final Random _random;
-  final List<MarketSegment> _segments;
+  final MarketDynamics dynamics;
+  final Random _random = Random();
+  final Map<String, CachedValue> _cache = {};
+  double _marketingBonus = 1.0;
+  final Set<String> _sentNotifications = {};
+  bool _hasTriggeredDepletion = false;
+  BuildContext? _context;
+  final Set<String> _sentCrisisNotifications = {};  // Ajoutez cette ligne
+  final Set<String> _sentDepletionNotifications = {};
+  double _lastNotifiedPercentage = 100.0;
+  static const double MARKET_25_PERCENT = GameConstants.INITIAL_MARKET_METAL *
+      0.25;
 
-  // Cache pour les calculs coûteux
-  late CachedValue<double> _cachedDemand;
-  late CachedValue<double> _cachedMarketSaturation;
-
-  MarketManager(this._dynamics)
-      : _marketMetalStock = GameConstants.INITIAL_MARKET_STOCK,
-        _currentMetalPrice = GameConstants.BASE_METAL_PRICE,
-        _reputation = 1.0,
-        _salesHistory = [],
-        _marketingLevel = 0,
-        _random = Random(),
-        _segments = [
-          MarketSegment(
-            name: 'Budget',
-            elasticity: 2.0,
-            maxPrice: 0.3,
-            marketShare: 0.4,
-            qualityThreshold: 0.5,
-          ),
-          MarketSegment(
-            name: 'Standard',
-            elasticity: 1.5,
-            maxPrice: 0.6,
-            marketShare: 0.4,
-            qualityThreshold: 0.7,
-          ),
-          MarketSegment(
-            name: 'Premium',
-            elasticity: 1.0,
-            maxPrice: 1.0,
-            marketShare: 0.2,
-            qualityThreshold: 0.9,
-          ),
-        ] {
-    _initializeCachedValues();
+  void setContext(BuildContext context) {
+    _context = context;
   }
 
-  void _initializeCachedValues() {
-    _cachedDemand = CachedValue(0.0, const Duration(seconds: 5));
-    _cachedMarketSaturation = CachedValue(1.0, const Duration(minutes: 1));
-  }
 
-  // Getters
-  double get marketMetalStock => _marketMetalStock;
+  List<SaleRecord> salesHistory = [];
+  double reputation = 1.0;
+  double marketMetalStock = GameConstants.INITIAL_MARKET_METAL;
+  int _gameStartDay = DateTime
+      .now()
+      .millisecondsSinceEpoch ~/ (1000 * 60 * 60 * 24);
+  double _difficultyMultiplier = GameConstants.BASE_DIFFICULTY;
+  double _currentMetalPrice = GameConstants.MIN_METAL_PRICE;
+  double _currentPrice = 1.0;
+  double _competitionPrice = GameConstants.INITIAL_PRICE;
+  double _marketSaturation = 100.0;
+
   double get currentMetalPrice => _currentMetalPrice;
-  double get reputation => _reputation;
-  List<SaleRecord> get salesHistory => List.unmodifiable(_salesHistory);
-  int get marketingLevel => _marketingLevel;
-  MarketDynamics get dynamics => _dynamics;
+  bool _isPaused = false;
 
-  void updateMarket() {
-    final now = DateTime.now();
-    final timeDelta = now.difference(_dynamics.lastUpdate).inSeconds / 3600;
+  double get currentPrice => _currentPrice;
 
-    // Mise à jour des dynamiques de marché
-    _updateMarketDynamics(timeDelta);
+  double get competitionPrice => _competitionPrice;
 
-    // Mise à jour du stock et du prix
-    _updateStockAndPrice();
+  double get marketSaturation => _marketSaturation;
 
-    // Mise à jour de la réputation
-    _updateReputation();
 
-    _dynamics.lastUpdate = now;
-    notifyListeners();
-  }
+  static const double MARKET_DEPLETION_THRESHOLD = 750.0;
+  static const double MIN_PRICE = GameConstants.MIN_PRICE;
+  static const double MAX_PRICE = GameConstants.MAX_PRICE;
 
-  void _updateMarketDynamics(double timeDelta) {
-    // Mise à jour de la tendance
-    _dynamics.trend += _random.nextDouble() * 2 - 1;
-    _dynamics.trend *= 0.95; // Amortissement
+  Map<String, MarketSegment> _segments = {
+    'budget': MarketSegment('Budget', -2.0, 0.25, 0.4),
+    'standard': MarketSegment('Standard', -1.5, 0.50, 0.4),
+    'premium': MarketSegment('Premium', -1.0, 1.00, 0.2),
+  };
 
-    // Mise à jour de la pression concurrentielle
-    _dynamics.competitorPressure = sin(DateTime.now().millisecondsSinceEpoch / 1000000) * 0.5;
+  MarketManager(this.dynamics);
 
-    // Mise à jour de la volatilité
-    _dynamics.volatility = max(
-      GameConstants.MARKET_VOLATILITY * 0.5,
-      min(
-        GameConstants.MARKET_VOLATILITY * 2,
-        _dynamics.volatility + (_random.nextDouble() * 0.1 - 0.05),
-      ),
-    );
-  }
+  Map<String, dynamic> toJson() =>
+      {
+        'marketMetalStock': marketMetalStock,
+        'reputation': reputation,
+        'currentMetalPrice': _currentMetalPrice,
+        'competitionPrice': _competitionPrice,
+        'marketSaturation': _marketSaturation,
+        'sentDepletionNotifications': List<String>.from(
+            _sentDepletionNotifications),
+        'lastNotifiedPercentage': _lastNotifiedPercentage,
+        'dynamics': {
+          'marketVolatility': dynamics.marketVolatility,
+          'marketTrend': dynamics.marketTrend,
+          'competitorPressure': dynamics.competitorPressure,
+        },
+        'salesHistory': salesHistory.map((sale) => sale.toJson()).toList(),
+      };
 
-  void _updateStockAndPrice() {
-    // Calculer les variations de stock
-    final stockVariation = _calculateStockVariation();
-    _marketMetalStock = max(
-      GameConstants.MIN_MARKET_STOCK,
-      min(
-        GameConstants.MAX_MARKET_STOCK,
-        _marketMetalStock + stockVariation,
-      ),
-    );
+  void fromJson(Map<String, dynamic> json) {
+    marketMetalStock = (json['marketMetalStock'] as num?)?.toDouble() ??
+        GameConstants.INITIAL_MARKET_METAL;
+    reputation = (json['reputation'] as num?)?.toDouble() ?? 1.0;
+    _currentMetalPrice = (json['currentMetalPrice'] as num?)?.toDouble() ??
+        GameConstants.MIN_METAL_PRICE;
+    _competitionPrice = (json['competitionPrice'] as num?)?.toDouble() ??
+        GameConstants.INITIAL_PRICE;
+    _marketSaturation = (json['marketSaturation'] as num?)?.toDouble() ?? 100.0;
 
-    // Calculer le nouveau prix
-    final priceVariation = _calculatePriceVariation();
-    final newPrice = _currentMetalPrice * (1 + priceVariation);
-    _currentMetalPrice = max(
-      GameConstants.MIN_METAL_PRICE,
-      min(GameConstants.MAX_METAL_PRICE, newPrice),
-    );
+    if (json['dynamics'] != null) {
+      final dynamicsData = json['dynamics'] as Map<String, dynamic>;
+      dynamics.marketVolatility =
+          (dynamicsData['marketVolatility'] as num?)?.toDouble() ?? 1.0;
+      dynamics.marketTrend =
+          (dynamicsData['marketTrend'] as num?)?.toDouble() ?? 0.0;
+      dynamics.competitorPressure =
+          (dynamicsData['competitorPressure'] as num?)?.toDouble() ?? 1.0;
+    }
 
-    // Vérifier les conditions de crise
-    _checkMarketConditions();
-  }
-
-  double _calculateStockVariation() {
-    final baseVariation = _random.nextDouble() * 100 - 50;
-    final trendEffect = _dynamics.trend * 20;
-    final competitorEffect = _dynamics.competitorPressure * 30;
-    return baseVariation + trendEffect + competitorEffect;
-  }
-
-  double _calculatePriceVariation() {
-    final stockEffect = (_marketMetalStock - GameConstants.INITIAL_MARKET_STOCK) / GameConstants.INITIAL_MARKET_STOCK;
-    final volatilityEffect = (_random.nextDouble() * 2 - 1) * _dynamics.volatility;
-    final trendEffect = _dynamics.trend * 0.1;
-    return stockEffect * -0.1 + volatilityEffect + trendEffect;
-  }
-
-  void _checkMarketConditions() {
-    // Vérifier les conditions de prix
-    if (_currentMetalPrice > GameConstants.MAX_METAL_PRICE * 0.9) {
-      EventManager.instance.addMarketEvent(
-        MarketEventType.PRICE_SPIKE,
-        _currentMetalPrice,
-        'Les prix du métal atteignent des sommets !',
+    if (json['salesHistory'] != null) {
+      salesHistory = (json['salesHistory'] as List)
+          .map((saleJson) =>
+          SaleRecord.fromJson(saleJson as Map<String, dynamic>))
+          .toList();
+      _sentDepletionNotifications.clear();
+      _sentDepletionNotifications.addAll(
+          (json['sentDepletionNotifications'] as List<dynamic>?)?.cast<
+              String>() ?? []
       );
-    } else if (_currentMetalPrice < GameConstants.MIN_METAL_PRICE * 1.2) {
-      EventManager.instance.addMarketEvent(
-        MarketEventType.PRICE_CRASH,
-        _currentMetalPrice,
-        'Les prix du métal s\'effondrent !',
-      );
+      _lastNotifiedPercentage =
+          (json['lastNotifiedPercentage'] as num?)?.toDouble() ?? 100.0;
     }
-
-    // Vérifier les conditions de stock
-    if (_marketMetalStock < GameConstants.MIN_MARKET_STOCK * 1.2) {
-      EventManager.instance.addMarketEvent(
-        MarketEventType.STOCK_SHORTAGE,
-        _marketMetalStock,
-        'Pénurie de métal sur le marché !',
-      );
-    }
-  }
-
-  void _updateReputation() {
-    // Décroissance naturelle de la réputation
-    _reputation *= GameConstants.REPUTATION_DECAY;
-
-    // Limites de réputation
-    _reputation = max(
-      GameConstants.MIN_REPUTATION,
-      min(GameConstants.MAX_REPUTATION, _reputation),
-    );
-  }
-
-  void addSaleRecord(int quantity, double price) {
-    final record = SaleRecord(
-      timestamp: DateTime.now(),
-      quantity: quantity,
-      price: price,
-    );
-    _salesHistory.add(record);
-
-    // Limiter l'historique à 1000 ventes
-    if (_salesHistory.length > 1000) {
-      _salesHistory.removeAt(0);
-    }
-
-    // Mettre à jour la réputation en fonction du prix
-    final optimalPrice = (GameConstants.OPTIMAL_PRICE_LOW + GameConstants.OPTIMAL_PRICE_HIGH) / 2;
-    final priceDifference = (price - optimalPrice).abs() / optimalPrice;
-    if (priceDifference < 0.1) {
-      _reputation *= 1.01; // Bonus pour un prix proche de l'optimal
-    } else if (priceDifference > 0.3) {
-      _reputation *= 0.99; // Pénalité pour un prix trop éloigné
-    }
-
-    notifyListeners();
   }
 
   void updateMarketStock(double amount) {
-    _marketMetalStock = max(
-      GameConstants.MIN_MARKET_STOCK,
-      min(GameConstants.MAX_MARKET_STOCK, _marketMetalStock + amount),
+    double previousStock = marketMetalStock;
+    marketMetalStock = (marketMetalStock + amount)
+        .clamp(0.0, GameConstants.INITIAL_MARKET_METAL);
+
+    // Vérifier le déclenchement de la crise
+    if (marketMetalStock <= 0 && previousStock > 0 && !_hasTriggeredDepletion) {
+      _hasTriggeredDepletion = true;
+      print('Déclenchement mode crise - Stock épuisé');
+      _sendCrisisNotification('0');
+    }
+
+    notifyListeners();
+  }
+  
+
+  void updateMarketingBonus(int marketingLevel) {
+    _marketingBonus =
+        1.0 + (marketingLevel * GameConstants.MARKETING_UPGRADE_BASE);
+    notifyListeners();
+  }
+
+  double getSaleMultiplier() {
+    return _marketingBonus;
+  }
+
+
+  double updateMetalPrice() {
+    dynamics.updateMarketConditions();
+    double variation = (Random().nextDouble() * 4) - 2;
+    _currentMetalPrice = (_currentMetalPrice + variation)
+        .clamp(GameConstants.MIN_METAL_PRICE, GameConstants.MAX_METAL_PRICE);
+    return _currentMetalPrice;
+  }
+
+
+  bool isPriceExcessive(double price) {
+    return price > _currentMetalPrice * 2;
+  }
+
+  String getPriceRecommendation() {
+    return "Prix recommandé : ${(_currentMetalPrice * 1.5).toStringAsFixed(2)}";
+  }
+
+  bool canSellMetal(double quantity, int maxMetalStorage,
+      double currentPlayerMetal) {
+    return marketMetalStock >= quantity &&
+        (currentPlayerMetal + quantity) <= maxMetalStorage;
+  }
+
+  bool sellMetal(double quantity, int maxMetalStorage, {
+    required double currentPlayerMetal,
+    required double currentMetalPrice,
+    required Function(double) addMetal,
+    required Function(double) subtractMoney
+  }) {
+    // Vérifie si le marché a assez de métal
+    if (marketMetalStock < quantity) {
+      return false;  // Pas assez de métal dans le marché
+    }
+
+    // Vérifie si le joueur peut stocker le métal
+    if ((currentPlayerMetal + quantity) > maxMetalStorage) {
+      return false;  // Capacité de stockage dépassée
+    }
+
+    marketMetalStock -= quantity;
+    addMetal(quantity);
+    subtractMoney(quantity * currentMetalPrice);
+    _checkMarketDepletion();
+    notifyListeners();
+    return true;
+  }
+
+  void _checkMarketDepletion() {
+    print('Vérification des seuils de crise'); // Debug
+    print('Stock actuel: $marketMetalStock'); // Debug
+    print('Notifications déjà envoyées: $_sentCrisisNotifications'); // Debug
+
+    if (!_sentCrisisNotifications.contains('0') &&
+        marketMetalStock <= GameConstants.METAL_CRISIS_THRESHOLD_0) {
+      print('Déclenchement notification crise - 0%'); // Debug
+      _sendCrisisNotification('0');
+    }
+  }
+
+  void _sendCrisisNotification(String level) {
+    if (_sentCrisisNotifications.contains(level)) return;
+    _sentCrisisNotifications.add(level);
+
+    EventManager.instance.addEvent(
+        EventType.RESOURCE_DEPLETION,
+        "Stock Mondial Épuisé",
+        description: "Les réserves mondiales de métal sont épuisées.\nActivez la production de métal !",
+        importance: EventImportance.CRITICAL,
+        additionalData: {'crisisLevel': '0'}
     );
+  }
+
+
+  void resetCrisisNotifications() {
+    _sentCrisisNotifications.clear();
+  }
+
+
+
+  void resetDepletionNotifications() {
+    _sentDepletionNotifications.clear();
+    _lastNotifiedPercentage = 100.0;
+  }
+  void resetNotifications() {
+    _sentNotifications.clear();
+  }
+
+  bool isMarketDepletedForNextPhase() {
+    return marketMetalStock <= MARKET_DEPLETION_THRESHOLD;
+  }
+
+  void triggerNextPhaseTransition() {
+    if (isMarketDepletedForNextPhase()) {
+      print("Les réserves de métal du marché s'épuisent. Nouvelle stratégie requise !");
+    }
+  }
+  void reset() {
+    marketMetalStock = GameConstants.INITIAL_MARKET_METAL;
+    resetDepletionNotifications();
+    reputation = 1.0;
+    _currentMetalPrice = GameConstants.MIN_METAL_PRICE;
+    _currentPrice = 1.0;
+    _competitionPrice = GameConstants.INITIAL_PRICE;
+    _marketSaturation = 100.0;
+    salesHistory.clear();
+    dynamics.marketVolatility = 1.0;
+    dynamics.marketTrend = 0.0;
+    dynamics.competitorPressure = 1.0;
     notifyListeners();
   }
 
-  void updateMarketingBonus(int level) {
-    _marketingLevel = level;
-    notifyListeners();
+
+
+  double _calculatePriceElasticity(double price) {
+    if (price <= 0.25) return -1.0;
+    if (price <= 0.50) return -2.0;
+    return -3.0;
   }
 
-  double calculateDemand(double price, double quality) {
-    if (!_cachedDemand.isValid) {
-      double totalDemand = 0;
-      for (var segment in _segments) {
-        totalDemand += segment.calculateDemand(price, quality);
-      }
-      _cachedDemand.update(totalDemand * (1 + _marketingLevel * 0.1));
-    }
-    return _cachedDemand.value;
-  }
+  double _calculateBaseDemand(double price) {
+    double elasticity;
 
-  double getMarketSaturation() {
-    if (!_cachedMarketSaturation.isValid) {
-      final saturation = _marketMetalStock / GameConstants.INITIAL_MARKET_STOCK;
-      _cachedMarketSaturation.update(saturation);
-    }
-    return _cachedMarketSaturation.value;
-  }
-
-  List<SaleRecord> getRecentSales({int limit = 10}) {
-    return _salesHistory.reversed.take(limit).toList();
-  }
-
-  double getAveragePrice({Duration? period}) {
-    if (_salesHistory.isEmpty) return 0;
-
-    final now = DateTime.now();
-    var relevantSales = _salesHistory;
-
-    if (period != null) {
-      final cutoff = now.subtract(period);
-      relevantSales = _salesHistory.where((sale) => sale.timestamp.isAfter(cutoff)).toList();
+    if (price <= GameConstants.OPTIMAL_PRICE_LOW) {
+      elasticity = -1.0;
+    } else if (price <= GameConstants.OPTIMAL_PRICE_HIGH) {
+      elasticity = -1.5;
+    } else if (price <= GameConstants.MAX_PRICE) {
+      elasticity = -2.0;
+    } else {
+      elasticity = -3.0;
     }
 
-    if (relevantSales.isEmpty) return 0;
-
-    final totalRevenue = relevantSales.fold(0.0, (sum, sale) => sum + sale.revenue);
-    final totalQuantity = relevantSales.fold(0, (sum, sale) => sum + sale.quantity);
-
-    return totalQuantity > 0 ? totalRevenue / totalQuantity : 0;
+    return _marketSaturation * exp(elasticity * (price / GameConstants.OPTIMAL_PRICE_LOW));
   }
 
-  Map<String, dynamic> toJson() => {
-    'dynamics': _dynamics.toJson(),
-    'marketMetalStock': _marketMetalStock,
-    'currentMetalPrice': _currentMetalPrice,
-    'reputation': _reputation,
-    'marketingLevel': _marketingLevel,
-    'salesHistory': _salesHistory.map((sale) => sale.toJson()).toList(),
-  };
+  double _calculateReputationFactor(double price) {
+    return max(0.1, 1.0 - (price - 0.25) * 0.5) * reputation;
+  }
 
-  void fromJson(Map<String, dynamic> json) {
-    _dynamics.volatility = (json['dynamics']['volatility'] as num?)?.toDouble() ?? GameConstants.MARKET_VOLATILITY;
-    _dynamics.trend = (json['dynamics']['trend'] as num?)?.toDouble() ?? 0.0;
-    _dynamics.competitorPressure = (json['dynamics']['competitorPressure'] as num?)?.toDouble() ?? 0.0;
-    _dynamics.lastUpdate = DateTime.parse(json['dynamics']['lastUpdate'] as String);
+  double _calculateCompetitionFactor(double price) {
+    return max(0.1, 1.0 - (price / _competitionPrice - 1.0));
+  }
 
-    _marketMetalStock = (json['marketMetalStock'] as num?)?.toDouble() ?? GameConstants.INITIAL_MARKET_STOCK;
-    _currentMetalPrice = (json['currentMetalPrice'] as num?)?.toDouble() ?? GameConstants.BASE_METAL_PRICE;
-    _reputation = (json['reputation'] as num?)?.toDouble() ?? 1.0;
-    _marketingLevel = (json['marketingLevel'] as num?)?.toInt() ?? 0;
+  double calculateDemand(double price, int marketingLevel) {
+    // Cache pour optimiser les calculs fréquents
+    final cacheKey = 'demand_${price}_$marketingLevel';
+    final cached = _cache[cacheKey];
 
-    _salesHistory.clear();
-    if (json['salesHistory'] != null) {
-      final salesData = json['salesHistory'] as List;
-      _salesHistory.addAll(
-        salesData.map((sale) => SaleRecord.fromJson(sale as Map<String, dynamic>)),
+    if (cached != null && cached.isValid) {
+      return cached.value as double;
+    }
+
+    double baseDemand = _calculateBaseDemand(price);
+    double marketingBonus = 1.0 + (marketingLevel * 0.30); // +30% par niveau
+    double reputationFactor = _calculateReputationImpact(price);
+    double finalDemand = baseDemand * marketingBonus * reputationFactor;
+
+    // Mise en cache du résultat
+    _cache[cacheKey] = CachedValue(finalDemand);
+
+    return finalDemand;
+  }
+
+// Ajouter une méthode de nettoyage du cache
+  void _cleanCache() {
+    _cache.removeWhere((_, value) => !value.isValid);
+  }
+
+  double _calculateReputationImpact(double price) {
+    if (price > GameConstants.MAX_PRICE) {
+      reputation *= GameConstants.REPUTATION_PENALTY_RATE;
+    } else if (price <= GameConstants.OPTIMAL_PRICE_HIGH) {
+      reputation = min(
+          GameConstants.MAX_REPUTATION,
+          reputation * GameConstants.REPUTATION_BONUS_RATE
       );
     }
 
+    return max(GameConstants.MIN_REPUTATION, reputation);
+  }
+
+  double _calculateDifficultyFactor() {
+    return 1.0 / _difficultyMultiplier;
+  }
+
+  void _updateDifficultyMultiplier() {
+    int currentDay = DateTime.now().millisecondsSinceEpoch ~/ (1000 * 60 * 60 * 24);
+    int monthsPassed = (currentDay - _gameStartDay) ~/ 30;
+    _difficultyMultiplier = GameConstants.BASE_DIFFICULTY +
+        (monthsPassed * GameConstants.DIFFICULTY_INCREASE_PER_MONTH);
+  }
+
+  void recordSale(int quantity, double price) {
+    final sale = SaleRecord(
+      timestamp: DateTime.now(),
+      amount: quantity,
+      price: price,
+      revenue: quantity * price,
+    );
+
+    salesHistory.add(sale);
+
+    if (salesHistory.length > 100) {
+      salesHistory.removeAt(0);
+    }
+
+    updateReputation(price, quantity);
+  }
+
+  void updateReputation(double price, int satisfiedCustomers) {
+    double priceImpact = price <= 0.35 ? 0.02 : -0.01;
+    double customerSatisfactionImpact = satisfiedCustomers * 0.001;
+    reputation = (reputation + priceImpact + customerSatisfactionImpact).clamp(0.0, 2.0);
+  }
+
+  void updateMarket() {
+    if (_isPaused) return;
+
+    dynamics.updateMarketConditions();
+    updateMetalPrice();  // Changer _updateMetalPrice en updateMetalPrice
+    _checkMarketDepletion();
+
+    if (marketMetalStock <= GameConstants.WARNING_THRESHOLD) {  // Utiliser marketMetalStock au lieu de _marketMetalStock
+      EventManager.instance.addEvent(
+          EventType.RESOURCE_DEPLETION,
+          'Rupture Imminente des Stocks de Métal',
+          description: 'Les réserves de métal du marché sont presque épuisées.',
+          importance: EventImportance.CRITICAL
+      );
+    }
+  }
+  void _checkResourceLevels() {
+    if (marketMetalStock <= GameConstants.WARNING_THRESHOLD) {
+      EventManager.instance.addEvent(
+          EventType.RESOURCE_DEPLETION,
+          "Ressources en diminution",
+          description: "Les réserves mondiales de métal s'amenuisent",
+          importance: EventImportance.HIGH
+      );
+    }
+  }
+
+  void updateMarketConditions() {
+    _competitionPrice = GameConstants.INITIAL_PRICE *
+        (0.8 + Random().nextDouble() * 0.4);
+
+    _marketSaturation = max(50, _marketSaturation +
+        (Random().nextDouble() - 0.5) * 10);
+
+    _checkForMarketEvent();
+  }
+
+  void _checkForMarketEvent() {
+    if (Random().nextDouble() < 0.05) {
+      final event = MarketEvent.values[
+      Random().nextInt(MarketEvent.values.length)
+      ];
+      _handleMarketEvent(event);
+    }
+  }
+
+  // Dans la classe MarketManager, modifier _handleMarketEvent
+  void _handleMarketEvent(MarketEvent event) {
+    switch (event) {
+      case MarketEvent.PRICE_WAR:
+        _competitionPrice *= 0.8;
+        break;
+      case MarketEvent.DEMAND_SPIKE:
+        _marketSaturation *= 1.5;
+        break;
+      case MarketEvent.MARKET_CRASH:
+        _competitionPrice *= 0.6;
+        _marketSaturation *= 0.7;
+        break;
+      case MarketEvent.QUALITY_CONCERNS:
+        reputation *= 0.9;
+        break;
+    }
+
+    // Ajouter la notification de crise
+    EventManager.instance.addCrisisNotification(event);
+
     notifyListeners();
   }
-} 
+
+
+  String _getEventTitle(MarketEvent event) {
+    switch (event) {
+      case MarketEvent.PRICE_WAR:
+        return "Guerre des Prix!";
+      case MarketEvent.DEMAND_SPIKE:
+        return "Pic de Demande!";
+      case MarketEvent.MARKET_CRASH:
+        return "Krach du Marché!";
+      case MarketEvent.QUALITY_CONCERNS:
+        return "Problèmes de Qualité";
+    }
+  }
+
+  String _getEventDescription(MarketEvent event) {
+    switch (event) {
+      case MarketEvent.PRICE_WAR:
+        return "Les concurrents baissent leurs prix agressivement";
+      case MarketEvent.DEMAND_SPIKE:
+        return "La demande en trombones explose!";
+      case MarketEvent.MARKET_CRASH:
+        return "Le marché s'effondre, les prix chutent";
+      case MarketEvent.QUALITY_CONCERNS:
+        return "Des inquiétudes sur la qualité affectent la réputation";
+    }
+  }
+
+  double _calculateSeasonalityFactor() {
+    DateTime now = DateTime.now();
+    switch (now.month) {
+      case 12:
+      case 1:
+        return 1.2;
+      case 7:
+      case 8:
+        return 0.8;
+      default:
+        return 1.0;
+    }
+  }
+
+  double _calculateCompetitivePressure() {
+    return _random.nextDouble() * 0.2;
+  }
+
+  double _calculateHistoricalElasticityModifier() {
+    if (salesHistory.isEmpty) return 0;
+    int recentSales = salesHistory.length;
+    return log(recentSales + 1) * 0.1;
+  }
+
+  double recommendPricing(double currentPrice, double demand) {
+    double adjustmentFactor = 1 + ((demand - 50) / 100);
+    return currentPrice * adjustmentFactor;
+  }
+}
+
+class Market implements IMarket {
+  double marketMetalStock = GameConstants.INITIAL_MARKET_METAL;
+  double _marketSaturation = 1.0;
+  double _difficultyMultiplier = GameConstants.BASE_DIFFICULTY;
+  double _currentMetalPrice = GameConstants.MIN_METAL_PRICE;
+  double _competitionPrice = GameConstants.INITIAL_PRICE;
+  double _reputation = 1.0;
+  MarketEvent? _currentEvent;
+  List<SaleRecord> _salesHistory = [];
+
+  @override
+  double get basePrice => GameConstants.INITIAL_PRICE;
+
+  @override
+  double get currentPrice => _currentMetalPrice;
+
+  @override
+  double get marketStock => marketMetalStock;
+
+  @override
+  List<SaleRecord> get salesHistory => _salesHistory;
+
+  @override
+  double get reputation => _reputation;
+
+  @override
+  MarketEvent? get currentEvent => _currentEvent;
+
+  Market() {
+    _initializeMarket();
+  }
+
+  void _initializeMarket() {
+    marketMetalStock = GameConstants.INITIAL_MARKET_METAL;
+    _currentMetalPrice = GameConstants.MIN_METAL_PRICE;
+    _competitionPrice = GameConstants.INITIAL_PRICE;
+    _marketSaturation = 1.0;
+    _reputation = 1.0;
+    _currentEvent = null;
+    _salesHistory = [];
+  }
+
+  @override
+  void updatePrice(double marketingLevel) {
+    final marketingMultiplier = 1.0 + (marketingLevel * GameConstants.MARKETING_UPGRADE_BASE);
+    final basePrice = _competitionPrice * marketingMultiplier;
+    final marketFactor = _calculateMarketFactor();
+    final reputationFactor = _calculateReputationFactor();
+    
+    _currentMetalPrice = (basePrice * marketFactor * reputationFactor)
+        .clamp(GameConstants.MIN_METAL_PRICE, GameConstants.MAX_METAL_PRICE);
+  }
+
+  double _calculateMarketFactor() {
+    final elasticity = -0.5;
+    final price = _currentMetalPrice / GameConstants.OPTIMAL_PRICE_LOW;
+    return _marketSaturation * math.exp(elasticity * price);
+  }
+
+  double _calculateReputationFactor() {
+    if (_currentMetalPrice > GameConstants.MAX_PRICE) {
+      _reputation *= GameConstants.REPUTATION_PENALTY_RATE;
+    } else if (_currentMetalPrice <= GameConstants.OPTIMAL_PRICE_HIGH) {
+      _reputation = math.min(
+        GameConstants.MAX_REPUTATION,
+        _reputation * GameConstants.REPUTATION_BONUS_RATE
+      );
+    }
+    return math.max(GameConstants.MIN_REPUTATION, _reputation);
+  }
+
+  @override
+  void updateDifficulty(int monthsPassed) {
+    _difficultyMultiplier = GameConstants.BASE_DIFFICULTY +
+        (monthsPassed * GameConstants.DIFFICULTY_INCREASE_PER_MONTH);
+  }
+
+  @override
+  void updateStock(double amount) {
+    marketMetalStock = (marketMetalStock + amount)
+        .clamp(0.0, GameConstants.INITIAL_MARKET_METAL);
+    
+    _checkMarketCrisis();
+  }
+
+  void _checkMarketCrisis() {
+    if (marketMetalStock <= GameConstants.METAL_CRISIS_THRESHOLD_0) {
+      _triggerMarketCrisis(
+        EventType.RESOURCE_DEPLETION,
+        importance: EventImportance.CRITICAL,
+      );
+    } else if (marketMetalStock <= GameConstants.WARNING_THRESHOLD) {
+      _triggerMarketCrisis(
+        EventType.RESOURCE_DEPLETION,
+        importance: EventImportance.HIGH,
+      );
+    }
+  }
+
+  void _triggerMarketCrisis(EventType type, {EventImportance importance = EventImportance.MEDIUM}) {
+    _currentEvent = MarketEvent.values[math.Random().nextInt(MarketEvent.values.length)];
+    // TODO: Implémenter la logique de crise
+  }
+
+  @override
+  void reset() {
+    _initializeMarket();
+  }
+
+  @override
+  void recordSale(double amount, double price) {
+    _salesHistory.add(SaleRecord(
+      timestamp: DateTime.now(),
+      amount: amount,
+      price: price,
+      revenue: amount * price,
+    ));
+  }
+
+  @override
+  void applyEvent(MarketEvent event) {
+    _currentEvent = event;
+    switch (event) {
+      case MarketEvent.PRICE_WAR:
+        _competitionPrice *= 0.8;
+        break;
+      case MarketEvent.DEMAND_SPIKE:
+        _marketSaturation *= 1.5;
+        break;
+      case MarketEvent.MARKET_CRASH:
+        _marketSaturation *= 0.5;
+        break;
+      case MarketEvent.QUALITY_CONCERNS:
+        _reputation *= 0.8;
+        break;
+    }
+  }
+}

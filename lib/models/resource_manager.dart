@@ -1,135 +1,131 @@
+// lib/models/resource_manager.dart
 import 'package:flutter/foundation.dart';
-import 'dart:math';
+import 'dart:async';
 import 'game_config.dart';
 import 'event_system.dart';
+import 'player_manager.dart';
 
 class ResourceManager extends ChangeNotifier {
-  double _metalStorageCapacity;
-  double _baseStorageEfficiency;
-  double _marketMetalStock;
-  double _currentEfficiency;
-  double _maintenanceLevel;
-  DateTime _lastMaintenanceCheck;
-  bool _isMaintenanceActive;
+  // Constantes de ressources
 
-  ResourceManager()
-      : _metalStorageCapacity = GameConstants.BASE_STORAGE_CAPACITY,
-        _baseStorageEfficiency = 1.0,
-        _marketMetalStock = GameConstants.INITIAL_MARKET_STOCK,
-        _currentEfficiency = 1.0,
-        _maintenanceLevel = 1.0,
-        _lastMaintenanceCheck = DateTime.now(),
-        _isMaintenanceActive = false;
+  // État des ressources
+  double _metalStorageCapacity = 1000.0;
+  double _baseStorageEfficiency = 1.0;
+  double _marketMetalStock = GameConstants.INITIAL_MARKET_METAL;
+
+
+  // Ajout des getters
+  double get effectiveStorageCapacity => _metalStorageCapacity;
+  double get currentEfficiency => _baseStorageEfficiency;
 
   // Getters
+  double get marketMetalStock => _marketMetalStock;
   double get metalStorageCapacity => _metalStorageCapacity;
   double get baseStorageEfficiency => _baseStorageEfficiency;
-  double get marketMetalStock => _marketMetalStock;
-  double get currentEfficiency => _currentEfficiency;
-  double get maintenanceLevel => _maintenanceLevel;
-  bool get isMaintenanceActive => _isMaintenanceActive;
 
-  void upgradeStorageCapacity(int level) {
-    _metalStorageCapacity = GameConstants.BASE_STORAGE_CAPACITY *
-        pow(GameConstants.STORAGE_UPGRADE_MULTIPLIER, level);
+
+  // Calculs de capacité
+  double calculateEffectiveStorage(int storageUpgradeLevel) {
+    return _metalStorageCapacity * (1 + (storageUpgradeLevel * GameConstants.STORAGE_UPGRADE_MULTIPLIER));
+  }
+
+
+  double calculateStorageEfficiency(int efficiencyUpgradeLevel) {
+    return _baseStorageEfficiency * (1 + (efficiencyUpgradeLevel * GameConstants.EFFICIENCY_UPGRADE_MULTIPLIER));
+  }
+
+  // Gestion des ressources
+  bool canStoreMetal(double amount, int storageUpgradeLevel, double currentMetal) {
+    double maxStorage = calculateEffectiveStorage(storageUpgradeLevel);
+    return (currentMetal + amount) <= maxStorage;
+  }
+
+
+  void updateResourceEfficiency(int level) {
+    _baseStorageEfficiency = 1.0 + (level * 0.1);
     notifyListeners();
   }
 
-  void updateEfficiency(double newEfficiency) {
-    _currentEfficiency = newEfficiency.clamp(
-      GameConstants.MIN_STORAGE_EFFICIENCY,
-      1.0,
+  // Ajout d'une méthode de vérification des ressources
+  bool hasEnoughResources(double amount) {
+    return _marketMetalStock >= amount;
+  }
+
+  void updateMarketStock(double amount) {
+    _marketMetalStock = (_marketMetalStock + amount).clamp(
+        0.0,
+        GameConstants.INITIAL_MARKET_METAL
     );
     notifyListeners();
   }
 
-  void setMaintenanceLevel(double level) {
-    _maintenanceLevel = level.clamp(0.0, 1.0);
-    notifyListeners();
-  }
-
-  void toggleMaintenance() {
-    _isMaintenanceActive = !_isMaintenanceActive;
-    notifyListeners();
-  }
-
-  bool checkStorageCapacity(double amount) {
-    return amount <= _metalStorageCapacity;
-  }
-
-  double calculateEfficiencyLoss() {
-    final now = DateTime.now();
-    final hoursSinceLastCheck = now.difference(_lastMaintenanceCheck).inHours;
-    
-    if (hoursSinceLastCheck <= 0) return 0;
-
-    double baseDecay = GameConstants.STORAGE_EFFICIENCY_DECAY * hoursSinceLastCheck;
-    double maintenanceEffect = _isMaintenanceActive ? _maintenanceLevel : 0;
-    
-    return baseDecay * (1 - maintenanceEffect);
-  }
-
-  void performMaintenance() {
-    if (!_isMaintenanceActive) return;
-
-    final efficiencyLoss = calculateEfficiencyLoss();
-    _currentEfficiency = max(
-      GameConstants.MIN_STORAGE_EFFICIENCY,
-      _currentEfficiency - efficiencyLoss,
-    );
-
-    if (_currentEfficiency <= GameConstants.MIN_STORAGE_EFFICIENCY + 0.1) {
-      EventManager.instance.addNotification(
-        title: 'Alerte Maintenance',
-        description: 'L\'efficacité du stockage est critique !',
-        icon: Icons.warning,
-        priority: NotificationPriority.HIGH,
-      );
+  void consumeResources(double amount) {
+    if (!hasEnoughResources(amount)) {
+      throw Exception('Ressources insuffisantes');
     }
-
-    _lastMaintenanceCheck = DateTime.now();
+    _marketMetalStock -= amount;
     notifyListeners();
   }
 
-  void restoreMarketStock(double amount) {
-    _marketMetalStock = min(
-      GameConstants.MAX_MARKET_STOCK,
-      _marketMetalStock + amount,
-    );
+
+
+  // Calculs de maintenance et d'efficacité
+  double calculateMaintenanceCost(int storageUpgradeLevel, double currentMetal) {
+    return 0.0;  // Plus de coût de maintenance
+  }
+
+  double calculateResourceEfficiency(int efficiencyUpgradeLevel) {
+    return 1.0 + (efficiencyUpgradeLevel * 0.15);
+    return 1.0 + (efficiencyUpgradeLevel * 0.15);
+  }
+
+  // Méthodes d'upgrade
+  void upgradeStorageCapacity(int level) {
+    _metalStorageCapacity = GameConstants.INITIAL_STORAGE_CAPACITY *
+        (1 + (level * GameConstants.STORAGE_UPGRADE_MULTIPLIER));
     notifyListeners();
   }
 
-  void resetResources() {
-    _metalStorageCapacity = GameConstants.BASE_STORAGE_CAPACITY;
-    _baseStorageEfficiency = 1.0;
-    _marketMetalStock = GameConstants.INITIAL_MARKET_STOCK;
-    _currentEfficiency = 1.0;
-    _maintenanceLevel = 1.0;
-    _lastMaintenanceCheck = DateTime.now();
-    _isMaintenanceActive = false;
+  void improveStorageEfficiency(int level) {
+    _baseStorageEfficiency = GameConstants.BASE_EFFICIENCY *
+        (1 + (level * GameConstants.EFFICIENCY_UPGRADE_MULTIPLIER));
     notifyListeners();
   }
 
+  // Sérialisation
   Map<String, dynamic> toJson() => {
+    'marketMetalStock': _marketMetalStock,
     'metalStorageCapacity': _metalStorageCapacity,
     'baseStorageEfficiency': _baseStorageEfficiency,
-    'marketMetalStock': _marketMetalStock,
-    'currentEfficiency': _currentEfficiency,
-    'maintenanceLevel': _maintenanceLevel,
-    'lastMaintenanceCheck': _lastMaintenanceCheck.toIso8601String(),
-    'isMaintenanceActive': _isMaintenanceActive,
   };
 
   void fromJson(Map<String, dynamic> json) {
-    _metalStorageCapacity = (json['metalStorageCapacity'] as num?)?.toDouble() ?? GameConstants.BASE_STORAGE_CAPACITY;
-    _baseStorageEfficiency = (json['baseStorageEfficiency'] as num?)?.toDouble() ?? 1.0;
-    _marketMetalStock = (json['marketMetalStock'] as num?)?.toDouble() ?? GameConstants.INITIAL_MARKET_STOCK;
-    _currentEfficiency = (json['currentEfficiency'] as num?)?.toDouble() ?? 1.0;
-    _maintenanceLevel = (json['maintenanceLevel'] as num?)?.toDouble() ?? 1.0;
-    _lastMaintenanceCheck = json['lastMaintenanceCheck'] != null
-        ? DateTime.parse(json['lastMaintenanceCheck'] as String)
-        : DateTime.now();
-    _isMaintenanceActive = json['isMaintenanceActive'] as bool? ?? false;
+    _marketMetalStock = (json['marketMetalStock'] as num?)?.toDouble() ??
+        GameConstants.INITIAL_MARKET_METAL;
+    _metalStorageCapacity = (json['metalStorageCapacity'] as num?)?.toDouble() ??
+        GameConstants.INITIAL_STORAGE_CAPACITY;
+    _baseStorageEfficiency = (json['baseStorageEfficiency'] as num?)?.toDouble() ??
+        GameConstants.BASE_EFFICIENCY;
+
     notifyListeners();
   }
-} 
+
+  // Méthodes de restauration et de réinitialisation
+  void restoreMarketStock(double amount) {
+    if (_marketMetalStock < GameConstants.INITIAL_MARKET_METAL) {
+      double restoration = (_marketMetalStock + amount).clamp(
+          0.0,
+          GameConstants.INITIAL_MARKET_METAL
+      );
+      _marketMetalStock = restoration;
+      notifyListeners();
+    }
+  }
+
+  void resetResources() {
+    _marketMetalStock = GameConstants.INITIAL_MARKET_METAL;
+    _metalStorageCapacity = GameConstants.INITIAL_STORAGE_CAPACITY;
+    _baseStorageEfficiency = GameConstants.BASE_EFFICIENCY;  // À ajouter dans GameConstants
+    notifyListeners();
+  }
+}

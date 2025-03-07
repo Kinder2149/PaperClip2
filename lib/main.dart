@@ -1,181 +1,158 @@
-// lib/main.dart
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:provider/provider.dart';
-import 'package:shared_preferences.dart';
-import 'data/repositories/upgrades_repository_impl.dart';
-import 'domain/repositories/upgrades_repository.dart';
-import 'presentation/viewmodels/upgrades_viewmodel.dart';
-import 'presentation/screens/start_screen.dart';
-
-import 'app/app.dart';
-import 'core/constants/imports.dart';
-import 'env_config.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:flutter/services.dart';
+import 'package:get_it/get_it.dart';
 import 'firebase_options.dart';
-import 'app/dependency_injection.dart';
-import 'domain/services/daily_reward_service.dart';
-import 'domain/services/notification_service.dart';
+import 'dart:ui' as ui show PlatformDispatcher;
+import 'services/service_container.dart';
+import 'game_state.dart';
+import 'screens/home_screen.dart';
 
-// Clé de navigation globale
+// Imports des écrans
+import './screens/start_screen.dart';
+import './screens/main_screen.dart';
+import './screens/save_load_screen.dart';
+import './screens/production_screen.dart';
+import './screens/market_screen.dart';
+import './screens/upgrades_screen.dart';
+import './screens/event_log_screen.dart';
+import 'screens/introduction_screen.dart';
+import 'env_config.dart';
+
+// Imports des modèles et services
+import './models/game_state.dart';
+import './models/game_config.dart';
+import './models/event_system.dart';
+import './models/progression_system.dart';
+import './services/save_manager.dart';
+import './services/background_music.dart';
+import './utils/update_manager.dart';
+import './services/firebase_config.dart';
+import './widgets/notification_widgets.dart';
+import 'services/games_services_controller.dart';
+
+// Imports des composants
+import 'components/components.dart';
+
+// Imports des utilitaires
+import 'utils/utils.dart';
+
+// Configuration
+import 'config/app_config.dart';
+import 'config/theme_config.dart';
+import 'config/routes_config.dart';
+
+// Export du navigatorKey
+export 'package:paperclip2/main.dart' show navigatorKey;
+
+// Services globaux
+final getIt = GetIt.instance;
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
-  try {
-    // S'assurer que les bindings Flutter sont initialisés
-    WidgetsFlutterBinding.ensureInitialized();
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialisation de Firebase
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 
-    // Journalisation des événements de débogage
-    if (kDebugMode) {
-      print('Initialisation de l\'application PaperClip Empire');
-    }
-
-    // Configuration de l'orientation de l'écran
-    await SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown
-    ]);
-
-    // Chargement de la configuration d'environnement
-    await EnvConfig.load();
-
-    // Initialisation de Firebase
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-
-    // Configuration de Crashlytics
-    FlutterError.onError = (FlutterErrorDetails details) {
-      if (kDebugMode) {
-        print('Erreur Flutter capturée : ${details.exception}');
-      }
-      FirebaseCrashlytics.instance.recordFlutterError(details);
-    };
-
-    // Gestion des erreurs de la plateforme
-    PlatformDispatcher.instance.onError = (error, stack) {
-      FirebaseCrashlytics.instance.recordError(
-        error,
-        stack,
-        fatal: true,
-        reason: 'Erreur globale de la plateforme',
-      );
-      return true;
-    };
-
-    // Configuration des dépendances
-    await setupDependencies();
-
-    final prefs = await SharedPreferences.getInstance();
-
-    // Initialiser les services
-    final notificationService = NotificationService();
-    await notificationService.initialize();
-
-    final dailyRewardService = DailyRewardService();
-    await dailyRewardService.initialize();
-
-    // Lancement de l'application
-    runApp(MyApp(prefs: prefs));
-
-  } catch (e, stackTrace) {
-    // Gestion des erreurs critiques lors du démarrage
-    if (kDebugMode) {
-      print('Erreur critique lors du démarrage : $e');
-      print('Trace de la pile : $stackTrace');
-    }
-
-    FirebaseCrashlytics.instance.recordError(
-      e,
-      stackTrace,
-      reason: 'Erreur de démarrage de l\'application',
-      fatal: true,
-    );
-
-    // En cas d'erreur critique, on peut afficher un écran d'erreur personnalisé
-    runApp(ErrorApp(error: e));
-  }
+  // Configuration de Firebase Crashlytics
+  await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
+  
+  // Initialisation des services
+  await initializeServices();
+  
+  runApp(const MyApp());
 }
 
-// Widget d'erreur personnalisé
-class ErrorApp extends StatelessWidget {
-  final dynamic error;
+Future<void> initializeServices() async {
+  // Enregistrement des services dans GetIt
+  getIt.registerSingleton<SaveService>(SaveService());
+  getIt.registerSingleton<NotificationService>(NotificationService());
+  getIt.registerSingleton<AchievementService>(AchievementService());
+  getIt.registerSingleton<LeaderboardService>(LeaderboardService());
+  getIt.registerSingleton<AnalyticsService>(AnalyticsService());
+  getIt.registerSingleton<BackgroundMusicService>(BackgroundMusicService());
+  getIt.registerSingleton<GamesServicesController>(GamesServicesController());
 
-  const ErrorApp({Key? key, required this.error}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      home: Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                  Icons.error_outline,
-                  color: Colors.red,
-                  size: 100
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Erreur de démarrage',
-                style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                error.toString(),
-                style: const TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: () {
-                  // TODO: Implémenter une logique de redémarrage ou de rapport d'erreur
-                },
-                child: const Text('Signaler l\'erreur'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  // Initialisation des services
+  await getIt<SaveService>().initialize();
+  await getIt<NotificationService>().initialize();
+  await getIt<BackgroundMusicService>().initialize();
 }
 
 class MyApp extends StatelessWidget {
-  final SharedPreferences prefs;
-
-  const MyApp({Key? key, required this.prefs}) : super(key: key);
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        Provider<UpgradesRepository>(
-          create: (_) => UpgradesRepositoryImpl(prefs),
-        ),
-        ChangeNotifierProvider<UpgradesViewModel>(
-          create: (context) => UpgradesViewModel(
-            playerRepository: context.read<PlayerRepository>(),
-            upgradesRepository: context.read<UpgradesRepository>(),
-          ),
-        ),
+        ChangeNotifierProvider(create: (_) => GameState()),
       ],
       child: MaterialApp(
-        title: 'Paperclip Factory',
-        theme: ThemeData(
-          primarySwatch: Colors.blue,
-          visualDensity: VisualDensity.adaptivePlatformDensity,
-        ),
-        home: const StartScreen(),
+        title: AppConfig.appName,
+        theme: ThemeConfig.lightTheme,
+        darkTheme: ThemeConfig.darkTheme,
+        themeMode: ThemeMode.system,
+        navigatorKey: navigatorKey,
+        initialRoute: RoutesConfig.initial,
+        routes: RoutesConfig.routes,
+        debugShowCheckedModeBanner: false,
+      ),
+    );
+  }
+}
+
+Future<void> _initializeServices() async {
+  try {
+    await getIt<BackgroundMusicService>().initialize();
+    print('Background music initialized');
+  } catch (e) {
+    FirebaseCrashlytics.instance.recordError(e, StackTrace.current);
+    print('Error initializing background music: $e');
+  }
+}
+
+class LoadingScreen extends StatefulWidget {
+  const LoadingScreen({Key? key}) : super(key: key);
+
+  @override
+  State<LoadingScreen> createState() => _LoadingScreenState();
+}
+
+class _LoadingScreenState extends State<LoadingScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _initializeGame();
+  }
+
+  Future<void> _initializeGame() async {
+    try {
+      await _initializeServices();
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const StartScreen()),
+        );
+      }
+    } catch (e, stack) {
+      FirebaseCrashlytics.instance.recordError(e, stack);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(
+        child: CircularProgressIndicator(),
       ),
     );
   }

@@ -1,3 +1,5 @@
+// lib/services/auto_save_service.dart
+
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/services.dart';
@@ -193,8 +195,9 @@ class AutoSaveService {
       await createBackup();
       _failedSaveAttempts = 0;
 
+      // Changer ERROR pour RESOURCE_DEPLETION ou un autre type existant
       EventManager.instance.addEvent(
-        EventType.RESOURCE_DEPLETION,
+        EventType.RESOURCE_DEPLETION,  // Au lieu de EventType.ERROR
         "Problème de sauvegarde",
         description: "Une sauvegarde de secours a été créée",
         importance: EventImportance.HIGH,
@@ -208,4 +211,14 @@ class AutoSaveService {
     _mainTimer?.cancel();
     _mainTimer = null;
   }
-} 
+}
+
+class ValidationResult {
+  final bool isValid;
+  final List<String> errors;
+
+  ValidationResult({
+    required this.isValid,
+    this.errors = const [],
+  });
+}

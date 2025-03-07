@@ -1,3 +1,5 @@
+// lib/services/save_manager.dart
+
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
@@ -43,7 +45,7 @@ class SaveDataValidator {
   };
 
   static ValidationResult validate(Map<String, dynamic> data) {
-    List<String> errors = [];
+    List<String> errors = [];  // Correction ici : List<String> au lieu de final errors = <String>();
 
     // Vérification de base
     if (!data.containsKey('version') || !data.containsKey('timestamp')) {
@@ -51,37 +53,70 @@ class SaveDataValidator {
       return ValidationResult(isValid: false, errors: errors);
     }
 
-    // Vérification des données du jeu
-    for (var manager in _validationRules.keys) {
-      if (!data.containsKey(manager)) {
-        errors.add('Manager manquant: $manager');
+    // Vérification des sections obligatoires
+    if (!_validateMandatorySections(data, errors)) {
+      return ValidationResult(isValid: false, errors: errors);
+    }
+
+    // Vérification des règles pour chaque section
+    for (var sectionName in _validationRules.keys) {
+      if (!data.containsKey(sectionName)) {
+        errors.add('Section manquante: $sectionName');
         continue;
       }
 
-      final managerData = data[manager] as Map<String, dynamic>?;
-      if (managerData == null) {
-        errors.add('Données invalides pour $manager');
+      var sectionData = data[sectionName] as Map<String, dynamic>?;
+      if (sectionData == null) {
+        errors.add('Section invalide: $sectionName');
         continue;
       }
 
-      final rules = _validationRules[manager]!;
-      for (var field in rules.keys) {
-        if (!managerData.containsKey(field)) {
-          errors.add('Champ manquant dans $manager: $field');
+      // Vérifier chaque champ de la section
+      var rules = _validationRules[sectionName]!;
+      for (var fieldName in rules.keys) {
+        if (!sectionData.containsKey(fieldName)) {
+          errors.add('Champ manquant dans $sectionName: $fieldName');
           continue;
         }
 
-        if (!_validateField(managerData[field], rules[field], errors, '$manager.$field')) {
+        var value = sectionData[fieldName];
+        var rule = rules[fieldName];
+
+        if (!_validateField(value, rule as Map<String, dynamic>, errors, '$sectionName.$fieldName')) {
           continue;
         }
       }
     }
 
+    // Si pas d'erreurs, les données sont valides
     return ValidationResult(
       isValid: errors.isEmpty,
       errors: errors,
-      validatedData: errors.isEmpty ? data : null,
+      validatedData: data,
     );
+  }
+
+  static bool _validateMandatorySections(Map<String, dynamic> data, List<String> errors) {
+    if (!data.containsKey('playerManager')) {
+      errors.add('Section manquante: playerManager');
+      return false;
+    }
+
+    final playerData = data['playerManager'] as Map<String, dynamic>?;
+    if (playerData == null) {
+      errors.add('Données du joueur invalides');
+      return false;
+    }
+
+    final requiredFields = ['paperclips', 'money', 'metal'];
+    for (var field in requiredFields) {
+      if (!playerData.containsKey(field)) {
+        errors.add('Champ manquant dans playerManager: $field');
+        return false;
+      }
+    }
+
+    return true;
   }
 
   static bool _validateField(dynamic value, Map<String, dynamic> rule, List<String> errors, String fieldPath) {
@@ -105,7 +140,6 @@ class SaveDataValidator {
 
     return true;
   }
-
   static Future<bool> quickValidate(Map<String, dynamic> data) async {
     try {
       if (!data.containsKey('version') ||
@@ -153,7 +187,7 @@ class SaveError implements Exception {
 }
 
 class SaveGame {
-  final String id;
+  final String id; // UUID unique
   final String name;
   final DateTime lastSaveTime;
   final Map<String, dynamic> gameData;
@@ -249,13 +283,14 @@ class SaveGame {
   }
 }
 
+
+
 class SaveManager {
   static const String SAVE_PREFIX = 'paperclip_save_';
   static final DateTime CURRENT_DATE = DateTime(2025, 1, 23, 15, 15, 49);
   static const String CURRENT_USER = 'Kinder2149';
   static const String CURRENT_VERSION = '1.0.0';
   static const int COMPRESSION_CHUNK_SIZE = 1024 * 512; // 512KB chunks
-
   static String _getSaveKey(String gameName) => '$SAVE_PREFIX$gameName';
 
   // Sauvegarder une partie
@@ -266,25 +301,6 @@ class SaveManager {
       await prefs.setString(key, jsonEncode(saveGame.toJson()));
     } catch (e) {
       print('Erreur lors de la sauvegarde: $e');
-      rethrow;
-    }
-  }
-
-  // Charger une partie
-  static Future<SaveGame?> loadGame(String name) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final key = _getSaveKey(name);
-      final savedData = prefs.getString(key);
-
-      if (savedData == null) {
-        throw SaveError('NOT_FOUND', 'Sauvegarde non trouvée');
-      }
-
-      final jsonData = jsonDecode(savedData);
-      return SaveGame.fromJson(jsonData);
-    } catch (e) {
-      print('Erreur lors du chargement: $e');
       rethrow;
     }
   }
@@ -304,7 +320,167 @@ class SaveManager {
     final prefs = await SharedPreferences.getInstance();
     return prefs.containsKey(_getSaveKey(name));
   }
+  // Ajouter ces méthodes
+  Future<String> compressSaveData(Map<String, dynamic> data) async {
+    final jsonString = jsonEncode(data);
+    final bytes = utf8.encode(jsonString);
 
+    // Utiliser compute pour déplacer la compression sur un autre thread
+    final compressed = await compute(_compressBytes, bytes);
+    return base64Encode(compressed);
+  }
+
+  static List<int> _compressBytes(List<int> input) {
+    return GZipEncoder().encode(input) ?? [];
+  }
+
+
+  static Future<Map<String, dynamic>> decompressSaveData(String compressed) async {
+    final decoded = base64Decode(compressed);
+    final gzip = GZipCodec();
+    final decompressed = gzip.decode(decoded);
+    final jsonString = utf8.decode(decompressed);
+    return jsonDecode(jsonString);
+  }
+
+  static Future<bool> restoreFromBackup(String backupName, GameState gameState) async {
+    try {
+      final backup = await loadGame(backupName);
+      if (backup == null) return false;
+
+      // Au lieu de : await saveGame(gameState, gameState.gameName!);
+      // Créer un objet SaveGame avec les données actuelles du jeu
+      final currentGameData = gameState.prepareGameData();
+      final currentSave = SaveGame(
+        name: gameState.gameName!,
+        lastSaveTime: DateTime.now(),
+        gameData: currentGameData,
+        version: GameConstants.VERSION,
+        gameMode: gameState.gameMode,
+      );
+
+      await saveGame(currentSave);
+      return true;
+    } catch (e) {
+      print('Erreur lors de la restauration: $e');
+      return false;
+    }
+  }
+
+
+  static Future<Map<String, dynamic>?> debugSave(String name) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saveKey = _getSaveKey(name);
+      final savedData = prefs.getString(saveKey);
+
+      print('=== Debug Save Data ===');
+      print('Save Key: $saveKey');
+
+      if (savedData == null) {
+        print('Aucune sauvegarde trouvée pour: $name');
+        return null;
+      }
+
+      final jsonData = jsonDecode(savedData) as Map<String, dynamic>;
+      print('Version: ${jsonData['version']}');
+      print('Timestamp: ${jsonData['timestamp']}');
+      print('Contains playerManager: ${jsonData.containsKey('playerManager')}');
+      print('Contains gameData: ${jsonData.containsKey('gameData')}');
+
+      if (jsonData.containsKey('playerManager')) {
+        print('PlayerManager data structure:');
+        final playerData = jsonData['playerManager'] as Map<String, dynamic>;
+        playerData.forEach((key, value) {
+          print('  $key: $value');
+        });
+      }
+
+      print('=====================');
+      return jsonData;
+    } catch (e) {
+      print('Error debugging save: $e');
+      print(e.toString());
+      return null;
+    }
+  }
+  // Méthode pour assurer la compatibilité avec l'ancien code
+  // Ajouter cette méthode à la classe SaveManager
+  static Future<void> saveGameState(GameState gameState, String name) async {
+    try {
+      if (name.isEmpty) {
+        throw SaveError('INVALID_NAME', 'Le nom de la sauvegarde ne peut pas être vide');
+      }
+
+      final gameData = gameState.prepareGameData();
+
+      // Validation simple et rapide
+      if (!_quickValidate(gameData)) {
+        throw SaveError('VALIDATION_ERROR', 'Données de base manquantes');
+      }
+
+      final saveData = SaveGame(
+        name: name,
+        lastSaveTime: DateTime.now(),
+        gameData: gameData,
+        version: GameConstants.VERSION,
+        gameMode: gameState.gameMode,
+      );
+
+      await saveGame(saveData);
+    } catch (e) {
+      print('Erreur lors de la sauvegarde: $e');
+      rethrow;
+    }
+  }
+
+  static Future<SaveGame?> loadGame(String name) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = '$SAVE_PREFIX$name';
+      final savedData = prefs.getString(key);
+
+      if (savedData == null) {
+        return null;
+      }
+
+      final jsonData = jsonDecode(savedData) as Map<String, dynamic>;
+
+      // Validation des données
+      final validationResult = SaveDataValidator.validate(jsonData);
+      if (!validationResult.isValid) {
+        throw SaveError(
+          'VALIDATION_ERROR',
+          'Données corrompues ou invalides:\n${validationResult.errors.join('\n')}',
+        );
+      }
+
+      // Si la validation est OK, créer l'objet SaveGame
+      return SaveGame.fromJson(jsonData);
+    } catch (e) {
+      print('Erreur lors du chargement: $e');
+      rethrow;
+    }
+  }
+
+  // Récupérer la dernière sauvegarde
+
+  static Future<void> debugSaveData(String gameName) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saveKey = _getSaveKey(gameName);
+      final savedData = prefs.getString(saveKey);
+      print('Debug - Save data for $gameName:');
+      print(savedData);
+      if (savedData != null) {
+        final decoded = jsonDecode(savedData);
+        print('Decoded data:');
+        print(decoded);
+      }
+    } catch (e) {
+      print('Debug - Error reading save: $e');
+    }
+  }
   static Future<List<SaveGameInfo>> listSaves() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -352,11 +528,12 @@ class SaveManager {
     }
   }
 
+
   // Supprimer une sauvegarde
   static Future<void> deleteSave(String name) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_getSaveKey(name));
+      await prefs.remove('$SAVE_PREFIX$name');
     } catch (e) {
       print('Erreur lors de la suppression: $e');
       rethrow;
@@ -387,6 +564,7 @@ class SaveManager {
   }
 }
 
+
 class SaveGameInfo {
   final String id;
   final String name;
@@ -409,4 +587,4 @@ class SaveGameInfo {
     this.cloudId,
     required this.gameMode,
   });
-} 
+}

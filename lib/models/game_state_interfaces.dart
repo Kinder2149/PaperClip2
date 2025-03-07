@@ -1,3 +1,4 @@
+// lib/models/game_state_interfaces.dart
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -6,6 +7,8 @@ import 'game_config.dart';
 import 'market.dart';
 import 'player_manager.dart';
 import 'progression_system.dart';
+import 'package:flutter/foundation.dart';
+import 'game_config.dart';
 
 /// Base mixin pour la gestion des timers
 mixin GameStateBase on ChangeNotifier {
@@ -45,7 +48,7 @@ mixin GameStateMarket on ChangeNotifier {
     marketTimer?.cancel();
     marketTimer = Timer.periodic(
       const Duration(seconds: 1),
-      (timer) => processMarket(),
+          (timer) => processMarket(),
     );
   }
 
@@ -69,7 +72,7 @@ mixin GameStateProduction on ChangeNotifier {
     productionTimer?.cancel();
     productionTimer = Timer.periodic(
       const Duration(seconds: 1),
-      (timer) => processProduction(),
+          (timer) => processProduction(),
     );
   }
 
@@ -117,8 +120,8 @@ mixin GameStateResource on ChangeNotifier {
   void startMaintenanceTimer() {
     _maintenanceTimer?.cancel();
     _maintenanceTimer = Timer.periodic(
-      const Duration(minutes: 1),
-      (_) => _applyMaintenanceCosts()
+        const Duration(minutes: 1),
+            (_) => _applyMaintenanceCosts()
     );
   }
 
@@ -144,6 +147,7 @@ class StatisticsManager with ChangeNotifier {
   double _totalMetalUsed = 0.0;
   double _totalMetalSaved = 0.0;
   double _currentEfficiency = 0.0;
+
 
   // Statistiques économiques
   double _totalMoneyEarned = 0;
@@ -204,7 +208,6 @@ class StatisticsManager with ChangeNotifier {
     }
     notifyListeners();
   }
-
   void updatePlayTime(Duration elapsed) {
     _totalPlayTime += elapsed;
     notifyListeners();
@@ -222,7 +225,6 @@ class StatisticsManager with ChangeNotifier {
     if (playTime != null) _totalPlayTime += playTime;
     notifyListeners();
   }
-
   String _formatNumber(dynamic value) {
     if (value is double) {
       if (value >= 1000000) {
@@ -358,4 +360,4 @@ class StatisticsManager with ChangeNotifier {
     _maxComboAchieved = 0;
     _totalPlayTime = Duration.zero;
   }
-} 
+}
