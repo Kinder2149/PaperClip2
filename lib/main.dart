@@ -23,7 +23,6 @@ import 'env_config.dart';
 
 // Imports des modèles et services
 import './models/game_state.dart';
-import './models/game_state_adapter.dart';
 import './models/game_config.dart';
 import './models/event_system.dart';
 import './models/progression_system.dart';
@@ -38,8 +37,7 @@ import 'services/games_services_controller.dart';
 export 'package:paperclip2/main.dart' show navigatorKey;
 
 // Services globaux
-final oldGameState = GameState();
-final gameState = GameStateAdapter(oldGameState);
+final GameState gameState = GameState();
 final backgroundMusicService = BackgroundMusicService();
 final eventManager = EventManager.instance;
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
