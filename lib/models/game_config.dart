@@ -15,6 +15,14 @@ class GameConstants {
   static const double RESOURCE_DECAY_RATE = 0.01;
   static const String GAME_MODE_KEY = 'game_mode';
 
+  // Constantes pour les nouveaux composants
+  static const double INITIAL_PRODUCTION_RATE = 1.0;
+  static const double INITIAL_METAL_PER_PAPERCLIP = 0.15;
+  static const double INITIAL_PAPERCLIP_PRICE = 0.25;
+  static const double INITIAL_METAL_PRICE = 20.0;
+  static const double STORAGE_UPGRADE_MULTIPLIER = 0.2;
+  static const double EFFICIENCY_UPGRADE_MULTIPLIER = 0.1;
+
   static const double MAINTENANCE_EFFICIENCY_MULTIPLIER = 0.1;
   static const double EFFICIENCY_MAX_REDUCTION = 0.85;
 
@@ -79,8 +87,6 @@ class GameConstants {
   static const double COMPETITION_PRICE_VARIATION = 0.2;
 
   // Constantes pour les améliorations
-  static const double STORAGE_UPGRADE_MULTIPLIER = 0.2;     // 20% par niveau
-  static const double EFFICIENCY_UPGRADE_MULTIPLIER = 0.11; // 11% par niveau
   static const double BULK_UPGRADE_BASE = 0.25;            // 25% par niveau
   static const double MARKETING_UPGRADE_BASE = 0.1;        // 10% par niveau
   static const double QUALITY_UPGRADE_BASE = 0.1;          // 10% par niveau

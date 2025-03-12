@@ -489,6 +489,14 @@ class PlayerManager extends ChangeNotifier {
     }
   }
 
+  // Méthode pour ajouter de l'argent au joueur
+  void addMoney(double amount) {
+    if (amount > 0) {
+      _money += amount;
+      notifyListeners();
+    }
+  }
+
   void updatePaperclips(double newAmount) {
     if (_paperclips != newAmount) {
       _paperclips = newAmount;
