@@ -1,0 +1,650 @@
+﻿import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../../core/constants/game_constants.dart';
+import '../../domain/entities/game_state.dart';
+import '../../domain/services/save_manager.dart';
+import '../../presentation/widgets/save_slot.dart';
+
+class SaveLoadScreen extends StatefulWidget {
+  const SaveLoadScreen({Key? key}) : super(key: key);
+
+  @override
+  State<SaveLoadScreen> createState() => _SaveLoadScreenState();
+}
+
+enum SaveFilter {
+  ALL,
+  LOCAL,
+  CLOUD,
+  COMPETITIVE,
+  INFINITE
+}
+
+class _SaveLoadScreenState extends State<SaveLoadScreen> {
+  // Ajouter une clÃ© pour forcer le rafraÃ®chissement du FutureBuilder
+  Key _futureBuilderKey = UniqueKey();
+  String _formatDateTime(DateTime dateTime) {
+    return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour}:${dateTime.minute}';
+  }
+
+  // Variables d'Ã©tat
+  SaveFilter _currentFilter = SaveFilter.ALL;
+  bool _isSyncing = false;
+
+  List<SaveGameInfo> _filterSaves(List<SaveGameInfo> saves) {
+    switch (_currentFilter) {
+      case SaveFilter.LOCAL:
+        return saves.where((save) => !save.isSyncedWithCloud).toList();
+      case SaveFilter.CLOUD:
+        return saves.where((save) => save.isSyncedWithCloud).toList();
+      case SaveFilter.COMPETITIVE:
+        return saves.where((save) => save.gameMode == GameMode.COMPETITIVE).toList();
+      case SaveFilter.INFINITE:
+        return saves.where((save) => save.gameMode == GameMode.INFINITE).toList();
+      case SaveFilter.ALL:
+      default:
+        return saves;
+    }
+  }
+
+  Future<void> _syncSaves() async {
+    setState(() {
+      _isSyncing = true;
+    });
+
+    try {
+      final gamesServices = GamesServicesController())))));
+      final isSignedIn = await gamesServices.isSignedIn();
+
+      if (!isSignedIn) {
+        await gamesServices.signIn();
+      }
+
+      final success = await gamesServices.syncSaves();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(success
+                ? 'Sauvegardes synchronisÃ©es avec succÃ¨s'
+                : 'Ã‰chec de la synchronisation des sauvegardes'),
+            backgroundColor: success ? Colors.green : Colors.red,
+          ),
+        );
+
+        // RafraÃ®chir la liste
+        _refreshSaves();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur lors de la synchronisation: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSyncing = false;
+        });
+      }
+    }
+  }
+
+  // MÃ©thode pour charger une sauvegarde
+  Future<void> _loadGame(BuildContext context, SaveGameInfo saveInfo) async {
+    try {
+      final gameState = Provider.of<GameState>(context, listen: false);
+
+      // Si c'est une sauvegarde cloud sans version locale, la tÃ©lÃ©charger d'abord
+      if (saveInfo.isSyncedWithCloud && saveInfo.cloudId != null && !await SaveManager.saveExists(saveInfo.name)) {
+        final gamesServices = GamesServicesController())))));
+        final cloudSave = await gamesServices.loadGameFromCloud(saveInfo.cloudId!);
+
+        if (cloudSave != null) {
+          await SaveManager.saveGame(cloudSave);
+        } else {
+          throw SaveError('CLOUD_ERROR', 'Impossible de charger la sauvegarde depuis le cloud');
+        }
+      }
+
+      // Chargement normal
+      await gameState.loadGame(saveInfo.name);
+
+      if (context.mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const MainScreen()),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur de chargement: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _refreshSaves() {
+    setState(() {
+      _futureBuilderKey = UniqueKey(); // CrÃ©er une nouvelle clÃ© force le rebuild
+    });
+  }
+
+  Future<void> _createNewGame(BuildContext context, String gameName) async {
+    try {
+      print('Creating new game: $gameName');
+      final gameState = context.read<GameState>();
+      await gameState.startNewGame(gameName);
+      print('Game created successfully');
+
+      if (context.mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const MainScreen()),
+        );
+      }
+    } catch (e) {
+      print('Error creating game: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur lors de la crÃ©ation: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Sauvegardes'),
+        elevation: 0,
+        actions: [
+          // Bouton de synchronisation
+          IconButton(
+            icon: _isSyncing
+                ? const CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              strokeWidth: 2,
+            )
+                : const Icon(Icons.sync),
+            onPressed: _isSyncing ? null : _syncSaves,
+            tooltip: 'Synchroniser avec le cloud',
+          ),
+
+          // Menu de filtres
+          PopupMenuButton<SaveFilter>(
+            icon: const Icon(Icons.filter_list),
+            tooltip: 'Filtrer les sauvegardes',
+            onSelected: (filter) {
+              setState(() {
+                _currentFilter = filter;
+              });
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: SaveFilter.ALL,
+                child: Text('Toutes les sauvegardes'),
+              ),
+              const PopupMenuItem(
+                value: SaveFilter.LOCAL,
+                child: Text('Sauvegardes locales'),
+              ),
+              const PopupMenuItem(
+                value: SaveFilter.CLOUD,
+                child: Text('Sauvegardes cloud'),
+              ),
+              const PopupMenuItem(
+                value: SaveFilter.COMPETITIVE,
+                child: Text('Mode CompÃ©titif'),
+              ),
+              const PopupMenuItem(
+                value: SaveFilter.INFINITE,
+                child: Text('Mode Infini'),
+              ),
+            ],
+          ),
+        ],
+      ),
+      body: FutureBuilder<List<SaveGameInfo>>(
+        key: _futureBuilderKey,
+        future: SaveManager.listSaves(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, size: 48, color: Colors.red[300]),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Erreur: ${snapshot.error}',
+                    style: TextStyle(color: Colors.red[700]),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          final allSaves = snapshot.data ?? [];
+          final filteredSaves = _filterSaves(allSaves);
+
+          if (filteredSaves.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.save_outlined, size: 64, color: Colors.grey[400]),
+                  const SizedBox(height: 16),
+                  Text(
+                    _currentFilter == SaveFilter.ALL
+                        ? 'Aucune sauvegarde'
+                        : 'Aucune sauvegarde correspondant au filtre',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.grey[600],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return Column(
+            children: [
+              // Afficher le filtre actif
+              if (_currentFilter != SaveFilter.ALL)
+                Container(
+                  margin: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.deepPurple.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Colors.deepPurple.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.filter_list, size: 16),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Filtre: ${_currentFilter.toString().split('.').last}',
+                        style: const TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(width: 8),
+                      InkWell(
+                        onTap: () {
+                          setState(() {
+                            _currentFilter = SaveFilter.ALL;
+                          });
+                        },
+                        child: const Icon(Icons.close, size: 16),
+                      ),
+                    ],
+                  ),
+                ),
+
+              // Liste des sauvegardes
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: filteredSaves.length,
+                  itemBuilder: (context, index) {
+                    final save = filteredSaves[index];
+                    return _buildSaveCard(save, context);
+                  },
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showNewGameDialog(context),
+        icon: const Icon(Icons.add),
+        label: const Text('Nouvelle Partie'),
+        backgroundColor: Colors.deepPurple,
+      ),
+    );
+  }
+
+  Widget _buildSaveCard(SaveGameInfo save, BuildContext context) {
+    final bool isCompetitive = save.gameMode == GameMode.COMPETITIVE;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: isCompetitive
+            ? BorderSide(color: Colors.amber.shade700, width: 2)
+            : BorderSide.none,
+      ),
+      child: InkWell(
+        onTap: () => _loadGame(context, save),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  // IcÃ´ne diffÃ©rente selon le type de sauvegarde
+                  Icon(
+                    isCompetitive
+                        ? Icons.emoji_events
+                        : Icons.save,
+                    color: isCompetitive
+                        ? Colors.amber.shade700
+                        : Colors.deepPurple[400],
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      save.name,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+
+                  // Indicateur de synchronisation cloud
+                  if (save.isSyncedWithCloud)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: Tooltip(
+                        message: 'Sauvegarde synchronisÃ©e avec le cloud',
+                        child: Icon(
+                          Icons.cloud_done,
+                          color: Colors.blue[400],
+                          size: 20,
+                        ),
+                      ),
+                    ),
+
+                  // Menu d'options
+                  PopupMenuButton(
+                    itemBuilder: (context) => [
+                      PopupMenuItem(
+                        value: 'load',
+                        child: Row(
+                          children: const [
+                            Icon(Icons.play_arrow),
+                            SizedBox(width: 8),
+                            Text('Charger'),
+                          ],
+                        ),
+                      ),
+                      // Option de synchronisation cloud pour les sauvegardes non synchronisÃ©es
+                      if (!save.isSyncedWithCloud)
+                        PopupMenuItem(
+                          value: 'cloud_sync',
+                          child: Row(
+                            children: [
+                              Icon(Icons.cloud_upload, color: Colors.blue[400]),
+                              const SizedBox(width: 8),
+                              const Text('Synchroniser'),
+                            ],
+                          ),
+                        ),
+                      PopupMenuItem(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(Icons.delete, color: Colors.red[400]),
+                            const SizedBox(width: 8),
+                            Text('Supprimer', style: TextStyle(color: Colors.red[400])),
+                          ],
+                        ),
+                      ),
+                    ],
+                    onSelected: (value) async {
+                      if (value == 'load') {
+                        _loadGame(context, save);
+                      } else if (value == 'cloud_sync') {
+                        // Synchroniser avec le cloud
+                        final gamesServices = GamesServicesController())))));
+                        if (await gamesServices.isSignedIn()) {
+                          // Charger la sauvegarde complÃ¨te
+                          final fullSave = await SaveManager.loadGame(save.name);
+                          if (fullSave != null) {
+                            final success = await gamesServices.saveGameToCloud(fullSave);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(success
+                                      ? 'Sauvegarde synchronisÃ©e avec succÃ¨s'
+                                      : 'Ã‰chec de la synchronisation'),
+                                  backgroundColor: success ? Colors.green : Colors.red,
+                                ),
+                              );
+                              _refreshSaves();
+                            }
+                          }
+                        } else {
+                          // Demander la connexion
+                          await gamesServices.signIn();
+                        }
+                      } else if (value == 'delete') {
+                        _confirmDelete(context, save.name);
+                      }
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _buildInfoRow(
+                'DerniÃ¨re sauvegarde',
+                _formatDateTime(save.timestamp),
+                Icons.access_time,
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildInfoRow(
+                      'Trombones',
+                      save.paperclips.toStringAsFixed(0),
+                      Icons.shopping_cart,
+                    ),
+                  ),
+                  Expanded(
+                    child: _buildInfoRow(
+                      'Argent',
+                      '${save.money.toStringAsFixed(2)}â‚¬',
+                      Icons.euro,
+                    ),
+                  ),
+                ],
+              ),
+              // Affichage du mode de jeu
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isCompetitive
+                      ? Colors.amber.withOpacity(0.1)
+                      : Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                    color: isCompetitive
+                        ? Colors.amber.shade300
+                        : Colors.blue.shade300,
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  isCompetitive ? 'Mode CompÃ©titif' : 'Mode Infini',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isCompetitive
+                        ? Colors.amber.shade800
+                        : Colors.blue.shade800,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: Colors.grey[600]),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                ),
+              ),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _confirmDelete(BuildContext context, String gameName) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Supprimer la partie ?'),
+        content: Text('Voulez-vous vraiment supprimer la partie "$gameName" ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Supprimer'),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && context.mounted) {
+      await SaveManager.deleteSave(gameName);
+      _refreshSaves();
+    }
+  }
+
+  Future<void> _showNewGameDialog(BuildContext context) async {
+    final controller = TextEditingController(
+      text: 'Partie ${DateTime.now().day}/${DateTime.now().month}',
+    );
+
+    return showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Row(
+          children: [
+            Icon(Icons.add_circle, color: Colors.deepPurple[400]),
+            const SizedBox(width: 8),
+            const Text('Nouvelle Partie'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                labelText: 'Nom de la partie',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                prefixIcon: const Icon(Icons.drive_file_rename_outline),
+              ),
+              autofocus: true,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Donnez un nom Ã  votre nouvelle partie',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.deepPurple,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+            child: const Text('CrÃ©er'),
+          ),
+        ],
+      ),
+    ).then((result) async {
+      if (result != null && result.isNotEmpty && context.mounted) {
+        await context.read<GameState>().startNewGame(result);
+        if (context.mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const MainScreen()),
+          );
+        }
+      }
+    });
+  }
+}
+
+
+
+
+
+

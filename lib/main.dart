@@ -1,45 +1,42 @@
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:just_audio/just_audio.dart';
+﻿import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'firebase_options.dart';
-import 'dart:ui' as ui show PlatformDispatcher;
+import 'package:just_audio/just_audio.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-// Imports des écrans
-import './screens/start_screen.dart';
-import './screens/main_screen.dart';
-import './screens/save_load_screen.dart';
-import './screens/production_screen.dart';
-import './screens/market_screen.dart';
-import './screens/upgrades_screen.dart';
-import './screens/event_log_screen.dart';
-import 'screens/introduction_screen.dart';
-import 'env_config.dart';
-
-// Imports des modèles et services
-import './models/game_state.dart';
-import './models/game_config.dart';
-import './models/event_system.dart';
-import './models/progression_system.dart';
-import './services/save_manager.dart';
-import './services/background_music.dart';
-import './utils/update_manager.dart';
-import './services/firebase_config.dart';
-import './widgets/notification_widgets.dart';
-import 'services/games_services_controller.dart';
+import 'core/config/env_config.dart';
+import 'core/config/firebase_options.dart';
+import 'core/constants/game_constants.dart';
+import 'core/utils/update_manager.dart';
+import 'data/datasources/local/save_datasource.dart';
+import 'data/datasources/remote/firebase_config.dart';
+import 'domain/entities/event_system.dart';
+import 'domain/entities/game_state.dart';
+import 'domain/entities/progression.dart';
+import 'domain/services/background_music_service.dart';
+import 'domain/services/event_manager.dart';
+import 'domain/services/games_services_controller.dart';
+import 'presentation/screens/event_log_screen.dart';
+import 'presentation/screens/introduction_screen.dart';
+import 'presentation/screens/main_screen.dart';
+import 'presentation/screens/market_screen.dart';
+import 'presentation/screens/production_screen.dart';
+import 'presentation/screens/save_load_screen.dart';
+import 'presentation/screens/start_screen.dart';
+import 'presentation/screens/upgrades_screen.dart';
+import 'presentation/widgets/notification_widgets.dart';
 
 // Export du navigatorKey
-export 'package:paperclip2/main.dart' show navigatorKey;
+export 'main.dart' show navigatorKey;
 
 // Services globaux
 final GameState gameState = GameState();
-final backgroundMusicService = BackgroundMusicService();
-final eventManager = EventManager.instance;
+final backgroundMusicService = BackgroundMusicService())))));
+final eventManager = EventManager();
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
@@ -60,7 +57,7 @@ void main() async {
     }
     await EnvConfig.load();
 
-    // Initialisation de Firebase avec vérification
+    // Initialisation de Firebase avec vÃ©rification
     if (kDebugMode) {
       print('Initializing Firebase...');
     }
@@ -70,7 +67,7 @@ void main() async {
 
     // Initialiser les services de jeu
     // Initialisation des services de jeu
-    final gamesServices = GamesServicesController();
+    final gamesServices = GamesServicesController())))));
     await gamesServices.initialize();
 
     // Configuration de Crashlytics
@@ -81,7 +78,7 @@ void main() async {
       FirebaseCrashlytics.instance.recordFlutterError(details);
     };
 
-    // Capturer les erreurs non gérées avec plus de contexte
+    // Capturer les erreurs non gÃ©rÃ©es avec plus de contexte
     ui.PlatformDispatcher.instance.onError = (error, stack) {
       FirebaseCrashlytics.instance.recordError(
         error,
@@ -95,7 +92,7 @@ void main() async {
     // Initialiser Firebase Config
     await FirebaseConfig.initialize();
 
-    // Vérifier et restaurer les sauvegardes
+    // VÃ©rifier et restaurer les sauvegardes
     await gameState.checkAndRestoreFromBackup();
 
     // Configurer et logger l'analytics
@@ -108,7 +105,7 @@ void main() async {
         providers: [
           ChangeNotifierProvider.value(value: gameState),
           Provider<BackgroundMusicService>.value(value: backgroundMusicService),
-          ChangeNotifierProvider.value(value: EventManager.instance),
+          ChangeNotifierProvider.value(value: EventManager()),
           Provider<GamesServicesController>(
             create: (context) => gamesServices,
           ),
@@ -195,3 +192,9 @@ class _LoadingScreenState extends State<LoadingScreen> {
     );
   }
 }
+
+
+
+
+
+
