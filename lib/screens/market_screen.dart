@@ -227,11 +227,11 @@ class MarketScreen extends StatelessWidget {
     double metalPerClip = GameConstants.METAL_PER_PAPERCLIP *
         (1.0 - ((gameState.player.upgrades['efficiency']?.level ?? 0) * 0.15));
 
-    double currentMetalForClips = gameState.player.metal / metalPerClip;
+    double currentMetalForClips = gameState.metalManager.metal / metalPerClip;
 
     return _buildMarketCard(
       title: 'Stock de Métal',
-      value: '${gameState.player.metal.toStringAsFixed(1)} / ${gameState.player.maxMetalStorage}',
+      value: '${gameState.metalManager.metal.toStringAsFixed(1)} / ${gameState.metalManager.maxMetalStorage}',
       icon: Icons.inventory_2,
       color: Colors.grey.shade200,
       tooltip: 'Production possible: ${currentMetalForClips.toStringAsFixed(0)} trombones',

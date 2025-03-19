@@ -500,8 +500,7 @@ class _MainScreenState extends State<MainScreen> {
 
         // Interface normale
         final visibleScreens = gameState.getVisibleScreenElements();
-        final canProduce = gameState.player.metal >=
-            GameConstants.METAL_PER_PAPERCLIP;
+        final canProduce = gameState.metalManager.metal >= GameConstants.METAL_PER_PAPERCLIP;
 
         return Scaffold(
           appBar: appBar,

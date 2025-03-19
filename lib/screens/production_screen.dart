@@ -351,8 +351,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
                     style: TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                   const Divider(),
-                  Text('Stock mondial de métal: ${gameState.resources
-                      .marketMetalStock.toStringAsFixed(0)}'),
+                  Text('Stock mondial de métal: ${gameState.metalManager.marketMetalStock.toStringAsFixed(0)}'),
                   const Text(
                     'Influence les prix et la disponibilité.',
                     style: TextStyle(fontSize: 12, color: Colors.grey),
@@ -449,7 +448,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
             ),
             _buildMarketIndicator(
               'Stock Métal Mondial',
-              gameState.resources.marketMetalStock.toStringAsFixed(0),
+              gameState.metalManager.marketMetalStock.toStringAsFixed(0),
               Icons.inventory_2,
             ),
           ],
@@ -661,16 +660,12 @@ class _ProductionScreenState extends State<ProductionScreen> {
                         children: [
                           _buildResourceCard(
                             'Métal',
-                            '${formatNumber(
-                                gameState.player.metal, true)} / ${gameState
-                                .player.maxMetalStorage}',
+                            '${formatNumber(gameState.metalManager.metal, true)} / ${gameState.metalManager.maxMetalStorage}',
                             Colors.grey.shade200,
-                            onTap: () =>
-                                _showInfoDialog(
-                                  context,
-                                  'Stock de Métal',
-                                  'Stock: ${formatNumber(
-                                      gameState.player.metal, true)}\n'
+                            onTap: () => _showInfoDialog(
+                              context,
+                              'Stock de Métal',
+                              'Stock: ${formatNumber(gameState.metalManager.metal, true)}\n'
                                       'Capacité: ${gameState.player
                                       .maxMetalStorage}\n'
                                       'Prix: ${gameState.market

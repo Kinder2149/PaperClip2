@@ -150,8 +150,8 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
 
   // Gardons votre onglet Production intact
   Widget _buildMetalProductionTab(GameState gameState) {
-    bool canProduce = gameState.player.metal + 100 <= gameState.player.maxMetalStorage;
-    double remainingStorage = gameState.player.maxMetalStorage - gameState.player.metal;
+    bool canProduce = gameState.metalManager.metal + 100 <= gameState.metalManager.maxMetalStorage;
+    double remainingStorage = gameState.metalManager.maxMetalStorage - gameState.metalManager.metal;
     int possibleProductions = (remainingStorage / 100).floor();
 
     return Padding(
@@ -172,7 +172,7 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
                 const SizedBox(height: 24),
                 ElevatedButton(
                   onPressed: canProduce
-                      ? () => gameState.player.updateMetal(gameState.player.metal + 100)
+                      ? () => gameState.metalManager.updateMetal(gameState.metalManager.metal + 100)
                       : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue,

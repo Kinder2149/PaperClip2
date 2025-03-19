@@ -26,11 +26,13 @@ import '../screens/main_screen.dart';
 import 'package:paperclip2/services/cloud_save_manager.dart';
 import 'package:games_services/games_services.dart' as gs;
 import '../services/save_manager.dart' show SaveGame, SaveError, SaveGameInfo, SaveManager;
+import '../managers/metal_manager.dart';
+
 
 class GameState extends ChangeNotifier {
   late final PlayerManager _playerManager;
   late final MarketManager _marketManager;
-  late final ResourceManager _resourceManager;
+  late final MetalManager _metalManager;
   late final LevelSystem _levelSystem;
   late final MissionSystem _missionSystem;
   bool _isInCrisisMode = false;
@@ -44,6 +46,13 @@ class GameState extends ChangeNotifier {
   bool get isInCrisisMode => _isInCrisisMode;
   bool get crisisTransitionComplete => _crisisTransitionComplete;
   bool _showingCrisisView = false;
+
+
+  // Getter pour accéder au metalManager depuis l'extérieur
+  MetalManager get metalManager => _metalManager;
+  MetalManager get resources => _metalManager;
+
+
 
   // Mode de jeu (infini ou compétitif)
   GameMode _gameMode = GameMode.INFINITE;
@@ -65,7 +74,7 @@ class GameState extends ChangeNotifier {
   String? get gameName => _gameName;
   PlayerManager get playerManager => _playerManager;
   MarketManager get marketManager => _marketManager;
-  ResourceManager get resourceManager => _resourceManager;
+
   LevelSystem get levelSystem => _levelSystem;
   MissionSystem get missionSystem => _missionSystem;
   GameState() {
@@ -91,15 +100,23 @@ class GameState extends ChangeNotifier {
   void _createManagers() {
     try {
       _statistics = StatisticsManager();
-      _resourceManager = ResourceManager();
+      _metalManager = MetalManager(  // Garder uniquement cette initialisation
+          onCrisisTriggered: () {
+            enterCrisisMode();
+          }
+      );
+
       _marketManager = MarketManager(MarketDynamics());
       _levelSystem = LevelSystem();
       _missionSystem = MissionSystem();
       _autoSaveService = AutoSaveService(this);
 
+      // Supprimer cette deuxième initialisation
+      // _metalManager = MetalManager(...);
+
       _playerManager = PlayerManager(
         levelSystem: _levelSystem,
-        resourceManager: _resourceManager,
+        metalManager: _metalManager,
         marketManager: _marketManager,
       );
     } catch (e) {
@@ -432,7 +449,6 @@ class GameState extends ChangeNotifier {
   double get maxMetalStorage => playerManager.maxMetalStorage;
   PlayerManager get player => playerManager;
   MarketManager get market => marketManager;
-  ResourceManager get resources => resourceManager;
   LevelSystem get level => levelSystem;
 
 
@@ -470,13 +486,13 @@ class GameState extends ChangeNotifier {
 
 
   double _calculateManualProduction(double elapsed) {
-    if (playerManager.metal < GameConstants.METAL_PER_PAPERCLIP) return 0;
+    if (_metalManager.metal < GameConstants.METAL_PER_PAPERCLIP) return 0;
 
     double metalUsed = GameConstants.METAL_PER_PAPERCLIP;
     double efficiencyBonus = 1.0 + (playerManager.upgrades['efficiency']?.level ?? 0) * 0.1;
     metalUsed /= efficiencyBonus;
 
-    playerManager.updateMetal(playerManager.metal - metalUsed);
+    _metalManager.updateMetal(_metalManager.metal - metalUsed);
     return 1.0 * elapsed;
   }
 
@@ -566,6 +582,7 @@ class GameState extends ChangeNotifier {
       baseData['playerManager'] = playerManager.toJson();
       baseData['marketManager'] = marketManager.toJson();
       baseData['levelSystem'] = levelSystem.toJson();
+      baseData['metalManager'] = _metalManager.toJson();
       baseData['missionSystem'] = missionSystem?.toJson();
 
       // Debug logs
@@ -601,48 +618,35 @@ class GameState extends ChangeNotifier {
     // Calcul des bonus
     double speedBonus = 1.0 + ((playerManager.upgrades['speed']?.level ?? 0) * 0.20);
     double bulkBonus = 1.0 + ((playerManager.upgrades['bulk']?.level ?? 0) * 0.35);
+    double efficiencyLevel = (playerManager.upgrades['efficiency']?.level ?? 0).toDouble();
 
-    // Nouveau calcul d'efficacité avec 11% par niveau et plafond 85%
-    double efficiencyLevel = (playerManager.upgrades['efficiency']?.level ?? 0).toDouble(); // Correction ici
-    double reduction = min(
-        efficiencyLevel * GameConstants.EFFICIENCY_UPGRADE_MULTIPLIER,
-        GameConstants.EFFICIENCY_MAX_REDUCTION
+    // Nouveau calcul avec MetalManager
+    int actualProduction = _metalManager.calculateMetalBasedProduction(
+        autoclippers: playerManager.autoclippers,
+        speedBonus: speedBonus,
+        bulkBonus: bulkBonus,
+        efficiencyLevel: efficiencyLevel
     );
-    double efficiencyBonus = 1.0 - reduction;
-
-    // Nombre total d'autoclippers avec les bonus
-    double totalProduction = playerManager.autoclippers * speedBonus * bulkBonus;
-
-    // Métal nécessaire par trombone avec efficacité
-    double metalPerClip = GameConstants.METAL_PER_PAPERCLIP * efficiencyBonus;
-
-    // Nombre maximum de trombones possibles avec le métal disponible
-    int maxPossibleClips = (playerManager.metal / metalPerClip).floor();
-
-    // Production effective (limitée par le métal disponible)
-    int actualProduction = min(totalProduction.floor(), maxPossibleClips);
 
     if (actualProduction > 0) {
-      // Mise à jour des ressources
-      double metalUsed = actualProduction * metalPerClip;
-      double metalSaved = actualProduction * GameConstants.METAL_PER_PAPERCLIP * reduction; // Déplacé ici
-
-      playerManager.updateMetal(playerManager.metal - metalUsed);
-      playerManager.updatePaperclips(playerManager.paperclips + actualProduction);
-      _totalPaperclipsProduced += actualProduction;
-
-      // Mise à jour des statistiques
-      _statistics.updateProduction(
-          isManual: false,
-          amount: actualProduction,
-          metalUsed: metalUsed,
-          metalSaved: metalSaved,
-          efficiency: reduction * 100
+      // Consommer le métal et mettre à jour les statistiques
+      _metalManager.consumeMetalForProduction(
+          productionAmount: actualProduction,
+          efficiencyLevel: efficiencyLevel,
+          updateStatistics: (production, metalUsed, metalSaved) {
+            _statistics.updateProduction(
+                isManual: false,
+                amount: production,
+                metalUsed: metalUsed,
+                metalSaved: metalSaved,
+                efficiency: (metalSaved / metalUsed) * 100
+            );
+          }
       );
 
-      // Expérience pour la production automatique
+      playerManager.updatePaperclips(playerManager.paperclips + actualProduction);
+      _totalPaperclipsProduced += actualProduction;
       levelSystem.addAutomaticProduction(actualProduction);
-      _updateLeaderboardsOnMilestone();
     }
 
     notifyListeners();
@@ -724,7 +728,7 @@ class GameState extends ChangeNotifier {
 
 
   void checkResourceCrisis() {
-    if (marketManager.marketMetalStock <= 0 && !_isInCrisisMode) {
+    if (_metalManager.marketMetalStock <= 0 && !_isInCrisisMode) {
       print("Déclenchement de la crise - Stock épuisé");
 
       EventManager.instance.addEvent(
@@ -765,50 +769,21 @@ class GameState extends ChangeNotifier {
 
   // Actions du jeu
   void buyMetal() {
-    print('Tentative d\'achat de métal'); // Debug
-    print('Stock disponible: ${marketManager.marketMetalStock}'); // Debug
-
-    if (!_canBuyMetal()) {
-      print('Achat impossible - conditions non remplies'); // Debug
-      return;
-    }
-
-    double metalPrice = marketManager.currentMetalPrice;
-    double amount = GameConstants.METAL_PACK_AMOUNT;
-
-    print('Prix: $metalPrice, Quantité: $amount'); // Debug
-
-    // Le joueur peut payer et stocker le métal
-    playerManager.updateMoney(playerManager.money - metalPrice);
-    playerManager.updateMetal(playerManager.metal + amount);
-    marketManager.updateMarketStock(-amount);  // Important: le signe négatif
-
-    print('Achat effectué - Nouveau stock marché: ${marketManager.marketMetalStock}'); // Debug
-
-    if (marketManager.marketMetalStock <= 0) {
-      print('Stock épuisé - Déclenchement mode crise'); // Debug
-      enterCrisisMode();
-    }
-    _statistics.updateEconomics(
-      moneySpent: metalPrice,
-      metalBought: amount,
+    _metalManager.buyMetal(
+        price: marketManager.currentMetalPrice,
+        playerMoney: playerManager.money,
+        updatePlayerMoney: (newMoney) => playerManager.updateMoney(newMoney)
     );
-
-    if (marketManager.marketMetalStock <= 0) {
-      enterCrisisMode();
-    }
-
-    notifyListeners();
   }
 
   bool _canBuyMetal() {
     double metalPrice = marketManager.currentMetalPrice;
-    double currentMetal = playerManager.metal;
-    double maxStorage = playerManager.maxMetalStorage;
+    double currentMetal = _metalManager.metal;
+    double maxStorage = _metalManager.maxMetalStorage;
 
     return playerManager.money >= metalPrice &&
         currentMetal + GameConstants.METAL_PACK_AMOUNT <= maxStorage &&
-        marketManager.marketMetalStock >= GameConstants.METAL_PACK_AMOUNT;  // Ajout de cette vérification
+        marketManager.marketMetalStock >= GameConstants.METAL_PACK_AMOUNT;
   }
 
   void buyAutoclipper() {
@@ -828,21 +803,18 @@ class GameState extends ChangeNotifier {
   }
 
   void producePaperclip() {
-    if (player.consumeMetal(GameConstants.METAL_PER_PAPERCLIP)) {
-      player.updatePaperclips(player.paperclips + 1);
+    if (_metalManager.produceManualPaperclip(
+        updateStatistics: (amount, metalUsed) {
+          _statistics.updateProduction(
+            isManual: true,
+            amount: 1,
+            metalUsed: metalUsed,
+          );
+        }
+    )) {
+      playerManager.updatePaperclips(playerManager.paperclips + 1);
       _totalPaperclipsProduced++;
-
-      // Mettre à jour le leaderboard tous les 100 trombones
-      if (_totalPaperclipsProduced % 100 == 0) {
-        updateLeaderboard();
-      }
-
       level.addManualProduction();
-      _statistics.updateProduction(
-        isManual: true,
-        amount: 1,
-        metalUsed: GameConstants.METAL_PER_PAPERCLIP,
-      );
       notifyListeners();
     }
   }
@@ -1133,7 +1105,7 @@ class GameState extends ChangeNotifier {
       double newCapacity = GameConstants.INITIAL_STORAGE_CAPACITY *
           (1 + (storageLevel * GameConstants.STORAGE_UPGRADE_MULTIPLIER));
       _playerManager.updateMaxMetalStorage(newCapacity);
-      _resourceManager.upgradeStorageCapacity(storageLevel);
+      _metalManager.upgradeStorageCapacity(storageLevel);
     }
   }
 
@@ -1152,6 +1124,9 @@ class GameState extends ChangeNotifier {
     }
     if (gameData['statistics'] != null) {
       _statistics.fromJson(gameData['statistics']);
+    }
+    if (gameData['metalManager'] != null) {
+      _metalManager.fromJson(gameData['metalManager']);
     }
 
     _totalTimePlayedInSeconds = (gameData['totalTimePlayedInSeconds'] as num?)?.toInt() ?? 0;

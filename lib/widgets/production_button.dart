@@ -13,7 +13,7 @@ class ProductionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final gameState = Provider.of<GameState>(context);
-    bool canProduce = gameState.player.metal >= GameConstants.METAL_PER_PAPERCLIP;
+    bool canProduce = gameState.metalManager.metal >= GameConstants.METAL_PER_PAPERCLIP;
 
     return Container(
       height: 40,

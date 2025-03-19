@@ -118,7 +118,7 @@ class ResourceStatusWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<GameState>(
       builder: (context, gameState, child) {
-        final metalStock = gameState.resources.marketMetalStock;  // Utilisation du getter
+        final metalStock = gameState.metalManager.marketMetalStock;  // Utilisation du getter
         final warningLevel = metalStock <= GameConstants.WARNING_THRESHOLD;  // Utilisation de GameConstants
         final criticalLevel = metalStock <= GameConstants.CRITICAL_THRESHOLD;  // Utilisation de GameConstants
 
@@ -206,7 +206,7 @@ class ResourceOverview extends StatelessWidget {
                     _ResourceItem(
                       icon: Icons.straighten,
                       label: 'Métal',
-                      value: '${gameState.player.metal.toStringAsFixed(1)}/${gameState.player.maxMetalStorage}',  // Utilisation du getter
+                      value: '${gameState.metalManager.metal.toStringAsFixed(1)}/${gameState.metalManager.maxMetalStorage}',  // Utilisation du getter
                       color: Colors.grey,
                     ),
                   ],

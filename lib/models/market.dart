@@ -270,9 +270,6 @@ class MarketManager extends ChangeNotifier {
       return false;  // Capacité de stockage dépassée
     }
 
-    marketMetalStock -= quantity;
-    addMetal(quantity);
-    subtractMoney(quantity * currentMetalPrice);
     _checkMarketDepletion();
     notifyListeners();
     return true;

@@ -242,7 +242,7 @@ packages:
     source: hosted
     version: "0.9.4+2"
   file_selector_platform_interface:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: file_selector_platform_interface
       sha256: a3994c26f10378a039faa11de174d7b78eb8f79e4dd0af2a451410c1a5c3f66b
@@ -250,7 +250,7 @@ packages:
     source: hosted
     version: "2.6.2"
   file_selector_web:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: file_selector_web
       sha256: c4c0ea4224d97a60a7067eca0c8fd419e708ff830e0c83b11a48faf566cec3e7
@@ -370,7 +370,7 @@ packages:
     source: hosted
     version: "5.1.22"
   firebase_storage_web:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: firebase_storage_web
       sha256: "9523c455521b0497ee436be8614aab52f719309d16147a5b11091e44e4c5aa0a"

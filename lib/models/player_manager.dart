@@ -7,7 +7,7 @@ import 'event_system.dart';
 import 'progression_system.dart';
 import 'resource_manager.dart';
 import 'market.dart';
-
+import 'package:paperclip2/managers/metal_manager.dart';
 /// Représente une amélioration du jeu
 class Upgrade {
   final String id;
@@ -147,13 +147,12 @@ class UpgradeManager {
 /// Gestionnaire des ressources du joueur
 class PlayerManager extends ChangeNotifier {
   double _paperclips = 0.0;
-  double _metal = 100.0;
   double _money = 0.0;
   int _autoclippers = 0;
   double _sellPrice = 0.25;
   double autoclipperPaperclips = 0; // Pour suivre les trombones produits par les autoclippers
-  final ResourceManager resourceManager;
   final MarketManager marketManager;
+  final MetalManager metalManager;
   final LevelSystem levelSystem;
   double maxMetalStorage = GameConstants.INITIAL_STORAGE_CAPACITY;
   bool _lowMetalNotified = false;
@@ -164,29 +163,29 @@ class PlayerManager extends ChangeNotifier {
 
 
   // Getters
-  double get metal => _metal;
   double get paperclips => _paperclips;
   double get money => _money;
   int get autoclippers => _autoclippers;
   double get sellPrice => _sellPrice;
   // Getters
   Map<String, Upgrade> get upgrades => _upgrades;
-
+  MetalManager get resourceManager => metalManager;
 
   Timer? _maintenanceTimer;
   Timer? _autoSaveTimer;
   double _maintenanceCosts = 0.0;
+
   PlayerManager({
     required this.levelSystem,
-    required this.resourceManager,
+    required this.metalManager,
     required this.marketManager,
   }) {
     _initializeUpgrades();
     _startTimers();
   }
-
   // Getters
   double get maintenanceCosts => _maintenanceCosts;
+  double get metal => metalManager.metal;
 
 
 
@@ -274,7 +273,7 @@ class PlayerManager extends ChangeNotifier {
   void fromJson(Map<String, dynamic> json) {
     _paperclips = (json['paperclips'] as num?)?.toDouble() ?? 0.0;
     _money = (json['money'] as num?)?.toDouble() ?? 0.0;
-    _metal = (json['metal'] as num?)?.toDouble() ?? 0.0;
+    // _metal = (json['metal'] as num?)?.toDouble() ?? 0.0;  // Supprimer cette ligne
     _autoclippers = (json['autoclippers'] as num?)?.toInt() ?? 0;
     _sellPrice = (json['sellPrice'] as num?)?.toDouble() ?? GameConstants.INITIAL_PRICE;
 
@@ -300,19 +299,13 @@ class PlayerManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool consumeMetal(double amount) {
-    if (_metal >= amount) {
-      updateMetal(_metal - amount);
-      return true;
-    }
-    return false;
-  }
+
 
 
   Map<String, dynamic> toJson() => {
     'paperclips': _paperclips,
     'money': _money,
-    'metal': _metal,
+    // 'metal': _metal,  // Supprimer cette ligne
     'autoclippers': _autoclippers,
     'sellPrice': _sellPrice,
     'upgrades': upgrades.map((key, value) => MapEntry(key, value.toJson())),
@@ -324,7 +317,7 @@ class PlayerManager extends ChangeNotifier {
 
 
   void resetResources() {
-    _metal = GameConstants.INITIAL_METAL;
+    // _metal = GameConstants.INITIAL_METAL;  // Supprimer cette ligne
     _money = GameConstants.INITIAL_MONEY;
     _paperclips = 0;
     _autoclippers = 0;
@@ -460,26 +453,7 @@ class PlayerManager extends ChangeNotifier {
       notifyListeners();
     }
   }
-  void updateMetal(double newAmount) {
-    if (_metal != newAmount) {
-      _metal = newAmount.clamp(0, maxMetalStorage);
 
-      // Check pour notification de stock bas
-      if (_metal <= LOW_METAL_THRESHOLD && !_lowMetalNotified) {
-        _lowMetalNotified = true;
-        EventManager.instance.addEvent(
-            EventType.RESOURCE_DEPLETION,
-            'Stock Personnel Bas',
-            description: 'Votre stock de métal est inférieur à 20 unités',
-            importance: EventImportance.MEDIUM
-        );
-      } else if (_metal > LOW_METAL_THRESHOLD) {
-        _lowMetalNotified = false;
-      }
-
-      notifyListeners();
-    }
-  }
 
 
   void updateMoney(double newAmount) {
@@ -519,7 +493,6 @@ class PlayerManager extends ChangeNotifier {
         'timestamp': DateTime.now().toIso8601String(),
         'upgrades': _upgrades.map((key, value) => MapEntry(key, value.toJson())),
         'resources': {
-          'metal': _metal,
           'paperclips': _paperclips,
           'money': _money,
           'autoclippers': _autoclippers,
