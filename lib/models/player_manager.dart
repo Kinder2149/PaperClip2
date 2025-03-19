@@ -146,11 +146,10 @@ class UpgradeManager {
 
 /// Gestionnaire des ressources du joueur
 class PlayerManager extends ChangeNotifier {
-  double _paperclips = 0.0;
+
   double _money = 0.0;
-  int _autoclippers = 0;
   double _sellPrice = 0.25;
-  double autoclipperPaperclips = 0; // Pour suivre les trombones produits par les autoclippers
+
   final MarketManager marketManager;
   final MetalManager metalManager;
   final LevelSystem levelSystem;
@@ -246,26 +245,9 @@ class PlayerManager extends ChangeNotifier {
     ),
   };
 
-  void _updateProductionMultiplier() {
-    // Utiliser getProductionMultiplier qui existe déjà
-    double multiplier = getProductionMultiplier();
-    // Mettre à jour la production des autoclippeuses
-    autoclipperPaperclips = _autoclippers * GameConstants.BASE_AUTOCLIPPER_PRODUCTION * multiplier;
-    notifyListeners();
-  }
-  void updateMaxMetalStorage(double newCapacity) {
-    maxMetalStorage = newCapacity;
-    notifyListeners();
-  }
 
-  double calculateAutoclipperROI() {
-    double cost = calculateAutoclipperCost();
-    double revenuePerSecond = GameConstants.BASE_AUTOCLIPPER_PRODUCTION * _sellPrice;
-    // Si pas de revenu, retourner une valeur infinie
-    if (revenuePerSecond <= 0) return double.infinity;
-    // Retourner le temps en secondes pour rentabiliser l'investissement
-    return cost / revenuePerSecond;
-  }
+
+
 
 
 
@@ -303,15 +285,37 @@ class PlayerManager extends ChangeNotifier {
 
 
   Map<String, dynamic> toJson() => {
-    'paperclips': _paperclips,
     'money': _money,
-    // 'metal': _metal,  // Supprimer cette ligne
-    'autoclippers': _autoclippers,
     'sellPrice': _sellPrice,
     'upgrades': upgrades.map((key, value) => MapEntry(key, value.toJson())),
   };
 
-  void loadFromJson(Map<String, dynamic> json) => fromJson(json);
+  void fromJson(Map<String, dynamic> json) {
+    _money = (json['money'] as num?)?.toDouble() ?? 0.0;
+    _sellPrice = (json['sellPrice'] as num?)?.toDouble() ?? GameConstants.INITIAL_PRICE;
+
+    // Réinitialiser d'abord les upgrades
+    _initializeUpgrades();
+
+    // Charger les upgrades
+    final upgradesData = json['upgrades'] as Map<String, dynamic>? ?? {};
+    upgradesData.forEach((key, value) {
+      if (_upgrades.containsKey(key)) {
+        _upgrades[key]!.level = (value['level'] as num?)?.toInt() ?? 0;
+
+        // Mise à jour immédiate des effets des améliorations
+        if (key == 'storage') {
+          double newCapacity = GameConstants.INITIAL_STORAGE_CAPACITY *
+              (1 + (_upgrades[key]!.level * GameConstants.STORAGE_UPGRADE_MULTIPLIER));
+          maxMetalStorage = newCapacity;
+          resourceManager.upgradeStorageCapacity(_upgrades[key]!.level);
+        }
+      }
+    });
+
+    notifyListeners();
+  }
+
 
 
 
@@ -405,31 +409,16 @@ class PlayerManager extends ChangeNotifier {
     notifyListeners();
     return true;
   }
-  double getProductionMultiplier() {
-    double bulkBonus = (upgrades['bulk']?.level ?? 0) * GameConstants.BULK_UPGRADE_BASE;
-    return 1.0 + bulkBonus;
-  }
+
 
   bool canBuyAutoclipper() {
     double cost = calculateAutoclipperCost();
     return _money >= cost;
   }
 
-  double calculateAutoclipperCost() {
-    double baseCost = GameConstants.BASE_AUTOCLIPPER_COST;
-    double automationDiscount = 1.0 - ((upgrades['automation']?.level ?? 0) * 0.10);
-    return baseCost * pow(1.1, _autoclippers) * automationDiscount;
-  }
 
-  bool purchaseAutoclipper() {
-    double cost = calculateAutoclipperCost();
-    if (_money < cost) return false;
 
-    _money -= cost;
-    _autoclippers++;
-    notifyListeners();
-    return true;
-  }
+
 
 
   void _applyMaintenanceCosts() {
@@ -463,19 +452,7 @@ class PlayerManager extends ChangeNotifier {
     }
   }
 
-  void updatePaperclips(double newAmount) {
-    if (_paperclips != newAmount) {
-      _paperclips = newAmount;
-      notifyListeners();
-    }
-  }
 
-  void updateAutoclippers(int newAmount) {
-    if (_autoclippers != newAmount) {
-      _autoclippers = newAmount;
-      notifyListeners();
-    }
-  }
 
 
   void updateSellPrice(double newPrice) {

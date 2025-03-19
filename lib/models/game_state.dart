@@ -27,6 +27,7 @@ import 'package:paperclip2/services/cloud_save_manager.dart';
 import 'package:games_services/games_services.dart' as gs;
 import '../services/save_manager.dart' show SaveGame, SaveError, SaveGameInfo, SaveManager;
 import '../managers/metal_manager.dart';
+import '../managers/production_manager.dart';
 
 
 class GameState extends ChangeNotifier {
@@ -52,6 +53,9 @@ class GameState extends ChangeNotifier {
   MetalManager get metalManager => _metalManager;
   MetalManager get resources => _metalManager;
 
+  // Ajouter un getter pour le nouveau manager
+  ProductionManager get productionManager => _productionManager;
+  late final ProductionManager _productionManager;
 
 
   // Mode de jeu (infini ou compétitif)
@@ -100,7 +104,7 @@ class GameState extends ChangeNotifier {
   void _createManagers() {
     try {
       _statistics = StatisticsManager();
-      _metalManager = MetalManager(  // Garder uniquement cette initialisation
+      _metalManager = MetalManager(
           onCrisisTriggered: () {
             enterCrisisMode();
           }
@@ -111,13 +115,25 @@ class GameState extends ChangeNotifier {
       _missionSystem = MissionSystem();
       _autoSaveService = AutoSaveService(this);
 
-      // Supprimer cette deuxième initialisation
-      // _metalManager = MetalManager(...);
-
       _playerManager = PlayerManager(
         levelSystem: _levelSystem,
         metalManager: _metalManager,
         marketManager: _marketManager,
+      );
+
+      // Ajouter l'initialisation du ProductionManager
+      _productionManager = ProductionManager(
+        metalManager: _metalManager,
+        levelSystem: _levelSystem,
+        showNotification: (message) {
+          // Fonction pour afficher les notifications
+          EventManager.instance.addEvent(
+              EventType.INFO,
+              "Production",
+              description: message,
+              importance: EventImportance.LOW
+          );
+        },
       );
     } catch (e) {
       print('Erreur lors de la création des managers: $e');
@@ -161,7 +177,7 @@ class GameState extends ChangeNotifier {
   DateTime? get lastSaveTime => _lastSaveTime;
 
   int get totalTimePlayed => _totalTimePlayedInSeconds;
-  int get totalPaperclipsProduced => _totalPaperclipsProduced;
+  int get totalPaperclipsProduced => _productionManager.totalPaperclipsProduced;
   double get maintenanceCosts => _maintenanceCosts;
 
 
@@ -453,11 +469,7 @@ class GameState extends ChangeNotifier {
 
 
 
-  double get autocliperCost {
-    double baseCost = GameConstants.BASE_AUTOCLIPPER_COST * (1.15 * player.autoclippers);
-    double automationDiscount = 1.0 - ((player.upgrades['automation']?.level ?? 0) * 0.10);
-    return baseCost * automationDiscount;
-  }
+  double get autocliperCost => _productionManager.calculateAutoclipperCost();
 
 
 
@@ -583,6 +595,7 @@ class GameState extends ChangeNotifier {
       baseData['marketManager'] = marketManager.toJson();
       baseData['levelSystem'] = levelSystem.toJson();
       baseData['metalManager'] = _metalManager.toJson();
+      baseData['productionManager'] = _productionManager.toJson();
       baseData['missionSystem'] = missionSystem?.toJson();
 
       // Debug logs
@@ -613,43 +626,7 @@ class GameState extends ChangeNotifier {
 
 
   void processProduction() {
-    if (!_isInitialized || _isPaused) return;
-
-    // Calcul des bonus
-    double speedBonus = 1.0 + ((playerManager.upgrades['speed']?.level ?? 0) * 0.20);
-    double bulkBonus = 1.0 + ((playerManager.upgrades['bulk']?.level ?? 0) * 0.35);
-    double efficiencyLevel = (playerManager.upgrades['efficiency']?.level ?? 0).toDouble();
-
-    // Nouveau calcul avec MetalManager
-    int actualProduction = _metalManager.calculateMetalBasedProduction(
-        autoclippers: playerManager.autoclippers,
-        speedBonus: speedBonus,
-        bulkBonus: bulkBonus,
-        efficiencyLevel: efficiencyLevel
-    );
-
-    if (actualProduction > 0) {
-      // Consommer le métal et mettre à jour les statistiques
-      _metalManager.consumeMetalForProduction(
-          productionAmount: actualProduction,
-          efficiencyLevel: efficiencyLevel,
-          updateStatistics: (production, metalUsed, metalSaved) {
-            _statistics.updateProduction(
-                isManual: false,
-                amount: production,
-                metalUsed: metalUsed,
-                metalSaved: metalSaved,
-                efficiency: (metalSaved / metalUsed) * 100
-            );
-          }
-      );
-
-      playerManager.updatePaperclips(playerManager.paperclips + actualProduction);
-      _totalPaperclipsProduced += actualProduction;
-      levelSystem.addAutomaticProduction(actualProduction);
-    }
-
-    notifyListeners();
+    _productionManager.processProduction();
   }
 
 
@@ -787,36 +764,14 @@ class GameState extends ChangeNotifier {
   }
 
   void buyAutoclipper() {
-    double cost = autocliperCost;
-    if (player.money >= cost) {
-      player.updateMoney(player.money - cost);
-      player.updateAutoclippers(player.autoclippers + 1);
-      level.addAutoclipperPurchase();
-
-      // Ajout statistiques
-      _statistics.updateProgression(autoclippersBought: 1);  // Cette ligne est correcte
-      _statistics.updateEconomics(moneySpent: cost);
-      saveOnImportantEvent();
-
-      notifyListeners();
-    }
+    _productionManager.buyAutoclipper(
+        _playerManager.money,
+            (newAmount) => _playerManager.updateMoney(newAmount)
+    );
   }
 
   void producePaperclip() {
-    if (_metalManager.produceManualPaperclip(
-        updateStatistics: (amount, metalUsed) {
-          _statistics.updateProduction(
-            isManual: true,
-            amount: 1,
-            metalUsed: metalUsed,
-          );
-        }
-    )) {
-      playerManager.updatePaperclips(playerManager.paperclips + 1);
-      _totalPaperclipsProduced++;
-      level.addManualProduction();
-      notifyListeners();
-    }
+    _productionManager.produceManualPaperclip();
   }
 
 
@@ -1127,6 +1082,9 @@ class GameState extends ChangeNotifier {
     }
     if (gameData['metalManager'] != null) {
       _metalManager.fromJson(gameData['metalManager']);
+    }
+    if (gameData['productionManager'] != null) {
+      _productionManager.fromJson(gameData['productionManager']);
     }
 
     _totalTimePlayedInSeconds = (gameData['totalTimePlayedInSeconds'] as num?)?.toInt() ?? 0;

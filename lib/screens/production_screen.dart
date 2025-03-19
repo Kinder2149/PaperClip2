@@ -212,7 +212,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Autoclippers: ${gameState.player.autoclippers}',
+                        'Autoclippers: ${gameState.productionManager.autoclippers}',
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
@@ -305,7 +305,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
                       'Production totale: ${gameState.player
                           .autoclippers} trombones/s\n'
                           'Consommation métal: ${(GameConstants
-                          .METAL_PER_PAPERCLIP * gameState.player.autoclippers)
+                          .METAL_PER_PAPERCLIP * gameState.productionManager.autoclippers)
                           .toStringAsFixed(2)}/s'
                   ),
                   const Divider(),
@@ -460,7 +460,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
   Widget _buildProductionStatsCard(GameState gameState) {
     double efficiencyBonus = 1.0 -
         ((gameState.player.upgrades['efficiency']?.level ?? 0) * 0.15);
-    double baseProduction = gameState.player.autoclippers * 60;
+    double baseProduction = gameState.productionManager.autoclippers * 60;
     double actualProduction = baseProduction * efficiencyBonus;
 
     return Card(
@@ -609,7 +609,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
                           _buildResourceCard(
                             'Total Trombones',
                             MoneyDisplay.formatNumber(
-                                gameState.totalPaperclipsProduced.toDouble(),
+                                gameState.productionManager.totalPaperclipsProduced.toDouble(),
                                 isInteger: true).replaceAll(' €', ''),
                             Colors.purple.shade100,
                             onTap: () =>
@@ -617,7 +617,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
                                   context,
                                   'Statistiques de Production',
                                   'Total produit: ${MoneyDisplay.formatNumber(
-                                      gameState.totalPaperclipsProduced
+                                      gameState.productionManager.totalPaperclipsProduced
                                           .toDouble(), isInteger: true)
                                       .replaceAll(' €', '')}\n'
                                       'Niveau: ${gameState.level.level}\n'
@@ -630,7 +630,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
                           _buildResourceCard(
                             'Stock Trombones',
                             MoneyDisplay.formatNumber(
-                                gameState.player.paperclips, isInteger: true)
+                                gameState.productionManager.paperclips, isInteger: true)
                                 .replaceAll(' €', ''),
                             Colors.blue.shade100,
                             onTap: () =>
@@ -638,11 +638,11 @@ class _ProductionScreenState extends State<ProductionScreen> {
                                   context,
                                   'Stock de Trombones',
                                   'Total en stock: ${MoneyDisplay.formatNumber(
-                                      gameState.player.paperclips,
+                                      gameState.productionManager.paperclips,
                                       isInteger: true).replaceAll(' €', '')}\n'
                                       'Production totale: ${MoneyDisplay
                                       .formatNumber(
-                                      gameState.totalPaperclipsProduced
+                                      gameState.productionManager.totalPaperclipsProduced
                                           .toDouble(), isInteger: true)
                                       .replaceAll(' €', '')}',
                                 ),
@@ -732,7 +732,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
                       ),
 
                       // Statistiques de production déplacées à la fin
-                      if (gameState.player.autoclippers > 0) ...[
+                      if (gameState.productionManager.autoclippers > 0) ...[
                         const SizedBox(height: 16),
                         _buildProductionStatsCard(gameState),
                       ],
