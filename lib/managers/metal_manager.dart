@@ -5,24 +5,35 @@ import 'dart:math' show min;
 import '../models/game_config.dart';
 import '../models/event_system.dart';
 
+class MetalManagerException implements Exception {
+  final String message;
+  MetalManagerException(this.message);
+}
+
 class MetalManager extends ChangeNotifier {
   // ===== PROPRIÉTÉS =====
-  double _metal = GameConstants.INITIAL_METAL;
-  double _marketMetalStock = GameConstants.INITIAL_MARKET_METAL;
-  double _metalStorageCapacity = GameConstants.INITIAL_STORAGE_CAPACITY;
-  double _baseStorageEfficiency = GameConstants.BASE_EFFICIENCY;
-  bool _lowMetalNotified = false;
+
   static const double LOW_METAL_THRESHOLD = 20.0;
+
+
+  // Propriétés privées avec validation
+  double _metal;
+  double _marketMetalStock;
+  double _metalStorageCapacity;
+  double _baseStorageEfficiency;
+  bool _lowMetalNotified = false;
   final Function? onCrisisTriggered;
 
   // ===== GETTERS =====
-  double get metal => _metal;
-  double get marketMetalStock => _marketMetalStock;
+
   double get metalStorageCapacity => _metalStorageCapacity;
   double get baseStorageEfficiency => _baseStorageEfficiency;
-  double get maxMetalStorage => _metalStorageCapacity;
   double get effectiveStorageCapacity => _metalStorageCapacity;
   double get currentEfficiency => _baseStorageEfficiency;
+  // Getters avec logique de protection
+  double get metal => _metal;
+  double get marketMetalStock => _marketMetalStock;
+  double get maxMetalStorage => _metalStorageCapacity;
 
   // ===== CONSTRUCTEUR =====
   MetalManager({
@@ -30,33 +41,37 @@ class MetalManager extends ChangeNotifier {
     double initialMarketStock = GameConstants.INITIAL_MARKET_METAL,
     double initialStorageCapacity = GameConstants.INITIAL_STORAGE_CAPACITY,
     this.onCrisisTriggered,
+  }) :
+        _metal = _validateMetal(initialMetal),
+        _marketMetalStock = _validateMarketStock(initialMarketStock),
+        _metalStorageCapacity = _validateStorageCapacity(initialStorageCapacity),
+        _baseStorageEfficiency = GameConstants.BASE_EFFICIENCY;
 
-  }) {
-    _metal = initialMetal;
-    _marketMetalStock = initialMarketStock;
-    _metalStorageCapacity = initialStorageCapacity;
+  // Méthodes de validation statiques
+  static double _validateMetal(double value) {
+    if (value < 0) throw MetalManagerException('Le métal ne peut pas être négatif');
+    return value;
+  }
+
+  static double _validateMarketStock(double value) {
+    if (value < 0 || value > GameConstants.INITIAL_MARKET_METAL)
+      throw MetalManagerException('Stock de métal invalide');
+    return value;
+  }
+
+  static double _validateStorageCapacity(double value) {
+    if (value <= 0) throw MetalManagerException('Capacité de stockage invalide');
+    return value;
   }
 
   // ===== MÉTHODES DE MISE À JOUR =====
 
   /// Met à jour la quantité de métal du joueur
   void updateMetal(double newAmount) {
-    if (_metal != newAmount) {
-      _metal = newAmount.clamp(0, maxMetalStorage);
-
-      // Vérification pour notification de stock bas
-      if (_metal <= LOW_METAL_THRESHOLD && !_lowMetalNotified) {
-        _lowMetalNotified = true;
-        EventManager.instance.addEvent(
-            EventType.RESOURCE_DEPLETION,
-            'Stock Personnel Bas',
-            description: 'Votre stock de métal est inférieur à 20 unités',
-            importance: EventImportance.MEDIUM
-        );
-      } else if (_metal > LOW_METAL_THRESHOLD) {
-        _lowMetalNotified = false;
-      }
-
+    final validatedAmount = _validateMetal(newAmount);
+    if (_metal != validatedAmount) {
+      _metal = min(validatedAmount, maxMetalStorage);
+      _checkLowMetalNotification();
       notifyListeners();
     }
   }
@@ -64,8 +79,10 @@ class MetalManager extends ChangeNotifier {
   /// Met à jour le stock de métal du marché
   void updateMarketStock(double amount) {
     double previousStock = _marketMetalStock;
-    _marketMetalStock = (_marketMetalStock + amount)
-        .clamp(0.0, GameConstants.INITIAL_MARKET_METAL);
+    final newStock = _marketMetalStock + amount;
+    _marketMetalStock = _validateMarketStock(
+        newStock.clamp(0.0, GameConstants.INITIAL_MARKET_METAL)
+    );
 
     // Vérification pour crise du métal
     if (_marketMetalStock <= 0 && previousStock > 0) {
@@ -93,22 +110,13 @@ class MetalManager extends ChangeNotifier {
     required Function(double) updatePlayerMoney,
     double amount = GameConstants.METAL_PACK_AMOUNT
   }) {
-    // Vérification des conditions d'achat
     if (!canBuyMetal(metalPrice: price, playerMoney: playerMoney, amount: amount)) {
       return false;
     }
 
-    // Effectuer l'achat
     updateMetal(_metal + amount);
     updateMarketStock(-amount);
     updatePlayerMoney(playerMoney - price);
-
-
-
-    // Vérifier si stock de marché épuisé pour déclencher la crise
-    if (_marketMetalStock <= 0 && onCrisisTriggered != null) {
-      onCrisisTriggered!();
-    }
 
     return true;
   }
@@ -336,6 +344,20 @@ class MetalManager extends ChangeNotifier {
   // Méthode pour calculer le pourcentage de métal restant sur le marché
   double getMarketMetalPercentage() {
     return (_marketMetalStock / GameConstants.INITIAL_MARKET_METAL) * 100;
+  }
+  // Méthodes de vérification et de notification
+  void _checkLowMetalNotification() {
+    if (_metal <= 20.0 && !_lowMetalNotified) {
+      _lowMetalNotified = true;
+      EventManager.instance.addEvent(
+          EventType.RESOURCE_DEPLETION,
+          'Stock Personnel Bas',
+          description: 'Votre stock de métal est inférieur à 20 unités',
+          importance: EventImportance.MEDIUM
+      );
+    } else if (_metal > 20.0) {
+      _lowMetalNotified = false;
+    }
   }
 
   // Méthode pour notifier d'un niveau bas de métal

@@ -194,7 +194,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
     double speedBonus = (gameState.player.upgrades['speed']?.level ?? 0) * 15;
     double efficiencyBonus = 1.0 -
         ((gameState.player.upgrades['efficiency']?.level ?? 0) * 0.15);
-    double roi = gameState.player.calculateAutoclipperROI();
+    double roi = gameState.productionManager.calculateAutoclipperROI(gameState.player.sellPrice);
 
     return Card(
       elevation: 2,
@@ -268,8 +268,8 @@ class _ProductionScreenState extends State<ProductionScreen> {
             const SizedBox(height: 12),
             _buildActionButton(
               onPressed: gameState.player.money >=
-                  gameState.player.calculateAutoclipperCost()
-                  ? () => gameState.player.purchaseAutoclipper()
+                  gameState.productionManager.calculateAutoclipperCost()
+                  ? () => gameState.buyAutoclipper()
                   : null,
               label: 'Acheter Autoclipper (${gameState.player
                   .calculateAutoclipperCost().toStringAsFixed(1)} €)',

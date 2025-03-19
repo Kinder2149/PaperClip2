@@ -1122,9 +1122,7 @@ class _MainScreenState extends State<MainScreen> {
                                   ListTile(
                                     leading: const Icon(Icons.attach_money),
                                     title: const Text('Plus Grandes Fortunes'),
-                                    subtitle: Text(
-                                        'Fortune: ${gameState.statistics
-                                            .getTotalMoneyEarned().toInt()}'),
+                                    subtitle: Text('Argent gagné: ${gameState.statistics.getTotalMoneyEarned().toInt()}'),
                                     onTap: () =>
                                         gameState.showBankerLeaderboard(),
                                   ),

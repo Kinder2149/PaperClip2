@@ -1,4 +1,5 @@
 // lib/models/player_manager.dart
+
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:math';
@@ -8,6 +9,9 @@ import 'progression_system.dart';
 import 'resource_manager.dart';
 import 'market.dart';
 import 'package:paperclip2/managers/metal_manager.dart';
+import 'game_state.dart';
+
+
 /// Représente une amélioration du jeu
 class Upgrade {
   final String id;
@@ -19,6 +23,8 @@ class Upgrade {
   final int maxLevel;
   final int? requiredLevel;
   final Map<String, dynamic>? requirements;
+
+
 
 
   Upgrade({
@@ -112,7 +118,6 @@ class Upgrade {
           baseCost: 175,
           requiredLevel: 6,
         );
-    // Ajout du cas pour 'automation'
       case 'automation':
         return Upgrade(
           id: 'automation',
@@ -128,6 +133,7 @@ class Upgrade {
     }
   }
 }
+
 class UpgradeManager {
   static const List<String> VALID_UPGRADE_IDS = [
     'efficiency',
@@ -146,49 +152,45 @@ class UpgradeManager {
 
 /// Gestionnaire des ressources du joueur
 class PlayerManager extends ChangeNotifier {
+  final GameState _gameState;
 
   double _money = 0.0;
   double _sellPrice = 0.25;
 
+  final LevelSystem levelSystem;
   final MarketManager marketManager;
   final MetalManager metalManager;
-  final LevelSystem levelSystem;
   double maxMetalStorage = GameConstants.INITIAL_STORAGE_CAPACITY;
   bool _lowMetalNotified = false;
   static const double LOW_METAL_THRESHOLD = 20.0;
 
-
-
-
-
   // Getters
-  double get paperclips => _paperclips;
   double get money => _money;
-  int get autoclippers => _autoclippers;
   double get sellPrice => _sellPrice;
-  // Getters
   Map<String, Upgrade> get upgrades => _upgrades;
   MetalManager get resourceManager => metalManager;
+
+  // Getters de redirection vers ProductionManager
+  double get paperclips => _gameState.productionManager.paperclips;
+  int get autoclippers => _gameState.productionManager.autoclippers;
 
   Timer? _maintenanceTimer;
   Timer? _autoSaveTimer;
   double _maintenanceCosts = 0.0;
 
   PlayerManager({
+    required GameState gameState, // Ajouter ce paramètre
     required this.levelSystem,
     required this.metalManager,
     required this.marketManager,
-  }) {
+  }) : _gameState = gameState {  // Initialiser la référence à GameState
     _initializeUpgrades();
     _startTimers();
   }
+
   // Getters
   double get maintenanceCosts => _maintenanceCosts;
   double get metal => metalManager.metal;
-
-
-
-
 
   final Map<String, Upgrade> _upgrades = {
     'efficiency': Upgrade(
@@ -200,7 +202,6 @@ class PlayerManager extends ChangeNotifier {
       maxLevel: GameConstants.MAX_EFFICIENCY_LEVEL,
       requiredLevel: 5,
     ),
-
     'marketing': Upgrade(
       id: "marketing",
       name: 'Marketing',
@@ -245,50 +246,29 @@ class PlayerManager extends ChangeNotifier {
     ),
   };
 
-
-
-
-
-
-
-  // Dans lib/models/player_manager.dart
-  void fromJson(Map<String, dynamic> json) {
-    _paperclips = (json['paperclips'] as num?)?.toDouble() ?? 0.0;
-    _money = (json['money'] as num?)?.toDouble() ?? 0.0;
-    // _metal = (json['metal'] as num?)?.toDouble() ?? 0.0;  // Supprimer cette ligne
-    _autoclippers = (json['autoclippers'] as num?)?.toInt() ?? 0;
-    _sellPrice = (json['sellPrice'] as num?)?.toDouble() ?? GameConstants.INITIAL_PRICE;
-
-    // Réinitialiser d'abord les upgrades
-    _initializeUpgrades();
-
-    // Charger les upgrades
-    final upgradesData = json['upgrades'] as Map<String, dynamic>? ?? {};
-    upgradesData.forEach((key, value) {
-      if (_upgrades.containsKey(key)) {
-        _upgrades[key]!.level = (value['level'] as num?)?.toInt() ?? 0;
-
-        // Mise à jour immédiate des effets des améliorations
-        if (key == 'storage') {
-          double newCapacity = GameConstants.INITIAL_STORAGE_CAPACITY *
-              (1 + (_upgrades[key]!.level * GameConstants.STORAGE_UPGRADE_MULTIPLIER));
-          maxMetalStorage = newCapacity;
-          resourceManager.upgradeStorageCapacity(_upgrades[key]!.level);
-        }
-      }
-    });
-
-    notifyListeners();
-  }
-
-
-
-
   Map<String, dynamic> toJson() => {
     'money': _money,
     'sellPrice': _sellPrice,
     'upgrades': upgrades.map((key, value) => MapEntry(key, value.toJson())),
   };
+// Méthode pour rediriger vers ProductionManager
+  void updateAutoclippers(int newAmount) {
+    _gameState.productionManager.updateAutoclippers(newAmount);
+  }
+
+  void updatePaperclips(double newAmount) {
+    _gameState.productionManager.updatePaperclips(newAmount);
+  }
+  double calculateAutoclipperCost() {
+    return _gameState.productionManager.calculateAutoclipperCost();
+  }
+
+  bool purchaseAutoclipper() {
+    return _gameState.productionManager.buyAutoclipper(
+        _money,
+            (newMoney) => updateMoney(newMoney)
+    );
+  }
 
   void fromJson(Map<String, dynamic> json) {
     _money = (json['money'] as num?)?.toDouble() ?? 0.0;
@@ -316,20 +296,11 @@ class PlayerManager extends ChangeNotifier {
     notifyListeners();
   }
 
-
-
-
-
   void resetResources() {
-    // _metal = GameConstants.INITIAL_METAL;  // Supprimer cette ligne
     _money = GameConstants.INITIAL_MONEY;
-    _paperclips = 0;
-    _autoclippers = 0;
     _sellPrice = GameConstants.INITIAL_PRICE;
     notifyListeners();
   }
-
-
 
   void _initializeUpgrades() {
     final upgradeIds = [
@@ -339,7 +310,7 @@ class PlayerManager extends ChangeNotifier {
       'marketing',
       'bulk',
       'storage',
-      'automation'  // Ajout de 'automation' ici
+      'automation'
     ];
 
     for (var id in upgradeIds) {
@@ -387,12 +358,6 @@ class PlayerManager extends ChangeNotifier {
       case 'efficiency':
         resourceManager.improveStorageEfficiency(upgrade.level);
         break;
-      case 'bulk':
-        _updateProductionMultiplier();
-        break;
-      case 'marketing':
-        marketManager.updateMarketingBonus(upgrade.level);
-        break;
     }
 
     levelSystem.addUpgradePurchase(upgrade.level);
@@ -411,39 +376,23 @@ class PlayerManager extends ChangeNotifier {
   }
 
 
-  bool canBuyAutoclipper() {
-    double cost = calculateAutoclipperCost();
-    return _money >= cost;
+// Ajouter cette méthode pour la compatibilité
+  void loadFromJson(Map<String, dynamic> json) {
+    fromJson(json);
   }
 
-
-
-
-
+  // Ajout des méthodes manquantes
+  void updateMaxMetalStorage(double newCapacity) {
+    maxMetalStorage = newCapacity;
+    notifyListeners();
+  }
 
   void _applyMaintenanceCosts() {
-    if (_autoclippers == 0) return;
-
-    _maintenanceCosts = _autoclippers *
-        GameConstants.STORAGE_MAINTENANCE_RATE;
-
-    if (_money >= _maintenanceCosts) {
-      _money -= _maintenanceCosts;
-      notifyListeners();
-    } else {
-      // Pénalité pour maintenance impayée
-      _autoclippers = (_autoclippers * 0.9).floor();
-      EventManager.instance.addEvent(
-          EventType.RESOURCE_DEPLETION,
-          "Maintenance impayée !",
-          description: "Certaines autoclippeuses sont hors service",
-          importance: EventImportance.HIGH
-      );
-      notifyListeners();
-    }
+    // Méthode désormais gérée par ProductionManager
+    // Cette méthode reste ici comme stub pour éviter les erreurs
+    _maintenanceCosts = 0.0;
+    notifyListeners();
   }
-
-
 
   void updateMoney(double newAmount) {
     if (_money != newAmount) {
@@ -451,9 +400,6 @@ class PlayerManager extends ChangeNotifier {
       notifyListeners();
     }
   }
-
-
-
 
   void updateSellPrice(double newPrice) {
     if (_sellPrice != newPrice) {
@@ -470,15 +416,12 @@ class PlayerManager extends ChangeNotifier {
         'timestamp': DateTime.now().toIso8601String(),
         'upgrades': _upgrades.map((key, value) => MapEntry(key, value.toJson())),
         'resources': {
-          'paperclips': _paperclips,
           'money': _money,
-          'autoclippers': _autoclippers,
           'sellPrice': _sellPrice,
         }
       };
 
       // Enregistrer dans les préférences partagées ou le stockage local
-      // Note: Nous devons implémenter cette partie selon le système de stockage utilisé
       _saveToStorage(saveData);
 
       // Notification de sauvegarde réussie
@@ -499,11 +442,8 @@ class PlayerManager extends ChangeNotifier {
     }
   }
 
-// Méthode à implémenter pour le stockage effectif des données
   Future<void> _saveToStorage(Map<String, dynamic> data) async {
     // TODO: Implémenter la logique de stockage
-    // Cette méthode devrait être implémentée selon le système de stockage choisi
-    // (SharedPreferences, Hive, SQLite, etc.)
   }
 
   void updateUpgrade(String id, int level) {
@@ -512,11 +452,10 @@ class PlayerManager extends ChangeNotifier {
       notifyListeners();
     }
   }
+
   int getMarketingLevel() {
     return upgrades['marketing']?.level ?? 0;
   }
-
-
 
   @override
   void dispose() {

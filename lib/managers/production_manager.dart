@@ -1,5 +1,4 @@
 // lib/managers/production_manager.dart
-
 import 'package:flutter/foundation.dart';
 import '../models/game_config.dart';
 import '../models/event_system.dart';
@@ -7,29 +6,45 @@ import '../models/progression_system.dart';
 import 'metal_manager.dart';
 import 'dart:math' show min;
 
+class ProductionManagerException implements Exception {
+  final String message;
+  ProductionManagerException(this.message);
+}
+
+class ProductionResult {
+  final int producedPaperclips;
+  final double metalUsed;
+  final double metalSaved;
+
+  ProductionResult({
+    required this.producedPaperclips,
+    required this.metalUsed,
+    required this.metalSaved,
+  });
+}
+
 class ProductionManager extends ChangeNotifier {
-  // ===== PROPRIÉTÉS =====
-  double _paperclips = 0.0;
-  int _autoclippers = 0;
-  int _totalPaperclipsProduced = 0;
+  // Propriétés privées avec validation
+  double _paperclips;
+  int _autoclippers;
+  int _totalPaperclipsProduced;
 
   // Dépendances
   final MetalManager _metalManager;
   final LevelSystem _levelSystem;
 
-  // Callback pour notifications d'événements
+  // Callbacks
   final Function(String) _showNotification;
+  final Function(int, double, double) _updateStatistics;
+  final Function(String) getUpgradeLevel;
 
-  // ===== GETTERS =====
-  double get paperclips => _paperclips;
-  int get autoclippers => _autoclippers;
-  int get totalPaperclipsProduced => _totalPaperclipsProduced;
-
-  // ===== CONSTRUCTEUR =====
+  // Constructeur avec validation
   ProductionManager({
     required MetalManager metalManager,
     required LevelSystem levelSystem,
     required Function(String) showNotification,
+    required this.getUpgradeLevel,
+    required Function(int, double, double) updateStatistics,
     double initialPaperclips = 0.0,
     int initialAutoclippers = 0,
     int initialTotalProduced = 0,
@@ -37,100 +52,65 @@ class ProductionManager extends ChangeNotifier {
         _metalManager = metalManager,
         _levelSystem = levelSystem,
         _showNotification = showNotification,
-        _paperclips = initialPaperclips,
-        _autoclippers = initialAutoclippers,
-        _totalPaperclipsProduced = initialTotalProduced;
+        _updateStatistics = updateStatistics,
+        _paperclips = _validatePaperclips(initialPaperclips),
+        _autoclippers = _validateAutoclippers(initialAutoclippers),
+        _totalPaperclipsProduced = _validateTotalProduced(initialTotalProduced);
 
-  // ===== MÉTHODES DE PRODUCTION =====
-
-  /// Production manuelle d'un trombone
-  bool produceManualPaperclip() {
-    // Tenter de produire un trombone avec le métal disponible
-    if (_metalManager.produceManualPaperclip(
-        updateStatistics: (amount, metalUsed) {
-          // Ces statistiques seraient idéalement gérées par un StatisticsManager
-        }
-    )) {
-      // Mettre à jour les compteurs
-      updatePaperclips(_paperclips + 1);
-      _totalPaperclipsProduced++;
-
-      // Ajouter de l'expérience pour la production manuelle
-      _levelSystem.addManualProduction();
-
-      notifyListeners();
-      return true;
-    }
-    return false;
+  // Méthodes de validation statiques
+  static double _validatePaperclips(double value) {
+    if (value < 0) throw ProductionManagerException('Paperclips cannot be negative');
+    return value;
   }
 
-  /// Processus de production automatique (à appeler périodiquement)
-  void processProduction() {
-    if (_autoclippers <= 0) return;
+  static int _validateAutoclippers(int value) {
+    if (value < 0) throw ProductionManagerException('Autoclippers cannot be negative');
+    return value;
+  }
 
-    // Calcul des bonus
-    double speedBonus = 1.0 + ((getUpgradeLevel('speed') ?? 0) * 0.20);
-    double bulkBonus = 1.0 + ((getUpgradeLevel('bulk') ?? 0) * 0.35);
-    double efficiencyLevel = (getUpgradeLevel('efficiency') ?? 0).toDouble();
+  static int _validateTotalProduced(int value) {
+    if (value < 0) throw ProductionManagerException('Total produced cannot be negative');
+    return value;
+  }
 
-    // Calcul de la production basée sur le métal disponible
-    int actualProduction = _metalManager.calculateMetalBasedProduction(
-        autoclippers: _autoclippers,
-        speedBonus: speedBonus,
-        bulkBonus: bulkBonus,
-        efficiencyLevel: efficiencyLevel
+  // Getters
+  double get paperclips => _paperclips;
+  int get autoclippers => _autoclippers;
+  int get totalPaperclipsProduced => _totalPaperclipsProduced;
+
+  // Méthode de production manuelle
+  bool produceManualPaperclip() {
+    final metalConsumptionResult = _metalManager.produceManualPaperclip(
+        updateStatistics: (amount, metalUsed) {
+          _updateStatistics(amount.toInt(), metalUsed, 0.0);
+        }
     );
 
-    if (actualProduction > 0) {
-      // Consommer le métal pour la production
-      _metalManager.consumeMetalForProduction(
-          productionAmount: actualProduction,
-          efficiencyLevel: efficiencyLevel,
-          updateStatistics: (production, metalUsed, metalSaved) {
-            // Ces statistiques seraient idéalement gérées par un StatisticsManager
-          }
-      );
-
-      // Mettre à jour les compteurs
-      updatePaperclips(_paperclips + actualProduction);
-      _totalPaperclipsProduced += actualProduction;
-
-      // Ajouter de l'expérience pour la production automatique
-      _levelSystem.addAutomaticProduction(actualProduction);
-
-      notifyListeners();
-    }
-  }
-
-  // ===== MÉTHODES DE GESTION DES AUTOCLIPPERS =====
-
-  /// Calcule le coût d'un nouvel autoclipper
-  double calculateAutoclipperCost() {
-    double baseCost = GameConstants.BASE_AUTOCLIPPER_COST;
-    double automationDiscount = 1.0 - ((getUpgradeLevel('automation') ?? 0) * 0.10);
-    return baseCost * (1.15 * _autoclippers) * automationDiscount;
-  }
-
-  /// Achat d'un autoclipper
-  bool buyAutoclipper(double playerMoney, Function(double) updatePlayerMoney) {
-    double cost = calculateAutoclipperCost();
-    if (playerMoney >= cost) {
-      // Déduire le coût
-      updatePlayerMoney(playerMoney - cost);
-
-      // Ajouter l'autoclipper
-      updateAutoclippers(_autoclippers + 1);
-
-      // Ajouter de l'expérience pour l'achat
-      _levelSystem.addAutoclipperPurchase();
-
+    if (metalConsumptionResult) {
+      _paperclips += 1;
+      _totalPaperclipsProduced++;
+      _levelSystem.addManualProduction();
       notifyListeners();
       return true;
     }
     return false;
   }
 
-  /// Calcule le retour sur investissement d'un autoclipper
+  void updateAutoclippers(int newAmount) {
+    if (_autoclippers != newAmount) {
+      _autoclippers = _validateAutoclippers(newAmount);
+      notifyListeners();
+    }
+  }
+
+  void updatePaperclips(double newAmount) {
+    if (_paperclips != newAmount) {
+      _paperclips = _validatePaperclips(newAmount);
+      notifyListeners();
+    }
+  }
+
+  // Méthode de calcul du ROI des autoclippers
   double calculateAutoclipperROI(double sellPrice) {
     double cost = calculateAutoclipperCost();
     double revenuePerSecond = GameConstants.BASE_AUTOCLIPPER_PRODUCTION * sellPrice;
@@ -142,63 +122,92 @@ class ProductionManager extends ChangeNotifier {
     return cost / revenuePerSecond;
   }
 
-  // ===== MÉTHODES DE CALCUL DE PRODUCTION =====
 
-  /// Calcule le multiplicateur de production basé sur les améliorations
-  double getProductionMultiplier() {
-    double bulkBonus = (getUpgradeLevel('bulk') ?? 0) * GameConstants.BULK_UPGRADE_BASE;
-    return 1.0 + bulkBonus;
-  }
-
-  // ===== MÉTHODES UTILITAIRES =====
-
-  /// Met à jour le nombre de trombones
-  void updatePaperclips(double newAmount) {
-    if (_paperclips != newAmount) {
-      _paperclips = newAmount;
-      notifyListeners();
+  // Méthode de production automatique
+  ProductionResult processProduction() {
+    if (_autoclippers <= 0) {
+      return ProductionResult(
+          producedPaperclips: 0,
+          metalUsed: 0,
+          metalSaved: 0
+      );
     }
-  }
 
-  /// Met à jour le nombre d'autoclippers
-  void updateAutoclippers(int newAmount) {
-    if (_autoclippers != newAmount) {
-      _autoclippers = newAmount;
+    // Calcul des bonus
+    double speedBonus = 1.0 + ((getUpgradeLevel('speed') ?? 0) * 0.20);
+    double bulkBonus = 1.0 + ((getUpgradeLevel('bulk') ?? 0) * 0.35);
+    double efficiencyLevel = (getUpgradeLevel('efficiency') ?? 0).toDouble();
 
-      // Mise à jour des capacités de production
-      notifyListeners();
+    // Calcul de la production
+    int actualProduction = _metalManager.calculateMetalBasedProduction(
+        autoclippers: _autoclippers,
+        speedBonus: speedBonus,
+        bulkBonus: bulkBonus,
+        efficiencyLevel: efficiencyLevel
+    );
+
+    if (actualProduction > 0) {
+      // Consommation du métal
+      final productionSuccess = _metalManager.consumeMetalForProduction(
+          productionAmount: actualProduction,
+          efficiencyLevel: efficiencyLevel,
+          updateStatistics: (production, metalUsed, metalSaved) {
+            _updateStatistics(production, metalUsed, metalSaved);
+          }
+      );
+
+      if (productionSuccess) {
+        _paperclips += actualProduction;
+        _totalPaperclipsProduced += actualProduction;
+        _levelSystem.addAutomaticProduction(actualProduction);
+        notifyListeners();
+
+        return ProductionResult(
+            producedPaperclips: actualProduction,
+            metalUsed: 0, // À calculer précisément
+            metalSaved: 0 // À calculer précisément
+        );
+      }
     }
+
+    return ProductionResult(
+        producedPaperclips: 0,
+        metalUsed: 0,
+        metalSaved: 0
+    );
   }
 
-  /// Reset les données de production
-  void reset() {
-    _paperclips = 0.0;
-    _autoclippers = 0;
-    _totalPaperclipsProduced = 0;
-    notifyListeners();
+  // Méthode d'achat d'autoclipper
+  bool buyAutoclipper(double playerMoney, Function(double) updatePlayerMoney) {
+    double cost = calculateAutoclipperCost();
+    if (playerMoney >= cost) {
+      updatePlayerMoney(playerMoney - cost);
+      _autoclippers++;
+      _levelSystem.addAutoclipperPurchase();
+      notifyListeners();
+      return true;
+    }
+    return false;
   }
 
-  // ===== Méthode temporaire (à remplacer par UpgradeManager) =====
-  int? getUpgradeLevel(String upgradeId) {
-    // Cette méthode devrait idéalement provenir d'un UpgradeManager
-    // Pour l'instant, nous utilisons une approche simplifiée
-    return 0; // Valeur par défaut
+  // Calcul du coût d'un autoclipper
+  double calculateAutoclipperCost() {
+    double baseCost = GameConstants.BASE_AUTOCLIPPER_COST;
+    double automationDiscount = 1.0 - ((getUpgradeLevel('automation') ?? 0) * 0.10);
+    return baseCost * (1.15 * _autoclippers) * automationDiscount;
   }
 
-  // ===== SÉRIALISATION =====
-
-  /// Convertit l'état en JSON
+  // Méthodes de sérialisation
   Map<String, dynamic> toJson() => {
     'paperclips': _paperclips,
     'autoclippers': _autoclippers,
     'totalPaperclipsProduced': _totalPaperclipsProduced,
   };
 
-  /// Charge l'état depuis JSON
   void fromJson(Map<String, dynamic> json) {
-    _paperclips = (json['paperclips'] as num?)?.toDouble() ?? 0.0;
-    _autoclippers = (json['autoclippers'] as num?)?.toInt() ?? 0;
-    _totalPaperclipsProduced = (json['totalPaperclipsProduced'] as num?)?.toInt() ?? 0;
+    _paperclips = _validatePaperclips(json['paperclips'] ?? 0.0);
+    _autoclippers = _validateAutoclippers(json['autoclippers'] ?? 0);
+    _totalPaperclipsProduced = _validateTotalProduced(json['totalPaperclipsProduced'] ?? 0);
     notifyListeners();
   }
 }

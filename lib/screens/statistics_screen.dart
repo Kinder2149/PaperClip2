@@ -1,7 +1,9 @@
+// Modifications à apporter à lib/screens/statistics_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
-import 'package:paperclip2/models/game_state_interfaces.dart';
+import '../managers/statistics_manager.dart'; // Ajouter cet import
 
 class StatisticsScreen extends StatelessWidget {
   const StatisticsScreen({Key? key}) : super(key: key);
@@ -10,7 +12,7 @@ class StatisticsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<GameState>(
       builder: (context, gameState, _) {
-        final stats = gameState.statistics.getAllStats();
+        final stats = gameState.statistics.getAllStats(); // Utiliser getAllStats() du nouveau manager
 
         return SafeArea(
           child: SingleChildScrollView(
@@ -32,11 +34,11 @@ class StatisticsScreen extends StatelessWidget {
                         ),
                         _buildStatRow(
                           'Argent Total',
-                          stats['economie']?['Argent gagné'] ?? 0,
+                          stats['economie']?['Argent Gagné'] ?? 0,
                         ),
                         _buildStatRow(
                           'Niveau',
-                          stats['progression']?['Niveau actuel'] ?? 0,
+                          stats['progression']?['Niveau Max'] ?? 0,
                         ),
                       ],
                     ),
@@ -48,6 +50,11 @@ class StatisticsScreen extends StatelessWidget {
                 _buildStatSection('Économie', stats['economie']!),
                 const SizedBox(height: 16),
                 _buildStatSection('Progression', stats['progression']!),
+                // Ajout d'une nouvelle section pour les statistiques de crise
+                if (stats.containsKey('crise')) ...[
+                  const SizedBox(height: 16),
+                  _buildStatSection('Crise', stats['crise']!),
+                ],
               ],
             ),
           ),
@@ -56,6 +63,7 @@ class StatisticsScreen extends StatelessWidget {
     );
   }
 
+  // Le reste du code reste inchangé
   Widget _buildStatSection(String title, Map<String, dynamic> stats) {
     return Card(
       elevation: 2,
@@ -98,14 +106,11 @@ class StatisticsScreen extends StatelessWidget {
         return Icons.attach_money;
       case 'progression':
         return Icons.trending_up;
+      case 'crise':
+        return Icons.warning_amber_outlined;
       default:
         return Icons.analytics;
     }
-  }
-
-  String _getDisplayValue(dynamic value) {
-    if (value == null) return '0';
-    return value.toString();
   }
 
   Widget _buildStatRow(String label, dynamic value) {
@@ -140,5 +145,10 @@ class StatisticsScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _getDisplayValue(dynamic value) {
+    if (value == null) return '0';
+    return value.toString();
   }
 }

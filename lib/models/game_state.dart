@@ -15,7 +15,6 @@ import 'player_manager.dart';
 import 'market.dart';
 import 'progression_system.dart';
 import 'resource_manager.dart';
-import 'game_state_interfaces.dart';
 import 'dart:convert';
 import '../utils/notification_manager.dart';
 import '../dialogs/metal_crisis_dialog.dart';
@@ -27,6 +26,7 @@ import 'package:paperclip2/services/cloud_save_manager.dart';
 import 'package:games_services/games_services.dart' as gs;
 import '../services/save_manager.dart' show SaveGame, SaveError, SaveGameInfo, SaveManager;
 import '../managers/metal_manager.dart';
+import '../managers/statistics_manager.dart';
 import '../managers/production_manager.dart';
 
 
@@ -101,32 +101,28 @@ class GameState extends ChangeNotifier {
     return DateTime.now().difference(_competitiveStartTime!);
   }
 
+
+
   void _createManagers() {
     try {
       _statistics = StatisticsManager();
+      _levelSystem = LevelSystem();
+      // Suppression de cette ligne qui cause le problème:
+      // _statistics = StatisticsManager();
+      _missionSystem = MissionSystem();
       _metalManager = MetalManager(
           onCrisisTriggered: () {
             enterCrisisMode();
           }
       );
-
       _marketManager = MarketManager(MarketDynamics());
-      _levelSystem = LevelSystem();
-      _missionSystem = MissionSystem();
       _autoSaveService = AutoSaveService(this);
 
-      _playerManager = PlayerManager(
-        levelSystem: _levelSystem,
-        metalManager: _metalManager,
-        marketManager: _marketManager,
-      );
-
-      // Ajouter l'initialisation du ProductionManager
+      // Création de ProductionManager
       _productionManager = ProductionManager(
         metalManager: _metalManager,
         levelSystem: _levelSystem,
         showNotification: (message) {
-          // Fonction pour afficher les notifications
           EventManager.instance.addEvent(
               EventType.INFO,
               "Production",
@@ -134,12 +130,34 @@ class GameState extends ChangeNotifier {
               importance: EventImportance.LOW
           );
         },
+        getUpgradeLevel: (upgradeId) => _playerManager?.upgrades[upgradeId]?.level ?? 0,
+        updateStatistics: (quantity, metalUsed, metalSaved) {
+          _statistics.updateProduction(
+            isManual: false,
+            amount: quantity,
+            metalUsed: metalUsed,
+            metalSaved: metalSaved,
+            efficiency: metalSaved / (metalUsed + metalSaved),
+          );
+        },
+        initialPaperclips: 0.0,
+        initialAutoclippers: 0,
+        initialTotalProduced: 0,
+      );
+
+      // Création du PlayerManager avec référence à this (GameState)
+      _playerManager = PlayerManager(
+        gameState: this,
+        levelSystem: _levelSystem,
+        metalManager: _metalManager,
+        marketManager: _marketManager,
       );
     } catch (e) {
       print('Erreur lors de la création des managers: $e');
       rethrow;
     }
   }
+
   void _updateLeaderboardsOnMilestone() {
     if (_totalPaperclipsProduced % 100 == 0 ||     // Tous les 100 trombones
         levelSystem.level % 5 == 0 ||               // Tous les 5 niveaux
@@ -529,9 +547,7 @@ class GameState extends ChangeNotifier {
     _playTimeTimer?.cancel();
     _playTimeTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       _totalTimePlayedInSeconds++;
-      _statistics.updateProgression(
-          playTime: const Duration(seconds: 1)
-      );
+      _statistics.updatePlayTime(const Duration(seconds: 1));
       notifyListeners();
     });
   }
@@ -626,8 +642,38 @@ class GameState extends ChangeNotifier {
 
 
   void processProduction() {
+    // Obtenir l'état avant la production
+    int previousTotal = _totalPaperclipsProduced;
+    double metalBefore = _metalManager.metal;
+
+    // Appeler la méthode de production originale
     _productionManager.processProduction();
+
+    // Calculer la quantité produite et le métal utilisé
+    int productionAmount = _totalPaperclipsProduced - previousTotal;
+    double metalAfter = _metalManager.metal;
+    double metalUsed = metalBefore - metalAfter;
+
+    // Si la production a eu lieu, mettre à jour les statistiques
+    if (productionAmount > 0) {
+      // Calculer les autres métriques
+      double metalSaved = 0.0; // À calculer selon votre logique d'efficacité
+      double efficiency = 0.0; // À calculer selon votre logique
+
+      // Mettre à jour les statistiques
+      _statistics.updateProduction(
+          isManual: false,
+          amount: productionAmount,
+          metalUsed: metalUsed,
+          metalSaved: metalSaved,
+          efficiency: efficiency
+      );
+
+      // Enregistrer les records si nécessaire
+      _statistics.updateRecord('maxProduction', productionAmount);
+    }
   }
+
 
 
 
@@ -639,6 +685,15 @@ class GameState extends ChangeNotifier {
     player.updatePaperclips(player.paperclips + amount);
     _totalPaperclipsProduced += amount.floor();
     level.addAutomaticProduction(amount.floor());
+
+    _statistics.updateProduction(
+        isManual: false,
+        amount: amount.floor(), // Utiliser une variable disponible pour la quantité produite
+        metalUsed: _metalManager.metal, // Utiliser une variable disponible pour le métal utilisé
+        metalSaved: 0.0, // Ajuster selon votre logique
+        efficiency: 0.0 // Ajuster selon votre logique
+    );
+
 
     missionSystem.updateMissions(
         MissionType.PRODUCE_PAPERCLIPS,
@@ -689,13 +744,16 @@ class GameState extends ChangeNotifier {
 
         // Ajout statistiques
         _statistics.updateEconomics(
-          moneyEarned: revenue,
-          sales: potentialSales,
-          price: salePrice,
+            moneyEarned: revenue,
+            sales: potentialSales,
+            price: salePrice,
+            saleRecord: SaleRecord(
+                timestamp: DateTime.now(),
+                quantity: potentialSales,
+                price: salePrice,
+                revenue: revenue
+            )
         );
-        if (revenue >= 1000) { // Seuil arbitraire de 1000
-          updateLeaderboard();
-        }
       }
     }
   }
@@ -751,6 +809,10 @@ class GameState extends ChangeNotifier {
         playerMoney: playerManager.money,
         updatePlayerMoney: (newMoney) => playerManager.updateMoney(newMoney)
     );
+    _statistics.updateEconomics(
+        moneySpent: marketManager.currentMetalPrice,
+        metalBought: GameConstants.METAL_PACK_AMOUNT
+    );
   }
 
   bool _canBuyMetal() {
@@ -795,6 +857,7 @@ class GameState extends ChangeNotifier {
 
   // Gestion des niveaux et missions
   void _handleLevelUp(int newLevel, List<UnlockableFeature> newFeatures) {
+    _statistics.updateProgression(level: newLevel);
     for (var feature in newFeatures) {
       switch (feature) {
         case UnlockableFeature.MANUAL_PRODUCTION:
@@ -1204,12 +1267,12 @@ class GameState extends ChangeNotifier {
     bool success = playerManager.purchaseUpgrade(upgradeId);
 
     if (success) {
-      levelSystem.addUpgradePurchase(upgrade.level);
-
-      // Ajout statistiques
-      _statistics.updateProgression(upgradesBought: 1);
+      // Après levelSystem.addUpgradePurchase(upgrade.level);
+      _statistics.updateProgression(
+          upgradesBought: 1,
+          upgradeType: upgradeId
+      );
       _statistics.updateEconomics(moneySpent: cost);
-      saveOnImportantEvent();
     }
 
     return success;

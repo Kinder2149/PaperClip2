@@ -48,18 +48,21 @@ class SaleRecord {
   final int quantity;
   final double price;
   final double revenue;
+  final double? profit;
 
   SaleRecord({
     required this.timestamp,
     required this.quantity,
     required this.price,
     required this.revenue,
+    this.profit,
   });
   Map<String, dynamic> toJson() => {
     'timestamp': timestamp.toIso8601String(),
     'quantity': quantity,
     'price': price,
     'revenue': revenue,
+    'profit': profit,
   };
 
 
@@ -67,9 +70,14 @@ class SaleRecord {
     return SaleRecord(
       timestamp: DateTime.parse(json['timestamp']),
       quantity: json['quantity'],
-      price: json['price'].toDouble(),
-      revenue: json['revenue'].toDouble(),
+      price: (json['price'] as num).toDouble(),
+      revenue: (json['revenue'] as num).toDouble(),
+      profit: json['profit'] != null ? (json['profit'] as num).toDouble() : null,
     );
+  }
+// Calcul du bénéfice (même si pas fourni lors de la création)
+  double calculateProfit(double costPerUnit) {
+    return revenue - (quantity * costPerUnit);
   }
 }
 
