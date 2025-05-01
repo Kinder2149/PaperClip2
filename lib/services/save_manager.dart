@@ -45,7 +45,7 @@ class SaveDataValidator {
   };
 
   static ValidationResult validate(Map<String, dynamic> data) {
-    List<String> errors = [];  // Correction ici : List<String> au lieu de final errors = <String>();
+    List<String> errors = [];    // Correction ici : List<String> au lieu de final errors = <String>();
 
     // Vérification de base
     if (!data.containsKey('version') || !data.containsKey('timestamp')) {
@@ -97,6 +97,7 @@ class SaveDataValidator {
   }
 
   static bool _validateMandatorySections(Map<String, dynamic> data, List<String> errors) {
+    // Vérifier que playerManager existe
     if (!data.containsKey('playerManager')) {
       errors.add('Section manquante: playerManager');
       return false;
@@ -108,15 +109,86 @@ class SaveDataValidator {
       return false;
     }
 
-    final requiredFields = ['paperclips', 'money', 'metal'];
+    // Vérifier la présence de paperclips soit dans playerManager soit dans productionManager
+    bool paperclipsFound = false;
+    if (playerData.containsKey('paperclips')) {
+      paperclipsFound = true;
+    } else if (data.containsKey('productionManager')) {
+      final productionData = data['productionManager'] as Map<String, dynamic>?;
+      if (productionData != null && productionData.containsKey('paperclips')) {
+        paperclipsFound = true;
+        // On ne copie pas la valeur pour éviter de modifier les données d'entrée
+      }
+    }
+
+    if (!paperclipsFound) {
+      errors.add('Champ paperclips introuvable dans playerManager ou productionManager');
+      return false;
+    }
+
+    // Vérifier les autres champs essentiels
+    final requiredFields = ['money', 'metal'];
     for (var field in requiredFields) {
+      // Vérifie dans playerManager d'abord
       if (!playerData.containsKey(field)) {
+        // Si absent de playerManager, vérifier dans metalManager pour 'metal'
+        if (field == 'metal' && data.containsKey('metalManager')) {
+          final metalData = data['metalManager'] as Map<String, dynamic>?;
+          if (metalData != null && metalData.containsKey('metal')) {
+            continue; // Le champ existe dans metalManager, continuer la validation
+          }
+        }
         errors.add('Champ manquant dans playerManager: $field');
         return false;
       }
     }
 
     return true;
+  }
+  static Future<bool> quickValidate(Map<String, dynamic> data) async {
+    try {
+      // Vérifier les champs critiques minimaux
+      if (!data.containsKey('version') || !data.containsKey('timestamp')) {
+        return false;
+      }
+
+      // Vérifier la présence du joueur
+      if (!data.containsKey('playerManager')) {
+        return false;
+      }
+
+      // Vérifier les données de production
+      bool paperclipsFound = false;
+
+      final playerData = data['playerManager'] as Map<String, dynamic>?;
+      if (playerData?.containsKey('paperclips') == true) {
+        paperclipsFound = true;
+      } else if (data.containsKey('productionManager')) {
+        final productionData = data['productionManager'] as Map<String, dynamic>?;
+        if (productionData?.containsKey('paperclips') == true) {
+          paperclipsFound = true;
+        }
+      }
+
+      // Vérifier money
+      bool moneyFound = playerData?.containsKey('money') == true;
+
+      // Vérifier metal
+      bool metalFound = false;
+      if (playerData?.containsKey('metal') == true) {
+        metalFound = true;
+      } else if (data.containsKey('metalManager')) {
+        final metalData = data['metalManager'] as Map<String, dynamic>?;
+        if (metalData?.containsKey('metal') == true) {
+          metalFound = true;
+        }
+      }
+
+      return paperclipsFound && moneyFound && metalFound;
+    } catch (e) {
+      print('Erreur de validation rapide: $e');
+      return false;
+    }
   }
 
   static bool _validateField(dynamic value, Map<String, dynamic> rule, List<String> errors, String fieldPath) {
@@ -140,26 +212,7 @@ class SaveDataValidator {
 
     return true;
   }
-  static Future<bool> quickValidate(Map<String, dynamic> data) async {
-    try {
-      if (!data.containsKey('version') ||
-          !data.containsKey('timestamp') ||
-          !data.containsKey('playerManager')) {
-        return false;
-      }
-
-      // Vérification rapide des données critiques
-      final playerData = data['playerManager'] as Map<String, dynamic>?;
-      if (playerData == null) return false;
-
-      return playerData.containsKey('money') &&
-          playerData.containsKey('metal') &&
-          playerData.containsKey('paperclips');
-    } catch (e) {
-      print('Erreur de validation rapide: $e');
-      return false;
-    }
-  }
+  
 
   static bool _validateType(dynamic value, String expectedType) {
     switch (expectedType) {

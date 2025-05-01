@@ -1,9 +1,6 @@
 // lib/models/game_state.dart
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-// lib/models/game_state.dart
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import '../screens/competitive_result_screen.dart';
 import 'dart:async';
 import 'package:flutter/services.dart';
@@ -28,9 +25,11 @@ import '../services/save_manager.dart' show SaveGame, SaveError, SaveGameInfo, S
 import '../managers/metal_manager.dart';
 import '../managers/statistics_manager.dart';
 import '../managers/production_manager.dart';
+import '../services/save/save_system.dart';
+import '../services/save/save_data_provider.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
-
-class GameState extends ChangeNotifier {
+class GameState extends ChangeNotifier implements SaveDataProvider {
   late final PlayerManager _playerManager;
   late final MarketManager _marketManager;
   late final MetalManager _metalManager;
@@ -48,7 +47,6 @@ class GameState extends ChangeNotifier {
   bool get crisisTransitionComplete => _crisisTransitionComplete;
   bool _showingCrisisView = false;
 
-
   // Getter pour accéder au metalManager depuis l'extérieur
   MetalManager get metalManager => _metalManager;
   MetalManager get resources => _metalManager;
@@ -56,7 +54,6 @@ class GameState extends ChangeNotifier {
   // Ajouter un getter pour le nouveau manager
   ProductionManager get productionManager => _productionManager;
   late final ProductionManager _productionManager;
-
 
   // Mode de jeu (infini ou compétitif)
   GameMode _gameMode = GameMode.INFINITE;
@@ -66,11 +63,9 @@ class GameState extends ChangeNotifier {
   GameMode get gameMode => _gameMode;
   DateTime? get competitiveStartTime => _competitiveStartTime;
 
-
   bool _isInitialized = false;
   String? _gameName;
   BuildContext? _context;
-
 
   bool get showingCrisisView => _showingCrisisView;
   DateTime? get crisisStartTime => _crisisStartTime;
@@ -81,9 +76,11 @@ class GameState extends ChangeNotifier {
 
   LevelSystem get levelSystem => _levelSystem;
   MissionSystem get missionSystem => _missionSystem;
+
   GameState() {
     _initializeManagers();
   }
+
   void _initializeManagers() {
     if (!_isInitialized) {
       // Étape 1 : Création des managers
@@ -91,6 +88,9 @@ class GameState extends ChangeNotifier {
 
       // Étape 2 : Configuration et démarrage
       _configureAndStart();
+
+      // Initialiser le système de sauvegarde
+      SaveSystem().initialize(this, gameState: this, context: _context);
 
       _isInitialized = true;
     }
@@ -101,14 +101,10 @@ class GameState extends ChangeNotifier {
     return DateTime.now().difference(_competitiveStartTime!);
   }
 
-
-
   void _createManagers() {
     try {
       _statistics = StatisticsManager();
       _levelSystem = LevelSystem();
-      // Suppression de cette ligne qui cause le problème:
-      // _statistics = StatisticsManager();
       _missionSystem = MissionSystem();
       _metalManager = MetalManager(
           onCrisisTriggered: () {
@@ -171,14 +167,13 @@ class GameState extends ChangeNotifier {
       _levelSystem.onLevelUp = _handleLevelUp;
       _missionSystem.initialize();
       _autoSaveService.initialize();
-      _setupLifecycleListeners();  // Ajouter cette ligne
+      _setupLifecycleListeners();
       _startTimers();
     } catch (e) {
       print('Erreur lors de la configuration: $e');
       rethrow;
     }
   }
-
 
   DateTime _lastUpdateTime = DateTime.now();
   DateTime? _lastSaveTime;
@@ -187,20 +182,16 @@ class GameState extends ChangeNotifier {
   int _totalTimePlayedInSeconds = 0;
   int _totalPaperclipsProduced = 0;
   double _maintenanceCosts = 0.0;
-  // Constructeur privé
-
 
   // Gestionnaire de timers centralisé
   final Map<String, Timer> _timers = {};
-  DateTime? get lastSaveTime => _lastSaveTime;
+  DateTime? get lastSaveTime => SaveSystem().lastSaveTime;
 
   int get totalTimePlayed => _totalTimePlayedInSeconds;
   int get totalPaperclipsProduced => _productionManager.totalPaperclipsProduced;
   double get maintenanceCosts => _maintenanceCosts;
 
-
   // Timers
-  // Ajouter après les propriétés existantes (vers ligne 43)
   static const Duration GAME_LOOP_INTERVAL = Duration(milliseconds: 100);
   static const Duration MARKET_UPDATE_INTERVAL = Duration(seconds: 2);
   static const Duration AUTOSAVE_INTERVAL = Duration(minutes: 5);
@@ -210,8 +201,6 @@ class GameState extends ChangeNotifier {
   int _ticksSinceLastMarketUpdate = 0;
   int _ticksSinceLastAutoSave = 0;
   int _ticksSinceLastMaintenance = 0;
-
-
 
   String get formattedPlayTime {
     int hours = _totalTimePlayedInSeconds ~/ 3600;
@@ -345,34 +334,10 @@ class GameState extends ChangeNotifier {
       gamesServices.unlockCompetitiveAchievement(CompetitiveAchievement.EFFICIENCY_MASTER);
     }
   }
-  Future<bool> syncSavesToCloud() async {
-    final gamesServices = GamesServicesController();
-    if (!await gamesServices.isSignedIn()) {
-      if (_context != null) {
-        ScaffoldMessenger.of(_context!).showSnackBar(
-          const SnackBar(
-            content: Text('Connectez-vous à Google Play Games pour synchroniser'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
-      return false;
-    }
 
-    try {
-      return await gamesServices.syncSaves();
-    } catch (e) {
-      print('Erreur lors de la synchronisation: $e');
-      if (_context != null) {
-        ScaffoldMessenger.of(_context!).showSnackBar(
-          SnackBar(
-            content: Text('Erreur de synchronisation: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      return false;
-    }
+  // Méthodes déléguées au SaveSystem
+  Future<bool> syncSavesToCloud() async {
+    return await SaveSystem().syncSavesToCloud();
   }
 
   void enterCrisisMode() {
@@ -459,6 +424,7 @@ class GameState extends ChangeNotifier {
       notifyListeners();
     }
   }
+
   void _unlockCrisisFeatures() {
     // Supprimer les références au recyclage
     _crisisTransitionComplete = true;
@@ -474,28 +440,13 @@ class GameState extends ChangeNotifier {
     notifyListeners();
   }
 
-
-
-
-
-
   Map<String, Upgrade> get upgrades => playerManager.upgrades;
   double get maxMetalStorage => playerManager.maxMetalStorage;
   PlayerManager get player => playerManager;
   MarketManager get market => marketManager;
   LevelSystem get level => levelSystem;
 
-
-
   double get autocliperCost => _productionManager.calculateAutoclipperCost();
-
-
-
-
-
-
-
-
 
   void reset() {
     _stopAllTimers();
@@ -513,7 +464,6 @@ class GameState extends ChangeNotifier {
     _marketManager = MarketManager(MarketDynamics());
     market.updateMarket();
   }
-
 
   double _calculateManualProduction(double elapsed) {
     if (_metalManager.metal < GameConstants.METAL_PER_PAPERCLIP) return 0;
@@ -552,10 +502,6 @@ class GameState extends ChangeNotifier {
     });
   }
 
-
-
-
-
   void _stopAllTimers() {
     _gameLoopTimer?.cancel();
     _gameLoopTimer = null;
@@ -564,6 +510,7 @@ class GameState extends ChangeNotifier {
     _playTimeTimer?.cancel();
     _playTimeTimer = null;
   }
+
   void _applyMaintenanceCosts() {
     if (player.autoclippers == 0) return;
 
@@ -583,6 +530,8 @@ class GameState extends ChangeNotifier {
     }
   }
 
+  // Implémentation de SaveDataProvider
+  @override
   Map<String, dynamic> prepareGameData() {
     // Préparation des données de base
     final Map<String, dynamic> baseData = {
@@ -590,7 +539,7 @@ class GameState extends ChangeNotifier {
       'timestamp': DateTime.now().toIso8601String(),
       'statistics': _statistics.toJson(),
       'totalTimePlayedInSeconds': _totalTimePlayedInSeconds,
-      'totalPaperclipsProduced': _totalPaperclipsProduced,
+      'totalPaperclipsProduced': _productionManager.totalPaperclipsProduced,
       'gameMode': _gameMode.index,
       'competitiveStartTime': _competitiveStartTime?.toIso8601String(),
       // Données de crise complètes
@@ -612,16 +561,32 @@ class GameState extends ChangeNotifier {
       baseData['levelSystem'] = levelSystem.toJson();
       baseData['metalManager'] = _metalManager.toJson();
       baseData['productionManager'] = _productionManager.toJson();
-      baseData['missionSystem'] = missionSystem?.toJson();
 
-      // Debug logs
-      print('PrepareGameData - Sauvegarde des données:');
-      print('Mode de jeu: ${_gameMode == GameMode.INFINITE ? "Infini" : "Compétitif"}');
-      print('Mode crise actif: ${_isInCrisisMode}');
-      print('Début de la crise: ${_crisisStartTime?.toIso8601String()}');
-      print('Transition complète: $_crisisTransitionComplete');
-      print('Données joueur: ${baseData['playerManager']}');
-      print('Données marché: ${baseData['marketManager']}');
+      // Compatibilité rétrograde: copier paperclips dans playerManager
+      if (!baseData['playerManager'].containsKey('paperclips')) {
+        // Cloner playerManager pour éviter la modification directe
+        var playerData = Map<String, dynamic>.from(baseData['playerManager']);
+        // Ajouter paperclips depuis productionManager
+        playerData['paperclips'] = _productionManager.paperclips;
+        // Remplacer playerManager par la version mise à jour
+        baseData['playerManager'] = playerData;
+      }
+
+      // Compatibilité rétrograde: copier autoclippers dans playerManager
+      if (!baseData['playerManager'].containsKey('autoclippers')) {
+        // Cloner si pas déjà fait
+        var playerData = baseData['playerManager'] is Map
+            ? Map<String, dynamic>.from(baseData['playerManager'])
+            : <String, dynamic>{};
+        // Ajouter autoclippers depuis productionManager
+        playerData['autoclippers'] = _productionManager.autoclippers;
+        // Remplacer playerManager par la version mise à jour
+        baseData['playerManager'] = playerData;
+      }
+
+      if (_missionSystem != null) {
+        baseData['missionSystem'] = _missionSystem!.toJson();
+      }
 
       return baseData;
     } catch (e) {
@@ -630,16 +595,148 @@ class GameState extends ChangeNotifier {
     }
   }
 
+  @override
+  void loadGameData(Map<String, dynamic> gameData) {
+    try {
+      if (gameData['playerManager'] != null) {
+        playerManager.loadFromJson(gameData['playerManager']);
+      }
 
+      if (gameData['marketManager'] != null) {
+        marketManager.fromJson(gameData['marketManager']);
+      }
 
+      if (gameData['levelSystem'] != null) {
+        levelSystem.loadFromJson(gameData['levelSystem']);
+      }
 
+      if (gameData['missionSystem'] != null) {
+        missionSystem.fromJson(gameData['missionSystem']);
+      }
 
+      if (gameData['statistics'] != null) {
+        _statistics.fromJson(gameData['statistics']);
+      }
 
+      if (gameData['metalManager'] != null) {
+        _metalManager.fromJson(gameData['metalManager']);
+      }
 
+      // Chargement compatible avec les anciennes versions
+      if (gameData['productionManager'] != null) {
+        try {
+          _productionManager.fromJson(gameData['productionManager']);
+        } catch (e, stack) {
+          print('Erreur lors du chargement de productionManager: $e');
+          FirebaseCrashlytics.instance.recordError(e, stack, reason: 'ProductionManager loading error');
 
+          // Tentative de récupération avec conversion manuelle
+          try {
+            final prodData = gameData['productionManager'] as Map<String, dynamic>;
+            Map<String, dynamic> safeData = {
+              'paperclips': _safeDoubleConversion(prodData['paperclips']),
+              'autoclippers': _safeIntConversion(prodData['autoclippers']),
+              'totalPaperclipsProduced': _safeIntConversion(prodData['totalPaperclipsProduced']),
+            };
+            _productionManager.fromJson(safeData);
+          } catch (e2) {
+            print('Échec de la récupération de productionManager: $e2');
+            // Dernière tentative - réinitialiser à des valeurs par défaut
+            _productionManager.updatePaperclips(0.0);
+            _productionManager.updateAutoclippers(0);
+          }
+        }
+      } else if (gameData['playerManager'] != null &&
+          (gameData['playerManager'] as Map<String, dynamic>).containsKey('paperclips')) {
+        // Ancienne structure: paperclips dans playerManager
+        final playerData = gameData['playerManager'] as Map<String, dynamic>;
 
+        // Mettre à jour le ProductionManager
+        Map<String, dynamic> productionData = {
+          'paperclips': playerData['paperclips'],
+          'autoclippers': playerData['autoclippers'] ?? 0,
+          'totalPaperclipsProduced': gameData['totalPaperclipsProduced'] ?? playerData['paperclips'] ?? 0,
+        };
 
+        _productionManager.fromJson(productionData);
+      }
 
+      _totalTimePlayedInSeconds = (gameData['totalTimePlayedInSeconds'] as num?)?.toInt() ?? 0;
+
+      // Assurer la cohérence avec ProductionManager pour totalPaperclipsProduced
+      _totalPaperclipsProduced = _productionManager.totalPaperclipsProduced;
+
+      // Charger le mode de jeu
+      _gameMode = gameData['gameMode'] != null
+          ? GameMode.values[gameData['gameMode'] as int]
+          : GameMode.INFINITE;
+
+      // Charger le temps de départ en mode compétitif
+      if (gameData['competitiveStartTime'] != null) {
+        try {
+          _competitiveStartTime = DateTime.parse(gameData['competitiveStartTime'] as String);
+        } catch (e) {
+          print('Erreur de parsing de date: ${gameData['competitiveStartTime']}');
+          // Utiliser la date actuelle comme fallback
+          _competitiveStartTime = gameData['gameMode'] == GameMode.COMPETITIVE.index
+              ? DateTime.now() : null;
+        }
+      }
+
+      // Charger les données du mode crise
+      _handleCrisisModeData(gameData);
+
+      // Rétablir les timers
+      _startTimers();
+      notifyListeners();
+    } catch (e, stack) {
+      print('Erreur lors du chargement des données: $e');
+      print('Stack trace: $stack');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'LoadGameData error');
+      rethrow;
+    }
+  }
+// Méthodes utilitaires pour les conversions
+  double _safeDoubleConversion(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) {
+      try {
+        return double.parse(value);
+      } catch (_) {
+        return 0.0;
+      }
+    }
+    return 0.0;
+  }
+
+  int _safeIntConversion(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    if (value is String) {
+      try {
+        return int.parse(value);
+      } catch (_) {
+        return 0;
+      }
+    }
+    return 0;
+  }
+  void _handleCrisisModeData(Map<String, dynamic> gameData) {
+    if (gameData['crisisMode'] != null) {
+      final crisisData = gameData['crisisMode'] as Map<String, dynamic>;
+      _isInCrisisMode = crisisData['isInCrisisMode'] as bool? ?? false;
+      _showingCrisisView = crisisData['showingCrisisView'] as bool? ?? false;
+      if (_isInCrisisMode) {
+        _crisisTransitionComplete = crisisData['crisisTransitionComplete'] as bool? ?? true;
+        if (crisisData['crisisStartTime'] != null) {
+          _crisisStartTime = DateTime.parse(crisisData['crisisStartTime'] as String);
+        }
+      }
+    }
+  }
 
   void processProduction() {
     // Obtenir l'état avant la production
@@ -674,11 +771,6 @@ class GameState extends ChangeNotifier {
     }
   }
 
-
-
-
-
-
   void _applyProduction(double amount) {
     if (amount <= 0) return;
 
@@ -694,29 +786,10 @@ class GameState extends ChangeNotifier {
         efficiency: 0.0 // Ajuster selon votre logique
     );
 
-
     missionSystem.updateMissions(
         MissionType.PRODUCE_PAPERCLIPS,
         amount
     );
-  }
-  Future<void> _autoSave() async {
-    if (!_isInitialized || _gameName == null) return;
-
-    try {
-      await saveGame(_gameName!);
-      _lastSaveTime = DateTime.now();
-    } catch (e) {
-      print('Erreur lors de la sauvegarde automatique: $e');
-      if (_context != null) {
-        ScaffoldMessenger.of(_context!).showSnackBar(
-          SnackBar(
-            content: Text('Erreur de sauvegarde automatique: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
   }
 
   void _processMarket() {
@@ -758,10 +831,6 @@ class GameState extends ChangeNotifier {
     }
   }
 
-
-
-
-
   void checkResourceCrisis() {
     if (_metalManager.marketMetalStock <= 0 && !_isInCrisisMode) {
       print("Déclenchement de la crise - Stock épuisé");
@@ -786,6 +855,7 @@ class GameState extends ChangeNotifier {
       }
     }
   }
+
   bool validateCrisisTransition() {
     if (!_isInCrisisMode) {
       print("Erreur: Mode crise non activé");
@@ -800,7 +870,6 @@ class GameState extends ChangeNotifier {
 
     return true;
   }
-
 
   // Actions du jeu
   void buyMetal() {
@@ -835,7 +904,6 @@ class GameState extends ChangeNotifier {
   void producePaperclip() {
     _productionManager.produceManualPaperclip();
   }
-
 
   void setSellPrice(double newPrice) {
     if (market.isPriceExcessive(newPrice)) {
@@ -902,8 +970,7 @@ class GameState extends ChangeNotifier {
         importance: EventImportance.MEDIUM
     );
   }
-  // Dans GameState, ajoutez un logger pour le debug
-  // Mise à jour pour prendre en charge la synchronisation cloud
+
   Future<void> startNewGame(String name, {GameMode mode = GameMode.INFINITE, bool syncToCloud = false}) async {
     try {
       print('Starting new game with name: $name, mode: $mode, syncToCloud: $syncToCloud');
@@ -923,29 +990,8 @@ class GameState extends ChangeNotifier {
       // Initialiser les managers
       _initializeManagers();
 
-      // Préparer les données de sauvegarde
-      final gameData = prepareGameData();
-
-      // Créer un nouvel objet SaveGame
-      final saveGame = SaveGame(
-        name: name,
-        lastSaveTime: DateTime.now(),
-        gameData: gameData,
-        version: GameConstants.VERSION,
-        gameMode: mode,
-        isSyncedWithCloud: false,
-      );
-
-      // Sauvegarder localement
-      await SaveManager.saveGame(saveGame);
-
-      // Synchroniser avec le cloud si demandé
-      if (syncToCloud) {
-        final gamesServices = GamesServicesController();
-        if (await gamesServices.isSignedIn()) {
-          await gamesServices.saveGameToCloud(saveGame);
-        }
-      }
+      // Sauvegarder la nouvelle partie
+      await SaveSystem().saveGame(name, syncToCloud: syncToCloud);
 
       notifyListeners();
     } catch (e) {
@@ -954,80 +1000,19 @@ class GameState extends ChangeNotifier {
     }
   }
 
-  // Gestion de la sauvegarde
-  Future<void> _loadSavedGame() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedData = prefs.getString(GameConstants.SAVE_KEY);
-    if (savedData != null) {
-      final gameData = jsonDecode(savedData);
-      _loadGameData(gameData);
-    }
+  // Méthodes qui délèguent au SaveSystem
+  Future<void> saveGame(String name, {bool syncToCloud = true}) async {
+    return await SaveSystem().saveGame(name, syncToCloud: syncToCloud);
   }
+
   Future<void> loadGame(String name, {String? cloudId}) async {
     try {
-      print('Starting to load game: $name, cloudId: $cloudId');
-
-      SaveGame? saveGame;
-
-      // Tentative de chargement depuis le cloud si un cloudId est fourni
-      if (cloudId != null) {
-        final gamesServices = GamesServicesController();
-        saveGame = await gamesServices.loadGameFromCloud(cloudId);
-
-        if (saveGame == null) {
-          throw SaveError('CLOUD_ERROR', 'Erreur lors du chargement depuis le cloud');
-        }
-
-        // Sauvegarder localement la version cloud
-        await SaveManager.saveGame(saveGame);
-      } else {
-        // Chargement local normal
-        saveGame = await SaveManager.loadGame(name);
-        if (saveGame == null) throw SaveError('NOT_FOUND', 'Sauvegarde non trouvée');
-      }
-
       _stopAllTimers();
       print('Timers stopped');
 
-      _initializeManagers();
-      print('Managers initialized');
-
-      final gameData = saveGame.gameData;
-      print('Game data loaded: ${gameData.keys}');
-
-      // Charger les statistiques en premier
-      if (gameData['statistics'] != null) {
-        print('Loading statistics: ${gameData['statistics']}');
-        _statistics.fromJson(gameData['statistics']);
-      }
-
-      // Charger les autres données
-      levelSystem.loadFromJson(gameData['levelSystem'] ?? {});
-      _playerManager.fromJson(gameData['playerManager'] ?? {});
-      _marketManager.fromJson(gameData['marketManager'] ?? {});
-
-      // Charger le mode de jeu
-      _gameMode = gameData['gameMode'] != null
-          ? GameMode.values[gameData['gameMode'] as int]
-          : GameMode.INFINITE;
-
-      // Charger le temps de départ en mode compétitif
-      if (gameData['competitiveStartTime'] != null) {
-        _competitiveStartTime = DateTime.parse(gameData['competitiveStartTime'] as String);
-      }
-
-      _applyUpgradeEffects();
-
-      // Charger les données globales avec conversion sécurisée
-      _totalTimePlayedInSeconds = (gameData['totalTimePlayedInSeconds'] as num?)?.toInt() ?? 0;
-      _totalPaperclipsProduced = (gameData['totalPaperclipsProduced'] as num?)?.toInt() ?? 0;
-
-      _handleCrisisModeData(gameData);
+      await SaveSystem().loadGame(name, cloudId: cloudId);
 
       _gameName = name;
-      _lastSaveTime = saveGame.lastSaveTime;
-
-      print('Game loaded successfully');
       _startTimers();
       notifyListeners();
     } catch (e, stack) {
@@ -1036,65 +1021,27 @@ class GameState extends ChangeNotifier {
       rethrow;
     }
   }
+
   Future<void> showCloudSaveSelector() async {
-    try {
-      final gamesServices = GamesServicesController();
-      if (!await gamesServices.isSignedIn()) {
-        await gamesServices.signIn();
-      }
-
-      if (await gamesServices.isSignedIn()) {
-        final selectedSave = await gamesServices.showSaveSelector();
-        if (selectedSave != null && _context != null) {
-          // Sauvegarder d'abord la partie actuelle si elle existe
-          if (_isInitialized && _gameName != null) {
-            await saveGame(_gameName!);
-          }
-
-          // Charger la partie sélectionnée
-          await loadGame(selectedSave.name, cloudId: selectedSave.cloudId);
-
-          // Naviguer vers l'écran principal
-          if (_context != null && _context!.mounted) {
-            Navigator.of(_context!).pushReplacement(
-              MaterialPageRoute(builder: (_) => const MainScreen()),
-            );
-          }
-        }
-      }
-    } catch (e) {
-      print('Erreur lors de l\'affichage du sélecteur cloud: $e');
-      if (_context != null) {
-        ScaffoldMessenger.of(_context!).showSnackBar(
-          SnackBar(
-            content: Text('Erreur: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
+    return await SaveSystem().showCloudSaveSelector();
   }
 
-
-  void _handleCrisisModeData(Map<String, dynamic> gameData) {
-    if (gameData['crisisMode'] != null) {
-      final crisisData = gameData['crisisMode'] as Map<String, dynamic>;
-      _isInCrisisMode = crisisData['isInCrisisMode'] as bool? ?? false;
-      _showingCrisisView = crisisData['showingCrisisView'] as bool? ?? false;
-      if (_isInCrisisMode) {
-        _crisisTransitionComplete = crisisData['crisisTransitionComplete'] as bool? ?? true;
-        if (crisisData['crisisStartTime'] != null) {
-          _crisisStartTime = DateTime.parse(crisisData['crisisStartTime'] as String);
-        }
-      }
-    }
+  Future<void> saveOnImportantEvent() async {
+    if (_gameName == null) return;
+    return await SaveSystem().saveOnImportantEvent();
   }
+
+  Future<void> checkAndRestoreFromBackup() async {
+    return await SaveSystem().checkAndRestoreFromBackup();
+  }
+
   void updateLeaderboard() async {
     final gamesServices = GamesServicesController();
     if (await gamesServices.isSignedIn()) {
       await gamesServices.updateAllLeaderboards(this);
     }
   }
+
   void showProductionLeaderboard() async {
     final gamesServices = GamesServicesController();
     if (await gamesServices.isSignedIn()) {
@@ -1108,8 +1055,8 @@ class GameState extends ChangeNotifier {
       await gamesServices.showBankerLeaderboard();
     }
   }
+
   void showLeaderboard() {
-    // Ajouter le paramètre manquant
     GamesServicesController().showLeaderboard(leaderboardID: GamesServicesController.generalLeaderboardID);
   }
 
@@ -1124,94 +1071,6 @@ class GameState extends ChangeNotifier {
           (1 + (storageLevel * GameConstants.STORAGE_UPGRADE_MULTIPLIER));
       _playerManager.updateMaxMetalStorage(newCapacity);
       _metalManager.upgradeStorageCapacity(storageLevel);
-    }
-  }
-
-  void _loadGameData(Map<String, dynamic> gameData) {
-    if (gameData['playerManager'] != null) {
-      playerManager.loadFromJson(gameData['playerManager']);
-    }
-    if (gameData['marketManager'] != null) {
-      marketManager.fromJson(gameData['marketManager']);
-    }
-    if (gameData['levelSystem'] != null) {
-      levelSystem.loadFromJson(gameData['levelSystem']);
-    }
-    if (gameData['missionSystem'] != null) {
-      missionSystem.fromJson(gameData['missionSystem']);
-    }
-    if (gameData['statistics'] != null) {
-      _statistics.fromJson(gameData['statistics']);
-    }
-    if (gameData['metalManager'] != null) {
-      _metalManager.fromJson(gameData['metalManager']);
-    }
-    if (gameData['productionManager'] != null) {
-      _productionManager.fromJson(gameData['productionManager']);
-    }
-
-    _totalTimePlayedInSeconds = (gameData['totalTimePlayedInSeconds'] as num?)?.toInt() ?? 0;
-    _totalPaperclipsProduced = (gameData['totalPaperclipsProduced'] as num?)?.toInt() ?? 0;
-  }
-
-
-
-  Future<void> saveGame(String name, {bool syncToCloud = true}) async {
-    if (!_isInitialized) {
-      throw SaveError('NOT_INITIALIZED', 'Le jeu n\'est pas initialisé');
-    }
-
-    try {
-      // Préparation des données de jeu
-      final gameData = prepareGameData();
-
-      // Création de l'objet SaveGame
-      final saveData = SaveGame(
-        name: name,
-        lastSaveTime: DateTime.now(),
-        gameData: gameData,
-        version: GameConstants.VERSION,
-        gameMode: _gameMode,
-        isSyncedWithCloud: false,  // Sera mis à jour après la synchronisation
-      );
-
-      // Sauvegarde locale
-      await SaveManager.saveGame(saveData);
-      _gameName = name;
-      _lastSaveTime = DateTime.now();
-
-      // Synchronisation avec le cloud si demandé et connecté
-      if (syncToCloud) {
-        final gamesServices = GamesServicesController();
-        if (await gamesServices.isSignedIn()) {
-          final success = await gamesServices.saveGameToCloud(saveData);
-          if (success && _context != null) {
-            ScaffoldMessenger.of(_context!).showSnackBar(
-              const SnackBar(
-                content: Text('Partie sauvegardée et synchronisée avec le cloud'),
-                backgroundColor: Colors.green,
-                duration: Duration(seconds: 2),
-              ),
-            );
-          }
-        }
-      }
-
-      notifyListeners();
-    } catch (e) {
-      print('Erreur dans GameState.saveGame: $e');
-      rethrow;
-    }
-  }
-
-  Future<void> saveOnImportantEvent() async {
-    if (!_isInitialized || _gameName == null) return;
-
-    try {
-      await saveGame(_gameName!);
-      _lastSaveTime = DateTime.now();
-    } catch (e) {
-      print('Erreur lors de la sauvegarde événementielle: $e');
     }
   }
 
@@ -1278,34 +1137,6 @@ class GameState extends ChangeNotifier {
     return success;
   }
 
-  Future<void> checkAndRestoreFromBackup() async {
-    if (!_isInitialized || _gameName == null) return;
-
-    try {
-      final saves = await SaveManager.listSaves();
-      final backups = saves.where((save) =>
-          save.name.startsWith('${_gameName!}_backup_'))
-          .toList();
-
-      if (backups.isEmpty) return;
-
-      // Tenter de charger le dernier backup valide
-      backups.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-
-      for (var backup in backups) {
-        try {
-          await loadGame(backup.name);
-          print('Restauration réussie depuis le backup: ${backup.name}');
-          return;
-        } catch (e) {
-          print('Échec de la restauration depuis ${backup.name}: $e');
-          continue;
-        }
-      }
-    } catch (e) {
-      print('Erreur lors de la vérification des backups: $e');
-    }
-  }
   void _setupLifecycleListeners() {
     SystemChannels.lifecycle.setMessageHandler((String? state) async {
       if (state == 'paused' || state == 'inactive') {
@@ -1316,11 +1147,10 @@ class GameState extends ChangeNotifier {
     });
   }
 
-
-
   // Utilitaires et autres
   void setContext(BuildContext context) {
     _context = context;
+    SaveSystem().setContext(context);
   }
 
   void _showUnlockNotification(String message) {
@@ -1333,6 +1163,7 @@ class GameState extends ChangeNotifier {
       ),
     );
   }
+
   void toggleCrisisInterface() {
     if (!isInCrisisMode || !crisisTransitionComplete) return;
 
@@ -1342,7 +1173,6 @@ class GameState extends ChangeNotifier {
 
     notifyListeners();
   }
-
 
   void togglePause() {
     _isPaused = !_isPaused;

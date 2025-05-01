@@ -32,11 +32,10 @@ import './utils/update_manager.dart';
 import './services/firebase_config.dart';
 import './widgets/notification_widgets.dart';
 import 'services/games_services_controller.dart';
+import './services/save/save_system.dart';
 
 // Export du navigatorKey
 export 'package:paperclip2/main.dart' show navigatorKey;
-
-
 
 // Services globaux
 final gameState = GameState();
@@ -71,7 +70,6 @@ void main() async {
     );
 
     // Initialiser les services de jeu
-    // Initialisation des services de jeu
     final gamesServices = GamesServicesController();
     await gamesServices.initialize();
 
@@ -96,6 +94,9 @@ void main() async {
 
     // Initialiser Firebase Config
     await FirebaseConfig.initialize();
+
+    // Initialiser le système de sauvegarde
+    SaveSystem().initialize(gameState);
 
     // Vérifier et restaurer les sauvegardes
     await gameState.checkAndRestoreFromBackup();

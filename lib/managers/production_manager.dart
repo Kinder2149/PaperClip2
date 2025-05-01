@@ -5,6 +5,7 @@ import '../models/event_system.dart';
 import '../models/progression_system.dart';
 import 'metal_manager.dart';
 import 'dart:math' show min;
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 class ProductionManagerException implements Exception {
   final String message;
@@ -205,9 +206,74 @@ class ProductionManager extends ChangeNotifier {
   };
 
   void fromJson(Map<String, dynamic> json) {
-    _paperclips = _validatePaperclips(json['paperclips'] ?? 0.0);
-    _autoclippers = _validateAutoclippers(json['autoclippers'] ?? 0);
-    _totalPaperclipsProduced = _validateTotalProduced(json['totalPaperclipsProduced'] ?? 0);
-    notifyListeners();
+    try {
+      // Conversion sécurisée pour _paperclips (accepte double et int)
+      if (json['paperclips'] != null) {
+        _paperclips = _validatePaperclips(
+            json['paperclips'] is int ?
+            (json['paperclips'] as int).toDouble() :
+            (json['paperclips'] as num).toDouble()
+        );
+      }
+
+      // Conversion sécurisée pour _autoclippers (accepte double et int)
+      if (json['autoclippers'] != null) {
+        _autoclippers = _validateAutoclippers(
+            json['autoclippers'] is double ?
+            (json['autoclippers'] as double).toInt() :
+            (json['autoclippers'] as num).toInt()
+        );
+      }
+
+      // Conversion sécurisée pour _totalPaperclipsProduced (accepte double et int)
+      if (json['totalPaperclipsProduced'] != null) {
+        _totalPaperclipsProduced = _validateTotalProduced(
+            json['totalPaperclipsProduced'] is double ?
+            (json['totalPaperclipsProduced'] as double).toInt() :
+            (json['totalPaperclipsProduced'] as num).toInt()
+        );
+      }
+
+      notifyListeners();
+    } catch (e, stack) {
+      print('Erreur lors du chargement des données ProductionManager: $e');
+      print('Stack trace: $stack');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'ProductionManager.fromJson error');
+
+      // Ne pas propager l'erreur, utiliser des valeurs par défaut
+      _paperclips = 0.0;
+      _autoclippers = 0;
+      _totalPaperclipsProduced = 0;
+      notifyListeners();
+    }
+  }
+
+// Méthode utilitaire pour convertir en sécurité
+  int _safeIntConversion(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    if (value is String) {
+      try {
+        return int.parse(value);
+      } catch (_) {
+        return 0;
+      }
+    }
+    return 0;
+  }
+
+  double _safeDoubleConversion(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) {
+      try {
+        return double.parse(value);
+      } catch (_) {
+        return 0.0;
+      }
+    }
+    return 0.0;
   }
 }
