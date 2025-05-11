@@ -11,7 +11,6 @@ import 'event_system.dart';
 import 'player_manager.dart';
 import 'market.dart';
 import 'progression_system.dart';
-import 'resource_manager.dart';
 import 'dart:convert';
 import '../utils/notification_manager.dart';
 import '../dialogs/metal_crisis_dialog.dart';
@@ -19,15 +18,18 @@ import '../services/auto_save_service.dart';
 import 'package:paperclip2/services/games_services_controller.dart';
 import 'package:games_services/games_services.dart' hide SaveGame;
 import '../screens/main_screen.dart';
-import 'package:paperclip2/services/cloud_save_manager.dart';
+import '../services/save/save_system.dart';
+import '../services/save/save_types.dart';
+
 import 'package:games_services/games_services.dart' as gs;
-import '../services/save_manager.dart' show SaveGame, SaveError, SaveGameInfo, SaveManager;
+
 import '../managers/metal_manager.dart';
 import '../managers/statistics_manager.dart';
 import '../managers/production_manager.dart';
 import '../services/save/save_system.dart';
-import '../services/save/save_data_provider.dart';
+
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import '../services/user/user_manager.dart';
 
 class GameState extends ChangeNotifier implements SaveDataProvider {
   late final PlayerManager _playerManager;
@@ -77,20 +79,25 @@ class GameState extends ChangeNotifier implements SaveDataProvider {
   LevelSystem get levelSystem => _levelSystem;
   MissionSystem get missionSystem => _missionSystem;
 
+  // Utilisation de l'injection pour obtenir les instances
+  late UserManager _userManager;
+  late SaveSystem _saveSystem;
+
   GameState() {
     _initializeManagers();
   }
 
   void _initializeManagers() {
     if (!_isInitialized) {
+      // Obtenir les instances par injection plutôt que par création
+      _userManager = UserManager();
+      _saveSystem = SaveSystem();
+
       // Étape 1 : Création des managers
       _createManagers();
 
       // Étape 2 : Configuration et démarrage
       _configureAndStart();
-
-      // Initialiser le système de sauvegarde
-      SaveSystem().initialize(this, gameState: this, context: _context);
 
       _isInitialized = true;
     }
@@ -112,7 +119,8 @@ class GameState extends ChangeNotifier implements SaveDataProvider {
           }
       );
       _marketManager = MarketManager(MarketDynamics());
-      _autoSaveService = AutoSaveService(this);
+      final saveSystem = SaveSystem();
+      _autoSaveService = AutoSaveService(saveSystem, this);
 
       // Création de ProductionManager
       _productionManager = ProductionManager(
@@ -974,6 +982,16 @@ class GameState extends ChangeNotifier implements SaveDataProvider {
   Future<void> startNewGame(String name, {GameMode mode = GameMode.INFINITE, bool syncToCloud = false}) async {
     try {
       print('Starting new game with name: $name, mode: $mode, syncToCloud: $syncToCloud');
+
+      // Vérifier les limites pour les parties compétitives
+      if (mode == GameMode.COMPETITIVE) {
+        final userManager = UserManager();
+        // Utiliser await pour attendre le résultat de canCreateCompetitiveSave
+        if (!(await userManager.canCreateCompetitiveSave())) {
+          throw Exception('Vous avez atteint la limite de 3 parties compétitives. Veuillez en supprimer une pour en créer une nouvelle.');
+        }
+      }
+
       _gameName = name;
       _gameMode = mode;
 
@@ -1002,7 +1020,7 @@ class GameState extends ChangeNotifier implements SaveDataProvider {
 
   // Méthodes qui délèguent au SaveSystem
   Future<void> saveGame(String name, {bool syncToCloud = true}) async {
-    return await SaveSystem().saveGame(name, syncToCloud: syncToCloud);
+    return await _saveSystem.saveGame(name, syncToCloud: syncToCloud);
   }
 
   Future<void> loadGame(String name, {String? cloudId}) async {
@@ -1010,7 +1028,7 @@ class GameState extends ChangeNotifier implements SaveDataProvider {
       _stopAllTimers();
       print('Timers stopped');
 
-      await SaveSystem().loadGame(name, cloudId: cloudId);
+      await _saveSystem.loadGame(name, cloudId: cloudId);
 
       _gameName = name;
       _startTimers();
@@ -1022,18 +1040,21 @@ class GameState extends ChangeNotifier implements SaveDataProvider {
     }
   }
 
+
+
   Future<void> showCloudSaveSelector() async {
-    return await SaveSystem().showCloudSaveSelector();
+    return await _saveSystem.showCloudSaveSelector();
   }
 
   Future<void> saveOnImportantEvent() async {
     if (_gameName == null) return;
-    return await SaveSystem().saveOnImportantEvent();
+    return await _saveSystem.saveOnImportantEvent();
   }
 
   Future<void> checkAndRestoreFromBackup() async {
-    return await SaveSystem().checkAndRestoreFromBackup();
+    return await _saveSystem.checkAndRestoreFromBackup();
   }
+
 
   void updateLeaderboard() async {
     final gamesServices = GamesServicesController();

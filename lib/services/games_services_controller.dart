@@ -3,11 +3,19 @@
 import 'package:flutter/foundation.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:games_services/games_services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:paperclip2/models/game_state.dart';
 import 'package:paperclip2/models/progression_system.dart';
-import 'package:paperclip2/services/cloud_save_manager.dart';
 import 'package:games_services/games_services.dart' as gs;
-import 'package:paperclip2/services/save_manager.dart' as sm;
+import 'save/save_system.dart';
+import 'dart:convert';
+import 'package:flutter/material.dart';
+
+import '../services/save/save_types.dart' as save_types;
+import '../services/save/storage/cloud_storage_engine.dart';
+import '../services/user/google_auth_service.dart';
+import '../models/game_config.dart';
+import '../models/event_system.dart';
 
 enum CompetitiveAchievement {
   SCORE_10K,
@@ -27,6 +35,23 @@ class GooglePlayerInfo {
     required this.displayName,
     this.iconImageUrl,
   });
+
+  // Conversion depuis/vers JSON pour le stockage local
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'displayName': displayName,
+      'iconImageUrl': iconImageUrl,
+    };
+  }
+
+  factory GooglePlayerInfo.fromJson(Map<String, dynamic> json) {
+    return GooglePlayerInfo(
+      id: json['id'] ?? 'unknown',
+      displayName: json['displayName'] ?? 'Joueur',
+      iconImageUrl: json['iconImageUrl'],
+    );
+  }
 }
 
 class LeaderboardInfo {
@@ -43,9 +68,12 @@ class LeaderboardInfo {
   });
 }
 
-class GamesServicesController {
-  static final GamesServicesController _instance = GamesServicesController
-      ._internal();
+class GamesServicesController extends ChangeNotifier {
+  static final GamesServicesController _instance = GamesServicesController._internal();
+
+  // Clés pour SharedPreferences
+  static const String _playerInfoKey = 'google_player_info';
+  static const String _lastSignInKey = 'last_google_signin';
 
   // IDs des classements
   static const String generalLeaderboardID = "CgkI-ICryvIBEAIQAg";
@@ -67,6 +95,12 @@ class GamesServicesController {
 
   bool _isInitialized = false;
   bool _isSignedIn = false;
+  GooglePlayerInfo? _cachedPlayerInfo;
+  DateTime? _lastSignInTime;
+
+  // Stream pour notifier des changements de connexion
+  final ValueNotifier<bool> signInStatusChanged = ValueNotifier<bool>(false);
+  final ValueNotifier<GooglePlayerInfo?> playerInfoChanged = ValueNotifier<GooglePlayerInfo?>(null);
 
   bool get isInitialized => _isInitialized;
 
@@ -74,7 +108,26 @@ class GamesServicesController {
     if (_isInitialized) return;
 
     try {
-      await signIn(); // Tenter de se connecter directement
+      // Charger les informations du joueur depuis SharedPreferences
+      await _loadCachedPlayerInfo();
+
+      // Si la dernière connexion date de moins de 7 jours, considérer toujours connecté
+      if (_lastSignInTime != null &&
+          DateTime.now().difference(_lastSignInTime!).inDays < 7 &&
+          _cachedPlayerInfo != null) {
+        _isSignedIn = true;
+        playerInfoChanged.value = _cachedPlayerInfo;
+        signInStatusChanged.value = true;
+      }
+
+      // Tenter une connexion silencieuse
+      try {
+        await silentSignIn();
+      } catch (e) {
+        // Ne pas bloquer l'initialisation en cas d'échec de connexion silencieuse
+        debugPrint('Silent sign-in failed: $e');
+      }
+
       _isInitialized = true;
       debugPrint('Games Services initialized');
     } catch (e, stack) {
@@ -83,25 +136,59 @@ class GamesServicesController {
     }
   }
 
-
-  Future<bool> signIn() async {
+  // Connexion silencieuse sans UI
+  Future<bool> silentSignIn() async {
     try {
-      // Diagnostic de débogage
-      print("Tentative de connexion à Google Play Games Services");
-      print("Package de l'application: com.kinder2149.paperclip2");
-      print("ID des jeux: 65117274232");
-
       await GamesServices.signIn();
       final signedIn = await GamesServices.isSignedIn;
 
       if (signedIn) {
         _isSignedIn = true;
-        print("Connexion aux services de jeu réussie");
+
+        // Mettre à jour les informations du joueur
+        await _fetchAndUpdatePlayerInfo();
+
+        // Notifier
+        signInStatusChanged.value = true;
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('Silent sign-in error: $e');
+      return false;
+    }
+  }
+
+  Future<bool> signIn() async {
+    try {
+      // Diagnostic de débogage
+      debugPrint("Tentative de connexion à Google Play Games Services");
+      debugPrint("Package de l'application: com.kinder2149.paperclip2");
+      debugPrint("ID des jeux: 65117274232");
+
+      // Tenter la connexion
+      await GamesServices.signIn();
+      final signedIn = await GamesServices.isSignedIn;
+
+      if (signedIn) {
+        _isSignedIn = true;
+
+        // Mettre à jour les informations du joueur
+        await _fetchAndUpdatePlayerInfo();
+
+        // Enregistrer l'heure de connexion
+        _lastSignInTime = DateTime.now();
+        await _saveLastSignInTime();
+
+        // Notifier les écouteurs
+        signInStatusChanged.value = true;
+
+        debugPrint("Connexion aux services de jeu réussie");
         return true;
       } else {
-        print("La connexion n'a pas abouti, mais aucune erreur n'a été lancée");
+        debugPrint("La connexion n'a pas abouti, mais aucune erreur n'a été lancée");
 
-        // Tenter à nouveau après une courte pause, cela peut parfois aider
+        // Tenter à nouveau après une courte pause
         await Future.delayed(Duration(seconds: 1));
         await GamesServices.signIn();
 
@@ -109,20 +196,30 @@ class GamesServicesController {
         _isSignedIn = secondAttempt;
 
         if (secondAttempt) {
-          print("Connexion réussie à la seconde tentative");
+          // Mettre à jour les informations du joueur
+          await _fetchAndUpdatePlayerInfo();
+
+          // Enregistrer l'heure de connexion
+          _lastSignInTime = DateTime.now();
+          await _saveLastSignInTime();
+
+          // Notifier les écouteurs
+          signInStatusChanged.value = true;
+
+          debugPrint("Connexion réussie à la seconde tentative");
           return true;
         }
 
-        print("Échec même après seconde tentative");
-        print("Vérifiez dans Google Play Console que les empreintes SHA-1 suivantes sont enregistrées:");
-        print("Débogage: 94:95:FD:94:32:6F:9D:6C:1A:64:99:91:9E:41:47:7C:FB:84:F7:54");
-        print("Publication: 98:3F:EC:A7:2B:C0:EA:65:7C:A0:1B:41:EA:CC:C4:1E:C6:B0:42:25");
+        debugPrint("Échec même après seconde tentative");
+        debugPrint("Vérifiez dans Google Play Console que les empreintes SHA-1 suivantes sont enregistrées:");
+        debugPrint("Débogage: 94:95:FD:94:32:6F:9D:6C:1A:64:99:91:9E:41:47:7C:FB:84:F7:54");
+        debugPrint("Publication: 98:3F:EC:A7:2B:C0:EA:65:7C:A0:1B:41:EA:CC:C4:1E:C6:B0:42:25");
 
         return false;
       }
     } catch (e, stackTrace) {
-      print("Erreur explicite lors de la connexion aux services de jeu: $e");
-      print("Stack trace: $stackTrace");
+      debugPrint("Erreur explicite lors de la connexion aux services de jeu: $e");
+      debugPrint("Stack trace: $stackTrace");
 
       try {
         FirebaseCrashlytics.instance.recordError(e, stackTrace,
@@ -135,43 +232,137 @@ class GamesServicesController {
     }
   }
 
-  Future<bool> saveGameToCloud(sm.SaveGame save) async {
-    if (!_isSignedIn) return false;
-
+  // Déconnexion
+  Future<void> signOut() async {
     try {
-      // Utiliser CloudSaveManager pour la sauvegarde
-      final cloudSaveManager = CloudSaveManager();
-      return await cloudSaveManager.saveToCloud(save);
+      _isSignedIn = false;
+      _cachedPlayerInfo = null;
+
+      // Supprimer les infos stockées localement
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_playerInfoKey);
+      await prefs.remove(_lastSignInKey);
+
+      // Notifier
+      signInStatusChanged.value = false;
+      playerInfoChanged.value = null;
+
+      // Pas de méthode directe pour se déconnecter dans l'API
+      debugPrint('Signed out from Google Play Games Services');
     } catch (e, stack) {
-      debugPrint('Error saving game to cloud: $e');
+      debugPrint('Error signing out: $e');
       FirebaseCrashlytics.instance.recordError(e, stack);
+    }
+  }
+
+  static Future<bool> saveGameToCloud(String userId, String saveData) async {
+    try {
+      // Récupérer les services nécessaires
+      final authService = GoogleAuthService();
+      final cloudEngine = CloudStorageEngine();
+
+      // Initialiser le stockage cloud
+      await cloudEngine.initialize();
+
+      // Créer un objet SaveGame temporaire pour la sauvegarde
+      final saveJson = jsonDecode(saveData) as Map<String, dynamic>;
+      final saveGame = save_types.SaveGame(
+        id: userId, // Utiliser l'ID utilisateur comme ID de sauvegarde
+        name: 'save_${DateTime.now().millisecondsSinceEpoch}',
+        lastSaveTime: DateTime.now(),
+        gameData: saveJson,
+        version: GameConstants.VERSION,
+      );
+
+      // Sauvegarder dans le cloud
+      await cloudEngine.save(saveGame);
+      return true;
+    } catch (e, stack) {
+      debugPrint('Erreur lors de la sauvegarde dans le cloud: $e');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Cloud save error');
       return false;
     }
   }
 
   // Charger une partie depuis le cloud
-  Future<sm.SaveGame?> loadGameFromCloud(String cloudId) async {
-    if (!_isSignedIn) return null;
-
+  static Future<String?> loadGameFromCloud(String cloudId) async {
     try {
-      // Utiliser CloudSaveManager pour le chargement
-      final cloudSaveManager = CloudSaveManager();
-      return await cloudSaveManager.loadFromCloud(cloudId);
+      // Récupérer les services nécessaires
+      final authService = GoogleAuthService();
+      final cloudEngine = CloudStorageEngine();
+
+      // Initialiser le stockage cloud
+      await cloudEngine.initialize();
+
+      // Charger depuis le stockage cloud
+      final saveGame = await cloudEngine.load(cloudId);
+      if (saveGame == null) {
+        return null;
+      }
+
+      // Convertir en chaîne JSON
+      return jsonEncode(saveGame.toJson());
     } catch (e, stack) {
-      debugPrint('Error loading game from cloud: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
+      debugPrint('Erreur lors du chargement depuis le cloud: $e');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Cloud load error');
       return null;
     }
   }
+  static Future<bool> checkSaveExists(String userId) async {
+    try {
+      // Rediriger vers Cloud Storage
+      final authService = GoogleAuthService();
+      final accessToken = await authService.getGoogleAccessToken();
+
+      if (accessToken == null) {
+        return false;
+      }
+
+      // Initialiser Cloud Storage
+      final cloudEngine = CloudStorageEngine();
+      final initialized = await cloudEngine.initialize();
+
+      if (!initialized) {
+        return false;
+      }
+
+      // Vérifier si la sauvegarde existe
+      final saveGame = await cloudEngine.load(userId);
+      return saveGame != null;
+    } catch (e) {
+      return false;
+    }
+  }
+  // Ajouter ces méthodes dans la classe GamesServicesController
+
+
+
+  Future<bool> saveGameToCloud(SaveGame saveGame) async {
+    try {
+      // Sauvegarder dans le stockage cloud
+      final cloudStorageEngine = CloudStorageEngine();
+      await cloudStorageEngine.initialize();
+
+      await cloudStorageEngine.save(saveGame);
+      return true;
+    } catch (e, stack) {
+      debugPrint('Erreur lors de la sauvegarde dans le cloud: $e');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Cloud save error');
+      return false;
+    }
+  }
+
 
   // Récupérer la liste des sauvegardes cloud
-  Future<List<sm.SaveGameInfo>> getCloudSaves() async {
-    if (!_isSignedIn) return [];
+  Future<List<save_types.SaveGameInfo>> getCloudSaves() async {
+    if (!await isSignedIn()) return [];
 
     try {
-      // Utiliser CloudSaveManager pour récupérer les sauvegardes
-      final cloudSaveManager = CloudSaveManager();
-      return await cloudSaveManager.getCloudSaves();
+      final cloudEngine = CloudStorageEngine();
+      if (await cloudEngine.initialize()) {
+        return await cloudEngine.listSaves();
+      }
+      return [];
     } catch (e, stack) {
       debugPrint('Error getting cloud saves: $e');
       FirebaseCrashlytics.instance.recordError(e, stack);
@@ -179,13 +370,15 @@ class GamesServicesController {
     }
   }
 
+
   // Synchroniser les sauvegardes locales et cloud
   Future<bool> syncSaves() async {
-    if (!_isSignedIn) return false;
+    if (!await isSignedIn()) return false;
 
     try {
-      final cloudSaveManager = CloudSaveManager();
-      return await cloudSaveManager.syncSaves();
+      final saveSystem = SaveSystem();
+      await saveSystem.initialize(null);
+      return await saveSystem.syncSavesToCloud();
     } catch (e, stack) {
       debugPrint('Error syncing saves: $e');
       FirebaseCrashlytics.instance.recordError(e, stack);
@@ -194,30 +387,28 @@ class GamesServicesController {
   }
 
   // Afficher une interface permettant de sélectionner une sauvegarde
-  // Fonction adaptée pour games_services 4.0.3
-  Future<sm.SaveGame?> showSaveSelector() async {
-    if (!_isSignedIn) return null;
+  Future<save_types.SaveGame?> showSaveSelector() async {
+    if (!await isSignedIn()) return null;
 
     try {
-      // Comme games_services 4.0.3 n'a pas de showSavedGamesUI,
-      // nous créons notre propre interface ou utilisons une alternative
-
       // Récupérer les sauvegardes cloud
       final cloudSaves = await getCloudSaves();
 
       // Si aucune sauvegarde, retourner null
       if (cloudSaves.isEmpty) return null;
 
-      // Simuler une sélection (dans une vraie application, vous afficheriez une UI)
-      // Par défaut, prenons la sauvegarde la plus récente
+      // Trier les sauvegardes par date (plus récente d'abord)
       cloudSaves.sort((a, b) => b.timestamp.compareTo(a.timestamp));
       final selectedSave = cloudSaves.first;
 
       // Charger la sauvegarde sélectionnée
       if (selectedSave.cloudId != null) {
-        return await loadGameFromCloud(selectedSave.cloudId!);
+        final jsonStr = await GamesServicesController.loadGameFromCloud(selectedSave.cloudId!);
+        if (jsonStr != null) {
+          final json = jsonDecode(jsonStr) as Map<String, dynamic>;
+          return save_types.SaveGame.fromJson(json);
+        }
       }
-
       return null;
     } catch (e, stack) {
       debugPrint('Error showing save selector: $e');
@@ -226,8 +417,26 @@ class GamesServicesController {
     }
   }
 
+
   Future<bool> isSignedIn() async {
-    return _isSignedIn;
+    // Si déjà vérifié comme connecté, utiliser la valeur en cache
+    if (_isSignedIn) return true;
+
+    // Sinon, vérifier auprès de l'API
+    try {
+      final signedIn = await GamesServices.isSignedIn;
+      _isSignedIn = signedIn;
+
+      // Si connecté, mais les infos du joueur sont manquantes, les récupérer
+      if (signedIn && _cachedPlayerInfo == null) {
+        await _fetchAndUpdatePlayerInfo();
+      }
+
+      return signedIn;
+    } catch (e) {
+      debugPrint('Error checking isSignedIn: $e');
+      return false;
+    }
   }
 
   Future<void> submitCompetitiveScore({
@@ -238,7 +447,7 @@ class GamesServicesController {
     required int level,
     required double efficiency,
   }) async {
-    if (!_isSignedIn) return;
+    if (!await isSignedIn()) return;
 
     try {
       // 1. Soumettre le score principal
@@ -276,7 +485,7 @@ class GamesServicesController {
   // Débloquer un succès compétitif
   Future<void> unlockCompetitiveAchievement(
       CompetitiveAchievement achievement) async {
-    if (!_isSignedIn) return;
+    if (!await isSignedIn()) return;
 
     try {
       String achievementId;
@@ -315,14 +524,12 @@ class GamesServicesController {
     }
   }
 
-
   Future<void> showCompetitiveLeaderboard() async {
     await showLeaderboard(leaderboardID: generalLeaderboardID);
   }
 
-
   Future<void> submitGeneralScore(int paperclips, int money, int playTime) async {
-    if (!_isSignedIn) return;
+    if (!await isSignedIn()) return;
 
     try {
       // Score général basé sur les trombones, l'argent et le temps de jeu
@@ -341,9 +548,9 @@ class GamesServicesController {
     }
   }
 
-// Méthode pour soumettre le score de production
+  // Méthode pour soumettre le score de production
   Future<void> submitProductionScore(int paperclips) async {
-    if (!_isSignedIn) return;
+    if (!await isSignedIn()) return;
 
     try {
       await GamesServices.submitScore(
@@ -359,9 +566,9 @@ class GamesServicesController {
     }
   }
 
-// Méthode pour soumettre le score bancaire
+  // Méthode pour soumettre le score bancaire
   Future<void> submitBankerScore(int totalMoney) async {
-    if (!_isSignedIn) return;
+    if (!await isSignedIn()) return;
 
     try {
       await GamesServices.submitScore(
@@ -378,9 +585,8 @@ class GamesServicesController {
   }
 
   // Cette méthode est simplifiée car getLeaderboardScores n'existe pas dans la version 4.0.3
-  Future<LeaderboardInfo?> getLeaderboardInfo(String leaderboardId,
-      String name) async {
-    if (!_isSignedIn) return null;
+  Future<LeaderboardInfo?> getLeaderboardInfo(String leaderboardId, String name) async {
+    if (!await isSignedIn()) return null;
 
     try {
       // Pour l'instant, retourner des valeurs de base
@@ -398,7 +604,7 @@ class GamesServicesController {
   }
 
   Future<double?> getAchievementProgress(String achievementId) async {
-    if (!_isSignedIn) return null;
+    if (!await isSignedIn()) return null;
 
     try {
       // Dans games_services 4.0.3, loadAchievements retourne AchievementItemList
@@ -421,11 +627,8 @@ class GamesServicesController {
     }
   }
 
-
-
-
   Future<void> incrementAchievement(LevelSystem levelSystem) async {
-    if (!_isSignedIn) return;
+    if (!await isSignedIn()) return;
 
     try {
       final progress = ((levelSystem.level * 10) +
@@ -444,8 +647,6 @@ class GamesServicesController {
       FirebaseCrashlytics.instance.recordError(e, stack);
     }
   }
-
-
 
   // Calcul du score général
   int _calculateGeneralScore(int paperclips, int money, int playTime) {
@@ -467,6 +668,10 @@ class GamesServicesController {
   // Méthode pour afficher les achievements
   Future<void> showAchievements() async {
     try {
+      if (!await isSignedIn()) {
+        await signIn();
+      }
+
       await GamesServices.showAchievements();
     } catch (e, stack) {
       debugPrint('Error showing achievements: $e');
@@ -477,9 +682,8 @@ class GamesServicesController {
   // Méthode pour afficher les leaderboards
   Future<void> showLeaderboard({required String leaderboardID, bool friendsOnly = false}) async {
     try {
-      final signedIn = await GamesServices.isSignedIn;
-      if (!signedIn) {
-        print("L'utilisateur n'est pas connecté, tentative de connexion...");
+      if (!await isSignedIn()) {
+        debugPrint("L'utilisateur n'est pas connecté, tentative de connexion...");
         await signIn();
       }
 
@@ -491,7 +695,7 @@ class GamesServicesController {
         // iOSLeaderboardID: leaderboardID,
       );
     } catch (e) {
-      print("Erreur lors de l'affichage du classement: $e");
+      debugPrint("Erreur lors de l'affichage du classement: $e");
       await FirebaseCrashlytics.instance.recordError(
         e,
         StackTrace.current,
@@ -504,21 +708,19 @@ class GamesServicesController {
     await showLeaderboard(leaderboardID: generalLeaderboardID);
   }
 
-// Méthode pour afficher le classement de production
+  // Méthode pour afficher le classement de production
   Future<void> showProductionLeaderboard({bool friendsOnly = false}) async {
     await showLeaderboard(leaderboardID: productionLeaderboardID);
   }
 
-// Méthode pour afficher le classement bancaire
+  // Méthode pour afficher le classement bancaire
   Future<void> showBankerLeaderboard({bool friendsOnly = false}) async {
     await showLeaderboard(leaderboardID: bankerLeaderboardID);
   }
 
-
-
   // Méthode pour mettre à jour tous les classements d'un coup
   Future<void> updateAllLeaderboards(GameState gameState) async {
-    if (!_isSignedIn) return;
+    if (!await isSignedIn()) return;
 
     try {
       // On utilise catchError pour chaque opération individuelle
@@ -549,45 +751,139 @@ class GamesServicesController {
       FirebaseCrashlytics.instance.recordError(e, stack, fatal: false);
     }
   }
-  // Dans games_services_controller.dart
 
+  // Récupère les informations du joueur connecté
   Future<GooglePlayerInfo?> getCurrentPlayerInfo() async {
     if (!await isSignedIn()) return null;
 
+    // Si les informations sont déjà en cache, les utiliser
+    if (_cachedPlayerInfo != null) {
+      return _cachedPlayerInfo;
+    }
+
+    // Sinon, tenter de les récupérer
     try {
-      // L'API actuelle ne fournit pas directement le moyen d'obtenir les infos du joueur
-      // Essayons d'utiliser une approche différente
-      return GooglePlayerInfo(
-        id: 'player_id',
-        displayName: 'Joueur connecté', // Nommer génériquement pour l'instant
-        iconImageUrl: null,
-      );
+      await _fetchAndUpdatePlayerInfo();
+      return _cachedPlayerInfo;
     } catch (e, stackTrace) {
-      print("Erreur lors de la récupération des infos du joueur: $e");
+      debugPrint("Erreur lors de la récupération des infos du joueur: $e");
       FirebaseCrashlytics.instance.recordError(e, stackTrace);
       return null;
     }
   }
 
+  // Permet de changer de compte Google
   Future<bool> switchAccount() async {
     try {
-      // Pour forcer la sélection d'un compte, nous pouvons nous déconnecter temporairement
-      // (cela n'est pas directement supporté par l'API, mais nous pouvons simuler)
+      // Déconnecter l'utilisateur actuel
       _isSignedIn = false;
-      // Supprimez cette ligne : notifyListeners();
+      _cachedPlayerInfo = null;
+
+      // Notifier le changement
+      signInStatusChanged.value = false;
+      playerInfoChanged.value = null;
 
       // Attendre un peu pour s'assurer que le changement d'état est pris en compte
       await Future.delayed(Duration(milliseconds: 500));
 
-      // Réinitialiser toute instance/état stocké en cache
-      final result = await GamesServices.signIn();
-      _isSignedIn = await GamesServices.isSignedIn == true;
+      // Afficher l'interface de connexion pour permettre à l'utilisateur de choisir un autre compte
+      final result = await signIn();
 
-      return _isSignedIn;
+      if (result) {
+        debugPrint('Compte changé avec succès');
+      } else {
+        debugPrint('Échec du changement de compte');
+      }
+
+      return result;
     } catch (e, stackTrace) {
-      print("Erreur lors du changement de compte: $e");
+      debugPrint("Erreur lors du changement de compte: $e");
       FirebaseCrashlytics.instance.recordError(e, stackTrace);
       return false;
+    }
+  }
+
+  // Méthodes privées
+
+  // Récupère les infos du joueur de l'API Google Play Games et les met en cache
+  Future<void> _fetchAndUpdatePlayerInfo() async {
+    try {
+      // Dans l'implémentation actuelle de games_services 4.0.3, il n'y a pas de méthode
+      // directe pour obtenir les infos du joueur. Nous allons donc utiliser ce qui est disponible.
+
+      // Obtenir les informations du joueur depuis les achievements
+      final achievements = await GamesServices.loadAchievements();
+      if (achievements != null && achievements.isNotEmpty) {
+        // Essayer d'extraire des infos du premier achievement
+        final firstAchievement = achievements.first;
+
+        // Créer un GooglePlayerInfo à partir des informations disponibles
+        // Remarque: l'API actuelle ne fournit pas d'ID joueur directement
+        // Nous utilisons un ID temporaire basé sur le nom d'utilisateur
+        final String playerId = firstAchievement.name.hashCode.toString();
+        final String playerName = 'Joueur Google'; // L'API ne fournit pas le nom
+
+        _cachedPlayerInfo = GooglePlayerInfo(
+          id: playerId,
+          displayName: playerName,
+          iconImageUrl: null, // L'API ne fournit pas d'URL d'image
+        );
+
+        // Sauvegarder les informations localement
+        await _savePlayerInfo();
+
+        // Notifier les écouteurs
+        playerInfoChanged.value = _cachedPlayerInfo;
+
+        debugPrint('Informations du joueur mises à jour: ${_cachedPlayerInfo!.displayName}');
+      } else {
+        debugPrint('Aucune information de joueur disponible');
+      }
+    } catch (e) {
+      debugPrint('Erreur lors de la récupération des infos du joueur: $e');
+    }
+  }
+
+  // Sauvegarde les informations du joueur dans SharedPreferences
+  Future<void> _savePlayerInfo() async {
+    if (_cachedPlayerInfo == null) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_playerInfoKey, jsonEncode(_cachedPlayerInfo!.toJson()));
+    } catch (e) {
+      debugPrint('Erreur lors de la sauvegarde des infos du joueur: $e');
+    }
+  }
+
+  // Charge les informations du joueur depuis SharedPreferences
+  Future<void> _loadCachedPlayerInfo() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? playerInfoJson = prefs.getString(_playerInfoKey);
+      final String? lastSignInTimeStr = prefs.getString(_lastSignInKey);
+
+      if (playerInfoJson != null) {
+        _cachedPlayerInfo = GooglePlayerInfo.fromJson(jsonDecode(playerInfoJson));
+      }
+
+      if (lastSignInTimeStr != null) {
+        _lastSignInTime = DateTime.parse(lastSignInTimeStr);
+      }
+    } catch (e) {
+      debugPrint('Erreur lors du chargement des infos du joueur: $e');
+    }
+  }
+
+  // Sauvegarde l'heure de la dernière connexion
+  Future<void> _saveLastSignInTime() async {
+    if (_lastSignInTime == null) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_lastSignInKey, _lastSignInTime!.toIso8601String());
+    } catch (e) {
+      debugPrint('Erreur lors de la sauvegarde de la date de connexion: $e');
     }
   }
 }
@@ -618,4 +914,19 @@ extension AchievementExtensions on AchievementItemData {
   bool isInProgress() {
     return completedSteps > 0 && completedSteps < totalSteps;
   }
+}
+class SyncResult {
+  final bool success;
+  final int added;
+  final int updated;
+  final int conflicts;
+  final List<String> errors;
+
+  SyncResult({
+    this.success = false,
+    this.added = 0,
+    this.updated = 0,
+    this.conflicts = 0,
+    this.errors = const [],
+  });
 }

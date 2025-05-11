@@ -6,7 +6,12 @@ import '../models/game_state.dart';
 import '../models/game_config.dart';
 import 'package:paperclip2/screens/main_screen.dart';
 import 'package:paperclip2/services/games_services_controller.dart';
-import 'package:paperclip2/services/save_manager.dart';
+import '../services/save/save_system.dart';
+import '../services/save/save_types.dart';
+import 'package:uuid/uuid.dart';
+import '../widgets/app_bar/widget_appbar_jeu.dart';
+import 'package:provider/provider.dart';
+import '../services/save/save_system.dart';
 
 class SaveLoadScreen extends StatefulWidget {
   const SaveLoadScreen({Key? key}) : super(key: key);
@@ -29,10 +34,11 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
   String _formatDateTime(DateTime dateTime) {
     return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour}:${dateTime.minute}';
   }
-
+  late SaveSystem _saveSystem;
   // Variables d'état
   SaveFilter _currentFilter = SaveFilter.ALL;
   bool _isSyncing = false;
+  bool _isLoading = false;
 
   List<SaveGameInfo> _filterSaves(List<SaveGameInfo> saves) {
     switch (_currentFilter) {
@@ -102,12 +108,12 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
       final gameState = Provider.of<GameState>(context, listen: false);
 
       // Si c'est une sauvegarde cloud sans version locale, la télécharger d'abord
-      if (saveInfo.isSyncedWithCloud && saveInfo.cloudId != null && !await SaveManager.saveExists(saveInfo.name)) {
+      if (saveInfo.isSyncedWithCloud && saveInfo.cloudId != null && !await _saveSystem.exists(saveInfo.name)) {
         final gamesServices = GamesServicesController();
         final cloudSave = await gamesServices.loadGameFromCloud(saveInfo.cloudId!);
 
         if (cloudSave != null) {
-          await SaveManager.saveGame(cloudSave);
+          await _saveSystem.saveGame(cloudSave);
         } else {
           throw SaveError('CLOUD_ERROR', 'Impossible de charger la sauvegarde depuis le cloud');
         }
@@ -169,10 +175,12 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Sauvegardes'),
+      // Utilisation du widget AppBar personnalisé
+      appBar: WidgetAppBarJeu(
+        title: 'Sauvegardes',
         elevation: 0,
-        actions: [
+        showLevelIndicator: false, // Pas besoin d'indicateur de niveau ici
+        additionalActions: [
           // Bouton de synchronisation
           IconButton(
             icon: _isSyncing
@@ -184,7 +192,6 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
             onPressed: _isSyncing ? null : _syncSaves,
             tooltip: 'Synchroniser avec le cloud',
           ),
-
           // Menu de filtres
           PopupMenuButton<SaveFilter>(
             icon: const Icon(Icons.filter_list),
@@ -218,10 +225,11 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
             ],
           ),
         ],
+        showSettings: false, // On n'a pas besoin du bouton settings ici
       ),
       body: FutureBuilder<List<SaveGameInfo>>(
         key: _futureBuilderKey,
-        future: SaveManager.listSaves(),
+        future: _saveSystem.listSaves(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
@@ -431,7 +439,7 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                         final gamesServices = GamesServicesController();
                         if (await gamesServices.isSignedIn()) {
                           // Charger la sauvegarde complète
-                          final fullSave = await SaveManager.loadGame(save.name);
+                          final fullSave = await _saveSystem.loadGame(save.name);
                           if (fullSave != null) {
                             final success = await gamesServices.saveGameToCloud(fullSave);
                             if (mounted) {
@@ -567,78 +575,174 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
     );
 
     if (result == true && context.mounted) {
-      await SaveManager.deleteSave(gameName);
+      await _saveSystem.deleteSave(gameName);
       _refreshSaves();
     }
   }
 
-  Future<void> _showNewGameDialog(BuildContext context) async {
+  void _showNewGameDialog(BuildContext context) {
     final controller = TextEditingController(
       text: 'Partie ${DateTime.now().day}/${DateTime.now().month}',
     );
 
-    return showDialog(
+    // Variable pour suivre le mode sélectionné
+    GameMode selectedMode = GameMode.INFINITE;
+    bool syncToCloud = false; // Valeur par défaut
+
+    showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: Row(
-          children: [
-            Icon(Icons.add_circle, color: Colors.deepPurple[400]),
-            const SizedBox(width: 8),
-            const Text('Nouvelle Partie'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: controller,
-              decoration: InputDecoration(
-                labelText: 'Nom de la partie',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(Icons.add_circle, color: Colors.deepPurple[400]),
+              const SizedBox(width: 8),
+              const Text('Nouvelle Partie'),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: controller,
+                  decoration: InputDecoration(
+                    labelText: 'Nom de la partie',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    prefixIcon: const Icon(Icons.drive_file_rename_outline),
+                  ),
+                  autofocus: true,
                 ),
-                prefixIcon: const Icon(Icons.drive_file_rename_outline),
-              ),
-              autofocus: true,
+                const SizedBox(height: 16),
+
+                // Option pour sélectionner le mode de jeu
+                const Text(
+                  'Mode de jeu',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                RadioListTile<GameMode>(
+                  title: const Text('Mode Infini'),
+                  subtitle: const Text('Jouez sans limite de temps'),
+                  value: GameMode.INFINITE,
+                  groupValue: selectedMode,
+                  onChanged: (value) {
+                    setState(() => selectedMode = value!);
+                  },
+                ),
+                RadioListTile<GameMode>(
+                  title: const Text('Mode Compétitif'),
+                  subtitle: const Text('Optimisez pour un meilleur score'),
+                  value: GameMode.COMPETITIVE,
+                  groupValue: selectedMode,
+                  onChanged: (value) {
+                    setState(() => selectedMode = value!);
+                  },
+                ),
+
+                // FutureBuilder pour vérifier si Google Play Games est connecté
+                FutureBuilder<bool>(
+                  future: GamesServicesController().isSignedIn(),
+                  builder: (context, snapshot) {
+                    final isSignedIn = snapshot.data ?? false;
+
+                    if (isSignedIn) {
+                      return SwitchListTile(
+                        title: const Text('Synchroniser avec le cloud'),
+                        value: syncToCloud,
+                        onChanged: (value) {
+                          setState(() => syncToCloud = value);
+                        },
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  },
+                ),
+
+                const SizedBox(height: 8),
+                Text(
+                  'Cette action créera une nouvelle sauvegarde',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            Text(
-              'Donnez un nom à votre nouvelle partie',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Annuler'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final gameName = controller.text.trim();
+                if (gameName.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Le nom ne peut pas être vide')),
+                  );
+                  return;
+                }
+
+                // Retourner un objet avec les informations de la nouvelle partie
+                Navigator.pop(context, {
+                  'name': gameName,
+                  'mode': selectedMode,
+                  'sync': syncToCloud,
+                });
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepPurple,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
               ),
+              child: const Text('Créer'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Annuler'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepPurple,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-            ),
-            child: const Text('Créer'),
-          ),
-        ],
       ),
     ).then((result) async {
-      if (result != null && result.isNotEmpty && context.mounted) {
-        await context.read<GameState>().startNewGame(result);
-        if (context.mounted) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const MainScreen()),
+      if (result != null && context.mounted) {
+        try {
+          final gameName = result['name'];
+          final gameMode = result['mode'] as GameMode;
+          final syncToCloud = result['sync'] as bool;
+
+          // Vérifier si le profil peut créer une partie compétitive
+          if (gameMode == GameMode.COMPETITIVE) {
+            // TODO: Ajouter la vérification avec le UserManager
+          }
+
+          setState(() => _isLoading = true);
+
+          await context.read<GameState>().startNewGame(
+              gameName,
+              mode: gameMode,
+              syncToCloud: syncToCloud
           );
+
+          if (context.mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const MainScreen()),
+            );
+          }
+        } catch (e) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Erreur lors de la création: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+            setState(() => _isLoading = false);
+          }
         }
       }
     });

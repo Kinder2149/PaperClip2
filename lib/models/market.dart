@@ -4,7 +4,6 @@ import 'dart:async';
 import 'dart:math';
 import 'game_config.dart';
 import 'event_system.dart';
-import 'resource_manager.dart';
 import '../dialogs/metal_crisis_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';

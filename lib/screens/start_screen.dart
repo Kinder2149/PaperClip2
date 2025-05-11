@@ -1,15 +1,23 @@
+// lib/screens/start_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/services.dart';
 import '../models/game_state.dart';
 import '../models/game_config.dart';
 import '../utils/update_manager.dart';
-import '../services/save_manager.dart';
+import 'package:provider/provider.dart';
+import '../services/save/save_system.dart';
+
+
 import 'save_load_screen.dart';
 import 'introduction_screen.dart';
-import 'package:paperclip2/screens/main_screen.dart';
-import 'package:paperclip2/main.dart';
-import 'package:paperclip2/services/games_services_controller.dart';
+import 'main_screen.dart';
+import '../main.dart';
+import '../services/games_services_controller.dart';
 import '../widgets/google_profile_button.dart';
+import '../services/user/user_manager.dart';
+import '../dialogs/nickname_dialog.dart';
+import 'settings_screen.dart';
 
 class StartScreen extends StatefulWidget {
   const StartScreen({super.key});
@@ -19,6 +27,7 @@ class StartScreen extends StatefulWidget {
 }
 
 class _StartScreenState extends State<StartScreen> {
+  late SaveSystem _saveSystem;
   bool _isLoading = false;
   String? _lastSaveInfo;
 
@@ -30,12 +39,12 @@ class _StartScreenState extends State<StartScreen> {
   @override
   void initState() {
     super.initState();
-    _loadLastSaveInfo();
-    _checkGoogleSignIn();
+    _saveSystem = Provider.of<SaveSystem>(context, listen: false);
   }
 
+
   Future<void> _loadLastSaveInfo() async {
-    final lastSave = await SaveManager.getLastSave();
+    final lastSave = await _saveSystem.listSaves().then((saves) => saves.isNotEmpty ? saves.first : null);
     if (lastSave != null) {
       setState(() {
         _lastSaveInfo = 'Dernière partie : ${lastSave.name}';
@@ -43,13 +52,11 @@ class _StartScreenState extends State<StartScreen> {
     }
   }
 
-
-  // Récupérer le nom du joueur (si disponible dans votre implémentation)
+  // Récupérer le nom du joueur
   Future<String?> _getPlayerName() async {
-    // Cette méthode peut être implémentée si votre package games_services
-    // propose une façon d'obtenir le nom du joueur.
-    // Dans le cas contraire, retournez simplement null.
-    return null;
+    final userManager = Provider.of<UserManager>(context, listen: false);
+    await userManager.initialize();
+    return userManager.currentProfile?.displayName;
   }
 
   // Se connecter à Google Play Games
@@ -107,8 +114,10 @@ class _StartScreenState extends State<StartScreen> {
       }
     }
   }
+
   Future<void> _checkGoogleSignIn() async {
     final gamesServices = GamesServicesController();
+    final userManager = Provider.of<UserManager>(context, listen: false);
 
     setState(() {
       _isCheckingSignIn = true;
@@ -116,11 +125,13 @@ class _StartScreenState extends State<StartScreen> {
 
     try {
       final isSignedIn = await gamesServices.isSignedIn();
+      await userManager.initialize();
+      final playerName = userManager.currentProfile?.displayName;
 
       if (mounted) {
         setState(() {
           _isSignedIn = isSignedIn;
-          _playerName = isSignedIn ? "Joueur Google Play" : null;
+          _playerName = playerName;
           _isCheckingSignIn = false;
         });
       }
@@ -137,14 +148,13 @@ class _StartScreenState extends State<StartScreen> {
   Future<void> _continueLastGame() async {
     setState(() => _isLoading = true);
     try {
-      final lastSave = await SaveManager.getLastSave();
+      final lastSave = await _saveSystem.listSaves().then((saves) => saves.isNotEmpty ? saves.first : null);
       if (lastSave != null) {
         await context.read<GameState>().loadGame(lastSave.name);
         if (mounted) {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (
-                context) => const MainScreen()), // MainGame -> MainScreen
+            MaterialPageRoute(builder: (context) => const MainScreen()),
           );
         }
       } else {
@@ -171,6 +181,29 @@ class _StartScreenState extends State<StartScreen> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  void _showNicknameDialog() {
+    final userManager = Provider.of<UserManager>(context, listen: false);
+    final currentProfile = userManager.currentProfile;
+
+    showDialog(
+      context: context,
+      builder: (context) => NicknameDialog(
+        initialNickname: currentProfile?.displayName,
+        onNicknameSet: (nickname) {
+          setState(() {
+            _playerName = nickname;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Surnom défini : $nickname'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        },
+      ),
+    );
   }
 
   void _showNewGameDialog(BuildContext context) {
@@ -234,31 +267,43 @@ class _StartScreenState extends State<StartScreen> {
                 ),
 
                 if (selectedMode == GameMode.COMPETITIVE)
-                  Container(
-                    margin: const EdgeInsets.only(top: 8),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.amber, width: 1),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Text(
-                          '🏆 Mode Compétitif',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.amber,
+                  FutureBuilder<bool>(
+                    future: UserManager().canCreateCompetitiveSave(),
+                    builder: (context, snapshot) {
+                      bool canCreate = snapshot.data ?? true;
+
+                      return Container(
+                        margin: const EdgeInsets.only(top: 8),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: canCreate ? Colors.amber.withOpacity(0.1) : Colors.red.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: canCreate ? Colors.amber : Colors.red,
+                            width: 1,
                           ),
                         ),
-                        SizedBox(height: 4),
-                        Text(
-                          'Optimisez votre production jusqu à la crise mondiale de métal pour obtenir le meilleur score. Comparez vos résultats avec vos amis !',
-                          style: TextStyle(fontSize: 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              canCreate ? '🏆 Mode Compétitif' : '⚠️ Limite atteinte',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: canCreate ? Colors.amber : Colors.red,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              canCreate
+                                  ? 'Optimisez votre production jusqu\'à la crise mondiale de métal pour obtenir le meilleur score. Comparez vos résultats avec vos amis !'
+                                  : 'Vous avez atteint la limite de 3 parties compétitives. Veuillez en supprimer une pour en créer une nouvelle.',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
 
                 // Option de synchronisation cloud (uniquement si connecté)
@@ -300,7 +345,7 @@ class _StartScreenState extends State<StartScreen> {
                   return;
                 }
 
-                final exists = await SaveManager.saveExists(gameName);
+                final exists = await _saveSystem.exists(gameName);
                 if (exists) {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -311,6 +356,22 @@ class _StartScreenState extends State<StartScreen> {
                     );
                   }
                   return;
+                }
+
+                // Vérifier si l'utilisateur peut créer une partie compétitive
+                if (selectedMode == GameMode.COMPETITIVE) {
+                  final userManager = context.read<UserManager>();
+                  if (!await userManager.canCreateCompetitiveSave()) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Limite de parties compétitives atteinte (3 maximum)'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                    return;
+                  }
                 }
 
                 if (context.mounted) {
@@ -364,6 +425,10 @@ class _StartScreenState extends State<StartScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final userManager = Provider.of<UserManager>(context);
+    final hasProfile = userManager.hasProfile;
+    final profileName = userManager.currentProfile?.displayName;
+
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
@@ -383,81 +448,169 @@ class _StartScreenState extends State<StartScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Logo et titre (inchangés)
+                // Logo et titre (réduits)
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: Colors.white.withOpacity(0.1),
                   ),
                   child: const Icon(
                     Icons.link,
-                    size: 120,
+                    size: 80, // Taille réduite
                     color: Colors.white,
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16), // Espace réduit
                 const Text(
                   'ClipFactory Empire',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: 48,
+                    fontSize: 36, // Taille réduite
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                     fontFamily: 'Orbitron',
-                    letterSpacing: 4,
+                    letterSpacing: 2, // Espacement réduit
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 4), // Espace réduit
                 Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 4),
+                      horizontal: 10, vertical: 3),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    'v${UpdateManager.CURRENT_VERSION}',
+                    'v${GameConstants.VERSION}',
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.8),
-                      fontSize: 16,
+                      fontSize: 14,
                     ),
                   ),
                 ),
 
-                // Affichage du statut de connexion
-                if (_isSignedIn && _playerName != null)
+                const SizedBox(height: 24),
+
+                // Bouton de profil/connexion Google
+                if (_isCheckingSignIn)
                   Container(
-                    margin: const EdgeInsets.only(top: 8),
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 4),
+                        horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.2),
+                      color: Colors.white.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: Row(
+                    child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(
-                          Icons.check_circle,
-                          color: Colors.white,
-                          size: 16,
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
                         ),
-                        const SizedBox(width: 8),
+                        SizedBox(width: 8),
                         Text(
-                          'Connecté: $_playerName',
-                          style: const TextStyle(
+                          'Vérification du profil...',
+                          style: TextStyle(
                             color: Colors.white,
                             fontSize: 14,
                           ),
                         ),
                       ],
                     ),
+                  )
+                else if (hasProfile && profileName != null)
+                  GestureDetector(
+                    onTap: _showNicknameDialog,
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircleAvatar(
+                            radius: 20,
+                            backgroundColor: Colors.deepPurple[300],
+                            child: Text(
+                              profileName.substring(0, 1).toUpperCase(),
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                profileName,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              if (_isSignedIn)
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.check_circle,
+                                      color: Colors.green,
+                                      size: 12,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Connecté à Google',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.white.withOpacity(0.7),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                            ],
+                          ),
+                          const SizedBox(width: 8),
+                          const Icon(
+                            Icons.edit,
+                            color: Colors.white70,
+                            size: 16,
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  ElevatedButton.icon(
+                    onPressed: _signInToGooglePlay,
+                    icon: const Icon(Icons.games),
+                    label: const Text('Se connecter à Google Play'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green[600],
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                    ),
                   ),
 
-                const SizedBox(height: 40),
+                const SizedBox(height: 32),
 
-                // Boutons du menu (avec ajouts pour le cloud)
+                // Boutons du menu principal
                 _buildMenuButton(
                   onPressed: () => _showNewGameDialog(context),
                   icon: Icons.add,
@@ -510,30 +663,21 @@ class _StartScreenState extends State<StartScreen> {
                   textColor: Colors.white,
                 ),
 
-                // Si connecté, ajouter l'option de chargement depuis le cloud
-                if (_isSignedIn)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 16.0),
-                    child: GoogleProfileButton(
-                      onProfileUpdated: () {
-                        // Rafraîchir l'état pour mettre à jour l'UI
-                        _checkGoogleSignIn();
-                      },
-                    ),
-                  ),
+                const SizedBox(height: 16),
 
-                // Si non connecté, ajouter l'option de connexion
-                if (!_isSignedIn && !_isCheckingSignIn)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 16.0),
-                    child: _buildMenuButton(
-                      onPressed: _isLoading ? null : _signInToGooglePlay,
-                      icon: Icons.games,
-                      label: 'Se connecter à Google Play Games',
-                      color: Colors.green[500],
-                      textColor: Colors.white,
-                    ),
-                  ),
+                // Nouveau bouton Paramètres
+                _buildMenuButton(
+                  onPressed: _isLoading ? null : () =>
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => const SettingsScreen()),
+                      ),
+                  icon: Icons.settings,
+                  label: 'Paramètres',
+                  color: Colors.grey[800],
+                  textColor: Colors.white,
+                ),
 
                 if (_isLoading) ...[
                   const SizedBox(height: 24),

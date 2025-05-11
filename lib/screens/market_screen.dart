@@ -6,7 +6,9 @@ import '../models/game_config.dart';
 import '../widgets/chart_widgets.dart';
 import '../widgets/resource_widgets.dart';
 import 'demand_calculation_screen.dart';
-import '../services/save_manager.dart';
+import '../services/save/save_types.dart';
+import '../services/save/save_types.dart';
+import '../services/save/save_system.dart';
 import '../screens/sales_history_screen.dart';
 import 'dart:math' show min;
 

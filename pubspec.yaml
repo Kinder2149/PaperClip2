@@ -22,6 +22,13 @@ dependencies:
   # Stockage et fichiers
   shared_preferences: ^2.2.0
   path_provider: ^2.1.2
+  image_picker: ^0.8.9
+  google_sign_in: ^6.0.0
+  firebase_auth: ^4.16.0
+  googleapis: ^11.0.0
+  googleapis_auth: ^1.4.0
+  http: ^1.0.0
+  url_launcher: ^6.1.11
 
   # Gestion des fichiers
   file_picker: ^6.1.1
@@ -41,7 +48,7 @@ dependencies:
   games_services: ^4.0.3
 
   # Firebase
-  firebase_core: ^2.24.2
+  firebase_core: ^2.32.0
   firebase_analytics: ^10.8.0
   firebase_crashlytics: ^3.4.9
   firebase_storage: ^11.6.0
@@ -59,7 +66,8 @@ dev_dependencies:
   flutter_lints: ^3.0.1
   flutter_launcher_icons: ^0.13.1
   mockito: ^5.4.2
-  build_runner: ^2.4.6
+  build_runner: ^2.4.6  # Nécessaire pour la génération de code mockito
+  firebase_auth_mocks: 0.9.2  # Pour mocker Firebase Auth
 
 flutter_icons:
   android: "ic_launcher"

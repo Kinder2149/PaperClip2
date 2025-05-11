@@ -2,7 +2,13 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:flutter/material.dart';
+import 'dart:convert';
 import '../firebase_options.dart';
+import '../services/user/google_auth_service.dart';
+import '../models/game_config.dart';
+import './save/save_types.dart';
+import 'save/storage/cloud_storage_engine.dart';
 
 class FirebaseConfig {
   static final FirebaseStorage storage = FirebaseStorage.instance;
@@ -27,33 +33,77 @@ class FirebaseConfig {
       // Premier fetch avec gestion d'erreur
       await remoteConfig.fetchAndActivate();
     } catch (e, stack) {
-      print('Error initializing Firebase Config: $e');
+      debugPrint('Error initializing Firebase Config: $e');
       FirebaseCrashlytics.instance.recordError(e, stack);
     }
   }
 
-  static Future<void> saveGameToCloud(String userId, String saveData) async {
+  static Future<bool> saveGameToCloud(String userId, String saveData) async {
     try {
-      final ref = storage.ref('saves/$userId/game_save.json');
-      await ref.putString(
-        saveData,
-        metadata: SettableMetadata(
-          contentType: 'application/json',
-          customMetadata: {'lastSaved': DateTime.now().toIso8601String()},
-        ),
+      // Récupérer le service d'authentification
+      final authService = GoogleAuthService();
+      final accessToken = await authService.getGoogleAccessToken();
+
+      if (accessToken == null) {
+        throw Exception('Impossible d\'obtenir un token d\'accès Google');
+      }
+
+      // Initialiser le stockage cloud
+      final cloudEngine = CloudStorageEngine();
+      final isInitialized = await cloudEngine.initialize();
+
+      if (!isInitialized) {
+        throw Exception('Échec de l\'initialisation du stockage Cloud');
+      }
+
+      // Créer un objet SaveGame temporaire pour la sauvegarde
+      final saveJson = jsonDecode(saveData) as Map<String, dynamic>;
+      final saveGameObj = SaveGame(
+        id: userId, // Utiliser l'ID utilisateur comme ID de sauvegarde
+        name: 'save_${DateTime.now().millisecondsSinceEpoch}',
+        lastSaveTime: DateTime.now(),
+        gameData: saveJson,
+        version: GameConstants.VERSION,
       );
+
+      // Sauvegarder dans le cloud
+      await cloudEngine.save(saveGameObj);
+      return true;
     } catch (e, stack) {
+      debugPrint('Erreur lors de la sauvegarde dans le cloud: $e');
       FirebaseCrashlytics.instance.recordError(e, stack);
-      rethrow;
+      return false;
     }
   }
 
   static Future<String?> loadGameFromCloud(String userId) async {
     try {
-      final ref = storage.ref('saves/$userId/game_save.json');
-      final data = await ref.getData();
-      return data != null ? String.fromCharCodes(data) : null;
+      // Récupérer le service d'authentification
+      final authService = GoogleAuthService();
+      final accessToken = await authService.getGoogleAccessToken();
+
+      if (accessToken == null) {
+        return null;
+      }
+
+      // Initialiser le stockage cloud
+      final cloudEngine = CloudStorageEngine();
+      final isInitialized = await cloudEngine.initialize();
+
+      if (!isInitialized) {
+        return null;
+      }
+
+      // Charger depuis le stockage cloud
+      final saveGameObj = await cloudEngine.load(userId);
+      if (saveGameObj == null) {
+        return null;
+      }
+
+      // Convertir en chaîne JSON
+      return jsonEncode(saveGameObj.toJson());
     } catch (e, stack) {
+      debugPrint('Erreur lors du chargement depuis le cloud: $e');
       FirebaseCrashlytics.instance.recordError(e, stack);
       return null;
     }
@@ -61,9 +111,25 @@ class FirebaseConfig {
 
   static Future<bool> checkSaveExists(String userId) async {
     try {
-      final ref = storage.ref('saves/$userId/game_save.json');
-      await ref.getMetadata();
-      return true;
+      // Récupérer le service d'authentification
+      final authService = GoogleAuthService();
+      final accessToken = await authService.getGoogleAccessToken();
+
+      if (accessToken == null) {
+        return false;
+      }
+
+      // Initialiser le stockage cloud
+      final cloudEngine = CloudStorageEngine();
+      final isInitialized = await cloudEngine.initialize();
+
+      if (!isInitialized) {
+        return false;
+      }
+
+      // Vérifier si la sauvegarde existe
+      final saveGameObj = await cloudEngine.load(userId);
+      return saveGameObj != null;
     } catch (e) {
       return false;
     }

@@ -6,7 +6,6 @@ import 'dart:math';
 import 'game_config.dart';
 import 'event_system.dart';
 import 'progression_system.dart';
-import 'resource_manager.dart';
 import 'market.dart';
 import 'package:paperclip2/managers/metal_manager.dart';
 import 'game_state.dart';

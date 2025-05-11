@@ -5,7 +5,7 @@ import '../models/game_state.dart';
 import '../models/game_config.dart';
 import '../widgets/resource_widgets.dart';
 import '../widgets/level_widgets.dart';
-import '../services/save_manager.dart';
+
 import 'package:paperclip2/widgets/resource_widgets.dart'; // Ajustez le chemin selon votre structure
 
 class ProductionScreen extends StatefulWidget {
