@@ -6,7 +6,8 @@ import '../save_types.dart';
 /// Interface abstraite pour les moteurs de stockage
 abstract class StorageEngine {
   /// Initialise le moteur de stockage
-  Future<void> initialize();
+  /// Retourne true si l'initialisation réussit, false sinon
+  Future<bool> initialize();
 
   /// Vérifie si le moteur est prêt à être utilisé
   bool get isInitialized;

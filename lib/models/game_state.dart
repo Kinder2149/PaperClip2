@@ -32,6 +32,14 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../services/user/user_manager.dart';
 
 class GameState extends ChangeNotifier implements SaveDataProvider {
+
+
+  // Timers existants
+  Timer? _gameLoopTimer;
+  Timer? marketTimer;
+  Timer? _playTimeTimer;
+
+
   late final PlayerManager _playerManager;
   late final MarketManager _marketManager;
   late final MetalManager _metalManager;
@@ -42,8 +50,6 @@ class GameState extends ChangeNotifier implements SaveDataProvider {
   DateTime? _crisisStartTime;
   late final StatisticsManager _statistics;
   StatisticsManager get statistics => _statistics;
-  Timer? _playTimeTimer;
-  Timer? marketTimer;
   late final AutoSaveService _autoSaveService;
   bool get isInCrisisMode => _isInCrisisMode;
   bool get crisisTransitionComplete => _crisisTransitionComplete;
@@ -205,7 +211,7 @@ class GameState extends ChangeNotifier implements SaveDataProvider {
   static const Duration AUTOSAVE_INTERVAL = Duration(minutes: 5);
   static const Duration MAINTENANCE_INTERVAL = Duration(minutes: 1);
 
-  Timer? _gameLoopTimer;
+
   int _ticksSinceLastMarketUpdate = 0;
   int _ticksSinceLastAutoSave = 0;
   int _ticksSinceLastMaintenance = 0;
@@ -486,7 +492,7 @@ class GameState extends ChangeNotifier implements SaveDataProvider {
 
   // Gestion des timers
   void _startTimers() {
-    _stopAllTimers();
+    _stopAllTimers(); // Arrêter les timers existants d'abord
     _lastUpdateTime = DateTime.now();
 
     // Production toutes les secondes
@@ -495,29 +501,30 @@ class GameState extends ChangeNotifier implements SaveDataProvider {
       processProduction();
     });
 
-    // Timer du marché - Ajout de cette partie
+    // Timer du marché
     marketTimer = Timer.periodic(
         const Duration(seconds: 1),
-            (timer) => _processMarket()  // Utilisez _processMarket au lieu de processMarket
+            (timer) => _processMarket()
     );
 
     // Timer du temps de jeu
-    _playTimeTimer?.cancel();
     _playTimeTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       _totalTimePlayedInSeconds++;
       _statistics.updatePlayTime(const Duration(seconds: 1));
       notifyListeners();
     });
   }
-
   void _stopAllTimers() {
     _gameLoopTimer?.cancel();
     _gameLoopTimer = null;
+
     marketTimer?.cancel();
     marketTimer = null;
+
     _playTimeTimer?.cancel();
     _playTimeTimer = null;
   }
+
 
   void _applyMaintenanceCosts() {
     if (player.autoclippers == 0) return;
@@ -1218,10 +1225,16 @@ class GameState extends ChangeNotifier implements SaveDataProvider {
 
   @override
   void dispose() {
+    debugPrint('GameState: dispose appelé - nettoyage des ressources');
+
+    // Arrêter tous les timers
     _stopAllTimers();
+
+    // Dispose d'autres ressources
     _autoSaveService.dispose();
     playerManager.dispose();
     levelSystem.dispose();
+
     super.dispose();
   }
 }

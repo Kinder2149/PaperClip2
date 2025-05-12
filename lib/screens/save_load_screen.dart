@@ -12,6 +12,7 @@ import 'package:uuid/uuid.dart';
 import '../widgets/app_bar/widget_appbar_jeu.dart';
 import 'package:provider/provider.dart';
 import '../services/save/save_system.dart';
+import 'dart:convert';
 
 class SaveLoadScreen extends StatefulWidget {
   const SaveLoadScreen({Key? key}) : super(key: key);
@@ -29,16 +30,37 @@ enum SaveFilter {
 }
 
 class _SaveLoadScreenState extends State<SaveLoadScreen> {
-  // Ajouter une clé pour forcer le rafraîchissement du FutureBuilder
+  // Soit initialiser directement:
+  late final SaveSystem _saveSystem;
+  String? _lastSaveInfo;
+  bool _isLoading = false;
   Key _futureBuilderKey = UniqueKey();
+  SaveFilter _currentFilter = SaveFilter.ALL;
+  bool _isSyncing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialiser _saveSystem dans initState
+    _saveSystem = Provider.of<SaveSystem>(context, listen: false);
+    // Charger les informations de sauvegarde si nécessaire
+    _loadLastSaveInfo();
+  }
+
+  Future<void> _loadLastSaveInfo() async {
+    final lastSave = await _saveSystem.listSaves().then((saves) => saves.isNotEmpty ? saves.first : null);
+    if (lastSave != null && mounted) {
+      setState(() {
+        _lastSaveInfo = 'Dernière partie : ${lastSave.name}';
+      });
+    }
+  }
+
+
   String _formatDateTime(DateTime dateTime) {
     return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour}:${dateTime.minute}';
   }
-  late SaveSystem _saveSystem;
-  // Variables d'état
-  SaveFilter _currentFilter = SaveFilter.ALL;
-  bool _isSyncing = false;
-  bool _isLoading = false;
+
 
   List<SaveGameInfo> _filterSaves(List<SaveGameInfo> saves) {
     switch (_currentFilter) {
@@ -110,14 +132,17 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
       // Si c'est une sauvegarde cloud sans version locale, la télécharger d'abord
       if (saveInfo.isSyncedWithCloud && saveInfo.cloudId != null && !await _saveSystem.exists(saveInfo.name)) {
         final gamesServices = GamesServicesController();
-        final cloudSave = await gamesServices.loadGameFromCloud(saveInfo.cloudId!);
+        // Correction: Utiliser correctement la méthode loadGameFromCloud
+        final cloudSaveData = await gamesServices.loadGameFromCloud(saveInfo.cloudId!);
 
-        if (cloudSave != null) {
-          await _saveSystem.saveGame(cloudSave);
+        if (cloudSaveData != null) {
+          // Créer une nouvelle sauvegarde locale à partir des données cloud
+          await _saveSystem.saveGame(saveInfo.name);
         } else {
           throw SaveError('CLOUD_ERROR', 'Impossible de charger la sauvegarde depuis le cloud');
         }
       }
+
 
       // Chargement normal
       await gameState.loadGame(saveInfo.name);
@@ -438,10 +463,22 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                         // Synchroniser avec le cloud
                         final gamesServices = GamesServicesController();
                         if (await gamesServices.isSignedIn()) {
-                          // Charger la sauvegarde complète
-                          final fullSave = await _saveSystem.loadGame(save.name);
-                          if (fullSave != null) {
-                            final success = await gamesServices.saveGameToCloud(fullSave);
+                          try {
+                            // Charger la sauvegarde
+                            final gameState = Provider.of<GameState>(context, listen: false);
+
+                            // Charger le jeu pour s'assurer que l'état est actif
+                            await gameState.loadGame(save.name);
+
+                            // Utiliser prepareGameData de GameState (pas de SaveSystem)
+                            final fullSaveData = gameState.prepareGameData();
+
+                            // Sauvegarder dans le cloud
+                            final success = await gamesServices.saveGameToCloud(
+                                saveData: jsonEncode(fullSaveData),
+                                userId: save.id
+                            );
+
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
@@ -452,6 +489,15 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                                 ),
                               );
                               _refreshSaves();
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Erreur de synchronisation: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
                             }
                           }
                         } else {

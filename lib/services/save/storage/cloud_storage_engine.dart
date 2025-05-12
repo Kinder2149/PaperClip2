@@ -23,31 +23,75 @@ class CloudStorageEngine implements StorageEngine {
   String? _appFolderId;
 
   @override
-  Future<void> initialize() async {
+  Future<bool> initialize() async {
     try {
       // Tenter d'initialiser Google Drive
       if (await _initializeDrive()) {
         _initialized = true;
-        return;
+        return true;
       }
 
       // En cas d'échec, vérifier si Google Play Games est disponible
       if (await _isPlayGamesAvailable()) {
         _initialized = true;
-        return;
+        return true;
       }
 
       _initialized = false;
+      return false;
     } catch (e, stack) {
       debugPrint('Erreur initialisation cloud: $e');
       FirebaseCrashlytics.instance.recordError(e, stack);
       _initialized = false;
+      return false;
     }
   }
 
   @override
   bool get isInitialized => _initialized;
 
+  // Implémentation Google Drive avec gestion d'erreurs améliorée
+  Future<bool> _initializeDrive() async {
+    try {
+      final accessToken = await _authService.getGoogleAccessToken();
+      if (accessToken == null) return false;
+
+      final client = http.Client();
+      final headers = {'Authorization': 'Bearer $accessToken'};
+      final authClient = _AuthClient(client, headers);
+
+      _driveApi = drive.DriveApi(authClient);
+
+      // Rechercher ou créer le dossier d'application avec gestion d'erreur robuste
+      try {
+        final fileList = await _driveApi!.files.list(
+          q: "name='$APP_FOLDER_NAME' and mimeType='application/vnd.google-apps.folder' and trashed=false",
+          $fields: 'files(id, name)',
+        );
+
+        if (fileList.files != null && fileList.files!.isNotEmpty) {
+          _appFolderId = fileList.files!.first.id;
+          return true;
+        }
+
+        // Créer le dossier s'il n'existe pas
+        final folderMetadata = drive.File()
+          ..name = APP_FOLDER_NAME
+          ..mimeType = 'application/vnd.google-apps.folder';
+
+        final folder = await _driveApi!.files.create(folderMetadata);
+        _appFolderId = folder.id;
+
+        return true;
+      } catch (driveError) {
+        debugPrint('Erreur lors de la recherche/création du dossier Drive: $driveError');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('Erreur initialisation Drive: $e');
+      return false;
+    }
+  }
   @override
   Future<void> save(SaveGame saveGame) async {
     try {
@@ -74,6 +118,59 @@ class CloudStorageEngine implements StorageEngine {
       rethrow;
     }
   }
+
+  Future<void> _saveToDrive(SaveGame saveGame) async {
+    final saveJson = jsonEncode(saveGame.toJson());
+    final saveBytes = utf8.encode(saveJson);
+
+    // Créer les métadonnées du fichier
+    final fileName = 'save_${saveGame.id}.json';
+    final fileMetadata = drive.File()
+      ..name = fileName
+      ..parents = [_appFolderId!]
+      ..mimeType = 'application/json';
+
+    // Vérifier si le fichier existe déjà
+    final existingFiles = await _driveApi!.files.list(
+      q: "name='$fileName' and '${_appFolderId!}' in parents and trashed=false",
+      $fields: 'files(id, name)',
+    );
+
+    final media = drive.Media(
+      Stream.fromIterable([saveBytes]),
+      saveBytes.length,
+      contentType: 'application/json',
+    );
+
+    try {
+      if (existingFiles.files != null && existingFiles.files!.isNotEmpty) {
+        // Mettre à jour le fichier existant
+        final fileId = existingFiles.files!.first.id!;
+        await _driveApi!.files.update(fileMetadata, fileId, uploadMedia: media);
+        saveGame.cloudId = fileId;
+      } else {
+        // Créer un nouveau fichier
+        final createdFile = await _driveApi!.files.create(fileMetadata, uploadMedia: media);
+        saveGame.cloudId = createdFile.id;
+      }
+    } catch (e) {
+      debugPrint('Erreur lors de la sauvegarde sur Drive: $e');
+      // Tentative de récupération: essayer de créer un nouveau fichier si la mise à jour échoue
+      if (existingFiles.files != null && existingFiles.files!.isNotEmpty) {
+        try {
+          final createdFile = await _driveApi!.files.create(fileMetadata, uploadMedia: media);
+          saveGame.cloudId = createdFile.id;
+        } catch (createError) {
+          throw SaveError('CLOUD_SAVE_ERROR', 'Impossible de sauvegarder dans le cloud: $createError');
+        }
+      } else {
+        throw SaveError('CLOUD_SAVE_ERROR', 'Impossible de sauvegarder dans le cloud: $e');
+      }
+    }
+  }
+
+
+
 
   @override
   Future<SaveGame?> load(String cloudId) async {
@@ -156,78 +253,9 @@ class CloudStorageEngine implements StorageEngine {
     }
   }
 
-  // Implémentation Google Drive
-  Future<bool> _initializeDrive() async {
-    try {
-      final accessToken = await _authService.getGoogleAccessToken();
-      if (accessToken == null) return false;
 
-      final client = http.Client();
-      final headers = {'Authorization': 'Bearer $accessToken'};
-      final authClient = _AuthClient(client, headers);
 
-      _driveApi = drive.DriveApi(authClient);
 
-      // Rechercher ou créer le dossier d'application
-      final fileList = await _driveApi!.files.list(
-        q: "name='$APP_FOLDER_NAME' and mimeType='application/vnd.google-apps.folder' and trashed=false",
-        $fields: 'files(id, name)',
-      );
-
-      if (fileList.files != null && fileList.files!.isNotEmpty) {
-        _appFolderId = fileList.files!.first.id;
-        return true;
-      }
-
-      // Créer le dossier s'il n'existe pas
-      final folderMetadata = drive.File()
-        ..name = APP_FOLDER_NAME
-        ..mimeType = 'application/vnd.google-apps.folder';
-
-      final folder = await _driveApi!.files.create(folderMetadata);
-      _appFolderId = folder.id;
-
-      return true;
-    } catch (e) {
-      debugPrint('Erreur initialisation Drive: $e');
-      return false;
-    }
-  }
-
-  Future<void> _saveToDrive(SaveGame saveGame) async {
-    final saveJson = jsonEncode(saveGame.toJson());
-    final saveBytes = utf8.encode(saveJson);
-
-    // Créer les métadonnées du fichier
-    final fileName = 'save_${saveGame.id}.json';
-    final fileMetadata = drive.File()
-      ..name = fileName
-      ..parents = [_appFolderId!]
-      ..mimeType = 'application/json';
-
-    // Vérifier si le fichier existe déjà
-    final existingFiles = await _driveApi!.files.list(
-      q: "name='$fileName' and '${_appFolderId!}' in parents and trashed=false",
-      $fields: 'files(id, name)',
-    );
-
-    final media = drive.Media(
-      Stream.fromIterable([saveBytes]),
-      saveBytes.length,
-      contentType: 'application/json',
-    );
-
-    if (existingFiles.files != null && existingFiles.files!.isNotEmpty) {
-      // Mettre à jour le fichier existant
-      final fileId = existingFiles.files!.first.id!;
-      await _driveApi!.files.update(fileMetadata, fileId, uploadMedia: media);
-      saveGame.cloudId = fileId;
-    } else {
-      // Créer un nouveau fichier
-      final createdFile = await _driveApi!.files.create(fileMetadata, uploadMedia: media);
-      saveGame.cloudId = createdFile.id;
-    }
-  }
 
   Future<SaveGame?> _loadFromDrive(String cloudId) async {
     // Rechercher le fichier par son ID

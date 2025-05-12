@@ -39,6 +39,7 @@ class SaveSystem {
   // Setter pour injecter UserManager
   void setUserManager(UserManager userManager) {
     _userManager = userManager;
+    debugPrint('SaveSystem: UserManager injecté');
   }
 
   // Initialisation
@@ -56,6 +57,7 @@ class SaveSystem {
     }
 
     _isInitialized = true;
+    debugPrint('SaveSystem: initialization terminée avec succès');
   }
 
 // Ajouter une méthode pour exposer _cloudEngine publiquement

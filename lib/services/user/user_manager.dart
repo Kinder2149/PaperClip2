@@ -42,6 +42,7 @@ class UserManager {
   // Setter pour injecter SaveSystem
   void setSaveSystem(SaveSystem saveSystem) {
     _saveSystem = saveSystem;
+    debugPrint('UserManager: SaveSystem injecté');
   }
 
   // Setter pour le contexte
@@ -72,6 +73,7 @@ class UserManager {
       }
 
       _initialized = true;
+      debugPrint('UserManager: initialization terminée avec succès');
     } catch (e, stack) {
       debugPrint('Erreur d\'initialisation UserManager: $e');
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'UserManager init error');
@@ -235,12 +237,24 @@ class UserManager {
       final profileJson = jsonEncode(profile.toJson());
       final bytes = utf8.encode(profileJson);
 
-      // Sauvegarder dans Firebase Storage
+      // Créer directement la référence du fichier
       final storageRef = _storage.ref().child('profiles/${profile.googleId}/profile.json');
-      await storageRef.putData(bytes);
+
+      // Utiliser putData avec les métadonnées pour s'assurer que le type de contenu est correct
+      final metadata = SettableMetadata(
+        contentType: 'application/json',
+        customMetadata: {'createdBy': 'UserManager', 'version': GameConstants.VERSION},
+      );
+
+      await storageRef.putData(bytes, metadata);
+
+      debugPrint('Profil sauvegardé avec succès dans le cloud pour l\'utilisateur ${profile.googleId}');
     } catch (e, stack) {
       debugPrint('Erreur lors de la sauvegarde cloud du profil: $e');
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Profile cloud save error');
+
+      // Ne pas propager l'erreur, pour éviter de perturber le flux de l'application
+      // car la sauvegarde cloud est optionnelle
     }
   }
 

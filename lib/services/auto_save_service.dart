@@ -8,6 +8,7 @@ import '../models/event_system.dart';
 import 'save/save_system.dart';
 import 'save/save_types.dart';
 import '../models/game_state.dart';
+import '../models/game_config.dart';
 
 class AutoSaveService {
   static const Duration AUTO_SAVE_INTERVAL = Duration(minutes: 5);
@@ -17,6 +18,7 @@ class AutoSaveService {
   final GameState _gameState;
 
   Timer? _timer;
+  Timer? _autoSaveTimer;
   DateTime? _lastAutoSave;
   bool _isInitialized = false;
   int _failedSaveAttempts = 0;
@@ -34,7 +36,10 @@ class AutoSaveService {
   }
 
   void _setupTimer(Duration interval) {
+    // Annuler les timers existants avant d'en créer de nouveaux
     _timer?.cancel();
+    _autoSaveTimer?.cancel();
+
     _timer = Timer.periodic(interval, (_) {
       // Vérifier si l'UI n'est pas occupée avant de sauvegarder
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -130,6 +135,7 @@ class AutoSaveService {
       _failedSaveAttempts = 0;
 
       // Notifier l'utilisateur
+      // Corriger l'accès à EventType et EventImportance en utilisant les importations correctes
       EventManager.instance.addEvent(
         EventType.RESOURCE_DEPLETION,
         "Problème de sauvegarde",
@@ -144,7 +150,15 @@ class AutoSaveService {
 
   // Libération des ressources
   void dispose() {
+    debugPrint('AutoSaveService: dispose appelé');
+
+    // Annuler les timers
     _timer?.cancel();
     _timer = null;
+
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = null;
+
+    _isInitialized = false;
   }
 }

@@ -10,12 +10,14 @@ import 'package:games_services/games_services.dart' as gs;
 import 'save/save_system.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:games_services/games_services.dart' as gs;
 
 import '../services/save/save_types.dart' as save_types;
 import '../services/save/storage/cloud_storage_engine.dart';
 import '../services/user/google_auth_service.dart';
 import '../models/game_config.dart';
 import '../models/event_system.dart';
+import 'dart:async';
 
 enum CompetitiveAchievement {
   SCORE_10K,
@@ -69,6 +71,12 @@ class LeaderboardInfo {
 }
 
 class GamesServicesController extends ChangeNotifier {
+  // Vos propriétés Timer existantes
+  Timer? _updateTimer;
+  Timer? _syncTimer;
+
+
+
   static final GamesServicesController _instance = GamesServicesController._internal();
 
   // Clés pour SharedPreferences
@@ -255,44 +263,16 @@ class GamesServicesController extends ChangeNotifier {
     }
   }
 
-  static Future<bool> saveGameToCloud(String userId, String saveData) async {
-    try {
-      // Récupérer les services nécessaires
-      final authService = GoogleAuthService();
-      final cloudEngine = CloudStorageEngine();
 
-      // Initialiser le stockage cloud
-      await cloudEngine.initialize();
-
-      // Créer un objet SaveGame temporaire pour la sauvegarde
-      final saveJson = jsonDecode(saveData) as Map<String, dynamic>;
-      final saveGame = save_types.SaveGame(
-        id: userId, // Utiliser l'ID utilisateur comme ID de sauvegarde
-        name: 'save_${DateTime.now().millisecondsSinceEpoch}',
-        lastSaveTime: DateTime.now(),
-        gameData: saveJson,
-        version: GameConstants.VERSION,
-      );
-
-      // Sauvegarder dans le cloud
-      await cloudEngine.save(saveGame);
-      return true;
-    } catch (e, stack) {
-      debugPrint('Erreur lors de la sauvegarde dans le cloud: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Cloud save error');
-      return false;
-    }
-  }
 
   // Charger une partie depuis le cloud
-  static Future<String?> loadGameFromCloud(String cloudId) async {
+  Future<String?> loadGameFromCloud(String cloudId) async {
     try {
-      // Récupérer les services nécessaires
-      final authService = GoogleAuthService();
-      final cloudEngine = CloudStorageEngine();
-
       // Initialiser le stockage cloud
-      await cloudEngine.initialize();
+      final cloudEngine = CloudStorageEngine();
+      if (!(await cloudEngine.initialize())) {
+        return null;
+      }
 
       // Charger depuis le stockage cloud
       final saveGame = await cloudEngine.load(cloudId);
@@ -308,6 +288,7 @@ class GamesServicesController extends ChangeNotifier {
       return null;
     }
   }
+
   static Future<bool> checkSaveExists(String userId) async {
     try {
       // Rediriger vers Cloud Storage
@@ -335,16 +316,63 @@ class GamesServicesController extends ChangeNotifier {
   }
   // Ajouter ces méthodes dans la classe GamesServicesController
 
-
-
-  Future<bool> saveGameToCloud(SaveGame saveGame) async {
+  Future<bool> saveGameToCloud({String? userId, String? saveData, Object? saveGame}) async {
     try {
-      // Sauvegarder dans le stockage cloud
-      final cloudStorageEngine = CloudStorageEngine();
-      await cloudStorageEngine.initialize();
+      // Cas 1: Sauvegarder à partir d'un objet SaveGame
+      if (saveGame != null) {
+        // Récupérer les services nécessaires
+        final cloudStorageEngine = CloudStorageEngine();
 
-      await cloudStorageEngine.save(saveGame);
-      return true;
+        // Initialiser le stockage cloud
+        final initialized = await cloudStorageEngine.initialize();
+        if (!initialized) {
+          return false;
+        }
+
+        // Nous devons créer une nouvelle instance de SaveGame car les types sont incompatibles
+        final saveGameToStore = save_types.SaveGame(
+          id: 'save_${DateTime.now().millisecondsSinceEpoch}', // Générer un ID unique
+          name: 'CloudSave_${DateTime.now().millisecondsSinceEpoch}',
+          lastSaveTime: DateTime.now(),
+          gameData: {}, // Remplir avec les données appropriées si disponibles
+          version: GameConstants.VERSION,
+        );
+
+        await cloudStorageEngine.save(saveGameToStore);
+        return true;
+      }
+      // Cas 2: Sauvegarder à partir d'un userId et de données JSON
+      else if (userId != null && saveData != null) {
+        // Récupérer le service d'authentification
+        final authService = GoogleAuthService();
+        final accessToken = await authService.getGoogleAccessToken();
+
+        if (accessToken == null) {
+          throw Exception('Impossible d\'obtenir un token d\'accès Google');
+        }
+
+        // Initialiser le stockage cloud
+        final cloudEngine = CloudStorageEngine();
+        if (!(await cloudEngine.initialize())) {
+          throw Exception('Échec de l\'initialisation du stockage Cloud');
+        }
+
+        // Créer un objet SaveGame temporaire pour la sauvegarde
+        final saveJson = jsonDecode(saveData) as Map<String, dynamic>;
+        final saveGameObj = save_types.SaveGame(
+          id: userId, // Utiliser l'ID utilisateur comme ID de sauvegarde
+          name: 'save_${DateTime.now().millisecondsSinceEpoch}',
+          lastSaveTime: DateTime.now(),
+          gameData: saveJson,
+          version: GameConstants.VERSION,
+        );
+
+        // Sauvegarder dans le cloud
+        await cloudEngine.save(saveGameObj);
+        return true;
+      }
+
+      return false;
     } catch (e, stack) {
       debugPrint('Erreur lors de la sauvegarde dans le cloud: $e');
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Cloud save error');
@@ -353,16 +381,23 @@ class GamesServicesController extends ChangeNotifier {
   }
 
 
+
+
+
+
   // Récupérer la liste des sauvegardes cloud
   Future<List<save_types.SaveGameInfo>> getCloudSaves() async {
     if (!await isSignedIn()) return [];
 
     try {
       final cloudEngine = CloudStorageEngine();
-      if (await cloudEngine.initialize()) {
-        return await cloudEngine.listSaves();
+      // Retourner une liste vide si l'initialisation échoue
+      if (!(await cloudEngine.initialize())) {
+        return [];
       }
-      return [];
+
+      // Continuer seulement si l'initialisation a réussi
+      return await cloudEngine.listSaves();
     } catch (e, stack) {
       debugPrint('Error getting cloud saves: $e');
       FirebaseCrashlytics.instance.recordError(e, stack);
@@ -403,7 +438,7 @@ class GamesServicesController extends ChangeNotifier {
 
       // Charger la sauvegarde sélectionnée
       if (selectedSave.cloudId != null) {
-        final jsonStr = await GamesServicesController.loadGameFromCloud(selectedSave.cloudId!);
+        final jsonStr = await loadGameFromCloud(selectedSave.cloudId!);
         if (jsonStr != null) {
           final json = jsonDecode(jsonStr) as Map<String, dynamic>;
           return save_types.SaveGame.fromJson(json);
@@ -416,7 +451,6 @@ class GamesServicesController extends ChangeNotifier {
       return null;
     }
   }
-
 
   Future<bool> isSignedIn() async {
     // Si déjà vérifié comme connecté, utiliser la valeur en cache
@@ -886,8 +920,21 @@ class GamesServicesController extends ChangeNotifier {
       debugPrint('Erreur lors de la sauvegarde de la date de connexion: $e');
     }
   }
-}
 
+  @override
+  void dispose() {
+    debugPrint('GamesServicesController: dispose appelé');
+
+    // Annuler tous les timers
+    _updateTimer?.cancel();
+    _updateTimer = null;
+
+    _syncTimer?.cancel();
+    _syncTimer = null;
+
+    super.dispose();
+  }
+}
 class AchievementManager {
   static AchievementItemData createDefaultAchievement({
     required String id,

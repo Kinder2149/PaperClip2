@@ -7,14 +7,16 @@ import '../save_types.dart';
 import '../save_utils.dart';
 import 'storage_engine.dart';
 import '../../../models/game_config.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 class LocalStorageEngine implements StorageEngine {
   static const String SAVE_PREFIX = 'paperclip_save_';
   bool _initialized = false;
 
   @override
-  Future<void> initialize() async {
+  Future<bool> initialize() async {
     _initialized = true;
+    return true;
   }
 
   @override
@@ -40,8 +42,9 @@ class LocalStorageEngine implements StorageEngine {
       );
 
       await prefs.setString(key, jsonEncode(updatedSave.toJson()));
-    } catch (e) {
+    } catch (e, stack) {
       debugPrint('Erreur lors de la sauvegarde locale: $e');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Local save error');
       rethrow;
     }
   }
@@ -57,7 +60,23 @@ class LocalStorageEngine implements StorageEngine {
 
       try {
         // Décoder les données
-        final jsonData = jsonDecode(savedData) as Map<String, dynamic>;
+        Map<String, dynamic> jsonData;
+        try {
+          final decodedData = jsonDecode(savedData);
+          if (decodedData is Map<String, dynamic>) {
+            jsonData = decodedData;
+          } else if (decodedData is Map<dynamic, dynamic>) {
+            // Conversion sécurisée
+            jsonData = {};
+            decodedData.forEach((key, value) {
+              jsonData[key.toString()] = value;
+            });
+          } else {
+            throw SaveError('INVALID_FORMAT', 'Format de données invalide');
+          }
+        } catch (decodeError) {
+          throw SaveError('JSON_ERROR', 'Erreur de décodage JSON: $decodeError');
+        }
 
         // Migrer si nécessaire
         final migratedData = SaveUtils.migrateIfNeeded(jsonData);
@@ -79,7 +98,10 @@ class LocalStorageEngine implements StorageEngine {
         }
 
         return SaveGame.fromJson(migratedData);
-      } catch (e) {
+      } catch (e, stack) {
+        debugPrint('Erreur lors du traitement de la sauvegarde: $e');
+        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Save processing error');
+
         // En cas d'erreur, tenter la récupération
         final recoveredData = await SaveUtils.attemptRecovery(savedData, name);
         if (recoveredData != null) {
@@ -87,11 +109,13 @@ class LocalStorageEngine implements StorageEngine {
         }
         rethrow;
       }
-    } catch (e) {
+    } catch (e, stack) {
       debugPrint('Erreur lors du chargement local: $e');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Local load error');
       rethrow;
     }
   }
+
 
   @override
   Future<List<SaveGameInfo>> listSaves() async {
@@ -103,7 +127,26 @@ class LocalStorageEngine implements StorageEngine {
         if (key.startsWith(SAVE_PREFIX)) {
           try {
             final savedData = prefs.getString(key) ?? '{}';
-            final data = jsonDecode(savedData) as Map<String, dynamic>;
+
+            // Décoder avec sécurité de type
+            Map<String, dynamic> data;
+            try {
+              final decodedData = jsonDecode(savedData);
+              if (decodedData is Map<String, dynamic>) {
+                data = decodedData;
+              } else if (decodedData is Map<dynamic, dynamic>) {
+                // Conversion sécurisée
+                data = {};
+                decodedData.forEach((k, v) {
+                  data[k.toString()] = v;
+                });
+              } else {
+                continue; // Ignorer les données non valides
+              }
+            } catch (e) {
+              debugPrint('Erreur décodage JSON pour $key: $e');
+              continue;
+            }
 
             // Extraire le mode de jeu
             final gameMode = _extractGameMode(data);
@@ -129,8 +172,9 @@ class LocalStorageEngine implements StorageEngine {
       // Trier par date (plus récent d'abord)
       saves.sort((a, b) => b.timestamp.compareTo(a.timestamp));
       return saves;
-    } catch (e) {
+    } catch (e, stack) {
       debugPrint('Erreur lors de la liste des sauvegardes: $e');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'List saves error');
       return [];
     }
   }

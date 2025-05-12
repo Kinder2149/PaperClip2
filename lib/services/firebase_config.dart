@@ -30,11 +30,21 @@ class FirebaseConfig {
         'max_efficiency_level': 8,
       });
 
-      // Premier fetch avec gestion d'erreur
-      await remoteConfig.fetchAndActivate();
+      // Premier fetch avec gestion d'erreur plus robuste
+      try {
+        await remoteConfig.fetchAndActivate();
+        debugPrint('Firebase Remote Config initialisé avec succès');
+      } catch (fetchError) {
+        debugPrint('Erreur avec Remote Config, utilisation des valeurs par défaut: $fetchError');
+        // Continuer avec les valeurs par défaut, ne pas arrêter l'initialisation
+      }
+
     } catch (e, stack) {
       debugPrint('Error initializing Firebase Config: $e');
       FirebaseCrashlytics.instance.recordError(e, stack);
+
+      // Ne pas propager l'erreur pour éviter que l'application ne plante
+      // Les fonctionnalités Firebase sont optionnelles
     }
   }
 
@@ -48,25 +58,25 @@ class FirebaseConfig {
         throw Exception('Impossible d\'obtenir un token d\'accès Google');
       }
 
-      // Initialiser le stockage cloud
+      // Initialiser le stockage cloud - nous devons changer cette méthode pour qu'elle retourne un bool
       final cloudEngine = CloudStorageEngine();
-      final isInitialized = await cloudEngine.initialize();
+      final initialized = await cloudEngine.initialize();
 
-      if (!isInitialized) {
+      // Vérifier si le cloudEngine est initialisé après tentative
+      if (!initialized) {
         throw Exception('Échec de l\'initialisation du stockage Cloud');
       }
 
-      // Créer un objet SaveGame temporaire pour la sauvegarde
+      // Création et sauvegarde de l'objet SaveGame
       final saveJson = jsonDecode(saveData) as Map<String, dynamic>;
       final saveGameObj = SaveGame(
-        id: userId, // Utiliser l'ID utilisateur comme ID de sauvegarde
+        id: userId,
         name: 'save_${DateTime.now().millisecondsSinceEpoch}',
         lastSaveTime: DateTime.now(),
         gameData: saveJson,
         version: GameConstants.VERSION,
       );
 
-      // Sauvegarder dans le cloud
       await cloudEngine.save(saveGameObj);
       return true;
     } catch (e, stack) {
@@ -88,9 +98,10 @@ class FirebaseConfig {
 
       // Initialiser le stockage cloud
       final cloudEngine = CloudStorageEngine();
-      final isInitialized = await cloudEngine.initialize();
+      final initialized = await cloudEngine.initialize();
 
-      if (!isInitialized) {
+      // Vérifier si le cloudEngine est initialisé
+      if (!initialized) {
         return null;
       }
 
@@ -116,21 +127,31 @@ class FirebaseConfig {
       final accessToken = await authService.getGoogleAccessToken();
 
       if (accessToken == null) {
+        debugPrint('Token d\'accès introuvable pour vérifier l\'existence des sauvegardes');
         return false;
       }
 
       // Initialiser le stockage cloud
       final cloudEngine = CloudStorageEngine();
-      final isInitialized = await cloudEngine.initialize();
+      final initialized = await cloudEngine.initialize();
 
-      if (!isInitialized) {
+      // Vérifier si le cloudEngine est initialisé
+      if (!initialized) {
+        debugPrint('Impossible d\'initialiser CloudStorageEngine pour vérifier les sauvegardes');
         return false;
       }
 
-      // Vérifier si la sauvegarde existe
-      final saveGameObj = await cloudEngine.load(userId);
-      return saveGameObj != null;
+      // Ajouter une gestion d'erreur robuste
+      try {
+        // Vérifier si la sauvegarde existe
+        final saveGameObj = await cloudEngine.load(userId);
+        return saveGameObj != null;
+      } catch (loadError) {
+        debugPrint('Erreur lors du chargement des sauvegardes: $loadError');
+        return false;
+      }
     } catch (e) {
+      debugPrint('Exception générale lors de checkSaveExists: $e');
       return false;
     }
   }

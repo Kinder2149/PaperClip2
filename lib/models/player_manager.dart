@@ -9,7 +9,7 @@ import 'progression_system.dart';
 import 'market.dart';
 import 'package:paperclip2/managers/metal_manager.dart';
 import 'game_state.dart';
-
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 /// Représente une amélioration du jeu
 class Upgrade {
@@ -270,35 +270,89 @@ class PlayerManager extends ChangeNotifier {
   }
 
   void fromJson(Map<String, dynamic> json) {
-    _money = (json['money'] as num?)?.toDouble() ?? 0.0;
-    _sellPrice = (json['sellPrice'] as num?)?.toDouble() ?? GameConstants.INITIAL_PRICE;
+    try {
+      // Vérifier si nous avons reçu un Map<dynamic, dynamic> au lieu d'un Map<String, dynamic>
+      Map<String, dynamic> safeJson;
+      if (json is Map<dynamic, dynamic>) {
+        safeJson = _convertToStringDynamicMap(json);
+      } else {
+        safeJson = json;
+      }
 
-    // Réinitialiser d'abord les upgrades
-    _initializeUpgrades();
+      _money = (safeJson['money'] as num?)?.toDouble() ?? 0.0;
+      _sellPrice = (safeJson['sellPrice'] as num?)?.toDouble() ?? GameConstants.INITIAL_PRICE;
 
-    // Charger les upgrades
-    final upgradesData = json['upgrades'] as Map<String, dynamic>? ?? {};
-    upgradesData.forEach((key, value) {
-      if (_upgrades.containsKey(key)) {
-        _upgrades[key]!.level = (value['level'] as num?)?.toInt() ?? 0;
+      // Réinitialiser d'abord les upgrades
+      _initializeUpgrades();
+
+      // Charger les upgrades avec sécurité
+      final upgradesData = safeJson['upgrades'];
+      if (upgradesData != null) {
+        Map<String, dynamic> safeUpgradesData;
+
+        if (upgradesData is Map<dynamic, dynamic>) {
+          safeUpgradesData = _convertToStringDynamicMap(upgradesData);
+        } else if (upgradesData is Map<String, dynamic>) {
+          safeUpgradesData = upgradesData;
+        } else {
+          debugPrint('Format d\'upgrades non reconnu: ${upgradesData.runtimeType}');
+          safeUpgradesData = {}; // Valeur par défaut
+        }
+
+        safeUpgradesData.forEach((key, value) {
+          if (_upgrades.containsKey(key)) {
+            try {
+              // S'assurer que value est aussi un Map<String, dynamic>
+              var upgradeValue = value;
+              if (upgradeValue is Map<dynamic, dynamic>) {
+                upgradeValue = _convertToStringDynamicMap(upgradeValue);
+              }
+
+              if (upgradeValue is Map) {
+                _upgrades[key]!.level = (upgradeValue['level'] as num?)?.toInt() ?? 0;
+              }
+            } catch (e) {
+              debugPrint('Erreur lors du chargement de l\'upgrade $key: $e');
+              // Continuer avec les autres upgrades
+            }
+          }
+        });
 
         // Mise à jour immédiate des effets des améliorations
-        if (key == 'storage') {
-          double newCapacity = GameConstants.INITIAL_STORAGE_CAPACITY *
-              (1 + (_upgrades[key]!.level * GameConstants.STORAGE_UPGRADE_MULTIPLIER));
-          maxMetalStorage = newCapacity;
-          resourceManager.upgradeStorageCapacity(_upgrades[key]!.level);
-        }
+        _upgrades.forEach((key, upgrade) {
+          if (key == 'storage' && upgrade.level > 0) {
+            double newCapacity = GameConstants.INITIAL_STORAGE_CAPACITY *
+                (1 + (upgrade.level * GameConstants.STORAGE_UPGRADE_MULTIPLIER));
+            maxMetalStorage = newCapacity;
+            resourceManager.upgradeStorageCapacity(upgrade.level);
+          }
+        });
       }
-    });
 
-    notifyListeners();
+      notifyListeners();
+    } catch (e, stack) {
+      debugPrint('Erreur lors du chargement des données du joueur: $e');
+      debugPrint('Stack trace: $stack');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'PlayerManager loadFromJson error');
+      // Initialiser avec des valeurs par défaut en cas d'erreur
+      resetResources();
+    }
   }
 
   void resetResources() {
     _money = GameConstants.INITIAL_MONEY;
     _sellPrice = GameConstants.INITIAL_PRICE;
     notifyListeners();
+  }
+  // Fonction utilitaire pour convertir Map<dynamic, dynamic> en Map<String, dynamic>
+  Map<String, dynamic> _convertToStringDynamicMap(Map<dynamic, dynamic> map) {
+    return map.map((key, value) {
+      if (value is Map<dynamic, dynamic>) {
+        return MapEntry(key.toString(), _convertToStringDynamicMap(value));
+      } else {
+        return MapEntry(key.toString(), value);
+      }
+    });
   }
 
   void _initializeUpgrades() {
