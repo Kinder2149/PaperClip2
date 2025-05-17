@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/services.dart';
+import 'dart:async';
 
 // Imports des modèles
 import '../models/game_state.dart';
@@ -38,6 +39,7 @@ import 'new_metal_production_screen.dart';
 import 'package:paperclip2/screens/statistics_screen.dart';
 import 'package:paperclip2/services/games_services_controller.dart';
 import 'settings_screen.dart'; // Ajout de l'import pour SettingsScreen
+import 'social/friends_screen.dart';
 
 import 'package:games_services/games_services.dart' as gs;
 
@@ -49,10 +51,14 @@ class MainScreen extends StatefulWidget {
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
-
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
   late final List<Widget> _screens;
+
+  // Ajouter ces variables pour stocker les références
+  BackgroundMusicService? _backgroundMusicService;
+  Timer? _disposeTimer;
+
 
   @override
   void initState() {
@@ -63,29 +69,34 @@ class _MainScreenState extends State<MainScreen> {
       const MarketScreen(), // Index 1
       const UpgradesScreen(), // Index 2
     ];
-    // Retirer PlaceholderLockedScreen de la liste initiale
     _initializeGame();
     _playBackgroundMusic();
   }
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Stocker la référence ici pour l'utiliser en toute sécurité dans dispose()
+    _backgroundMusicService = Provider.of<BackgroundMusicService>(context, listen: false);
+  }
 
   Future<void> _initializeGame() async {
-    final gameState = context.read<GameState>();
+    final gameState = Provider.of<GameState>(context, listen: false);
     await Future.delayed(Duration.zero);
     gameState.setContext(context);
 
     // Initialiser les services de jeux
-    final gamesServices = GamesServicesController();
+    final gamesServices = Provider.of<GamesServicesController>(context, listen: false);
     await gamesServices.initialize();
   }
 
   Future<void> _playBackgroundMusic() async {
-    final backgroundMusicService = context.read<BackgroundMusicService>();
+    final backgroundMusicService = Provider.of<BackgroundMusicService>(context, listen: false);
     await backgroundMusicService.initialize();
     await backgroundMusicService.play();
   }
 
   Future<void> _toggleMusic() async {
-    final backgroundMusicService = context.read<BackgroundMusicService>();
+    final backgroundMusicService = Provider.of<BackgroundMusicService>(context, listen: false);
     if (backgroundMusicService.isPlaying) {
       await backgroundMusicService.pause();
     } else {
@@ -93,11 +104,25 @@ class _MainScreenState extends State<MainScreen> {
     }
     setState(() {});
   }
+  void _navigateToFriends() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const FriendsScreen(),
+      ),
+    );
+  }
 
   @override
   void dispose() {
-    final backgroundMusicService = context.read<BackgroundMusicService>();
-    backgroundMusicService.dispose();
+    // Utiliser la référence stockée au lieu d'accéder à Provider
+    if (_backgroundMusicService != null) {
+      _backgroundMusicService!.dispose();
+    }
+
+    // Annuler les timers en attente
+    _disposeTimer?.cancel();
+
     super.dispose();
   }
 
@@ -393,9 +418,14 @@ class _MainScreenState extends State<MainScreen> {
             // Utilisation du widget AppBar personnalisé
             appBar: WidgetAppBarJeu(
               titleBuilder: (context) => gameState.isInCrisisMode
-                  ? 'Nouveau Mode de Production'
+                  ? Text(
+                'Nouveau Mode de Production',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              )
                   : _getTitleForIndex(_selectedIndex),
-              // Modification ici: remplacement de onSettingsPressed
               onSettingsPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const SettingsScreen()),
@@ -478,11 +508,18 @@ class _MainScreenState extends State<MainScreen> {
           // Utilisation du widget AppBar personnalisé pour le mode normal
           appBar: WidgetAppBarJeu(
             titleBuilder: (context) => _getTitleForIndex(_selectedIndex),
-            // Modification ici: remplacement de onSettingsPressed
             onSettingsPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => const SettingsScreen()),
             ),
+            actions: [
+              // Ajouter ce nouveau bouton pour les amis
+              IconButton(
+                icon: const Icon(Icons.people, color: Colors.white),
+                onPressed: _navigateToFriends,
+                tooltip: 'Amis',
+              ),
+            ],
           ),
           body: Stack(
             children: [
@@ -603,17 +640,28 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  String _getTitleForIndex(int index) {
+  Widget _getTitleForIndex(int index) {
+    String title;
     switch (index) {
       case 0:
-        return 'Production';
+        title = 'Production';
+        break;
       case 1:
-        return 'Marché';
+        title = 'Marché';
+        break;
       case 2:
-        return 'Améliorations';
+        title = 'Améliorations';
+        break;
       default:
-        return 'PaperClip Game';
+        title = 'PaperClip Game';
     }
+    return Text(
+      title,
+      style: const TextStyle(
+        color: Colors.white,
+        fontWeight: FontWeight.bold,
+      ),
+    );
   }
 
   Widget _buildLevelIndicator(LevelSystem levelSystem) {

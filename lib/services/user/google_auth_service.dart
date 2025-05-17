@@ -5,60 +5,90 @@ import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:games_services/games_services.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Service pour gérer l'authentification Google et l'obtention de tokens.
-///
-/// Cette classe permet de se connecter via Google, de vérifier l'état de connexion,
-/// et d'obtenir des tokens d'accès pour les API Google.
-class GoogleAuthService {
+class GoogleAuthService extends ChangeNotifier {
   // Instances privées des services d'authentification
-  late final FirebaseAuth _auth;
-  late final GoogleSignIn _googleSignIn;
-  // Note: Nous ne stockons plus _gamesServices comme instance
+  final FirebaseAuth _auth;
+  final GoogleSignIn _googleSignIn;
 
   // Cache pour le token d'accès
   String? _cachedAccessToken;
   DateTime? _tokenExpirationTime;
 
+  // État de connexion
+  bool _isSignedIn = false;
+
+  // Clés pour les préférences partagées
+  static const String _playerInfoKey = 'google_player_info';
+  static const String _lastSignInKey = 'last_google_signin';
+
+  // Accesseurs
+  bool get isSignedIn => _isSignedIn;
+  User? get currentUser => _auth.currentUser;
+
   /// Constructeur avec injection de dépendances pour faciliter les tests.
-  ///
-  /// Utilise les instances par défaut si aucune dépendance n'est fournie.
   GoogleAuthService({
     FirebaseAuth? auth,
     GoogleSignIn? googleSignIn,
-  }) {
-    _auth = auth ?? FirebaseAuth.instance;
-    _googleSignIn = googleSignIn ?? GoogleSignIn(
-      scopes: ['email', 'profile'],
-    );
+  }) :
+        _auth = auth ?? FirebaseAuth.instance,
+        _googleSignIn = googleSignIn ?? GoogleSignIn(
+          scopes: ['email', 'profile'],
+        ) {
+    // Vérifier l'état d'authentification au démarrage
+    _checkAuthStatus();
   }
 
-  /// Vérifie si l'utilisateur est actuellement connecté à Google.
-  ///
-  /// Retourne `true` si l'utilisateur est connecté à Firebase Auth
-  /// ou à Google Play Games, sinon `false`.
-  Future<bool> isUserSignedIn() async {
+  /// Vérifie l'état d'authentification actuel
+  Future<void> _checkAuthStatus() async {
     try {
-      // Vérifier l'état de connexion Firebase
       final firebaseUser = _auth.currentUser;
 
-      // Vérifier l'état de connexion Google Play Games
-      // Accéder au getter statique directement via la classe
-      final gamesSignedIn = await GamesServices.isSignedIn;
-
-      return firebaseUser != null || gamesSignedIn;
-    } catch (e) {
-      if (kDebugMode) {
-        print('Erreur lors de la vérification de l\'état de connexion: $e');
+      if (firebaseUser != null) {
+        _isSignedIn = true;
+        notifyListeners();
+        return;
       }
-      return false;
+
+      // Ensuite vérifier Google Play Games
+      final isPlayGamesSignedIn = await GamesServices.isSignedIn;
+      if (isPlayGamesSignedIn) {
+        _isSignedIn = true;
+        notifyListeners();
+        return;
+      }
+
+      // Enfin, vérifier le cache local
+      final prefs = await SharedPreferences.getInstance();
+      final lastSignInTimeStr = prefs.getString(_lastSignInKey);
+
+      if (lastSignInTimeStr != null) {
+        final lastSignIn = DateTime.parse(lastSignInTimeStr);
+        // Si la dernière connexion date de moins de 7 jours, considérer comme connecté
+        if (DateTime.now().difference(lastSignIn).inDays < 7) {
+          _isSignedIn = true;
+          notifyListeners();
+          return;
+        }
+      }
+
+      _isSignedIn = false;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Erreur lors de la vérification de l\'état de connexion: $e');
+      _isSignedIn = false;
+      notifyListeners();
     }
   }
 
+  /// Vérifie si l'utilisateur est actuellement connecté à Google.
+  Future<bool> isUserSignedIn() async {
+    return _isSignedIn;
+  }
+
   /// Obtient l'ID Google de l'utilisateur connecté.
-  ///
-  /// Retourne l'UID Firebase ou l'ID du joueur Google Play Games
-  /// si disponible, sinon `null`.
   Future<String?> getGoogleId() async {
     try {
       // Essayer d'obtenir l'ID via Firebase d'abord
@@ -75,17 +105,12 @@ class GoogleAuthService {
 
       return null;
     } catch (e) {
-      if (kDebugMode) {
-        print('Erreur lors de l\'obtention de l\'ID Google: $e');
-      }
+      debugPrint('Erreur lors de l\'obtention de l\'ID Google: $e');
       return null;
     }
   }
 
   /// Obtient les informations de profil Google.
-  ///
-  /// Retourne un Map contenant les informations du profil si disponible,
-  /// sinon `null`.
   Future<Map<String, dynamic>?> getGoogleProfileInfo() async {
     try {
       // Essayer d'obtenir les infos via Firebase d'abord
@@ -114,33 +139,25 @@ class GoogleAuthService {
 
       return null;
     } catch (e) {
-      if (kDebugMode) {
-        print('Erreur lors de l\'obtention des infos de profil: $e');
-      }
+      debugPrint('Erreur lors de l\'obtention des infos de profil: $e');
       return null;
     }
   }
 
   /// Obtient un token d'accès pour les API Google.
-  ///
-  /// Ce token peut être utilisé pour les requêtes vers les API Google
-  /// comme Google Drive. Utilise un cache pour éviter les requêtes inutiles.
   Future<String?> getGoogleAccessToken() async {
     try {
       // Vérifier si le token en cache est encore valide
       if (_cachedAccessToken != null && _tokenExpirationTime != null) {
         if (_tokenExpirationTime!.isAfter(DateTime.now().add(const Duration(minutes: 5)))) {
-          // Token encore valide avec au moins 5 minutes de marge
           return _cachedAccessToken;
         }
       }
 
       // Token pas en cache ou expiré, en obtenir un nouveau
       if (_auth.currentUser != null) {
-        // Obtenir le token via Firebase Auth
         final idToken = await _auth.currentUser!.getIdToken();
         _cachedAccessToken = idToken;
-        // Estimer l'expiration (typiquement 1 heure)
         _tokenExpirationTime = DateTime.now().add(const Duration(minutes: 55));
         return _cachedAccessToken;
       }
@@ -150,19 +167,15 @@ class GoogleAuthService {
       if (googleAccount != null) {
         final googleAuth = await googleAccount.authentication;
         _cachedAccessToken = googleAuth.accessToken;
-        // Estimer l'expiration (typiquement 1 heure)
         _tokenExpirationTime = DateTime.now().add(const Duration(minutes: 55));
         return _cachedAccessToken;
       }
 
-      // Réinitialiser le cache si on ne peut pas obtenir de token
       _cachedAccessToken = null;
       _tokenExpirationTime = null;
       return null;
     } catch (e) {
-      if (kDebugMode) {
-        print('Erreur lors de l\'obtention du token Google: $e');
-      }
+      debugPrint('Erreur lors de l\'obtention du token Google: $e');
       _cachedAccessToken = null;
       _tokenExpirationTime = null;
       return null;
@@ -170,30 +183,45 @@ class GoogleAuthService {
   }
 
   /// Se connecte avec Google en utilisant Firebase Auth ou Google Play Games.
-  ///
-  /// Retourne un Map contenant les informations de profil si la connexion réussit,
-  /// sinon `null`.
   Future<Map<String, dynamic>?> signInWithGoogle() async {
     try {
+      debugPrint('Démarrage du processus de connexion Google');
+
       // Essayer d'abord Google Play Games
       try {
+        debugPrint('Tentative avec Google Play Games...');
         await GamesServices.signIn();
         final isPlayGamesSignedIn = await GamesServices.isSignedIn;
 
-        // Si Google Play Games fonctionne, retourner ces infos
         if (isPlayGamesSignedIn) {
-          return await getGoogleProfileInfo();
+          debugPrint('Connexion réussie via Google Play Games');
+
+          // Marquer comme connecté
+          _isSignedIn = true;
+          notifyListeners();
+
+          // Sauvegarder le timestamp de connexion
+          _saveLastSignInTime();
+
+          // Quand on utilise Games Services, nous n'avons pas toutes les infos
+          // Donc on crée un objet avec des infos minimales
+          return {
+            'id': 'gps_${DateTime.now().millisecondsSinceEpoch}', // ID unique
+            'displayName': 'Joueur Google',
+            'email': null,
+            'photoUrl': null,
+          };
         }
       } catch (e) {
-        if (kDebugMode) {
-          print('Erreur de connexion Google Play Games: $e');
-        }
-        // Continuer avec Firebase Auth si Google Play Games échoue
+        debugPrint('Échec Google Play Games : $e');
+        // Continuer avec Firebase Auth
       }
 
       // Sinon, essayer Firebase Auth
+      debugPrint('Tentative avec Firebase Auth...');
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
+        debugPrint('L\'utilisateur a annulé la connexion Google');
         return null;
       }
 
@@ -206,8 +234,19 @@ class GoogleAuthService {
       final userCredential = await _auth.signInWithCredential(credential);
       final user = userCredential.user;
 
-      if (user == null) return null;
+      if (user == null) {
+        debugPrint('Firebase Auth n\'a pas retourné d\'utilisateur');
+        return null;
+      }
 
+      // Marquer comme connecté
+      _isSignedIn = true;
+      notifyListeners();
+
+      // Sauvegarder le timestamp de connexion
+      _saveLastSignInTime();
+
+      debugPrint('Connexion réussie via Firebase Auth: ${user.displayName}');
       return {
         'id': user.uid,
         'displayName': user.displayName,
@@ -215,42 +254,43 @@ class GoogleAuthService {
         'photoUrl': user.photoURL,
       };
     } catch (e, stack) {
-      if (kDebugMode) {
-        print('Erreur de connexion Google: $e');
-        print('Stack: $stack');
-      }
+      debugPrint('Erreur détaillée de connexion Google: $e');
+      debugPrint('Stack trace: $stack');
 
-      // Enregistrer l'erreur dans Crashlytics si disponible
-      try {
-        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Google sign-in error');
-      } catch (_) {
-        // Ignorer les erreurs Crashlytics
-      }
+      // Enregistrer l'erreur dans Crashlytics
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Google sign-in error');
 
       return null;
     }
   }
 
   /// Se déconnecte de Google.
-  ///
-  /// Déconnecte l'utilisateur de Firebase Auth et Google Sign-In.
   Future<void> signOut() async {
     try {
       await _auth.signOut();
       await _googleSignIn.signOut();
       _cachedAccessToken = null;
       _tokenExpirationTime = null;
-    } catch (e, stack) {
-      if (kDebugMode) {
-        print('Erreur de déconnexion: $e');
-      }
 
-      // Enregistrer l'erreur dans Crashlytics si disponible
-      try {
-        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Google sign-out error');
-      } catch (_) {
-        // Ignorer les erreurs Crashlytics
-      }
+      // Enlever le timestamp de dernière connexion
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_lastSignInKey);
+
+      _isSignedIn = false;
+      notifyListeners();
+    } catch (e, stack) {
+      debugPrint('Erreur de déconnexion: $e');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Google sign-out error');
+    }
+  }
+
+  /// Sauvegarde l'heure de la dernière connexion
+  Future<void> _saveLastSignInTime() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_lastSignInKey, DateTime.now().toIso8601String());
+    } catch (e) {
+      debugPrint('Erreur lors de la sauvegarde de la date de connexion: $e');
     }
   }
 }

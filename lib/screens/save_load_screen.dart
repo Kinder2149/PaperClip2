@@ -202,9 +202,11 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
     return Scaffold(
       // Utilisation du widget AppBar personnalisé
       appBar: WidgetAppBarJeu(
-        title: 'Sauvegardes',
+        titleBuilder: (context) => const Text('Sauvegardes'),
         elevation: 0,
-        showLevelIndicator: false, // Pas besoin d'indicateur de niveau ici
+        onSettingsPressed: () {
+          // Action pour le bouton paramètres
+        },
         additionalActions: [
           // Bouton de synchronisation
           IconButton(

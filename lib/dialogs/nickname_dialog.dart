@@ -60,37 +60,29 @@ class _NicknameDialogState extends State<NicknameDialog> {
     });
 
     try {
-      final userManager = Provider.of<UserManager>(context, listen: false);
-      final currentProfile = userManager.currentProfile;
+      // Appeler le callback avec le surnom
+      bool success = false;
+      if (widget.onNicknameSet != null) {
+        success = await widget.onNicknameSet!(nickname) ?? false;
+      }
 
-      if (currentProfile != null) {
-        // Mettre à jour le profil existant
-        final updatedProfile = currentProfile.copyWith(
-          displayName: nickname,
-        );
-
-        // Sauvegarder les modifications
-        await userManager.updateProfile(updatedProfile);
-
-        if (widget.onNicknameSet != null) {
-          widget.onNicknameSet!(nickname);
-        }
-
-        if (mounted) {
+      if (mounted) {
+        if (success) {
           Navigator.of(context).pop(true);
+        } else {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = 'Échec de la création du profil';
+          });
         }
-      } else {
-        // Pas de profil existant, afficher une erreur
-        setState(() {
-          _errorMessage = 'Aucun profil utilisateur trouvé';
-          _isLoading = false;
-        });
       }
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Erreur lors de la sauvegarde: $e';
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Erreur: $e';
+        });
+      }
     }
   }
 

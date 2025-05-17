@@ -42,7 +42,7 @@ android {
         applicationId "com.kinder2149.paperclip2"
         minSdkVersion 21
         targetSdkVersion rootProject.ext.compileSdkVersion
-        versionCode 10
+        versionCode 12
         versionName "1.0.3"
         multiDexEnabled true
     }

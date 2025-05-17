@@ -1,135 +1,162 @@
 // lib/services/user/user_profile.dart
+
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-
-// Essayons d'abord avec l'import relatif
-import '../../models/game_config.dart';
+import '../../models/game_config.dart'; // Import de GameMode depuis game_config.dart
 
 class UserProfile {
-  final String userId;          // ID unique du profil
-  final String displayName;     // Nom d'affichage
-  final String? googleId;       // ID Google associé (optionnel)
-  final DateTime createdAt;     // Date de création
-  DateTime lastLogin;           // Dernière connexion
-  final List<String> infiniteSaveIds; // IDs des parties infinies
-  final List<String> competitiveSaveIds; // IDs des parties compétitives
-  final Map<String, dynamic> globalStats; // Statistiques globales
-  String? profileImagePath;     // Chemin de l'image de profil (local)
-  String? profileImageUrl;      // URL de l'image de profil (cloud)
+  final String userId;
+  final String displayName;
+  final String? googleId;
+  final String? profileImageUrl;
+  final String? profileImagePath;
+  final Map<String, dynamic> privacySettings;
+  final String? customAvatarPath;
+  final Map<String, dynamic> globalStats;
+  final List<String> competitiveSaveIds;
+  final List<String> infiniteSaveIds;
+  final DateTime lastLogin;
 
   UserProfile({
     required this.userId,
     required this.displayName,
     this.googleId,
-    DateTime? createdAt,
-    DateTime? lastLogin,
-    List<String>? infiniteSaveIds,
-    List<String>? competitiveSaveIds,
-    Map<String, dynamic>? globalStats,
-    this.profileImagePath,
     this.profileImageUrl,
-  }) :
-        this.createdAt = createdAt ?? DateTime.now(),
-        this.lastLogin = lastLogin ?? DateTime.now(),
-        this.infiniteSaveIds = infiniteSaveIds ?? [],
+    this.profileImagePath,
+    this.customAvatarPath,
+    Map<String, dynamic>? privacySettings,
+    Map<String, dynamic>? globalStats,
+    List<String>? competitiveSaveIds,
+    List<String>? infiniteSaveIds,
+    DateTime? lastLogin,
+  })  : this.privacySettings = privacySettings ?? {},
+        this.globalStats = globalStats ?? {},
         this.competitiveSaveIds = competitiveSaveIds ?? [],
-        this.globalStats = globalStats ?? {};
+        this.infiniteSaveIds = infiniteSaveIds ?? [],
+        this.lastLogin = lastLogin ?? DateTime.now();
 
-  // Mise à jour du login
-  void updateLastLogin() {
-    lastLogin = DateTime.now();
+  // Modification de l'URL de l'image de profil
+  void updateProfileImageUrl(String url) {
+    _profileImageUrl = url;
   }
 
-  // Vérifier si l'utilisateur peut créer une partie compétitive
+  // Variable privée pour updater l'URL
+  String? _profileImageUrl;
+
+  // Mettre à jour la date de dernière connexion
+  void updateLastLogin() {
+    _lastLogin = DateTime.now();
+  }
+
+  // Variable privée pour la dernière connexion
+  DateTime _lastLogin = DateTime.now();
+
+  // Ajouter un ID de sauvegarde
+  void addSaveId(String saveId, GameMode mode) {
+    if (mode == GameMode.COMPETITIVE) {
+      if (!competitiveSaveIds.contains(saveId)) {
+        _competitiveSaveIds.add(saveId);
+      }
+    } else {
+      if (!infiniteSaveIds.contains(saveId)) {
+        _infiniteSaveIds.add(saveId);
+      }
+    }
+  }
+
+  // Variables privées pour les IDs de sauvegarde
+  List<String> _competitiveSaveIds = [];
+  List<String> _infiniteSaveIds = [];
+
+  // Supprimer un ID de sauvegarde
+  void removeSaveId(String saveId) {
+    _competitiveSaveIds.remove(saveId);
+    _infiniteSaveIds.remove(saveId);
+  }
+
+  // Vérifier si l'utilisateur peut créer une sauvegarde compétitive
   bool canCreateCompetitiveSave() {
     return competitiveSaveIds.length < 3;
   }
 
-  // Ajouter une sauvegarde
-  void addSaveId(String saveId, GameMode mode) {
-    if (mode == GameMode.COMPETITIVE) {
-      if (canCreateCompetitiveSave()) {
-        competitiveSaveIds.add(saveId);
-      } else {
-        throw Exception("Limite de parties compétitives atteinte (3 maximum)");
-      }
-    } else {
-      infiniteSaveIds.add(saveId);
-    }
-  }
-
-  // Supprimer une sauvegarde
-  void removeSaveId(String saveId) {
-    infiniteSaveIds.remove(saveId);
-    competitiveSaveIds.remove(saveId);
-  }
-
-  // Mise à jour du chemin de l'image de profil
-  void updateProfileImagePath(String path) {
-    profileImagePath = path;
-  }
-
-  // Mise à jour de l'URL de l'image de profil
-  void updateProfileImageUrl(String url) {
-    profileImageUrl = url;
-  }
-
-  // Mise à jour des statistiques globales
+  // Mettre à jour les statistiques globales
   void updateGlobalStats(Map<String, dynamic> newStats) {
-    // Fusion des statistiques existantes avec les nouvelles
-    globalStats.addAll(newStats);
+    _globalStats.addAll(newStats);
   }
 
-  // Sérialisation vers JSON
+  // Variable privée pour les stats globales
+  Map<String, dynamic> _globalStats = {};
+
+  // Conversion en Map pour la sérialisation
   Map<String, dynamic> toJson() {
     return {
       'userId': userId,
       'displayName': displayName,
       'googleId': googleId,
-      'createdAt': createdAt.toIso8601String(),
-      'lastLogin': lastLogin.toIso8601String(),
-      'infiniteSaveIds': infiniteSaveIds,
-      'competitiveSaveIds': competitiveSaveIds,
-      'globalStats': globalStats,
+      'profileImageUrl': _profileImageUrl ?? profileImageUrl,
       'profileImagePath': profileImagePath,
-      'profileImageUrl': profileImageUrl,
+      'customAvatarPath': customAvatarPath,
+      'privacySettings': privacySettings,
+      'globalStats': globalStats,
+      'competitiveSaveIds': competitiveSaveIds,
+      'infiniteSaveIds': infiniteSaveIds,
+      'lastLogin': _lastLogin.toIso8601String(),
     };
   }
 
-  // Désérialisation depuis JSON
+  // Création à partir d'une Map
   factory UserProfile.fromJson(Map<String, dynamic> json) {
     return UserProfile(
-      userId: json['userId'],
-      displayName: json['displayName'],
+      userId: json['userId'] ?? '',
+      displayName: json['displayName'] ?? '',
       googleId: json['googleId'],
-      createdAt: DateTime.parse(json['createdAt']),
-      lastLogin: DateTime.parse(json['lastLogin']),
-      infiniteSaveIds: List<String>.from(json['infiniteSaveIds'] ?? []),
-      competitiveSaveIds: List<String>.from(json['competitiveSaveIds'] ?? []),
-      globalStats: json['globalStats'] ?? {},
-      profileImagePath: json['profileImagePath'],
       profileImageUrl: json['profileImageUrl'],
+      profileImagePath: json['profileImagePath'],
+      customAvatarPath: json['customAvatarPath'],
+      privacySettings: json['privacySettings'] != null
+          ? Map<String, dynamic>.from(json['privacySettings'])
+          : <String, dynamic>{},
+      globalStats: json['globalStats'] != null
+          ? Map<String, dynamic>.from(json['globalStats'])
+          : <String, dynamic>{},
+      competitiveSaveIds: json['competitiveSaveIds'] != null
+          ? List<String>.from(json['competitiveSaveIds'])
+          : <String>[],
+      infiniteSaveIds: json['infiniteSaveIds'] != null
+          ? List<String>.from(json['infiniteSaveIds'])
+          : <String>[],
+      lastLogin: json['lastLogin'] != null
+          ? DateTime.parse(json['lastLogin'])
+          : DateTime.now(),
     );
   }
 
-  // Copie avec modifications potentielles
+  // Méthode copyWith pour créer une copie modifiée
   UserProfile copyWith({
+    String? userId,
     String? displayName,
     String? googleId,
-    String? profileImagePath,
     String? profileImageUrl,
+    String? profileImagePath,
+    String? customAvatarPath,
+    Map<String, dynamic>? privacySettings,
+    Map<String, dynamic>? globalStats,
+    List<String>? competitiveSaveIds,
+    List<String>? infiniteSaveIds,
+    DateTime? lastLogin,
   }) {
     return UserProfile(
-      userId: this.userId,
+      userId: userId ?? this.userId,
       displayName: displayName ?? this.displayName,
       googleId: googleId ?? this.googleId,
-      createdAt: this.createdAt,
-      lastLogin: this.lastLogin,
-      infiniteSaveIds: List.from(this.infiniteSaveIds),
-      competitiveSaveIds: List.from(this.competitiveSaveIds),
-      globalStats: Map.from(this.globalStats),
+      profileImageUrl: profileImageUrl ?? this._profileImageUrl ?? this.profileImageUrl,
       profileImagePath: profileImagePath ?? this.profileImagePath,
-      profileImageUrl: profileImageUrl ?? this.profileImageUrl,
+      customAvatarPath: customAvatarPath ?? this.customAvatarPath,
+      privacySettings: privacySettings ?? this.privacySettings,
+      globalStats: globalStats ?? this.globalStats,
+      competitiveSaveIds: competitiveSaveIds ?? this._competitiveSaveIds,
+      infiniteSaveIds: infiniteSaveIds ?? this._infiniteSaveIds,
+      lastLogin: lastLogin ?? this._lastLogin,
     );
   }
 }

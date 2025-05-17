@@ -1,5 +1,7 @@
+// lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:just_audio/just_audio.dart';
@@ -7,6 +9,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
 import 'dart:ui' as ui show PlatformDispatcher;
 
@@ -20,6 +24,9 @@ import './screens/upgrades_screen.dart';
 import './screens/event_log_screen.dart';
 import 'screens/introduction_screen.dart';
 import 'env_config.dart';
+import 'screens/user_profile_screen.dart';
+import 'package:paperclip2/services/user/user_manager.dart';
+
 
 // Imports des modèles et services
 import './models/game_state.dart';
@@ -34,6 +41,8 @@ import 'services/games_services_controller.dart';
 import 'services/save/save_system.dart';
 import 'services/save/save_types.dart';
 import 'services/user/user_manager.dart';
+import 'services/social/friends_service.dart';
+import 'services/social/user_stats_service.dart';
 import './dialogs/nickname_dialog.dart';
 
 // Export du navigatorKey
@@ -44,6 +53,55 @@ final gameState = GameState();
 final backgroundMusicService = BackgroundMusicService();
 final eventManager = EventManager.instance;
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+// Classe pour gérer les services sociaux globalement
+class ServiceLocator {
+  static final ServiceLocator _instance = ServiceLocator._private();
+  factory ServiceLocator() => _instance;
+
+  ServiceLocator._private();
+
+  FriendsService? friendsService;
+  UserStatsService? userStatsService;
+
+  Future<void> initializeSocialServices(UserManager userManager) async {
+    try {
+      // Vérifier si l'utilisateur est authentifié
+      final user = FirebaseAuth.instance.currentUser;
+      final profile = userManager.currentProfile;
+
+      if (profile != null) {
+        // Tenter d'initialiser même sans user Firebase, car on pourrait avoir un profil local
+        debugPrint('Initialisation des services sociaux pour l\'utilisateur: ${profile.userId}');
+
+        if (user != null) {
+          debugPrint('UID Firebase: ${user.uid}');
+
+          // Vérifier si l'UID Firebase correspond à l'ID utilisateur dans le profil
+          if (profile.googleId != null && profile.googleId != user.uid) {
+            debugPrint('Attention: L\'ID Google du profil ne correspond pas à l\'UID Firebase');
+          }
+        } else {
+          debugPrint('Utilisateur non authentifié à Firebase, mais profil local disponible');
+        }
+
+        // Initialiser les services sociaux avec l'ID du profil local
+        friendsService = FriendsService(profile.userId, userManager);
+        userStatsService = UserStatsService(profile.userId, userManager);
+
+        return;
+      }
+
+      debugPrint('Impossible d\'initialiser les services sociaux: utilisateur non authentifié');
+    } catch (e, stack) {
+      debugPrint('Erreur lors de l\'initialisation des services sociaux: $e');
+      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Social services init error');
+    }
+  }
+}
+
+// Créer une instance du localisateur de service
+final serviceLocator = ServiceLocator();
 
 Future<void> main() async {
   try {
@@ -97,6 +155,12 @@ Future<void> main() async {
     final gamesServices = GamesServicesController();
     await gamesServices.initialize();
 
+    // Créer le service de musique de fond
+    final backgroundMusicService = BackgroundMusicService();
+
+    // Créer GameState
+    final gameState = GameState();
+
     // IMPORTANT: Créer et connecter UserManager et SaveSystem correctement
     // pour éviter la dépendance circulaire
     final userManager = UserManager();
@@ -105,6 +169,10 @@ Future<void> main() async {
     // Injecter les dépendances
     userManager.setSaveSystem(saveSystem);
     saveSystem.setUserManager(userManager);
+
+    // Injecter SaveSystem dans GameState
+    gameState.setSaveSystem(saveSystem);
+    gameState.setSocialUserManager(userManager);
 
     // Vérification en mode debug
     if (kDebugMode) {
@@ -117,14 +185,28 @@ Future<void> main() async {
       print('UserManager initialisé: ${userManager.hasProfile ? "Profil trouvé" : "Aucun profil"}');
     }
 
-    // Initialiser le système de sauvegarde
-    saveSystem.initialize(gameState);
+    // Initialiser explicitement GameState avant d'initialiser SaveSystem
+    await gameState.initialize();
+    if (kDebugMode) {
+      print('GameState initialisé avec succès');
+    }
+
+    // Initialiser le système de sauvegarde avec GameState
+    await saveSystem.initialize(gameState);
     if (kDebugMode) {
       print('SaveSystem initialisé');
     }
 
-    // Vérifier et restaurer les sauvegardes
-    await gameState.checkAndRestoreFromBackup();
+    // Initialiser les services sociaux
+    await serviceLocator.initializeSocialServices(userManager);
+    if (kDebugMode) {
+      print('Services sociaux initialisés');
+    }
+
+    // Maintenant que tout est correctement initialisé, vérifier et restaurer les sauvegardes
+    if (gameState.isInitialized && saveSystem != null) {
+      await gameState.checkAndRestoreFromBackup();
+    }
 
     // Configurer et logger l'analytics
     await FirebaseAnalytics.instance.logAppOpen();
@@ -137,14 +219,16 @@ Future<void> main() async {
           ChangeNotifierProvider.value(value: gameState),
           Provider<BackgroundMusicService>.value(value: backgroundMusicService),
           ChangeNotifierProvider.value(value: EventManager.instance),
-          Provider<GamesServicesController>(
-            create: (context) => gamesServices,
-          ),
-          // Ajout des providers pour UserManager et SaveSystem
+          // Remplacer ChangeNotifierProvider par Provider pour UserManager
           Provider<UserManager>.value(value: userManager),
           Provider<SaveSystem>.value(value: saveSystem),
+          // Conservez ChangeNotifierProvider pour GamesServicesController
+          ChangeNotifierProvider<GamesServicesController>.value(
+            value: gamesServices,
+          ),
+          // Provider pour ServiceLocator
+          Provider<ServiceLocator>.value(value: serviceLocator),
         ],
-
         child: const MyApp(),
       ),
     );
@@ -186,10 +270,14 @@ class MyApp extends StatelessWidget {
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
       home: const AuthCheckScreen(),
+      routes: {
+        '/profile': (context) => const UserProfileScreen(),
+      },
       debugShowCheckedModeBanner: false,
     );
   }
 }
+
 class AuthCheckScreen extends StatefulWidget {
   const AuthCheckScreen({Key? key}) : super(key: key);
 
@@ -274,6 +362,11 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
     if (!mounted) return;
 
     try {
+      setState(() {
+        _isChecking = true;
+        _errorMessage = null;
+      });
+
       final userManager = Provider.of<UserManager>(context, listen: false);
 
       // Afficher le dialogue de surnom avec un nom par défaut
@@ -283,11 +376,21 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
         builder: (context) => NicknameDialog(
           initialNickname: initialNickname,
           onNicknameSet: (nickname) async {
-            // Créer le profil avec le surnom choisi
-            await userManager.createProfile(nickname);
+            try {
+              // Créer le profil avec le surnom choisi
+              await userManager.createProfile(nickname);
+              return true;
+            } catch (e) {
+              debugPrint('Erreur lors de la création du profil: $e');
+              return false;
+            }
           },
         ),
       );
+
+      setState(() {
+        _isChecking = false;
+      });
 
       if (result == true && mounted) {
         // Profil créé avec succès, passer à l'écran de démarrage
@@ -296,11 +399,23 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
             MaterialPageRoute(builder: (_) => const LoadingScreen()),
           );
         }
+      } else {
+        // Échec ou annulation
+        if (mounted) {
+          setState(() {
+            _errorMessage = 'Création de profil annulée ou échouée.';
+          });
+        }
       }
     } catch (e, stack) {
       FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Create profile error');
 
       if (mounted) {
+        setState(() {
+          _isChecking = false;
+          _errorMessage = 'Erreur: $e';
+        });
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Erreur: $e'),

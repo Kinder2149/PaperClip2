@@ -208,139 +208,162 @@ class _StartScreenState extends State<StartScreen> {
 
 
 
+  // lib/screens/start_screen.dart
+
   void _showNewGameDialog(BuildContext context) {
     final controller = TextEditingController(
-      text: 'Partie ${DateTime.now().day}/${DateTime.now().month}',
+      text: 'Partie ${DateTime
+          .now()
+          .day}/${DateTime
+          .now()
+          .month}',
     );
 
     // Variable pour suivre le mode sélectionné
     GameMode selectedMode = GameMode.INFINITE;
     bool syncToCloud = _isSignedIn; // Valeur par défaut si connecté
 
+    // Capture le context actuel pour une utilisation sécuritaire
+    final currentContext = context;
+
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (dialogContext, setState) => AlertDialog(
-          title: const Text('Nouvelle Partie'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: controller,
-                  decoration: const InputDecoration(
-                    labelText: 'Nom de la partie',
-                    hintText: 'Entrez un nom pour votre partie',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                // Reste du contenu du dialogue...
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Annuler'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final gameName = controller.text.trim();
-                if (gameName.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Le nom ne peut pas être vide')),
-                  );
-                  return;
-                }
-
-                final exists = await _saveSystem.exists(gameName);
-                if (exists) {
-                  if (dialogContext.mounted) {
-                    ScaffoldMessenger.of(dialogContext).showSnackBar(
-                      const SnackBar(
-                        content: Text('Une partie avec ce nom existe déjà'),
-                        backgroundColor: Colors.orange,
-                      ),
-                    );
-                  }
-                  return;
-                }
-
-                // Vérifier si l'utilisateur peut créer une partie compétitive
-                if (selectedMode == GameMode.COMPETITIVE) {
-                  final userManager = context.read<UserManager>();
-                  if (!await userManager.canCreateCompetitiveSave()) {
-                    if (dialogContext.mounted) {
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(
-                        const SnackBar(
-                          content: Text('Limite de parties compétitives atteinte (3 maximum)'),
-                          backgroundColor: Colors.red,
+      builder: (dialogContext) =>
+          StatefulBuilder(
+            builder: (dialogContext, setState) =>
+                AlertDialog(
+                  title: const Text('Nouvelle Partie'),
+                  content: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        TextField(
+                          controller: controller,
+                          decoration: const InputDecoration(
+                            labelText: 'Nom de la partie',
+                            hintText: 'Entrez un nom pour votre partie',
+                            border: OutlineInputBorder(),
+                          ),
                         ),
-                      );
-                    }
-                    return;
-                  }
-                }
-
-                // Fermer la boîte de dialogue avec les paramètres sélectionnés
-                if (dialogContext.mounted) {
-                  Navigator.pop(dialogContext);
-                }
-
-                // Stockage de référence au contexte principal
-                final mainContext = context;
-
-                // Nous utilisons cette approche pour être sûr que le widget est toujours monté
-                if (!mounted) return;
-
-                setState(() => _isLoading = true);
-
-                try {
-                  // Utiliser le mode sélectionné lors de la création
-                  await context.read<GameState>().startNewGame(
-                      gameName,
-                      mode: selectedMode,
-                      syncToCloud: syncToCloud
-                  );
-
-                  // Vérifier que le contexte principal est toujours valide
-                  if (!mounted) return;
-
-                  // Créer une classe intermédiaire pour la navigation
-                  final introScreen = IntroductionScreen(
-                    showSkipButton: true,
-                    isCompetitiveMode: selectedMode == GameMode.COMPETITIVE,
-                    onStart: () {
-                      // Utilise le navigatorKey global plutôt que le context
-                      navigatorKey.currentState?.pushReplacement(
-                        MaterialPageRoute(builder: (_) => const MainScreen()),
-                      );
-                    },
-                  );
-
-                  Navigator.pushReplacement(
-                    mainContext,
-                    MaterialPageRoute(builder: (_) => introScreen),
-                  );
-                } catch (e) {
-                  // Vérifier que le contexte principal est toujours monté
-                  if (!mounted) return;
-
-                  ScaffoldMessenger.of(mainContext).showSnackBar(
-                    SnackBar(
-                      content: Text('Erreur lors de la création: $e'),
-                      backgroundColor: Colors.red,
+                        // Reste du contenu du dialogue...
+                      ],
                     ),
-                  );
-                  setState(() => _isLoading = false);
-                }
-              },
-              child: const Text('Commencer'),
-            ),
-          ],
-        ),
-      ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      child: const Text('Annuler'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () async {
+                        final gameName = controller.text.trim();
+                        if (gameName.isEmpty) {
+                          if (dialogContext.mounted) {
+                            ScaffoldMessenger.of(dialogContext).showSnackBar(
+                              const SnackBar(content: Text(
+                                  'Le nom ne peut pas être vide')),
+                            );
+                          }
+                          return;
+                        }
+
+                        final saveSystem = Provider.of<SaveSystem>(
+                            dialogContext, listen: false);
+                        final exists = await saveSystem.exists(gameName);
+                        if (exists) {
+                          if (dialogContext.mounted) {
+                            ScaffoldMessenger.of(dialogContext).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                    'Une partie avec ce nom existe déjà'),
+                                backgroundColor: Colors.orange,
+                              ),
+                            );
+                          }
+                          return;
+                        }
+
+                        // Vérifier si l'utilisateur peut créer une partie compétitive
+                        if (selectedMode == GameMode.COMPETITIVE) {
+                          final userManager = Provider.of<UserManager>(
+                              dialogContext, listen: false);
+                          if (!await userManager.canCreateCompetitiveSave()) {
+                            if (dialogContext.mounted) {
+                              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                      'Limite de parties compétitives atteinte (3 maximum)'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                            return;
+                          }
+                        }
+
+                        // Fermer la boîte de dialogue
+                        if (dialogContext.mounted) {
+                          Navigator.pop(dialogContext);
+                        }
+
+                        // Utiliser mounted ici pour vérifier si le widget est toujours monté
+                        if (mounted) {
+                          setState(() => _isLoading = true);
+
+                          try {
+                            // Utiliser le gameState depuis Provider
+                            final gameState = Provider.of<GameState>(
+                                currentContext, listen: false);
+
+                            // Utiliser le mode sélectionné lors de la création
+                            await gameState.startNewGame(
+                                gameName,
+                                mode: selectedMode,
+                                syncToCloud: syncToCloud
+                            );
+
+                            // Vérifier à nouveau si le widget est toujours monté
+                            if (mounted) {
+                              // Créer une classe intermédiaire pour la navigation
+                              final introScreen = IntroductionScreen(
+                                showSkipButton: true,
+                                isCompetitiveMode: selectedMode ==
+                                    GameMode.COMPETITIVE,
+                                onStart: () {
+                                  // Utilise le navigatorKey global plutôt que le context
+                                  navigatorKey.currentState?.pushReplacement(
+                                    MaterialPageRoute(
+                                        builder: (_) => const MainScreen()),
+                                  );
+                                },
+                              );
+
+                              // Utiliser navigatorKey pour éviter les problèmes de context
+                              navigatorKey.currentState?.pushReplacement(
+                                MaterialPageRoute(builder: (_) => introScreen),
+                              );
+                            }
+                          } catch (e) {
+                            // Vérifier si le widget est toujours monté
+                            if (mounted) {
+                              ScaffoldMessenger.of(currentContext).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                      'Erreur lors de la création: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                              setState(() => _isLoading = false);
+                            }
+                          }
+                        }
+                      },
+                      child: const Text('Commencer'),
+                    ),
+                  ],
+                ),
+          ),
     );
   }
   @override

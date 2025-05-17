@@ -33,8 +33,17 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     return Scaffold(
       // Utilisation du widget AppBar personnalisé
       appBar: WidgetAppBarJeu(
-        title: 'Profil',
-        showLevelIndicator: false, // Pas besoin d'indicateur de niveau ici
+        titleBuilder: (context) => const Text(
+          'Profil',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        showLevelIndicator: false,
+        onSettingsPressed: () {
+          // Action pour le bouton paramètres
+        },
       ),
       body: ValueListenableBuilder<UserProfile?>(
         valueListenable: _userManager.profileChanged,

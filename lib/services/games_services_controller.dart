@@ -315,6 +315,10 @@ class GamesServicesController extends ChangeNotifier {
     }
   }
   // Ajouter ces méthodes dans la classe GamesServicesController
+  void _updateSignInStatus(bool isSignedIn) {
+    _isSignedIn = isSignedIn;
+    notifyListeners();
+  }
 
   Future<bool> saveGameToCloud({String? userId, String? saveData, Object? saveGame}) async {
     try {

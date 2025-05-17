@@ -80,13 +80,22 @@ class MetalManager extends ChangeNotifier {
   void updateMarketStock(double amount) {
     double previousStock = _marketMetalStock;
     final newStock = _marketMetalStock + amount;
+
+    // Appliquer le changement avec limite à 0
     _marketMetalStock = _validateMarketStock(
         newStock.clamp(0.0, GameConstants.INITIAL_MARKET_METAL)
     );
 
-    // Vérification pour crise du métal
-    if (_marketMetalStock <= 0 && previousStock > 0) {
-      // Notification de crise traitée par GameState
+    // Ajout de log pour suivre les changements de stock
+    debugPrint("Stock de métal mis à jour: $previousStock -> $_marketMetalStock");
+
+    // Vérification de seuil critique pour la crise
+    // Ajouter une vérification pour l'état de progression du processus de crise
+    if (_marketMetalStock <= 0.1 && previousStock > 0.1) {
+      debugPrint("⚠️ SEUIL CRITIQUE ATTEINT: Métal épuisé");
+
+      // Appel explicite du callback de crise
+      onCrisisTriggered?.call();
     }
 
     notifyListeners();

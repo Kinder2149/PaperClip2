@@ -13,6 +13,7 @@ import '../models/game_config.dart';
 import '../services/games_services_controller.dart';
 import '../services/background_music.dart';
 
+
 import '../services/save/save_types.dart';
 import '../services/save/save_system.dart';
 import '../services/user/user_manager.dart';
@@ -42,12 +43,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: WidgetAppBarJeu(
-        title: 'Paramètres',
+        titleBuilder: (context) => const Text(
+          'Paramètres',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         showLevelIndicator: false,
         showSettings: false,
         showNotifications: false,
         backgroundColor: Colors.deepPurple[700],
         elevation: 0,
+        onSettingsPressed: () {
+          // Action pour le bouton paramètres
+        },
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -224,7 +234,104 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 );
               },
             ),
+// Section Confidentialité
+            const SizedBox(height: 16),
+            const Divider(),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              child: Text(
+                'Paramètres de confidentialité',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
 
+            Builder(
+              builder: (context) {
+                final userManager = Provider.of<UserManager>(context);
+                final profile = userManager.currentProfile;
+
+                if (profile == null) {
+                  return const Text('Connectez-vous pour gérer vos paramètres de confidentialité');
+                }
+
+                final privacySettings = profile.privacySettings;
+
+                return Column(
+                  children: [
+                    SwitchListTile(
+                      title: const Text('Afficher le nombre de trombones'),
+                      subtitle: const Text('Visible par vos amis'),
+                      value: privacySettings['showTotalPaperclips'] ?? true,
+                      onChanged: (value) async {
+                        final updatedProfile = profile.copyWith(
+                          privacySettings: {
+                            ...privacySettings,
+                            'showTotalPaperclips': value,
+                          },
+                        );
+                        await userManager.updateProfile(updatedProfile);
+                      },
+                    ),
+                    SwitchListTile(
+                      title: const Text('Afficher le niveau'),
+                      subtitle: const Text('Visible par vos amis'),
+                      value: privacySettings['showLevel'] ?? true,
+                      onChanged: (value) async {
+                        final updatedProfile = profile.copyWith(
+                          privacySettings: {
+                            ...privacySettings,
+                            'showLevel': value,
+                          },
+                        );
+                        await userManager.updateProfile(updatedProfile);
+                      },
+                    ),
+                    SwitchListTile(
+                      title: const Text('Afficher l\'argent'),
+                      subtitle: const Text('Visible par vos amis'),
+                      value: privacySettings['showMoney'] ?? true,
+                      onChanged: (value) async {
+                        final updatedProfile = profile.copyWith(
+                          privacySettings: {
+                            ...privacySettings,
+                            'showMoney': value,
+                          },
+                        );
+                        await userManager.updateProfile(updatedProfile);
+                      },
+                    ),
+                    SwitchListTile(
+                      title: const Text('Afficher l\'efficacité'),
+                      subtitle: const Text('Visible par vos amis'),
+                      value: privacySettings['showEfficiency'] ?? true,
+                      onChanged: (value) async {
+                        final updatedProfile = profile.copyWith(
+                          privacySettings: {
+                            ...privacySettings,
+                            'showEfficiency': value,
+                          },
+                        );
+                        await userManager.updateProfile(updatedProfile);
+                      },
+                    ),
+                    SwitchListTile(
+                      title: const Text('Afficher les améliorations'),
+                      subtitle: const Text('Visible par vos amis'),
+                      value: privacySettings['showUpgrades'] ?? true,
+                      onChanged: (value) async {
+                        final updatedProfile = profile.copyWith(
+                          privacySettings: {
+                            ...privacySettings,
+                            'showUpgrades': value,
+                          },
+                        );
+                        await userManager.updateProfile(updatedProfile);
+                      },
+                    ),
+                  ],
+                );
+              },
+            ),
             const SizedBox(height: 16),
 
             // Section Sauvegarde
