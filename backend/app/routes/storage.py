@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.db.database import get_db
 from app.models.schemas import GameSaveCreate, GameSave
-from app.models.storage import GameSave as GameSaveModel
+from app.models.game_save import GameSave as GameSaveModel
 from app.models.user import User
 from app.auth.jwt import get_current_user
 from app.services.storage import StorageService
