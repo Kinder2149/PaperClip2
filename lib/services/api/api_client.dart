@@ -5,22 +5,20 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../api_config.dart';
 
 /// Service client pour communiquer avec le backend API
 class ApiClient {
   static final ApiClient _instance = ApiClient._internal();
   factory ApiClient() => _instance;
 
-  // Configuration de l'API
-  final String _baseUrl = 'https://paperclip2-api.onrender.com/api'; // À remplacer par l'URL de votre backend
-  final String _localBaseUrl = 'http://10.0.2.2:8000/api'; // Pour les tests locaux (émulateur Android)
-  
+  // Configuration de l'API depuis api_config.dart
   // Stockage du token JWT
   String? _authToken;
   DateTime? _tokenExpiration;
   
   // Getters
-  String get baseUrl => kDebugMode ? _localBaseUrl : _baseUrl;
+  String get baseUrl => ApiConfig.apiBaseUrl;
   bool get isAuthenticated => _authToken != null && (_tokenExpiration?.isAfter(DateTime.now()) ?? false);
 
   // Constructeur interne

@@ -8,9 +8,6 @@ import 'package:just_audio/just_audio.dart';
 import 'package:flutter/services.dart';
 import 'dart:ui' as ui show PlatformDispatcher;
 
-// Imports des services API
-import 'package:paperclip2/services/api/api_services.dart';
-
 // Imports des écrans
 import './screens/start_screen.dart';
 import './screens/main_screen.dart';
@@ -20,9 +17,17 @@ import './screens/market_screen.dart';
 import './screens/upgrades_screen.dart';
 import './screens/event_log_screen.dart';
 import 'screens/introduction_screen.dart';
-import 'env_config.dart';
 import 'screens/user_profile_screen.dart';
+
+// Imports des configurations
+import 'env_config.dart';
+import 'api_config.dart';
+
+// Imports des services utilisateur
 import 'package:paperclip2/services/user/user_manager.dart';
+
+// Imports des services API
+import 'package:paperclip2/services/api/api_services.dart';
 
 // Imports des modèles et services
 import './models/game_state.dart';
@@ -31,7 +36,6 @@ import './models/event_system.dart';
 import './models/progression_system.dart';
 import './services/background_music.dart';
 import './utils/update_manager.dart';
-// Services de configuration remplacés par ConfigService
 import './widgets/notification_widgets.dart';
 import 'services/games_services_controller.dart';
 import 'services/save/save_system.dart';
@@ -113,28 +117,23 @@ Future<void> main() async {
       print('Loading environment variables...');
     }
     await EnvConfig.load();
-
-        // Initialisation des services API
+    
+    // Obtenir la configuration API pour cette plateforme
+    final apiConfig = ApiConfig.currentPlatform;
+    if (kDebugMode) {
+      print('API configuration loaded: ${apiConfig.baseUrl}');
+    }
+    
+    // Initialisation des services API
     final apiClient = ApiClient();
     await apiClient.initialize();
     
     final authService = AuthService();
-    await authService.initialize();
-    
     final analyticsService = AnalyticsService();
-    await analyticsService.initialize();
-    
     final storageService = StorageService();
-    await storageService.initialize();
-    
     final configService = ConfigService();
-    await configService.initialize();
-    
     final socialService = SocialService();
-    await socialService.initialize();
-    
     final saveService = SaveService();
-    await saveService.initialize();
 
     // Ajouter les services au ServiceLocator
     serviceLocator.apiClient = apiClient;
@@ -361,7 +360,7 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
         print('Erreur lors de la vérification du profil: $e');
         print('Stack: $stack');
       }
-      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Profile check error');
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Application error');
 
       // Implémenter un mécanisme de retry
       if (_retryCount < MAX_RETRIES && mounted) {
@@ -435,7 +434,7 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
         }
       }
     } catch (e, stack) {
-      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Create profile error');
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Application error');
 
       if (mounted) {
         setState(() {
@@ -475,7 +474,7 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
         _isChecking = false;
       });
 
-      if (result) {
+      if (result != null) {
         // Profil créé avec succès, passer à l'écran de démarrage
         if (mounted) {
           Navigator.of(context).pushReplacement(
@@ -490,7 +489,7 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
         }
       }
     } catch (e, stack) {
-      serviceLocator.analyticsService.recordError(e, stack, reason: 'Create Google profile error');
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Application error');
 
       if (mounted) {
         setState(() {
@@ -735,7 +734,7 @@ class _LoadingScreenState extends State<LoadingScreen> {
         );
       }
     } catch (e, stack) {
-      serviceLocator.analyticsService.recordError(e, stack);
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Application error');
     }
   }
 

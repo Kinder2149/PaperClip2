@@ -62,8 +62,8 @@ class AuthService {
     }
   }
   
-  // Inscription avec email et mot de passe
-  Future<bool> register(String email, String password, String username) async {
+  // Inscription avec email et mot de passe - méthode simplifiée
+  Future<bool> registerSimple(String email, String password, String username) async {
     try {
       final data = await _apiClient.register(email, password, username);
       
@@ -130,8 +130,8 @@ class AuthService {
     }
   }
   
-  // Enregistrement d'un nouvel utilisateur
-  Future<Map<String, dynamic>> register(String displayName, String? email, String? password) async {
+  // Enregistrement d'un nouvel utilisateur avec plus d'options
+  Future<Map<String, dynamic>> registerFull(String displayName, String? email, String? password) async {
     try {
       final data = await _apiClient.post(
         '/auth/register',
@@ -142,10 +142,12 @@ class AuthService {
         },
       );
       
-      if (data['success'] == true) {
-        _userId = data['user_id'];
-        _username = displayName;
+      if (data['access_token'] != null) {
+        // Configurer l'authentification
+        await _saveAuthToken(data['access_token'], DateTime.now().add(Duration(hours: 24)));
         
+        _userId = data['user_id'];
+        _username = data['username'];
         authStateChanged.value = true;
       }
       

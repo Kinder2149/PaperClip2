@@ -13,22 +13,22 @@ class EnvConfig {
       await dotenv.load(fileName: ".env");
 
       final requiredKeys = [
-        'FIREBASE_WEB_API_KEY',
-        'FIREBASE_WEB_APP_ID',
-        'FIREBASE_WEB_PROJECT_ID',
-        'FIREBASE_WEB_AUTH_DOMAIN',
-        'FIREBASE_WEB_DATABASE_URL',
-        'FIREBASE_WEB_STORAGE_BUCKET',
-        'FIREBASE_ANDROID_API_KEY',
-        'FIREBASE_ANDROID_APP_ID',
-        'FIREBASE_IOS_API_KEY',
-        'FIREBASE_IOS_APP_ID'
+        'API_BASE_URL',
+        'API_KEY',
+        'API_PROD_URL',
+        'API_DEV_URL',
+        'S3_BUCKET_NAME',
+        'S3_REGION',
+        'GOOGLE_CLIENT_ID',
+        'APPLE_CLIENT_ID'
       ];
 
       // Vérification des clés
       for (final key in requiredKeys) {
         if (dotenv.env[key]?.isEmpty ?? true) {
-          throw Exception('Configuration manquante: $key n\'est pas défini dans le fichier .env');
+          if (kDebugMode) {
+            print('Attention: $key n\'est pas défini dans le fichier .env');
+          }
         }
       }
 
@@ -44,17 +44,18 @@ class EnvConfig {
     }
   }
 
+  // Configuration API
+  static String get apiBaseUrl => kDebugMode 
+      ? (dotenv.env['API_DEV_URL'] ?? 'http://10.0.2.2:8000/api') 
+      : (dotenv.env['API_PROD_URL'] ?? 'https://paperclip2-api.onrender.com/api');
+      
+  static String get apiKey => dotenv.env['API_KEY'] ?? '';
 
-  static String get firebaseWebApiKey => dotenv.env['FIREBASE_WEB_API_KEY'] ?? '';
-  static String get firebaseWebAppId => dotenv.env['FIREBASE_WEB_APP_ID'] ?? '';
-  static String get firebaseWebProjectId => dotenv.env['FIREBASE_WEB_PROJECT_ID'] ?? '';
-  static String get firebaseWebAuthDomain => dotenv.env['FIREBASE_WEB_AUTH_DOMAIN'] ?? '';
-  static String get firebaseWebDatabaseUrl => dotenv.env['FIREBASE_WEB_DATABASE_URL'] ?? '';
-  static String get firebaseWebStorageBucket => dotenv.env['FIREBASE_WEB_STORAGE_BUCKET'] ?? '';
+  // Configuration stockage
+  static String get s3BucketName => dotenv.env['S3_BUCKET_NAME'] ?? '';
+  static String get s3Region => dotenv.env['S3_REGION'] ?? '';
 
-  static String get firebaseAndroidApiKey => dotenv.env['FIREBASE_ANDROID_API_KEY'] ?? '';
-  static String get firebaseAndroidAppId => dotenv.env['FIREBASE_ANDROID_APP_ID'] ?? '';
-
-  static String get firebaseIosApiKey => dotenv.env['FIREBASE_IOS_API_KEY'] ?? '';
-  static String get firebaseIosAppId => dotenv.env['FIREBASE_IOS_APP_ID'] ?? '';
+  // Configuration d'authentification
+  static String get googleClientId => dotenv.env['GOOGLE_CLIENT_ID'] ?? '';
+  static String get appleClientId => dotenv.env['APPLE_CLIENT_ID'] ?? '';
 }
