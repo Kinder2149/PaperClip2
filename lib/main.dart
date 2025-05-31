@@ -5,14 +5,11 @@ import 'package:provider/provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:flutter/services.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'firebase_options.dart';
 import 'dart:ui' as ui show PlatformDispatcher;
+
+// Imports des services API
+import 'package:paperclip2/services/api/api_services.dart';
 
 // Imports des écrans
 import './screens/start_screen.dart';
@@ -27,7 +24,6 @@ import 'env_config.dart';
 import 'screens/user_profile_screen.dart';
 import 'package:paperclip2/services/user/user_manager.dart';
 
-
 // Imports des modèles et services
 import './models/game_state.dart';
 import './models/game_config.dart';
@@ -35,7 +31,7 @@ import './models/event_system.dart';
 import './models/progression_system.dart';
 import './services/background_music.dart';
 import './utils/update_manager.dart';
-import './services/firebase_config.dart';
+// Services de configuration remplacés par ConfigService
 import './widgets/notification_widgets.dart';
 import 'services/games_services_controller.dart';
 import 'services/save/save_system.dart';
@@ -61,29 +57,26 @@ class ServiceLocator {
 
   ServiceLocator._private();
 
+  // Services API
+  ApiClient? apiClient;
+  AuthService? authService;
+  AnalyticsService? analyticsService;
+  StorageService? storageService;
+  ConfigService? configService;
+  SocialService? socialService;
+  SaveService? saveService;
+  
+  // Services sociaux
   FriendsService? friendsService;
   UserStatsService? userStatsService;
 
   Future<void> initializeSocialServices(UserManager userManager) async {
     try {
-      // Vérifier si l'utilisateur est authentifié
-      final user = FirebaseAuth.instance.currentUser;
       final profile = userManager.currentProfile;
 
       if (profile != null) {
-        // Tenter d'initialiser même sans user Firebase, car on pourrait avoir un profil local
+        // Tenter d'initialiser avec le profil local
         debugPrint('Initialisation des services sociaux pour l\'utilisateur: ${profile.userId}');
-
-        if (user != null) {
-          debugPrint('UID Firebase: ${user.uid}');
-
-          // Vérifier si l'UID Firebase correspond à l'ID utilisateur dans le profil
-          if (profile.googleId != null && profile.googleId != user.uid) {
-            debugPrint('Attention: L\'ID Google du profil ne correspond pas à l\'UID Firebase');
-          }
-        } else {
-          debugPrint('Utilisateur non authentifié à Firebase, mais profil local disponible');
-        }
 
         // Initialiser les services sociaux avec l'ID du profil local
         friendsService = FriendsService(profile.userId, userManager);
@@ -95,7 +88,7 @@ class ServiceLocator {
       debugPrint('Impossible d\'initialiser les services sociaux: utilisateur non authentifié');
     } catch (e, stack) {
       debugPrint('Erreur lors de l\'initialisation des services sociaux: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Social services init error');
+      analyticsService?.recordError(e, stack, reason: 'Social services init error');
     }
   }
 }
@@ -121,25 +114,35 @@ Future<void> main() async {
     }
     await EnvConfig.load();
 
-    // Initialisation de Firebase
-    if (kDebugMode) {
-      print('Initializing Firebase...');
-    }
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+        // Initialisation des services API
+    final apiClient = ApiClient();
+    final authService = AuthService();
+    final analyticsService = AnalyticsService();
+    final storageService = StorageService();
+    final configService = ConfigService();
+    final socialService = SocialService();
+    final saveService = SaveService();
 
-    // Configuration de Crashlytics
+    // Ajouter les services au ServiceLocator
+    serviceLocator.apiClient = apiClient;
+    serviceLocator.authService = authService;
+    serviceLocator.analyticsService = analyticsService;
+    serviceLocator.storageService = storageService;
+    serviceLocator.configService = configService;
+    serviceLocator.socialService = socialService;
+    serviceLocator.saveService = saveService;
+
+    // Configuration de la gestion d'erreurs
     FlutterError.onError = (FlutterErrorDetails details) {
       if (kDebugMode) {
         print('Flutter Error: ${details.exception}');
       }
-      FirebaseCrashlytics.instance.recordFlutterError(details);
+      analyticsService.recordFlutterError(details);
     };
 
     // Capturer les erreurs non gérées
     ui.PlatformDispatcher.instance.onError = (error, stack) {
-      FirebaseCrashlytics.instance.recordError(
+      analyticsService.recordError(
         error,
         stack,
         fatal: true,
@@ -147,9 +150,6 @@ Future<void> main() async {
       );
       return true;
     };
-
-    // Initialiser Firebase Config
-    await FirebaseConfig.initialize();
 
     // Initialiser les services de jeu
     final gamesServices = GamesServicesController();
@@ -163,7 +163,13 @@ Future<void> main() async {
 
     // IMPORTANT: Créer et connecter UserManager et SaveSystem correctement
     // pour éviter la dépendance circulaire
-    final userManager = UserManager();
+    final userManager = UserManager(
+      authService: authService,
+      storageService: storageService,
+      analyticsService: analyticsService,
+      socialService: socialService,
+      saveService: saveService
+    );
     final saveSystem = SaveSystem();
 
     // Injecter les dépendances
@@ -209,8 +215,8 @@ Future<void> main() async {
     }
 
     // Configurer et logger l'analytics
-    await FirebaseAnalytics.instance.logAppOpen();
-    await FirebaseAnalytics.instance.setAnalyticsCollectionEnabled(true);
+    await analyticsService.logAppOpen();
+    await analyticsService.setAnalyticsCollectionEnabled(true);
 
     // Lancer l'application avec la gestion d'erreur
     runApp(
@@ -228,6 +234,14 @@ Future<void> main() async {
           ),
           // Provider pour ServiceLocator
           Provider<ServiceLocator>.value(value: serviceLocator),
+          // Providers pour les services API
+          Provider<ApiClient>.value(value: apiClient),
+          Provider<AuthService>.value(value: authService),
+          Provider<AnalyticsService>.value(value: analyticsService),
+          Provider<StorageService>.value(value: storageService),
+          Provider<ConfigService>.value(value: configService),
+          Provider<SocialService>.value(value: socialService),
+          Provider<SaveService>.value(value: saveService),
         ],
         child: const MyApp(),
       ),
@@ -237,7 +251,7 @@ Future<void> main() async {
       print('Fatal error during initialization: $e');
       print('Stack trace: $stackTrace');
     }
-    FirebaseCrashlytics.instance.recordError(
+    serviceLocator.analyticsService?.recordError(
       e,
       stackTrace,
       reason: 'Error during app initialization',
@@ -252,7 +266,7 @@ Future<void> _initializeServices() async {
     await backgroundMusicService.initialize();
     print('Background music initialized');
   } catch (e) {
-    FirebaseCrashlytics.instance.recordError(e, StackTrace.current);
+    serviceLocator.analyticsService?.recordError(e, StackTrace.current);
     print('Error initializing background music: $e');
   }
 }
@@ -334,7 +348,7 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
         print('Erreur lors de la vérification du profil: $e');
         print('Stack: $stack');
       }
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Profile check error');
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Profile check error');
 
       // Implémenter un mécanisme de retry
       if (_retryCount < MAX_RETRIES && mounted) {
@@ -408,7 +422,7 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
         }
       }
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Create profile error');
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Create profile error');
 
       if (mounted) {
         setState(() {
@@ -440,7 +454,7 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
       });
 
       final userManager = Provider.of<UserManager>(context, listen: false);
-      final result = await userManager.createProfileWithGoogle();
+      final result = await userManager.signInWithGoogle();
 
       if (!mounted) return;
 
@@ -463,7 +477,7 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
         }
       }
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Create Google profile error');
+      serviceLocator.analyticsService.recordError(e, stack, reason: 'Create Google profile error');
 
       if (mounted) {
         setState(() {
@@ -708,7 +722,7 @@ class _LoadingScreenState extends State<LoadingScreen> {
         );
       }
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack);
+      serviceLocator.analyticsService.recordError(e, stack);
     }
   }
 

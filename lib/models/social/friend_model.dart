@@ -1,5 +1,4 @@
-// lib/models/friend_model.dart
-import 'package:cloud_firestore/cloud_firestore.dart';
+// lib/models/social/friend_model.dart
 import 'package:flutter/foundation.dart';
 
 class FriendModel {
@@ -21,16 +20,19 @@ class FriendModel {
         this.createdAt = createdAt ?? DateTime.now(),
         this.lastActive = lastActive ?? DateTime.now();
 
-  // Création depuis un document Firestore
-  factory FriendModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>? ?? {};
+  // Création depuis un JSON
+  factory FriendModel.fromJson(Map<String, dynamic> json, {String? id}) {
     return FriendModel(
-      id: doc.id,
-      userId: data['userId'] ?? '',
-      displayName: data['displayName'] ?? 'Utilisateur inconnu',
-      photoUrl: data['photoUrl'],
-      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      lastActive: (data['lastActive'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      id: id ?? json['id'] ?? '',
+      userId: json['userId'] ?? '',
+      displayName: json['displayName'] ?? 'Utilisateur inconnu',
+      photoUrl: json['photoUrl'],
+      createdAt: json['createdAt'] != null ? 
+          DateTime.parse(json['createdAt']) : 
+          DateTime.now(),
+      lastActive: json['lastActive'] != null ? 
+          DateTime.parse(json['lastActive']) : 
+          DateTime.now(),
     );
   }
 

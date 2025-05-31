@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import '../../main.dart' show serviceLocator;
 import '../../services/social/friends_service.dart';
 import '../../services/user/user_manager.dart';
 
@@ -160,7 +160,7 @@ class _FriendsSearchScreenState extends State<FriendsSearchScreen> with SingleTi
       });
     } catch (e, stack) {
       debugPrint('Erreur lors du chargement des suggestions: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Error loading friend suggestions');
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Friends search error');
 
       setState(() {
         _isLoadingSuggestions = false;

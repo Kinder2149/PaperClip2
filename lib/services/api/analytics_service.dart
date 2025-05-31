@@ -142,6 +142,55 @@ class AnalyticsService {
     }
   }
   
+  // Alias pour recordCrash pour compatibilité avec le code migré
+  Future<void> recordError(
+    dynamic exception,
+    StackTrace stack, {
+    String? reason,
+    Map<String, dynamic>? metadata,
+    String? userId,
+    bool fatal = false,
+  }) async {
+    return recordCrash(
+      exception,
+      stack,
+      reason: reason,
+      metadata: metadata != null ? {...metadata, 'fatal': fatal} : {'fatal': fatal},
+      userId: userId,
+    );
+  }
+  
+  // Enregistrement d'une erreur Flutter
+  Future<void> recordFlutterError(FlutterErrorDetails details) async {
+    return recordError(
+      details.exception,
+      details.stack ?? StackTrace.empty,
+      reason: 'Flutter framework error',
+      metadata: {
+        'context': details.context?.toString(),
+        'library': details.library,
+        'silent': details.silent,
+      },
+    );
+  }
+  
+  // Log d'ouverture de l'application
+  Future<void> logAppOpen() async {
+    return logEvent('app_open');
+  }
+  
+  // Activation/désactivation de la collecte d'analytiques
+  Future<void> setAnalyticsCollectionEnabled(bool enabled) async {
+    try {
+      await _apiClient.post(
+        '/analytics/config',
+        body: {'collection_enabled': enabled},
+      );
+    } catch (e) {
+      debugPrint('Erreur lors de la configuration de la collecte d\'analytiques: $e');
+    }
+  }
+  
   // Définition d'un utilisateur
   Future<void> setUserId(String userId) async {
     try {

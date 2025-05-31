@@ -7,7 +7,7 @@ import '../save_types.dart';
 import '../save_utils.dart';
 import 'storage_engine.dart';
 import '../../../models/game_config.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import '../../../main.dart' show serviceLocator;
 
 class LocalStorageEngine implements StorageEngine {
   static const String SAVE_PREFIX = 'paperclip_save_';
@@ -44,7 +44,7 @@ class LocalStorageEngine implements StorageEngine {
       await prefs.setString(key, jsonEncode(updatedSave.toJson()));
     } catch (e, stack) {
       debugPrint('Erreur lors de la sauvegarde locale: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Local save error');
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Local save error');
       rethrow;
     }
   }
@@ -100,7 +100,7 @@ class LocalStorageEngine implements StorageEngine {
         return SaveGame.fromJson(migratedData);
       } catch (e, stack) {
         debugPrint('Erreur lors du traitement de la sauvegarde: $e');
-        FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Save processing error');
+        serviceLocator.analyticsService?.recordError(e, stack, reason: 'Save processing error');
 
         // En cas d'erreur, tenter la récupération
         final recoveredData = await SaveUtils.attemptRecovery(savedData, name);
@@ -111,7 +111,7 @@ class LocalStorageEngine implements StorageEngine {
       }
     } catch (e, stack) {
       debugPrint('Erreur lors du chargement local: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Local load error');
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Local load error');
       rethrow;
     }
   }
@@ -174,7 +174,7 @@ class LocalStorageEngine implements StorageEngine {
       return saves;
     } catch (e, stack) {
       debugPrint('Erreur lors de la liste des sauvegardes: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'List saves error');
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'List saves error');
       return [];
     }
   }

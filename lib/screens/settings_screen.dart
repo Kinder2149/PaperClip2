@@ -1,7 +1,7 @@
 // lib/screens/settings_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import '../main.dart' show serviceLocator;
 
 // Import des widgets personnalisés
 import '../widgets/app_bar/widget_appbar_jeu.dart';
@@ -13,7 +13,7 @@ import '../models/game_config.dart';
 import '../services/games_services_controller.dart';
 import '../services/background_music.dart';
 
-
+// Import des services de sauvegarde et d'analyse
 import '../services/save/save_types.dart';
 import '../services/save/save_system.dart';
 import '../services/user/user_manager.dart';

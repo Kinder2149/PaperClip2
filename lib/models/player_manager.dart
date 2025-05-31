@@ -9,7 +9,7 @@ import 'progression_system.dart';
 import 'market.dart';
 import 'package:paperclip2/managers/metal_manager.dart';
 import 'game_state.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import '../main.dart' show serviceLocator;
 
 /// Représente une amélioration du jeu
 class Upgrade {
@@ -333,7 +333,7 @@ class PlayerManager extends ChangeNotifier {
     } catch (e, stack) {
       debugPrint('Erreur lors du chargement des données du joueur: $e');
       debugPrint('Stack trace: $stack');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'PlayerManager loadFromJson error');
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'PlayerManager loadFromJson error');
       // Initialiser avec des valeurs par défaut en cas d'erreur
       resetResources();
     }

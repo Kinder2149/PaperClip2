@@ -1,5 +1,4 @@
-// lib/models/user_stats_model.dart
-import 'package:cloud_firestore/cloud_firestore.dart';
+// lib/models/social/user_stats_model.dart
 import 'package:flutter/foundation.dart';
 
 class UserStatsModel {
@@ -25,26 +24,27 @@ class UserStatsModel {
     DateTime? lastUpdated,
   }) : this.lastUpdated = lastUpdated ?? DateTime.now();
 
-  // Création depuis les données Firestore
-  factory UserStatsModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>? ?? {};
-
+  // Création depuis les données JSON
+  factory UserStatsModel.fromJson(Map<String, dynamic> json, {String? id}) {
     return UserStatsModel(
-      userId: doc.id,
-      displayName: data['displayName'] ?? 'Utilisateur inconnu',
-      totalPaperclips: data['totalPaperclips'] ?? 0,
-      level: data['level'] ?? 1,
-      money: (data['money'] as num?)?.toDouble() ?? 0.0,
-      bestScore: data['bestScore'] ?? 0,
-      efficiency: (data['efficiency'] as num?)?.toDouble() ?? 0.0,
-      upgradesBought: data['upgradesBought'] ?? 0,
-      lastUpdated: (data['lastUpdated'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      userId: id ?? json['userId'] ?? '',
+      displayName: json['displayName'] ?? 'Utilisateur inconnu',
+      totalPaperclips: json['totalPaperclips'] ?? 0,
+      level: json['level'] ?? 1,
+      money: (json['money'] as num?)?.toDouble() ?? 0.0,
+      bestScore: json['bestScore'] ?? 0,
+      efficiency: (json['efficiency'] as num?)?.toDouble() ?? 0.0,
+      upgradesBought: json['upgradesBought'] ?? 0,
+      lastUpdated: json['lastUpdated'] != null 
+          ? DateTime.parse(json['lastUpdated']) 
+          : DateTime.now(),
     );
   }
 
-  // Conversion en Map pour Firestore
+  // Conversion en Map pour API
   Map<String, dynamic> toJson() {
     return {
+      'userId': userId,
       'displayName': displayName,
       'totalPaperclips': totalPaperclips,
       'level': level,
@@ -52,7 +52,7 @@ class UserStatsModel {
       'bestScore': bestScore,
       'efficiency': efficiency,
       'upgradesBought': upgradesBought,
-      'lastUpdated': FieldValue.serverTimestamp(),
+      'lastUpdated': lastUpdated.toIso8601String(),
     };
   }
 

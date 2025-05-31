@@ -1,8 +1,8 @@
 // lib/services/save/save_system.dart
 
 import 'package:flutter/material.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'dart:async';
+import '../../main.dart' show serviceLocator;
 import 'package:uuid/uuid.dart';
 
 import 'save_types.dart';
@@ -143,7 +143,7 @@ class SaveSystem {
       }
     } catch (e, stack) {
       debugPrint('Erreur dans SaveSystem.saveGame: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Erreur de sauvegarde');
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Erreur de sauvegarde');
 
       if (_context != null && _context!.mounted) {
         ScaffoldMessenger.of(_context!).showSnackBar(
@@ -200,7 +200,7 @@ class SaveSystem {
       }
     } catch (e, stack) {
       debugPrint('Erreur dans SaveSystem.loadGame: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Erreur de chargement');
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Erreur de chargement');
 
       if (_context != null && _context!.mounted) {
         // Si mode récupération, proposer options
@@ -268,7 +268,7 @@ class SaveSystem {
       }
     } catch (e, stack) {
       debugPrint('Erreur lors de la suppression: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Erreur de suppression');
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Erreur de suppression');
 
       if (_context != null && _context!.mounted) {
         ScaffoldMessenger.of(_context!).showSnackBar(
@@ -338,7 +338,7 @@ class SaveSystem {
       return syncCount > 0;
     } catch (e, stack) {
       debugPrint('Erreur lors de la synchronisation: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Error syncing to cloud');
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Error syncing to cloud');
 
       if (_context != null && _context!.mounted) {
         ScaffoldMessenger.of(_context!).showSnackBar(
@@ -474,7 +474,7 @@ class SaveSystem {
       }
     } catch (e, stack) {
       debugPrint('Erreur lors de l\'affichage du sélecteur cloud: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Erreur du sélecteur cloud');
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Erreur du sélecteur cloud');
 
       if (_context != null && _context!.mounted) {
         ScaffoldMessenger.of(_context!).showSnackBar(
@@ -576,7 +576,7 @@ class SaveSystem {
       }
     } catch (e, stack) {
       debugPrint('Échec de la tentative de récupération: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Recovery attempt failed');
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Recovery attempt failed');
 
       _showErrorMessage('Échec de la récupération: $e');
     }
@@ -612,7 +612,7 @@ class SaveSystem {
       }
     } catch (e, stack) {
       debugPrint('Erreur lors du chargement du backup: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Backup loading failed');
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Backup loading failed');
 
       _showErrorMessage('Échec du chargement du backup: $e');
     }

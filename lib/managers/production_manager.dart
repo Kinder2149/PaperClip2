@@ -5,7 +5,7 @@ import '../models/event_system.dart';
 import '../models/progression_system.dart';
 import 'metal_manager.dart';
 import 'dart:math' show min;
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import '../main.dart' show serviceLocator;
 
 class ProductionManagerException implements Exception {
   final String message;
@@ -238,7 +238,7 @@ class ProductionManager extends ChangeNotifier {
     } catch (e, stack) {
       print('Erreur lors du chargement des données ProductionManager: $e');
       print('Stack trace: $stack');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'ProductionManager.fromJson error');
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'ProductionManager.fromJson error');
 
       // Ne pas propager l'erreur, utiliser des valeurs par défaut
       _paperclips = 0.0;

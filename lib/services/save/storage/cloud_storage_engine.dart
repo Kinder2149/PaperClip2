@@ -2,8 +2,8 @@
 
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
+import '../../../main.dart' show serviceLocator;
 import 'package:http/http.dart' as http;
 import 'package:games_services/games_services.dart' as gs;
 import '../../../models/game_config.dart';
@@ -41,7 +41,7 @@ class CloudStorageEngine implements StorageEngine {
       return false;
     } catch (e, stack) {
       debugPrint('Erreur initialisation cloud: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
+      serviceLocator.analyticsService?.recordError(e, stack);
       _initialized = false;
       return false;
     }
@@ -114,7 +114,7 @@ class CloudStorageEngine implements StorageEngine {
       }
     } catch (e, stack) {
       debugPrint('Erreur sauvegarde cloud: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
+      serviceLocator.analyticsService?.recordError(e, stack);
       rethrow;
     }
   }
@@ -188,7 +188,7 @@ class CloudStorageEngine implements StorageEngine {
       return null;
     } catch (e, stack) {
       debugPrint('Erreur chargement cloud: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
+      serviceLocator.analyticsService?.recordError(e, stack);
       return null;
     }
   }
@@ -209,7 +209,7 @@ class CloudStorageEngine implements StorageEngine {
       return [];
     } catch (e, stack) {
       debugPrint('Erreur liste cloud: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
+      serviceLocator.analyticsService?.recordError(e, stack);
       return [];
     }
   }
@@ -228,7 +228,7 @@ class CloudStorageEngine implements StorageEngine {
       }
     } catch (e, stack) {
       debugPrint('Erreur suppression cloud: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
+      serviceLocator.analyticsService?.recordError(e, stack);
       rethrow;
     }
   }

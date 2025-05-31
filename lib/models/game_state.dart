@@ -20,6 +20,7 @@ import 'package:games_services/games_services.dart' hide SaveGame;
 import '../screens/main_screen.dart';
 import '../services/save/save_system.dart';
 import '../services/save/save_types.dart';
+import '../main.dart' show serviceLocator;
 import 'package:provider/provider.dart';
 import '../services/user/user_manager.dart';
 import '../main.dart' show navigatorKey;
@@ -29,7 +30,6 @@ import '../managers/statistics_manager.dart';
 import '../managers/crisis_manager.dart';
 import '../managers/production_manager.dart';
 
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../services/user/user_manager.dart';
 
 class GameState extends ChangeNotifier implements SaveDataProvider {
@@ -269,7 +269,7 @@ class GameState extends ChangeNotifier implements SaveDataProvider {
     } catch (e, stack) {
       debugPrint('GameState: Erreur lors de l\'initialisation: $e');
       debugPrint('Stack trace: $stack');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'GameState initialization error');
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'GameState initialization error');
       rethrow;
     }
   }
@@ -655,7 +655,7 @@ class GameState extends ChangeNotifier implements SaveDataProvider {
     } catch (e, stack) {
       debugPrint('Erreur lors du chargement des données: $e');
       debugPrint('Stack trace: $stack');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Load game data error');
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Load game data error');
       rethrow;
     }
   }
@@ -895,7 +895,7 @@ class GameState extends ChangeNotifier implements SaveDataProvider {
     } catch (e, stack) {
       debugPrint('Error starting new game: $e');
       debugPrint('Stack trace: $stack');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Start new game error');
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Start new game error');
       rethrow;
     }
   }
@@ -936,7 +936,7 @@ class GameState extends ChangeNotifier implements SaveDataProvider {
     } catch (e, stack) {
       debugPrint('Error loading game: $e');
       debugPrint('Stack trace: $stack');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Load game error');
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Load game error');
       rethrow;
     }
   }

@@ -1,5 +1,4 @@
-// lib/models/friend_request_model.dart
-import 'package:cloud_firestore/cloud_firestore.dart';
+// lib/models/social/friend_request_model.dart
 import 'package:flutter/foundation.dart';
 
 enum FriendRequestStatus {
@@ -27,17 +26,17 @@ class FriendRequestModel {
     DateTime? timestamp,
   }) : this.timestamp = timestamp ?? DateTime.now();
 
-  factory FriendRequestModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>? ?? {};
-
+  factory FriendRequestModel.fromJson(Map<String, dynamic> json, {String? id}) {
     return FriendRequestModel(
-      id: doc.id,
-      senderId: data['senderId'] ?? '',
-      receiverId: data['receiverId'] ?? '',
-      senderName: data['senderName'] ?? 'Utilisateur inconnu',
-      senderPhotoUrl: data['senderPhotoUrl'],
-      status: _parseStatus(data['status']),
-      timestamp: (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      id: id ?? json['id'] ?? '',
+      senderId: json['senderId'] ?? '',
+      receiverId: json['receiverId'] ?? '',
+      senderName: json['senderName'] ?? 'Utilisateur inconnu',
+      senderPhotoUrl: json['senderPhotoUrl'],
+      status: _parseStatus(json['status']),
+      timestamp: json['timestamp'] != null 
+          ? DateTime.parse(json['timestamp']) 
+          : DateTime.now(),
     );
   }
 
@@ -55,12 +54,13 @@ class FriendRequestModel {
 
   Map<String, dynamic> toJson() {
     return {
+      'id': id,
       'senderId': senderId,
       'receiverId': receiverId,
       'senderName': senderName,
       'senderPhotoUrl': senderPhotoUrl,
       'status': status.toString().split('.').last,
-      'timestamp': FieldValue.serverTimestamp(),
+      'timestamp': timestamp.toIso8601String(),
     };
   }
 

@@ -1,42 +1,45 @@
 // lib/services/user/google_auth_service.dart
 
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:games_services/games_services.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../api/api_services.dart';
+
 /// Service pour gérer l'authentification Google et l'obtention de tokens.
+/// Cette classe est maintenue pour compatibilité avec le code existant,
+/// mais délègue la plupart de ses fonctionnalités au nouveau AuthService.
 class GoogleAuthService extends ChangeNotifier {
-  // Instances privées des services d'authentification
-  final FirebaseAuth _auth;
+  // Instance du service d'authentification API
+  final AuthService _authService;
+  
+  // Instance de Google Sign In
   final GoogleSignIn _googleSignIn;
-
-  // Cache pour le token d'accès
-  String? _cachedAccessToken;
-  DateTime? _tokenExpirationTime;
-
-  // État de connexion
-  bool _isSignedIn = false;
+  
+  // Instance du service d'analytique
+  final AnalyticsService _analyticsService;
 
   // Clés pour les préférences partagées
   static const String _playerInfoKey = 'google_player_info';
   static const String _lastSignInKey = 'last_google_signin';
 
   // Accesseurs
-  bool get isSignedIn => _isSignedIn;
-  User? get currentUser => _auth.currentUser;
+  bool get isSignedIn => _authService.isAuthenticated;
+  String? get userId => _authService.userId;
+  String? get username => _authService.username;
 
   /// Constructeur avec injection de dépendances pour faciliter les tests.
   GoogleAuthService({
-    FirebaseAuth? auth,
+    AuthService? authService,
     GoogleSignIn? googleSignIn,
-  }) :
-        _auth = auth ?? FirebaseAuth.instance,
+    AnalyticsService? analyticsService,
+  }) : 
+        _authService = authService ?? AuthService(),
         _googleSignIn = googleSignIn ?? GoogleSignIn(
           scopes: ['email', 'profile'],
-        ) {
+        ),
+        _analyticsService = analyticsService ?? AnalyticsService() {
     // Vérifier l'état d'authentification au démarrage
     _checkAuthStatus();
   }
@@ -44,10 +47,8 @@ class GoogleAuthService extends ChangeNotifier {
   /// Vérifie l'état d'authentification actuel
   Future<void> _checkAuthStatus() async {
     try {
-      final firebaseUser = _auth.currentUser;
-
-      if (firebaseUser != null) {
-        _isSignedIn = true;
+      // Vérifier si l'utilisateur est authentifié via le service API
+      if (_authService.isAuthenticated) {
         notifyListeners();
         return;
       }
@@ -55,7 +56,6 @@ class GoogleAuthService extends ChangeNotifier {
       // Ensuite vérifier Google Play Games
       final isPlayGamesSignedIn = await GamesServices.isSignedIn;
       if (isPlayGamesSignedIn) {
-        _isSignedIn = true;
         notifyListeners();
         return;
       }
@@ -68,17 +68,15 @@ class GoogleAuthService extends ChangeNotifier {
         final lastSignIn = DateTime.parse(lastSignInTimeStr);
         // Si la dernière connexion date de moins de 7 jours, considérer comme connecté
         if (DateTime.now().difference(lastSignIn).inDays < 7) {
-          _isSignedIn = true;
           notifyListeners();
           return;
         }
       }
 
-      _isSignedIn = false;
       notifyListeners();
-    } catch (e) {
+    } catch (e, stack) {
       debugPrint('Erreur lors de la vérification de l\'état de connexion: $e');
-      _isSignedIn = false;
+      _analyticsService.recordError(e, stack, reason: 'Auth status check error');
       notifyListeners();
     }
   }
@@ -91,10 +89,10 @@ class GoogleAuthService extends ChangeNotifier {
   /// Obtient l'ID Google de l'utilisateur connecté.
   Future<String?> getGoogleId() async {
     try {
-      // Essayer d'obtenir l'ID via Firebase d'abord
-      final firebaseUser = _auth.currentUser;
-      if (firebaseUser != null) {
-        return firebaseUser.uid;
+      // Essayer d'obtenir l'ID via AuthService
+      final userId = _authService.userId;
+      if (userId != null) {
+        return userId;
       }
 
       // Sinon, essayer via Google Sign-In
@@ -113,14 +111,18 @@ class GoogleAuthService extends ChangeNotifier {
   /// Obtient les informations de profil Google.
   Future<Map<String, dynamic>?> getGoogleProfileInfo() async {
     try {
-      // Essayer d'obtenir les infos via Firebase d'abord
-      final firebaseUser = _auth.currentUser;
-      if (firebaseUser != null) {
+      // Essayer d'obtenir les infos via AuthService
+      final userId = _authService.userId;
+      final username = _authService.username;
+      final email = _authService.email;
+      final photoUrl = _authService.photoUrl;
+      
+      if (userId != null) {
         return {
-          'id': firebaseUser.uid,
-          'displayName': firebaseUser.displayName,
-          'email': firebaseUser.email,
-          'photoUrl': firebaseUser.photoURL,
+          'id': userId,
+          'displayName': username,
+          'email': email,
+          'photoUrl': photoUrl,
         };
       }
 
@@ -257,8 +259,8 @@ class GoogleAuthService extends ChangeNotifier {
       debugPrint('Erreur détaillée de connexion Google: $e');
       debugPrint('Stack trace: $stack');
 
-      // Enregistrer l'erreur dans Crashlytics
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Google sign-in error');
+      // Enregistrer l'erreur dans AnalyticsService
+      _analyticsService.recordError(e, stack, reason: 'Google sign-in error');
 
       return null;
     }
@@ -280,7 +282,7 @@ class GoogleAuthService extends ChangeNotifier {
       notifyListeners();
     } catch (e, stack) {
       debugPrint('Erreur de déconnexion: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Google sign-out error');
+      _analyticsService.recordError(e, stack, reason: 'Google sign-out error');
     }
   }
 

@@ -1,8 +1,8 @@
 // lib/services/games_services_controller.dart
 
 import 'package:flutter/foundation.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:games_services/games_services.dart';
+import '../main.dart' show serviceLocator;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:paperclip2/models/game_state.dart';
 import 'package:paperclip2/models/progression_system.dart';
@@ -140,7 +140,7 @@ class GamesServicesController extends ChangeNotifier {
       debugPrint('Games Services initialized');
     } catch (e, stack) {
       debugPrint('Error initializing GameServices: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
+      serviceLocator.analyticsService?.recordError(e, stack);
     }
   }
 
@@ -230,7 +230,7 @@ class GamesServicesController extends ChangeNotifier {
       debugPrint("Stack trace: $stackTrace");
 
       try {
-        FirebaseCrashlytics.instance.recordError(e, stackTrace,
+        serviceLocator.analyticsService?.recordError(e, stackTrace,
             reason: 'Erreur Google Play Games Sign In');
       } catch (_) {
         // Ignorer si l'erreur ne peut pas être enregistrée
@@ -259,7 +259,7 @@ class GamesServicesController extends ChangeNotifier {
       debugPrint('Signed out from Google Play Games Services');
     } catch (e, stack) {
       debugPrint('Error signing out: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
+      serviceLocator.analyticsService?.recordError(e, stack);
     }
   }
 
@@ -284,7 +284,7 @@ class GamesServicesController extends ChangeNotifier {
       return jsonEncode(saveGame.toJson());
     } catch (e, stack) {
       debugPrint('Erreur lors du chargement depuis le cloud: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Cloud load error');
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Cloud load error');
       return null;
     }
   }
@@ -379,7 +379,7 @@ class GamesServicesController extends ChangeNotifier {
       return false;
     } catch (e, stack) {
       debugPrint('Erreur lors de la sauvegarde dans le cloud: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Cloud save error');
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Cloud save error');
       return false;
     }
   }
@@ -404,7 +404,7 @@ class GamesServicesController extends ChangeNotifier {
       return await cloudEngine.listSaves();
     } catch (e, stack) {
       debugPrint('Error getting cloud saves: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
+      serviceLocator.analyticsService?.recordError(e, stack);
       return [];
     }
   }
@@ -420,7 +420,7 @@ class GamesServicesController extends ChangeNotifier {
       return await saveSystem.syncSavesToCloud();
     } catch (e, stack) {
       debugPrint('Error syncing saves: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
+      serviceLocator.analyticsService?.recordError(e, stack);
       return false;
     }
   }
@@ -451,7 +451,7 @@ class GamesServicesController extends ChangeNotifier {
       return null;
     } catch (e, stack) {
       debugPrint('Error showing save selector: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
+      serviceLocator.analyticsService?.recordError(e, stack);
       return null;
     }
   }
@@ -516,7 +516,7 @@ class GamesServicesController extends ChangeNotifier {
       debugPrint('Score: $score, Paperclips: $paperclips, Money: ${money.toInt()}, Time: $timePlayed, Level: $level, Efficiency: $efficiency');
     } catch (e, stack) {
       debugPrint('Error submitting competitive scores: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
+      serviceLocator.analyticsService?.recordError(e, stack);
     }
   }
 
@@ -558,7 +558,7 @@ class GamesServicesController extends ChangeNotifier {
       debugPrint('Competitive achievement unlocked: $achievement');
     } catch (e, stack) {
       debugPrint('Error unlocking competitive achievement: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
+      serviceLocator.analyticsService?.recordError(e, stack);
     }
   }
 
@@ -582,7 +582,7 @@ class GamesServicesController extends ChangeNotifier {
       debugPrint('General score submitted: $score');
     } catch (e, stack) {
       debugPrint('Error submitting general score: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
+      serviceLocator.analyticsService?.recordError(e, stack);
     }
   }
 
@@ -600,7 +600,7 @@ class GamesServicesController extends ChangeNotifier {
       debugPrint('Production score submitted: $paperclips');
     } catch (e, stack) {
       debugPrint('Error submitting production score: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
+      serviceLocator.analyticsService?.recordError(e, stack);
     }
   }
 
@@ -618,7 +618,7 @@ class GamesServicesController extends ChangeNotifier {
       debugPrint('Banker score submitted: $totalMoney');
     } catch (e, stack) {
       debugPrint('Error submitting banker score: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
+      serviceLocator.analyticsService?.recordError(e, stack);
     }
   }
 
@@ -636,7 +636,7 @@ class GamesServicesController extends ChangeNotifier {
       );
     } catch (e, stack) {
       debugPrint('Error getting leaderboard info: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
+      serviceLocator.analyticsService?.recordError(e, stack);
       return null;
     }
   }
@@ -660,7 +660,7 @@ class GamesServicesController extends ChangeNotifier {
       return achievement.getProgress();
     } catch (e, stack) {
       debugPrint('Error getting achievement progress: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
+      serviceLocator.analyticsService?.recordError(e, stack);
       return null;
     }
   }
@@ -682,7 +682,7 @@ class GamesServicesController extends ChangeNotifier {
       debugPrint('Achievement progress updated to: $progress%');
     } catch (e, stack) {
       debugPrint('Error updating achievement progress: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
+      serviceLocator.analyticsService?.recordError(e, stack);
     }
   }
 
@@ -713,7 +713,7 @@ class GamesServicesController extends ChangeNotifier {
       await GamesServices.showAchievements();
     } catch (e, stack) {
       debugPrint('Error showing achievements: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack);
+      serviceLocator.analyticsService?.recordError(e, stack);
     }
   }
 
@@ -734,7 +734,7 @@ class GamesServicesController extends ChangeNotifier {
       );
     } catch (e) {
       debugPrint("Erreur lors de l'affichage du classement: $e");
-      await FirebaseCrashlytics.instance.recordError(
+      await serviceLocator.analyticsService?.recordError(
         e,
         StackTrace.current,
         reason: 'Erreur d\'affichage du classement',
@@ -786,7 +786,7 @@ class GamesServicesController extends ChangeNotifier {
     } catch (e, stack) {
       // Si une erreur se produit quand même
       debugPrint('Error updating leaderboards: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, fatal: false);
+      serviceLocator.analyticsService?.recordError(e, stack, fatal: false);
     }
   }
 
@@ -805,7 +805,7 @@ class GamesServicesController extends ChangeNotifier {
       return _cachedPlayerInfo;
     } catch (e, stackTrace) {
       debugPrint("Erreur lors de la récupération des infos du joueur: $e");
-      FirebaseCrashlytics.instance.recordError(e, stackTrace);
+      serviceLocator.analyticsService?.recordError(e, stackTrace);
       return null;
     }
   }
@@ -836,7 +836,7 @@ class GamesServicesController extends ChangeNotifier {
       return result;
     } catch (e, stackTrace) {
       debugPrint("Erreur lors du changement de compte: $e");
-      FirebaseCrashlytics.instance.recordError(e, stackTrace);
+      serviceLocator.analyticsService?.recordError(e, stackTrace);
       return false;
     }
   }

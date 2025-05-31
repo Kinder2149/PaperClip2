@@ -2,8 +2,8 @@
 
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import '../../models/game_config.dart';
+import '../../main.dart' show serviceLocator;
 import 'validation_result.dart';
 
 class ValidationResult {
@@ -131,7 +131,7 @@ class SaveUtils {
       return repairedData;
     } catch (e, stack) {
       debugPrint('Échec de la récupération pour $saveName: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Save recovery failed');
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Save recovery failed');
 
       // Tentative de récupération partielle
       return _attemptPartialRecovery(rawData, saveName);

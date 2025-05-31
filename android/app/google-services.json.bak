@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "426827215567",
+    "firebase_url": "https://paperclip2-2149-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "paperclip2-2149",
+    "storage_bucket": "paperclip2-2149.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:426827215567:android:06864b5162458fc34e7dba",
+        "android_client_info": {
+          "package_name": "com.kinder2149.paperclip2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD3XRQxBkiTJKm_vz1T1ldGYKEZXPnvb9g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

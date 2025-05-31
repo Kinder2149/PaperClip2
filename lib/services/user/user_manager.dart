@@ -4,15 +4,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import 'package:http/http.dart' as http;
-
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'user_profile.dart';
 import 'google_auth_service.dart';
@@ -25,17 +20,41 @@ import '../../models/social/user_stats_model.dart';
 import '../../models/game_state.dart';
 import '../../models/game_config.dart';
 
+// Import des nouveaux services API
+import '../api/api_services.dart';
+
 class UserManager {
-  static final UserManager _instance = UserManager._internal();
-  factory UserManager() => _instance;
+  static UserManager? _instance;
+  
+  factory UserManager({
+    required AuthService authService,
+    required StorageService storageService,
+    required AnalyticsService analyticsService,
+    required SocialService socialService,
+    required SaveService saveService,
+  }) {
+    _instance ??= UserManager._internal(
+      authService: authService,
+      storageService: storageService,
+      analyticsService: analyticsService,
+      socialService: socialService,
+      saveService: saveService,
+    );
+    return _instance!;
+  }
 
   // Clés pour SharedPreferences
   static const String _userProfileKey = 'user_profile';
 
   // Services
-  final GoogleAuthService _authService = GoogleAuthService();
-  final FirebaseStorage _storage = FirebaseStorage.instance;
   SaveSystem? _saveSystem;
+  
+  // Services API
+  final AuthService _authService;
+  final StorageService _storageService;
+  final AnalyticsService _analyticsService;
+  final SocialService _socialService;
+  final SaveService _saveService;
 
   // État interne
   UserProfile? _currentProfile;
@@ -48,7 +67,18 @@ class UserManager {
   final ValueNotifier<UserProfile?> profileChanged = ValueNotifier<UserProfile?>(null);
 
   // Constructeur interne
-  UserManager._internal();
+  UserManager._internal({
+    required AuthService authService,
+    required StorageService storageService,
+    required AnalyticsService analyticsService,
+    required SocialService socialService,
+    required SaveService saveService,
+  }) : 
+    _authService = authService,
+    _storageService = storageService,
+    _analyticsService = analyticsService,
+    _socialService = socialService,
+    _saveService = saveService;
 
   // Setter pour injecter SaveSystem
   void setSaveSystem(SaveSystem saveSystem) {
@@ -62,27 +92,28 @@ class UserManager {
   }
 
   // Initialisation
-  // lib/services/user/user_manager.dart
-
-// Modifier la méthode d'initialisation
   Future<void> initialize() async {
     if (_initialized) return;
 
     try {
+      // Initialiser les services API si nécessaire
+      
       // Charger le profil actuel
       await _loadCurrentProfile();
 
-      // Vérifier la connexion Google
-      final isGoogleSignedIn = await _authService.isUserSignedIn();
-      final googleId = await _authService.getGoogleId();
+      // Vérifier la connexion avec le service d'authentification
+      final isSignedIn = _authService.isAuthenticated;
+      final userId = _authService.userId;
 
-      if (isGoogleSignedIn && googleId != null) {
-        if (_currentProfile != null && _currentProfile!.googleId == null) {
-          // Connecté à Google mais profil non lié
-          await linkProfileToGoogle();
+      if (isSignedIn && userId != null) {
+        if (_currentProfile != null && _currentProfile!.userId != userId) {
+          // Connecté mais profil local différent
+          debugPrint('Utilisateur connecté avec un ID différent du profil local');
+          // Charger le profil du serveur
+          await _loadProfileFromServer(userId);
         } else if (_currentProfile == null) {
-          // Connecté à Google mais pas de profil local
-          await _loadProfileFromCloud(googleId);
+          // Connecté mais pas de profil local
+          await _loadProfileFromServer(userId);
         }
       }
 
@@ -91,6 +122,10 @@ class UserManager {
         try {
           _friendsService = FriendsService(_currentProfile!.userId, this);
           _userStatsService = UserStatsService(_currentProfile!.userId, this);
+          
+          // Définir l'ID utilisateur pour l'analytique
+          await _analyticsService.setUserId(_currentProfile!.userId);
+          
           debugPrint('Services sociaux initialisés pour l\'utilisateur: ${_currentProfile!.userId}');
         } catch (e) {
           debugPrint('Erreur lors de l\'initialisation des services sociaux: $e');
@@ -99,10 +134,14 @@ class UserManager {
       }
 
       _initialized = true;
-      debugPrint('UserManager: initialization terminée avec succès');
+      debugPrint('UserManager initialisé avec succès');
     } catch (e, stack) {
-      debugPrint('Erreur d\'initialisation UserManager: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'UserManager init error');
+      debugPrint('Erreur lors de l\'initialisation de UserManager: $e');
+      // Enregistrer l'erreur
+      try {
+        _analyticsService.recordError(e, stack, reason: 'UserManager init error');
+      } catch (_) {}
+      rethrow;
     }
   }
 
@@ -113,367 +152,307 @@ class UserManager {
   UserStatsService? get userStatsService => _userStatsService;
 
   // Création d'un profil
-  Future<UserProfile> createProfile(String displayName) async {
-    // Vérifier si l'utilisateur est authentifié auprès de Firebase
-    final firebaseUser = FirebaseAuth.instance.currentUser;
-    String? firebaseUid = firebaseUser?.uid;
-    // Générer un nouvel ID ou utiliser l'UID Firebase
-    final String userId = firebaseUid ?? const Uuid().v4();
-
-    // Si un profil existe déjà et que nous ne voulons pas l'écraser, lancer une exception
-    // Mais vous pouvez également choisir de le mettre à jour
-    if (_currentProfile != null) {
-      debugPrint('Un profil existe déjà, mise à jour...');
-      // Option 1: Lancer une exception
-      // throw Exception('Un profil existe déjà');
-
-      // Option 2: Mettre à jour le profil existant
-      final updatedProfile = _currentProfile!.copyWith(
-        displayName: displayName,
-      );
-
-      // Sauvegarder les modifications
-      await updateProfile(updatedProfile);
-      return updatedProfile;
-    }
-
+  Future<UserProfile?> createProfile(String displayName) async {
     try {
-      // Générer un ID unique
-      final userId = const Uuid().v4();
-
-      // Récupérer l'ID Google si connecté (mais ne pas échouer si pas disponible)
-      String? googleId;
-      try {
-        googleId = await _authService.getGoogleId();
-      } catch (e) {
-        debugPrint('Impossible de récupérer l\'ID Google: $e');
-        // Continuer sans ID Google
+      // Créer un nouveau profil via l'API
+      final result = await _authService.register(displayName, null, null);
+      
+      if (!result.success) {
+        debugPrint('Échec de la création du profil: ${result.message}');
+        return null;
       }
-
-      // Créer le profil
-      final profile = UserProfile(
-        userId: userId,
-        displayName: displayName,
-        googleId: firebaseUid,
-      );
-
-      // Sauvegarder localement
-      _currentProfile = profile;
-      await _saveProfileLocally(profile);
-
-      // Sauvegarder dans le cloud si connecté à Google (mais ne pas échouer si pas possible)
-      if (googleId != null) {
-        try {
-          await _saveProfileToCloud(profile);
-        } catch (e) {
-          debugPrint('Erreur lors de la sauvegarde cloud du profil: $e');
-          // Continuer malgré l'erreur cloud
-        }
+      
+      // Récupérer les données du profil depuis le serveur
+      final userId = _authService.userId;
+      if (userId == null) {
+        debugPrint('ID utilisateur non disponible après création du profil');
+        return null;
       }
-
-      // Sauvegarder dans Firestore pour lier explicitement
-      if (firebaseUid != null) {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(firebaseUid)
-            .set({
-          'profileId': userId,
-          'displayName': displayName,
-          'lastLogin': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-      }
-
-      // Notifier les changements
-      profileChanged.value = profile;
-      debugPrint('Profil local créé avec succès: ${profile.displayName}');
-
-      return profile;
-    } catch (e, stack) {
-      debugPrint('Erreur lors de la création du profil: $e');
-      debugPrint('Stack trace: $stack');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Profile creation error');
-      rethrow;
-    }
-  }
-
-  // Ajoutez cette méthode pour mettre à jour les statistiques:
-  Future<bool> updatePublicStats(GameState gameState) async {
-    if (_userStatsService == null || _currentProfile == null) {
-      return false;
-    }
-
-    return await _userStatsService!.updatePublicStats(gameState);
-  }
-
-
-  Future<void> uploadProfileImageFromFile(File imageFile) async {
-    if (_currentProfile == null) {
-      throw Exception('Aucun profil actif');
-    }
-
-    try {
-      // Sauvegarder localement
-      final directory = await getApplicationDocumentsDirectory();
-      final filePath = '${directory.path}/profile_${_currentProfile!.userId}.jpg';
-
-      final localImage = File(filePath);
-      await localImage.writeAsBytes(await imageFile.readAsBytes());
-
-      // Mettre à jour le profil
-      final updatedProfile = _currentProfile!.copyWith(
-        profileImagePath: filePath,
-        customAvatarPath: null, // Réinitialiser l'avatar prédéfini s'il y en avait un
-      );
-
-      // Télécharger sur Firebase si connecté à Google
-      if (updatedProfile.googleId != null) {
-        final storageRef = _storage.ref().child('profiles/${updatedProfile.userId}/profile.jpg');
-        await storageRef.putFile(localImage);
-        final downloadUrl = await storageRef.getDownloadURL();
-
-        updatedProfile.updateProfileImageUrl(downloadUrl);
-      }
-
-      // Sauvegarder
-      _currentProfile = updatedProfile;
-      await _saveProfileLocally(updatedProfile);
-
-      if (updatedProfile.googleId != null) {
-        await _saveProfileToCloud(updatedProfile);
-      }
-
-      // Notifier
-      profileChanged.value = updatedProfile;
-    } catch (e, stack) {
-      debugPrint('Erreur lors du téléchargement de l\'image: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Profile image upload error');
-      rethrow;
-    }
-  }
-
-  // Création d'un profil avec Google
-  Future<bool> createProfileWithGoogle() async {
-    try {
-      // Se connecter en utilisant le service d'authentification existant
-      final googleInfo = await _authService.signInWithGoogle();
-
-      if (googleInfo == null) {
-        debugPrint('Erreur: Aucune information Google retournée');
-        return false;
-      }
-
-      // Créer un profil avec les informations Google
-      final profile = UserProfile(
-        userId: const Uuid().v4(),
-        displayName: googleInfo['displayName'] ?? 'Joueur Google',
-        googleId: googleInfo['id'],
-        profileImageUrl: googleInfo['photoUrl'],
-      );
-
-      // Une fois le profil créé, initialiser les services sociaux
+      
+      // Charger le profil depuis le serveur
+      await _loadProfileFromServer(userId);
+      
+      // Initialiser les services sociaux
       if (_currentProfile != null) {
         _friendsService = FriendsService(_currentProfile!.userId, this);
         _userStatsService = UserStatsService(_currentProfile!.userId, this);
+        
+        // Définir l'ID utilisateur pour l'analytique
+        await _analyticsService.setUserId(_currentProfile!.userId);
+        
+        // Notifier
+        profileChanged.value = _currentProfile;
       }
-
-      // Sauvegarder localement
-      _currentProfile = profile;
-      await _saveProfileLocally(profile);
-
-      // Sauvegarder dans le cloud - avec gestion d'erreur et l'opérateur ?.
-      try {
-        await _saveSystem?.syncSavesToCloud();
-      } catch (cloudError) {
-        debugPrint('Avertissement: Erreur lors de la sauvegarde cloud, mais le profil local a été créé: $cloudError');
-        // On continue malgré l'erreur cloud
-      }
-
-      // Notifier les changements
-      profileChanged.value = profile;
-      debugPrint('Profil Google créé avec succès: ${profile.displayName}');
-
-      return true;
+      
+      return _currentProfile;
     } catch (e, stack) {
-      debugPrint('Erreur détaillée lors de la création du profil Google: $e');
-      debugPrint('Stack trace: $stack');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Google profile creation error');
-      return false;
-    }
-  }
-
-  // Lier un profil local à Google
-  Future<void> linkProfileToGoogle() async {
-    if (_currentProfile == null) {
-      throw Exception('Aucun profil à lier');
-    }
-
-    try {
-      debugPrint('Tentative de liaison avec Google Play Games...');
-
-      // Utiliser le service d'authentification existant plutôt que de créer une nouvelle instance
-      final googleInfo = await _authService.signInWithGoogle();
-
-      if (googleInfo == null) {
-        debugPrint('Échec : Aucune information Google obtenue');
-        throw Exception('Échec de la connexion Google');
-      }
-
-      debugPrint('Infos Google obtenues: ID=${googleInfo['id']}, Nom=${googleInfo['displayName']}');
-
-      // Mettre à jour le profil
-      final updatedProfile = _currentProfile!.copyWith(
-        googleId: googleInfo['id'],
-        displayName: _currentProfile!.displayName.isEmpty ?
-        googleInfo['displayName'] :
-        _currentProfile!.displayName,
-        profileImageUrl: _currentProfile!.profileImageUrl ?? googleInfo['photoUrl'],
-      );
-
-      // Sauvegarder localement
-      debugPrint('Mise à jour du profil local avec les infos Google');
-      _currentProfile = updatedProfile;
-      await _saveProfileLocally(updatedProfile);
-
-      // Sauvegarder dans le cloud via SaveSystem si disponible (avec l'opérateur ?.)
-      try {
-        debugPrint('Tentative de sauvegarde via SaveSystem...');
-        await _saveSystem?.syncSavesToCloud();
-      } catch (cloudError) {
-        debugPrint('Avertissement: Erreur lors de la sauvegarde cloud, mais le profil local a été mis à jour: $cloudError');
-        // On continue malgré l'erreur cloud
-      }
-
-      // Notifier des changements
-      profileChanged.value = updatedProfile;
-      debugPrint('Liaison avec Google réussie');
-    } catch (e, stack) {
-      debugPrint('Erreur détaillée lors de la liaison au compte Google: $e');
-      debugPrint('Stack trace: $stack');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Google link error');
+      debugPrint('Erreur lors de la création du profil: $e');
+      _analyticsService.recordError(e, stack, reason: 'Profile creation error');
       rethrow;
     }
   }
 
-  // Charger un profil depuis le cloud
-  Future<void> _loadProfileFromCloud(String googleId) async {
+  // Connexion avec Google
+  Future<UserProfile?> signInWithGoogle() async {
     try {
-      // Récupérer le profil depuis Firebase Storage
-      final storageRef = _storage.ref().child('profiles/$googleId/profile.json');
-      final downloadUrl = await storageRef.getDownloadURL();
-
-      // Télécharger et lire le contenu
-      final response = await http.get(Uri.parse(downloadUrl));
-      if (response.statusCode == 200) {
-        final json = jsonDecode(response.body) as Map<String, dynamic>;
-        final profile = UserProfile.fromJson(json);
-
-        // Mettre à jour le profil local
-        _currentProfile = profile;
-        _currentProfile!.updateLastLogin();
-        await _saveProfileLocally(profile);
-        profileChanged.value = profile;
+      // Utiliser le service d'authentification pour se connecter avec Google
+      final result = await _authService.signInWithGoogle();
+      
+      if (!result.success) {
+        debugPrint('Connexion Google échouée: ${result.message}');
+        return null;
       }
-    } catch (e) {
-      debugPrint('Profil non trouvé dans le cloud: $e');
-      // C'est normal si le profil n'existe pas encore
+      
+      // Récupérer l'ID utilisateur du service d'authentification
+      final userId = _authService.userId;
+      
+      if (userId == null) {
+        debugPrint('Impossible de récupérer l\'ID utilisateur après connexion');
+        return null;
+      }
+      
+      // Charger le profil depuis le serveur
+      await _loadProfileFromServer(userId);
+      
+      if (_currentProfile == null) {
+        debugPrint('Profil non trouvé après connexion Google');
+        return null;
+      }
+      
+      // Initialiser les services sociaux
+      _friendsService = FriendsService(_currentProfile!.userId, this);
+      _userStatsService = UserStatsService(_currentProfile!.userId, this);
+      
+      // Définir l'ID utilisateur pour l'analytique
+      await _analyticsService.setUserId(_currentProfile!.userId);
+      
+      return _currentProfile;
+    } catch (e, stack) {
+      debugPrint('Erreur lors de la connexion avec Google: $e');
+      _analyticsService.recordError(e, stack, reason: 'Google sign in error');
+      return null;
     }
   }
 
-  // Sauvegarder le profil dans le cloud
-  Future<void> _saveProfileToCloud(UserProfile profile) async {
-    if (profile.googleId == null) return;
+  // Mise à jour des statistiques publiques
+  Future<void> updatePublicStats(GameState gameState) async {
+    if (_currentProfile == null || _userStatsService == null) return;
+    
+    try {
+      await _userStatsService.updatePublicStats(gameState);
+    } catch (e, stack) {
+      debugPrint('Erreur lors de la mise à jour des statistiques publiques: $e');
+      _analyticsService.recordCrash(e, stack, reason: 'Public stats update error');
+    }
+  }
+
+  // Upload d'une image de profil à partir d'un fichier
+  Future<String?> uploadProfileImageFromFile(File imageFile) async {
+    if (_currentProfile == null) return null;
 
     try {
-      // Déléguer la sauvegarde cloud au SaveSystem si disponible
-      if (_saveSystem != null) {
-        await _saveSystem!.syncSavesToCloud();
-        debugPrint('Profil synchronisé avec le cloud via SaveSystem');
+      // Upload de l'image
+      final imageUrl = await _storageService.uploadProfileImage(
+        imageFile,
+        _currentProfile!.userId,
+      );
+      
+      // Mettre à jour le profil
+      _currentProfile!.profileImageUrl = imageUrl;
+      
+      // Sauvegarder localement
+      await _saveProfileLocally(_currentProfile!);
+      
+      // Mettre à jour dans le backend
+      await _authService.updateProfile({
+        'profile_image_url': imageUrl,
+      });
+      
+      // Notifier
+      profileChanged.value = _currentProfile;
+      
+      return imageUrl;
+    } catch (e, stack) {
+      debugPrint('Erreur lors de l\'upload de l\'image de profil: $e');
+      _analyticsService.recordError(e, stack, reason: 'Profile image upload error');
+      return null;
+    }
+    }
+  }
+
+  // Lier le profil à Google
+  Future<bool> linkProfileToGoogle() async {
+    if (_currentProfile == null) return false;
+
+    try {
+      // Utiliser le service d'authentification pour lier le compte Google
+      final result = await _authService.linkWithGoogle();
+      
+      if (!result.success) {
+        debugPrint('Liaison avec Google échouée: ${result.message}');
+        return false;
+      }
+      
+      // Récupérer les informations utilisateur mises à jour
+      final userData = await _authService.getUserProfile(_currentProfile!.userId);
+      
+      if (userData == null) {
+        debugPrint('Impossible de récupérer les informations utilisateur après liaison');
+        return false;
+      }
+      
+      // Mettre à jour le profil local
+      _currentProfile!.googleId = userData['google_id'];
+      _currentProfile!.email = userData['email'];
+      _currentProfile!.lastUpdated = DateTime.now();
+      
+      if (_currentProfile!.profileImageUrl == null && userData['profile_image_url'] != null) {
+        _currentProfile!.profileImageUrl = userData['profile_image_url'];
+      }
+      
+      // Sauvegarder localement
+      await _saveProfileLocally(_currentProfile!);
+      
+      // Notifier
+      profileChanged.value = _currentProfile;
+      
+      // Log événement
+      _analyticsService.logEvent('profile_linked_with_google', {
+        'user_id': _currentProfile!.userId,
+      });
+      
+      return true;
+    } catch (e, stack) {
+      debugPrint('Erreur lors de la liaison du profil à Google: $e');
+      _analyticsService.recordError(e, stack, reason: 'Google link error');
+      return false;
+    }
+  }
+
+  // Charger le profil depuis le serveur en utilisant l'ID utilisateur
+  Future<void> _loadProfileFromServer(String userId) async {
+    try {
+      // Rechercher le profil via l'API
+      final userData = await _authService.getUserProfile(userId);
+
+      if (userData != null) {
+        // Créer un profil à partir des données de l'API
+        final profile = UserProfile.fromMap(userData);
+
+        // Sauvegarder le profil localement
+        await _saveProfileLocally(profile);
+
+        // Mettre à jour l'état interne
+        _currentProfile = profile;
+        profileChanged.value = profile;
+
+        debugPrint('Profil chargé depuis le serveur: ${profile.username}');
       } else {
-        debugPrint('SaveSystem non disponible, sauvegarde locale uniquement');
+        debugPrint('Aucun profil trouvé sur le serveur pour cet ID utilisateur');
       }
     } catch (e, stack) {
-      debugPrint('Erreur lors de la sauvegarde cloud du profil: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Profile cloud save error');
-      // Ne pas propager l'erreur
+      debugPrint('Erreur lors du chargement du profil depuis le serveur: $e');
+      _analyticsService.recordError(e, stack, reason: 'Server profile load error');
     }
   }
 
-  // Charger le profil local
+  // Sauvegarde du profil dans le cloud
+  Future<void> _saveProfileToCloud(UserProfile profile) async {
+    try {
+      // Mettre à jour le profil via le service d'authentification
+      final result = await _authService.updateUserProfile(profile.toMap());
+      
+      if (!result.success) {
+        debugPrint('Échec de la mise à jour du profil: ${result.message}');
+      } else {
+        debugPrint('Profil sauvegardé dans le cloud: ${profile.userId}');
+      }
+    } catch (e, stack) {
+      debugPrint('Erreur lors de la sauvegarde du profil dans le cloud: $e');
+      _analyticsService.recordError(e, stack, reason: 'Cloud profile save error');
+    }
+  }
+
+  // Chargement du profil actuel
   Future<void> _loadCurrentProfile() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final profileJson = prefs.getString(_userProfileKey);
-
+      
       if (profileJson != null) {
-        _currentProfile = UserProfile.fromJson(jsonDecode(profileJson));
-        _currentProfile!.updateLastLogin();
-        await _saveProfileLocally(_currentProfile!);
-        profileChanged.value = _currentProfile;
+        _currentProfile = UserProfile.fromJson(json.decode(profileJson));
+        debugPrint('Profil chargé: ${_currentProfile!.displayName}');
       }
-    } catch (e) {
+    } catch (e, stack) {
       debugPrint('Erreur lors du chargement du profil: $e');
-      _currentProfile = null;
+      _analyticsService.recordCrash(e, stack, reason: 'Profile loading error');
     }
   }
 
-  // Sauvegarder le profil localement
+  // Sauvegarde du profil localement
   Future<void> _saveProfileLocally(UserProfile profile) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_userProfileKey, jsonEncode(profile.toJson()));
-    } catch (e) {
+      await prefs.setString(_userProfileKey, json.encode(profile.toJson()));
+    } catch (e, stack) {
       debugPrint('Erreur lors de la sauvegarde locale du profil: $e');
+      _analyticsService.recordCrash(e, stack, reason: 'Local profile saving error');
     }
   }
 
-  // Télécharger une photo de profil
-  Future<void> uploadProfileImage() async {
-    if (_currentProfile == null) {
-      throw Exception('Aucun profil actif');
-    }
+  // Upload d'une image de profil
+  Future<String?> uploadProfileImage() async {
+    if (_currentProfile == null) return null;
 
     try {
-      // Sélectionner une image
+      // Sélectionner une image depuis la galerie
       final picker = ImagePicker();
-      final image = await picker.pickImage(source: ImageSource.gallery);
-
-      if (image == null) return;
-
-      // Sauvegarder localement
-      final directory = await getApplicationDocumentsDirectory();
-      final filePath = '${directory.path}/profile_${_currentProfile!.userId}.jpg';
-
-      final localImage = File(filePath);
-      await localImage.writeAsBytes(await image.readAsBytes());
-
-      // Mettre à jour le profil
-      final updatedProfile = _currentProfile!.copyWith(
-        profileImagePath: filePath,
+      final pickedFile = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 85,
       );
-
-      // Télécharger sur Firebase si connecté à Google
-      if (updatedProfile.googleId != null) {
-        final storageRef = _storage.ref().child('profiles/${updatedProfile.userId}/profile.jpg');
-        await storageRef.putFile(localImage);
-        final downloadUrl = await storageRef.getDownloadURL();
-
-        updatedProfile.updateProfileImageUrl(downloadUrl);
+      
+      if (pickedFile == null) {
+        debugPrint('Aucune image sélectionnée');
+        return null;
       }
-
-      // Sauvegarder
-      _currentProfile = updatedProfile;
-      await _saveProfileLocally(updatedProfile);
-
-      if (updatedProfile.googleId != null) {
-        await _saveProfileToCloud(updatedProfile);
+      
+      // Lire le fichier
+      final imageFile = File(pickedFile.path);
+      
+      // Uploader l'image via le service de stockage
+      final result = await _storageService.uploadProfileImage(
+        _currentProfile!.userId,
+        imageFile,
+      );
+      
+      if (!result.success || result.data == null) {
+        debugPrint('Échec de l\'upload de l\'image de profil: ${result.message}');
+        return null;
       }
-
+      
+      final imageUrl = result.data;
+      
+      // Mettre à jour le profil
+      _currentProfile!.profileImageUrl = imageUrl;
+      _currentProfile!.lastUpdated = DateTime.now();
+      
+      // Sauvegarder localement
+      await _saveProfileLocally(_currentProfile!);
+      
+      // Mettre à jour dans le backend
+      await _saveProfileToCloud(_currentProfile!);
+      
       // Notifier
-      profileChanged.value = updatedProfile;
+      profileChanged.value = _currentProfile;
+      
+      return imageUrl;
     } catch (e, stack) {
-      debugPrint('Erreur lors du téléchargement de l\'image: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Profile image upload error');
-      rethrow;
+      debugPrint('Erreur lors de l\'upload de l\'image de profil: $e');
+      _analyticsService.recordError(e, stack, reason: 'Profile image upload error');
+      return null;
     }
   }
 
@@ -483,20 +462,24 @@ class UserManager {
 
     try {
       // Ajouter l'ID de sauvegarde
-      _currentProfile!.addSaveId(saveId, mode);
-
+      if (mode == GameMode.COMPETITIVE) {
+        _currentProfile!.addCompetitiveSaveId(saveId);
+      } else {
+        _currentProfile!.addInfiniteSaveId(saveId);
+      }
+      
       // Sauvegarder
       await _saveProfileLocally(_currentProfile!);
-
+      
       if (_currentProfile!.googleId != null) {
         await _saveProfileToCloud(_currentProfile!);
       }
-
+      
       // Notifier
       profileChanged.value = _currentProfile;
     } catch (e, stack) {
       debugPrint('Erreur lors de l\'ajout de la sauvegarde au profil: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Add save error');
+      _analyticsService.recordCrash(e, stack, reason: 'Add save error');
       rethrow;
     }
   }
@@ -508,19 +491,19 @@ class UserManager {
     try {
       // Supprimer l'ID de sauvegarde
       _currentProfile!.removeSaveId(saveId);
-
+      
       // Sauvegarder
       await _saveProfileLocally(_currentProfile!);
-
+      
       if (_currentProfile!.googleId != null) {
         await _saveProfileToCloud(_currentProfile!);
       }
-
+      
       // Notifier
       profileChanged.value = _currentProfile;
     } catch (e, stack) {
       debugPrint('Erreur lors de la suppression de la sauvegarde du profil: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Remove save error');
+      _analyticsService.recordCrash(e, stack, reason: 'Remove save error');
     }
   }
 
@@ -532,24 +515,31 @@ class UserManager {
     }
 
     try {
-      // Vérifier si le profil est lié à Google
-      if (_currentProfile!.googleId == null) {
-        debugPrint('Profil non lié à Google, impossible de synchroniser');
+      // Vérifier si l'utilisateur est authentifié
+      if (!_authService.isAuthenticated) {
+        debugPrint('Utilisateur non authentifié, impossible de synchroniser');
         return false;
       }
-
-      // Synchroniser avec SaveSystem si disponible
+      
+      // Synchroniser le profil
+      await _saveProfileToCloud(_currentProfile!);
+      
+      // Synchroniser les sauvegardes
       if (_saveSystem != null) {
-        final syncSuccess = await _saveSystem!.syncSavesToCloud();
+        final result = await _saveService.syncAllSaves(_currentProfile!.userId);
+        if (!result.success) {
+          debugPrint('Échec de la synchronisation des sauvegardes: ${result.message}');
+          return false;
+        }
         debugPrint('Synchronisation cloud complète: profil et sauvegardes');
-        return syncSuccess;
+        return true;
       } else {
         debugPrint('SaveSystem non disponible');
-        return false;
+        return true; // Le profil a été synchronisé même si les sauvegardes ne l'ont pas été
       }
     } catch (e, stack) {
       debugPrint('Erreur lors de la synchronisation avec le cloud: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Cloud sync error');
+      _analyticsService.recordError(e, stack, reason: 'Cloud sync error');
       return false;
     }
   }
@@ -580,21 +570,27 @@ class UserManager {
     if (_currentProfile == null) return;
 
     try {
-      // Mettre à jour les statistiques
+      // Mettre à jour les statistiques locales
       _currentProfile!.updateGlobalStats(newStats);
-
-      // Sauvegarder
+      
+      // Sauvegarder localement
       await _saveProfileLocally(_currentProfile!);
-
-      if (_currentProfile!.googleId != null) {
-        await _saveProfileToCloud(_currentProfile!);
+      
+      // Mettre à jour les statistiques dans le backend via le service social
+      final result = await _socialService.updateUserStats(_currentProfile!.userId, newStats);
+      
+      if (!result.success) {
+        debugPrint('Échec de la mise à jour des statistiques sur le serveur: ${result.message}');
       }
-
+      
+      // Enregistrer l'événement d'analytique
+      _analyticsService.logEvent('stats_updated', newStats);
+      
       // Notifier
       profileChanged.value = _currentProfile;
     } catch (e, stack) {
       debugPrint('Erreur lors de la mise à jour des statistiques: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Stats update error');
+      _analyticsService.recordError(e, stack, reason: 'Stats update error');
     }
   }
 
@@ -608,17 +604,17 @@ class UserManager {
       // Sauvegarder localement
       _currentProfile = updatedProfile;
       await _saveProfileLocally(updatedProfile);
-
+      
       // Notifier
       profileChanged.value = updatedProfile;
-
-      // Sauvegarder dans le cloud si connecté
-      if (updatedProfile.googleId != null) {
+      
+      // Sauvegarder dans le cloud si authentifié
+      if (_authService.isAuthenticated) {
         await _saveProfileToCloud(updatedProfile);
       }
     } catch (e, stack) {
       debugPrint('Erreur lors de la mise à jour du profil: $e');
-      FirebaseCrashlytics.instance.recordError(e, stack, reason: 'Profile update error');
+      _analyticsService.recordError(e, stack, reason: 'Profile update error');
       rethrow;
     }
   }
