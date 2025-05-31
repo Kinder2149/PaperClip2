@@ -130,6 +130,94 @@ class AuthService {
     }
   }
   
+  // Enregistrement d'un nouvel utilisateur
+  Future<Map<String, dynamic>> register(String displayName, String? email, String? password) async {
+    try {
+      final data = await _apiClient.post(
+        '/auth/register',
+        body: {
+          'username': displayName,
+          'email': email ?? '',
+          'password': password ?? '',
+        },
+      );
+      
+      if (data['success'] == true) {
+        _userId = data['user_id'];
+        _username = displayName;
+        
+        authStateChanged.value = true;
+      }
+      
+      return data;
+    } catch (e) {
+      debugPrint('Erreur lors de l\'enregistrement: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+  
+  // Mise à jour du profil utilisateur
+  Future<Map<String, dynamic>> updateProfile(Map<String, dynamic> profileData) async {
+    try {
+      final data = await _apiClient.put(
+        '/users/$_userId',
+        body: profileData,
+      );
+      
+      return data;
+    } catch (e) {
+      debugPrint('Erreur lors de la mise à jour du profil: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+  
+  // Récupération du profil utilisateur
+  Future<Map<String, dynamic>> getUserProfile(String userId) async {
+    try {
+      final data = await _apiClient.get('/users/$userId');
+      return data;
+    } catch (e) {
+      debugPrint('Erreur lors de la récupération du profil: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+  
+  // Mise à jour du profil utilisateur complet
+  Future<Map<String, dynamic>> updateUserProfile(Map<String, dynamic> profileData) async {
+    return updateProfile(profileData);
+  }
+  
+  // Lier le compte à Google
+  Future<Map<String, dynamic>> linkWithGoogle() async {
+    try {
+      // Déclencher le flux de connexion Google
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      
+      if (googleUser == null) {
+        return {'success': false, 'message': 'Google sign-in cancelled'};
+      }
+      
+      // Obtenir les informations d'authentification
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      
+      // Lier au backend avec les informations Google
+      final data = await _apiClient.post(
+        '/auth/link/google',
+        body: {
+          'google_id': googleUser.id,
+          'email': googleUser.email,
+          'display_name': googleUser.displayName,
+          'profile_image_url': googleUser.photoUrl,
+        },
+      );
+      
+      return data;
+    } catch (e) {
+      debugPrint('Erreur lors de la liaison avec Google: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+  
   // Déconnexion
   Future<void> logout() async {
     try {

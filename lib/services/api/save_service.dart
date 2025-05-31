@@ -21,6 +21,12 @@ class SaveService {
   // Constructeur interne
   SaveService._internal();
   
+  /// Initialisation du service
+  Future<void> initialize() async {
+    // Aucune initialisation spécifique requise pour le moment
+    debugPrint('SaveService initialisé');
+  }
+  
   /// Création d'une nouvelle sauvegarde
   Future<Map<String, dynamic>> createSave(
     Map<String, dynamic> saveData, {

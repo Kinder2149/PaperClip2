@@ -15,6 +15,12 @@ class SocialService {
   // Constructeur interne
   SocialService._internal();
   
+  /// Initialisation du service
+  Future<void> initialize() async {
+    // Aucune initialisation spécifique requise pour le moment
+    debugPrint('SocialService initialisé');
+  }
+  
   // ======== GESTION DES AMIS ========
   
   /// Envoi d'une demande d'amitié
@@ -281,17 +287,17 @@ class SocialService {
   }
   
   /// Mise à jour des statistiques de l'utilisateur
-  Future<Map<String, dynamic>> updateUserStats(Map<String, dynamic> stats) async {
+  Future<Map<String, dynamic>> updateUserStats(String userId, Map<String, dynamic> stats) async {
     try {
       final data = await _apiClient.put(
-        '/social/user/stats',
+        '/social/user/stats/$userId',
         body: {'stats': stats},
       );
       
-      return data['stats'] ?? {};
+      return data;
     } catch (e) {
       debugPrint('Erreur lors de la mise à jour des statistiques de l\'utilisateur: $e');
-      rethrow;
+      return {'success': false, 'message': e.toString()};
     }
   }
 }

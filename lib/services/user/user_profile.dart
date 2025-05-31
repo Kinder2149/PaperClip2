@@ -17,6 +17,13 @@ class UserProfile {
   final List<String> infiniteSaveIds;
   final DateTime lastLogin;
 
+  // Variables privées pour les modifications
+  String? _profileImageUrl;
+  DateTime _lastLogin;
+  List<String> _competitiveSaveIds = [];
+  List<String> _infiniteSaveIds = [];
+  Map<String, dynamic> _globalStats = {};
+
   UserProfile({
     required this.userId,
     required this.displayName,
@@ -33,40 +40,35 @@ class UserProfile {
         this.globalStats = globalStats ?? {},
         this.competitiveSaveIds = competitiveSaveIds ?? [],
         this.infiniteSaveIds = infiniteSaveIds ?? [],
-        this.lastLogin = lastLogin ?? DateTime.now();
+        this.lastLogin = lastLogin ?? DateTime.now(),
+        this._profileImageUrl = null,
+        this._lastLogin = lastLogin ?? DateTime.now(),
+        this._competitiveSaveIds = competitiveSaveIds ?? [],
+        this._infiniteSaveIds = infiniteSaveIds ?? [],
+        this._globalStats = globalStats ?? {};
 
   // Modification de l'URL de l'image de profil
   void updateProfileImageUrl(String url) {
     _profileImageUrl = url;
   }
 
-  // Variable privée pour updater l'URL
-  String? _profileImageUrl;
-
   // Mettre à jour la date de dernière connexion
   void updateLastLogin() {
     _lastLogin = DateTime.now();
   }
 
-  // Variable privée pour la dernière connexion
-  DateTime _lastLogin = DateTime.now();
-
   // Ajouter un ID de sauvegarde
   void addSaveId(String saveId, GameMode mode) {
     if (mode == GameMode.COMPETITIVE) {
-      if (!competitiveSaveIds.contains(saveId)) {
+      if (!_competitiveSaveIds.contains(saveId)) {
         _competitiveSaveIds.add(saveId);
       }
     } else {
-      if (!infiniteSaveIds.contains(saveId)) {
+      if (!_infiniteSaveIds.contains(saveId)) {
         _infiniteSaveIds.add(saveId);
       }
     }
   }
-
-  // Variables privées pour les IDs de sauvegarde
-  List<String> _competitiveSaveIds = [];
-  List<String> _infiniteSaveIds = [];
 
   // Supprimer un ID de sauvegarde
   void removeSaveId(String saveId) {
@@ -76,6 +78,7 @@ class UserProfile {
 
   // Vérifier si l'utilisateur peut créer une sauvegarde compétitive
   bool canCreateCompetitiveSave() {
+    // Utiliser la liste actuelle des sauvegardes compétitives
     return competitiveSaveIds.length < 3;
   }
 
@@ -83,9 +86,6 @@ class UserProfile {
   void updateGlobalStats(Map<String, dynamic> newStats) {
     _globalStats.addAll(newStats);
   }
-
-  // Variable privée pour les stats globales
-  Map<String, dynamic> _globalStats = {};
 
   // Conversion en Map pour la sérialisation
   Map<String, dynamic> toJson() {

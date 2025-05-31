@@ -116,12 +116,25 @@ Future<void> main() async {
 
         // Initialisation des services API
     final apiClient = ApiClient();
+    await apiClient.initialize();
+    
     final authService = AuthService();
+    await authService.initialize();
+    
     final analyticsService = AnalyticsService();
+    await analyticsService.initialize();
+    
     final storageService = StorageService();
+    await storageService.initialize();
+    
     final configService = ConfigService();
+    await configService.initialize();
+    
     final socialService = SocialService();
+    await socialService.initialize();
+    
     final saveService = SaveService();
+    await saveService.initialize();
 
     // Ajouter les services au ServiceLocator
     serviceLocator.apiClient = apiClient;

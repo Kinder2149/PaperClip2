@@ -19,6 +19,12 @@ class StorageService {
   // Constructeur interne
   StorageService._internal();
   
+  /// Initialisation du service
+  Future<void> initialize() async {
+    // Aucune initialisation spécifique requise pour le moment
+    debugPrint('StorageService initialisé');
+  }
+  
   /// Upload d'un fichier
   Future<String> uploadFile(
     File file, {

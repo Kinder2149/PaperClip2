@@ -46,9 +46,6 @@ class UserManager {
   // Clés pour SharedPreferences
   static const String _userProfileKey = 'user_profile';
 
-  // Services
-  SaveSystem? _saveSystem;
-  
   // Services API
   final AuthService _authService;
   final StorageService _storageService;
@@ -60,10 +57,15 @@ class UserManager {
   UserProfile? _currentProfile;
   bool _initialized = false;
   BuildContext? _context;
+  
+  // Services sociaux
   FriendsService? _friendsService;
   UserStatsService? _userStatsService;
-
-  // Événements de changement
+  
+  // Système de sauvegarde
+  SaveSystem? _saveSystem;
+  
+  // Notificateurs et événements de changement
   final ValueNotifier<UserProfile?> profileChanged = ValueNotifier<UserProfile?>(null);
 
   // Constructeur interne
@@ -154,11 +156,11 @@ class UserManager {
   // Création d'un profil
   Future<UserProfile?> createProfile(String displayName) async {
     try {
-      // Créer un nouveau profil via l'API
-      final result = await _authService.register(displayName, null, null);
+      // Créer un profil via l'API
+      final result = await _authService.register(displayName, "", "");
       
-      if (!result.success) {
-        debugPrint('Échec de la création du profil: ${result.message}');
+      if (result is Map<String, dynamic> && result['success'] != true) {
+        debugPrint('Échec de la création du profil: ${result['message']}');
         return null;
       }
       
@@ -196,10 +198,10 @@ class UserManager {
   Future<UserProfile?> signInWithGoogle() async {
     try {
       // Utiliser le service d'authentification pour se connecter avec Google
-      final result = await _authService.signInWithGoogle();
+      final success = await _authService.signInWithGoogle();
       
-      if (!result.success) {
-        debugPrint('Connexion Google échouée: ${result.message}');
+      if (!success) {
+        debugPrint('Connexion Google échouée');
         return null;
       }
       
@@ -288,15 +290,15 @@ class UserManager {
       // Utiliser le service d'authentification pour lier le compte Google
       final result = await _authService.linkWithGoogle();
       
-      if (!result.success) {
-        debugPrint('Liaison avec Google échouée: ${result.message}');
+      if (result['success'] != true) {
+        debugPrint('Liaison avec Google échouée: ${result['message']}');
         return false;
       }
       
       // Récupérer les informations utilisateur mises à jour
       final userData = await _authService.getUserProfile(_currentProfile!.userId);
       
-      if (userData == null) {
+      if (userData['success'] != true) {
         debugPrint('Impossible de récupérer les informations utilisateur après liaison');
         return false;
       }
@@ -335,9 +337,9 @@ class UserManager {
       // Rechercher le profil via l'API
       final userData = await _authService.getUserProfile(userId);
 
-      if (userData != null) {
+      if (userData['success'] == true && userData['data'] != null) {
         // Créer un profil à partir des données de l'API
-        final profile = UserProfile.fromMap(userData);
+        final profile = UserProfile.fromMap(userData['data']);
 
         // Sauvegarder le profil localement
         await _saveProfileLocally(profile);
@@ -423,17 +425,12 @@ class UserManager {
       final imageFile = File(pickedFile.path);
       
       // Uploader l'image via le service de stockage
-      final result = await _storageService.uploadProfileImage(
-        _currentProfile!.userId,
-        imageFile,
-      );
+      final imageUrl = await _storageService.uploadProfileImage(imageFile, _currentProfile!.userId);
       
-      if (!result.success || result.data == null) {
-        debugPrint('Échec de l\'upload de l\'image de profil: ${result.message}');
+      if (imageUrl == null) {
+        debugPrint('Échec de l\'upload de l\'image de profil');
         return null;
       }
-      
-      final imageUrl = result.data;
       
       // Mettre à jour le profil
       _currentProfile!.profileImageUrl = imageUrl;
@@ -527,8 +524,8 @@ class UserManager {
       // Synchroniser les sauvegardes
       if (_saveSystem != null) {
         final result = await _saveService.syncAllSaves(_currentProfile!.userId);
-        if (!result.success) {
-          debugPrint('Échec de la synchronisation des sauvegardes: ${result.message}');
+        if (result is Map<String, dynamic> && result['success'] != true) {
+          debugPrint('Échec de la synchronisation des sauvegardes: ${result['message']}');
           return false;
         }
         debugPrint('Synchronisation cloud complète: profil et sauvegardes');
@@ -548,6 +545,59 @@ class UserManager {
   Future<bool> canCreateCompetitiveSave() async {
     await initialize(); // S'assurer que UserManager est initialisé
     return _currentProfile == null || _currentProfile!.canCreateCompetitiveSave();
+  }
+  
+  // Sauvegarder le profil dans le cloud
+  // Mettre à jour le profil
+  Future<void> updateProfile({
+    String? username,
+    String? email,
+    String? profileImageUrl,
+    Map<String, dynamic>? additionalData,
+  }) async {
+    if (_currentProfile == null) return;
+    
+    try {
+      // Préparer les données de mise à jour
+      final updateData = <String, dynamic>{};
+      
+      if (username != null) updateData['username'] = username;
+      if (email != null) updateData['email'] = email;
+      if (profileImageUrl != null) updateData['profile_image_url'] = profileImageUrl;
+      
+      if (additionalData != null) {
+        updateData.addAll(additionalData);
+      }
+      
+      // Mettre à jour via l'API
+      final result = await _authService.updateProfile(updateData);
+      
+      if (result is Map<String, dynamic> && result['success'] != true) {
+        debugPrint('Erreur lors de la mise à jour du profil: ${result['message']}');
+        return;
+      }
+      
+      // Mettre à jour le profil local
+      if (username != null) _currentProfile!.username = username;
+      if (email != null) _currentProfile!.email = email;
+      if (profileImageUrl != null) _currentProfile!.profileImageUrl = profileImageUrl;
+      
+      _currentProfile!.lastUpdated = DateTime.now();
+      
+      // Sauvegarder localement
+      await _saveProfileLocally(_currentProfile!);
+      
+      // Notifier
+      profileChanged.value = _currentProfile;
+      
+      // Log événement
+      _analyticsService.logEvent('profile_updated', {
+        'user_id': _currentProfile!.userId,
+      });
+    } catch (e, stack) {
+      debugPrint('Exception lors de la mise à jour du profil: $e');
+      _analyticsService.recordError(e, stack, reason: 'Profile update error');
+    }
   }
 
   // Obtenir les sauvegardes du profil
@@ -579,8 +629,8 @@ class UserManager {
       // Mettre à jour les statistiques dans le backend via le service social
       final result = await _socialService.updateUserStats(_currentProfile!.userId, newStats);
       
-      if (!result.success) {
-        debugPrint('Échec de la mise à jour des statistiques sur le serveur: ${result.message}');
+      if (result is Map<String, dynamic> && result['success'] != true) {
+        debugPrint('Échec de la mise à jour des statistiques sur le serveur: ${result['message']}');
       }
       
       // Enregistrer l'événement d'analytique
@@ -594,28 +644,29 @@ class UserManager {
     }
   }
 
-  // Mise à jour du profil
-  Future<void> updateProfile(UserProfile updatedProfile) async {
+  // Méthode pour mettre à jour le profil complet
+  Future<void> updateProfileObject(UserProfile updatedProfile) async {
     if (_currentProfile == null) {
       throw Exception('Aucun profil actif à mettre à jour');
     }
 
     try {
-      // Sauvegarder localement
+      // Mettre à jour le profil local
       _currentProfile = updatedProfile;
+      
+      // Sauvegarder localement
       await _saveProfileLocally(updatedProfile);
       
       // Notifier
       profileChanged.value = updatedProfile;
       
-      // Sauvegarder dans le cloud si authentifié
+      // Synchroniser avec le cloud si connecté
       if (_authService.isAuthenticated) {
         await _saveProfileToCloud(updatedProfile);
       }
     } catch (e, stack) {
-      debugPrint('Erreur lors de la mise à jour du profil: $e');
+      debugPrint('Exception lors de la mise à jour du profil: $e');
       _analyticsService.recordError(e, stack, reason: 'Profile update error');
-      rethrow;
     }
   }
 }

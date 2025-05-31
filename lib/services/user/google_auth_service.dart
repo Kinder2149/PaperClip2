@@ -184,7 +184,7 @@ class GoogleAuthService extends ChangeNotifier {
     }
   }
 
-  /// Se connecte avec Google en utilisant Firebase Auth ou Google Play Games.
+  /// Se connecte avec Google en utilisant AuthService ou Google Play Games.
   Future<Map<String, dynamic>?> signInWithGoogle() async {
     try {
       debugPrint('Démarrage du processus de connexion Google');
@@ -216,11 +216,11 @@ class GoogleAuthService extends ChangeNotifier {
         }
       } catch (e) {
         debugPrint('Échec Google Play Games : $e');
-        // Continuer avec Firebase Auth
+        // Continuer avec AuthService
       }
 
-      // Sinon, essayer Firebase Auth
-      debugPrint('Tentative avec Firebase Auth...');
+      // Sinon, essayer AuthService
+      debugPrint('Tentative avec AuthService...');
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
         debugPrint('L\'utilisateur a annulé la connexion Google');
@@ -228,16 +228,12 @@ class GoogleAuthService extends ChangeNotifier {
       }
 
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      final userCredential = await _auth.signInWithCredential(credential);
-      final user = userCredential.user;
-
-      if (user == null) {
-        debugPrint('Firebase Auth n\'a pas retourné d\'utilisateur');
+      
+      // Utiliser AuthService pour se connecter avec Google
+      final success = await _authService.signInWithGoogle();
+      
+      if (!success) {
+        debugPrint('AuthService n\'a pas réussi à authentifier l\'utilisateur');
         return null;
       }
 
@@ -248,12 +244,16 @@ class GoogleAuthService extends ChangeNotifier {
       // Sauvegarder le timestamp de connexion
       _saveLastSignInTime();
 
-      debugPrint('Connexion réussie via Firebase Auth: ${user.displayName}');
+      // Récupérer les informations utilisateur depuis AuthService
+      final userId = _authService.userId;
+      final username = _authService.username;
+      
+      debugPrint('Connexion réussie via AuthService: $username');
       return {
-        'id': user.uid,
-        'displayName': user.displayName,
-        'email': user.email,
-        'photoUrl': user.photoURL,
+        'id': userId,
+        'displayName': username,
+        'email': googleUser.email,
+        'photoUrl': googleUser.photoUrl,
       };
     } catch (e, stack) {
       debugPrint('Erreur détaillée de connexion Google: $e');
