@@ -5,9 +5,12 @@ from app.db.database import get_db
 from app.models.schemas import UserProfile, UserProfileUpdate
 from app.models.user import User
 from app.auth.jwt import get_current_user
-from app.services.storage import upload_profile_image
+from app.services.storage import StorageService
 
 router = APIRouter(prefix="/users", tags=["Users"])
+
+# Initialiser le service de stockage
+storage_service = StorageService()
 
 @router.get("/", response_model=List[UserProfile])
 async def get_users(
@@ -68,7 +71,7 @@ async def upload_user_profile_image(
         )
     
     # Télécharger l'image vers le service de stockage
-    image_url = await upload_profile_image(file, current_user.id)
+    file_id, image_url = await storage_service.upload_profile_image(file, current_user.id)
     
     # Mettre à jour l'URL de l'image de profil
     current_user.profile_image_url = image_url
