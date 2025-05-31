@@ -7,6 +7,7 @@ import boto3
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 import mimetypes
+import json
 
 # Chargement des variables d'environnement
 load_dotenv()
@@ -35,148 +36,258 @@ if STORAGE_TYPE == "s3" and AWS_ACCESS_KEY and AWS_SECRET_KEY:
         aws_secret_access_key=AWS_SECRET_KEY
     )
 
-async def upload_file(file: UploadFile, path: str, user_id: str) -> str:
-    """
-    Télécharge un fichier vers le stockage (local ou S3)
-    
-    Args:
-        file: Le fichier à télécharger
-        path: Le chemin de destination dans le stockage
-        user_id: L'ID de l'utilisateur
-        
-    Returns:
-        L'URL du fichier téléchargé
-    """
-    # Générer un nom de fichier unique
-    filename = f"{uuid.uuid4()}_{file.filename}"
-    
-    # Construire le chemin complet
-    full_path = f"{user_id}/{path}/{filename}"
-    
-    if STORAGE_TYPE == "local":
-        # Stockage local
-        local_path = os.path.join(LOCAL_STORAGE_PATH, full_path)
-        
-        # Créer le répertoire parent s'il n'existe pas
-        os.makedirs(os.path.dirname(local_path), exist_ok=True)
-        
-        # Enregistrer le fichier
-        with open(local_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        
-        # Retourner l'URL relative
-        return f"/api/storage/download/{full_path}"
-    
-    elif STORAGE_TYPE == "s3" and s3_client:
-        # Stockage S3
-        content_type = file.content_type or mimetypes.guess_type(file.filename)[0]
-        
-        # Télécharger vers S3
-        s3_client.upload_fileobj(
-            file.file,
-            S3_BUCKET,
-            full_path,
-            ExtraArgs={"ContentType": content_type}
-        )
-        
-        # Retourner l'URL S3
-        return f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{full_path}"
-    
-    else:
-        raise ValueError("Configuration de stockage invalide")
 
-async def upload_profile_image(file: UploadFile, user_id: str) -> str:
+class StorageService:
     """
-    Télécharge une image de profil
-    
-    Args:
-        file: L'image à télécharger
-        user_id: L'ID de l'utilisateur
-        
-    Returns:
-        L'URL de l'image téléchargée
+    Service de gestion du stockage des fichiers
     """
-    return await upload_file(file, "profiles", user_id)
-
-async def download_file(path: str, user_id: str):
-    """
-    Télécharge un fichier depuis le stockage
     
-    Args:
-        path: Le chemin du fichier dans le stockage
-        user_id: L'ID de l'utilisateur
+    async def upload_file(self, file: UploadFile, user_id: str, path: str = None) -> tuple:
+        """
+        Télécharge un fichier vers le stockage (local ou S3)
         
-    Returns:
-        Le contenu du fichier et son type MIME
-    """
-    # Construire le chemin complet
-    full_path = f"{user_id}/{path}"
+        Args:
+            file: Le fichier à télécharger
+            user_id: L'ID de l'utilisateur
+            path: Le chemin de destination dans le stockage (optionnel)
+            
+        Returns:
+            Un tuple (file_id, file_url) contenant l'ID et l'URL du fichier téléchargé
+        """
+        # Générer un nom de fichier unique et un ID de fichier
+        file_id = str(uuid.uuid4())
+        filename = f"{file_id}_{file.filename}"
+        
+        # Utiliser le chemin spécifié ou un dossier par défaut
+        folder_path = path if path else "files"
+        
+        # Construire le chemin complet
+        full_path = f"{user_id}/{folder_path}/{filename}"
+        
+        if STORAGE_TYPE == "local":
+            # Stockage local
+            local_path = os.path.join(LOCAL_STORAGE_PATH, full_path)
+            
+            # Créer le répertoire parent s'il n'existe pas
+            os.makedirs(os.path.dirname(local_path), exist_ok=True)
+            
+            # Enregistrer le fichier
+            with open(local_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+            
+            # Retourner l'ID et l'URL relative
+            return file_id, f"/api/storage/download/{full_path}"
+        
+        elif STORAGE_TYPE == "s3" and s3_client:
+            # Stockage S3
+            content_type = file.content_type or mimetypes.guess_type(file.filename)[0]
+            
+            # Télécharger vers S3
+            s3_client.upload_fileobj(
+                file.file,
+                S3_BUCKET,
+                full_path,
+                ExtraArgs={"ContentType": content_type}
+            )
+            
+            # Retourner l'ID et l'URL S3
+            return file_id, f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{full_path}"
+        
+        else:
+            raise ValueError("Configuration de stockage invalide")
     
-    if STORAGE_TYPE == "local":
-        # Stockage local
-        local_path = os.path.join(LOCAL_STORAGE_PATH, full_path)
+    async def upload_profile_image(self, file: UploadFile, user_id: str) -> tuple:
+        """
+        Télécharge une image de profil
         
-        if not os.path.exists(local_path):
-            raise FileNotFoundError(f"Fichier non trouvé: {local_path}")
-        
-        # Lire le fichier
-        with open(local_path, "rb") as file:
-            content = file.read()
-        
-        # Déterminer le type MIME
-        content_type = mimetypes.guess_type(local_path)[0] or "application/octet-stream"
-        
-        return content, content_type
+        Args:
+            file: L'image à télécharger
+            user_id: L'ID de l'utilisateur
+            
+        Returns:
+            Un tuple (file_id, file_url) contenant l'ID et l'URL de l'image téléchargée
+        """
+        return await self.upload_file(file, user_id, "profiles")
     
-    elif STORAGE_TYPE == "s3" and s3_client:
-        # Stockage S3
-        try:
-            response = s3_client.get_object(Bucket=S3_BUCKET, Key=full_path)
-            content = response['Body'].read()
-            content_type = response.get('ContentType', 'application/octet-stream')
+    async def download_file(self, path: str, user_id: str):
+        """
+        Télécharge un fichier depuis le stockage
+        
+        Args:
+            path: Le chemin du fichier dans le stockage
+            user_id: L'ID de l'utilisateur
+            
+        Returns:
+            Le contenu du fichier et son type MIME
+        """
+        # Construire le chemin complet
+        full_path = f"{user_id}/{path}"
+        
+        if STORAGE_TYPE == "local":
+            # Stockage local
+            local_path = os.path.join(LOCAL_STORAGE_PATH, full_path)
+            
+            if not os.path.exists(local_path):
+                raise FileNotFoundError(f"Fichier non trouvé: {local_path}")
+            
+            # Lire le fichier
+            with open(local_path, "rb") as file:
+                content = file.read()
+            
+            # Déterminer le type MIME
+            content_type = mimetypes.guess_type(local_path)[0] or "application/octet-stream"
             
             return content, content_type
         
-        except ClientError as e:
-            if e.response['Error']['Code'] == 'NoSuchKey':
-                raise FileNotFoundError(f"Fichier non trouvé: {full_path}")
-            else:
-                raise
-    
-    else:
-        raise ValueError("Configuration de stockage invalide")
-
-async def delete_file(path: str, user_id: str):
-    """
-    Supprime un fichier du stockage
-    
-    Args:
-        path: Le chemin du fichier dans le stockage
-        user_id: L'ID de l'utilisateur
-    """
-    # Construire le chemin complet
-    full_path = f"{user_id}/{path}"
-    
-    if STORAGE_TYPE == "local":
-        # Stockage local
-        local_path = os.path.join(LOCAL_STORAGE_PATH, full_path)
+        elif STORAGE_TYPE == "s3" and s3_client:
+            # Stockage S3
+            try:
+                response = s3_client.get_object(Bucket=S3_BUCKET, Key=full_path)
+                content = response['Body'].read()
+                content_type = response.get('ContentType', 'application/octet-stream')
+                
+                return content, content_type
+            
+            except ClientError as e:
+                if e.response['Error']['Code'] == 'NoSuchKey':
+                    raise FileNotFoundError(f"Fichier non trouvé: {full_path}")
+                else:
+                    raise
         
-        if not os.path.exists(local_path):
-            raise FileNotFoundError(f"Fichier non trouvé: {local_path}")
-        
-        # Supprimer le fichier
-        os.remove(local_path)
+        else:
+            raise ValueError("Configuration de stockage invalide")
     
-    elif STORAGE_TYPE == "s3" and s3_client:
-        # Stockage S3
-        try:
-            s3_client.delete_object(Bucket=S3_BUCKET, Key=full_path)
+    async def delete_file(self, path: str, user_id: str):
+        """
+        Supprime un fichier du stockage
         
-        except ClientError as e:
-            if e.response['Error']['Code'] == 'NoSuchKey':
-                raise FileNotFoundError(f"Fichier non trouvé: {full_path}")
-            else:
-                raise
+        Args:
+            path: Le chemin du fichier dans le stockage
+            user_id: L'ID de l'utilisateur
+        """
+        # Construire le chemin complet
+        full_path = f"{user_id}/{path}"
+        
+        if STORAGE_TYPE == "local":
+            # Stockage local
+            local_path = os.path.join(LOCAL_STORAGE_PATH, full_path)
+            
+            if not os.path.exists(local_path):
+                raise FileNotFoundError(f"Fichier non trouvé: {local_path}")
+            
+            # Supprimer le fichier
+            os.remove(local_path)
+        
+        elif STORAGE_TYPE == "s3" and s3_client:
+            # Stockage S3
+            try:
+                s3_client.delete_object(Bucket=S3_BUCKET, Key=full_path)
+            
+            except ClientError as e:
+                if e.response['Error']['Code'] == 'NoSuchKey':
+                    raise FileNotFoundError(f"Fichier non trouvé: {full_path}")
+                else:
+                    raise
+        
+        else:
+            raise ValueError("Configuration de stockage invalide")
     
-    else:
-        raise ValueError("Configuration de stockage invalide")
+    def save_game_data(self, user_id: str, save_id: str, data: str):
+        """
+        Sauvegarde les données de jeu dans un fichier
+        
+        Args:
+            user_id: L'ID de l'utilisateur
+            save_id: L'ID de la sauvegarde
+            data: Les données JSON de la sauvegarde
+        """
+        path = f"{user_id}/saves/{save_id}.json"
+        
+        if STORAGE_TYPE == "local":
+            # Stockage local
+            local_path = os.path.join(LOCAL_STORAGE_PATH, path)
+            
+            # Créer le répertoire parent s'il n'existe pas
+            os.makedirs(os.path.dirname(local_path), exist_ok=True)
+            
+            # Enregistrer les données
+            with open(local_path, "w") as file:
+                file.write(data)
+        
+        elif STORAGE_TYPE == "s3" and s3_client:
+            # Stockage S3
+            s3_client.put_object(
+                Bucket=S3_BUCKET,
+                Key=path,
+                Body=data,
+                ContentType="application/json"
+            )
+        
+        else:
+            raise ValueError("Configuration de stockage invalide")
+    
+    def get_game_data(self, user_id: str, save_id: str) -> str:
+        """
+        Récupère les données de jeu depuis un fichier
+        
+        Args:
+            user_id: L'ID de l'utilisateur
+            save_id: L'ID de la sauvegarde
+            
+        Returns:
+            Les données JSON de la sauvegarde
+        """
+        path = f"{user_id}/saves/{save_id}.json"
+        
+        if STORAGE_TYPE == "local":
+            # Stockage local
+            local_path = os.path.join(LOCAL_STORAGE_PATH, path)
+            
+            if not os.path.exists(local_path):
+                return None
+            
+            # Lire les données
+            with open(local_path, "r") as file:
+                return file.read()
+        
+        elif STORAGE_TYPE == "s3" and s3_client:
+            # Stockage S3
+            try:
+                response = s3_client.get_object(Bucket=S3_BUCKET, Key=path)
+                return response['Body'].read().decode('utf-8')
+            
+            except ClientError as e:
+                if e.response['Error']['Code'] == 'NoSuchKey':
+                    return None
+                else:
+                    raise
+        
+        else:
+            raise ValueError("Configuration de stockage invalide")
+    
+    def delete_game_data(self, user_id: str, save_id: str):
+        """
+        Supprime les données de jeu
+        
+        Args:
+            user_id: L'ID de l'utilisateur
+            save_id: L'ID de la sauvegarde
+        """
+        path = f"{user_id}/saves/{save_id}.json"
+        
+        if STORAGE_TYPE == "local":
+            # Stockage local
+            local_path = os.path.join(LOCAL_STORAGE_PATH, path)
+            
+            if os.path.exists(local_path):
+                os.remove(local_path)
+        
+        elif STORAGE_TYPE == "s3" and s3_client:
+            # Stockage S3
+            try:
+                s3_client.delete_object(Bucket=S3_BUCKET, Key=path)
+            except:
+                pass  # Ignorer les erreurs si le fichier n'existe pas
+        
+        else:
+            raise ValueError("Configuration de stockage invalide")
