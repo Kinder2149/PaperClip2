@@ -1,0 +1,42 @@
+# Environnement virtuel
+venv/
+env/
+.env
+
+# Fichiers Python compilés
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Fichiers de logs
+*.log
+
+# Fichiers de test
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+
+# Fichiers de l'IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Fichiers de données locaux
+uploads/
+data/
+*.db
+*.sqlite3
+
+# Fichiers git
+.git/
+.gitignore
