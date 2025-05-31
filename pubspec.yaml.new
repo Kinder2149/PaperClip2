@@ -1,0 +1,84 @@
+name: paperclip2
+description: Un jeu incrémental de production de trombones avec des mécaniques de gestion et d'optimisation.
+publish_to: 'none'
+version: 1.0.1+5
+
+environment:
+  sdk: '>=3.0.6 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # Interface utilisateur
+  provider: ^6.1.1
+  fl_chart: ^0.70.0
+  cupertino_icons: ^1.0.6
+  uuid: ^3.0.7
+  cached_network_image: ^3.2.3
+  
+  # Stockage et fichiers
+  shared_preferences: ^2.2.0
+  path_provider: ^2.1.2
+  image_picker: ^0.8.9
+  google_sign_in: ^6.0.0
+  googleapis: ^11.0.0
+  googleapis_auth: ^1.4.0
+  http: ^1.0.0
+  url_launcher: ^6.1.11
+
+  # Gestion des fichiers
+  file_picker: ^6.1.1
+  file_selector: ^1.0.3
+  file_selector_platform_interface: ^2.2.0
+  file_selector_web: ^0.9.2
+  file_selector_linux: ^0.9.2
+  file_selector_macos: ^0.9.3
+  file_selector_windows: ^0.9.3
+
+  # Audio
+  just_audio: ^0.9.36
+
+  # Utilitaires
+  archive: ^4.0.2
+  intl: ^0.19.0
+  games_services: ^4.0.3
+
+  # API et réseau
+  dio: ^5.4.0
+  jwt_decoder: ^2.0.1
+  connectivity_plus: ^5.0.2
+  retry: ^3.1.2
+
+  # Configuration
+  flutter_dotenv: ^5.1.0
+  package_info_plus: ^4.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+  flutter_launcher_icons: ^0.13.1
+  mockito: ^5.4.2
+  build_runner: ^2.4.6  # Nécessaire pour la génération de code mockito
+  http_mock_adapter: ^0.6.1  # Pour mocker les requêtes HTTP
+
+flutter_icons:
+  android: "ic_launcher"
+  ios: true
+  image_path: "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png"
+  adaptive_icon_background: "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_adaptive_back.png"
+  adaptive_icon_foreground: "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_adaptive_fore.png"
+
+flutter:
+  assets:
+    - assets/
+    - assets/audio/ambient-technology.wav
+    - assets/audio/screenmusic.wav
+    - .env
+    - assets/profile_avatars/avatar_01.png
+    - assets/profile_avatars/avatar_01.png
+    - assets/profile_avatars/avatar_02.png
+    - assets/profile_avatars/avatar_03.png
+    - assets/profile_avatars/avatar_04.png
+  uses-material-design: true
