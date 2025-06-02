@@ -10,20 +10,16 @@ class UserProfile {
   final String? googleId;
   final String? profileImageUrl;
   final String? profileImagePath;
-  final Map<String, dynamic> privacySettings;
   final String? customAvatarPath;
+  final Map<String, dynamic> privacySettings;
   final Map<String, dynamic> globalStats;
   final List<String> competitiveSaveIds;
   final List<String> infiniteSaveIds;
   final DateTime lastLogin;
 
-  // Variables privées pour les modifications
-  String? _profileImageUrl;
-  DateTime _lastLogin;
-  List<String> _competitiveSaveIds = [];
-  List<String> _infiniteSaveIds = [];
-  Map<String, dynamic> _globalStats = {};
-
+  // Pas besoin de définir une date constante statique
+  // Nous allons utiliser DateTime.now() directement dans le constructeur
+  
   UserProfile({
     required this.userId,
     required this.displayName,
@@ -36,55 +32,57 @@ class UserProfile {
     List<String>? competitiveSaveIds,
     List<String>? infiniteSaveIds,
     DateTime? lastLogin,
-  })  : this.privacySettings = privacySettings ?? {},
-        this.globalStats = globalStats ?? {},
-        this.competitiveSaveIds = competitiveSaveIds ?? [],
-        this.infiniteSaveIds = infiniteSaveIds ?? [],
-        this.lastLogin = lastLogin ?? DateTime.now(),
-        this._profileImageUrl = null,
-        this._lastLogin = lastLogin ?? DateTime.now(),
-        this._competitiveSaveIds = competitiveSaveIds ?? [],
-        this._infiniteSaveIds = infiniteSaveIds ?? [],
-        this._globalStats = globalStats ?? {};
+  })  : this.privacySettings = privacySettings ?? const {},
+        this.globalStats = globalStats ?? const {},
+        this.competitiveSaveIds = competitiveSaveIds ?? const [],
+        this.infiniteSaveIds = infiniteSaveIds ?? const [],
+        this.lastLogin = lastLogin ?? DateTime.now();
 
-  // Modification de l'URL de l'image de profil
-  void updateProfileImageUrl(String url) {
-    _profileImageUrl = url;
+  // Modification de l'URL de l'image de profil - renvoie un nouveau profil
+  UserProfile updateProfileImageUrl(String url) {
+    return this.copyWith(profileImageUrl: url);
   }
 
-  // Mettre à jour la date de dernière connexion
-  void updateLastLogin() {
-    _lastLogin = DateTime.now();
+  // Mettre à jour la date de dernière connexion - renvoie un nouveau profil
+  UserProfile updateLastLogin() {
+    return this.copyWith(lastLogin: DateTime.now());
   }
 
-  // Ajouter un ID de sauvegarde
-  void addSaveId(String saveId, GameMode mode) {
+  // Ajouter un ID de sauvegarde - renvoie un nouveau profil
+  UserProfile addSaveId(String saveId, GameMode mode) {
     if (mode == GameMode.COMPETITIVE) {
-      if (!_competitiveSaveIds.contains(saveId)) {
-        _competitiveSaveIds.add(saveId);
+      if (!competitiveSaveIds.contains(saveId)) {
+        List<String> newIds = List.from(competitiveSaveIds)..add(saveId);
+        return this.copyWith(competitiveSaveIds: newIds);
       }
     } else {
-      if (!_infiniteSaveIds.contains(saveId)) {
-        _infiniteSaveIds.add(saveId);
+      if (!infiniteSaveIds.contains(saveId)) {
+        List<String> newIds = List.from(infiniteSaveIds)..add(saveId);
+        return this.copyWith(infiniteSaveIds: newIds);
       }
     }
+    return this; // Aucun changement nécessaire
   }
 
-  // Supprimer un ID de sauvegarde
-  void removeSaveId(String saveId) {
-    _competitiveSaveIds.remove(saveId);
-    _infiniteSaveIds.remove(saveId);
+  // Supprimer un ID de sauvegarde - renvoie un nouveau profil
+  UserProfile removeSaveId(String saveId) {
+    List<String> newCompetitiveIds = List.from(competitiveSaveIds)..remove(saveId);
+    List<String> newInfiniteIds = List.from(infiniteSaveIds)..remove(saveId);
+    return this.copyWith(
+      competitiveSaveIds: newCompetitiveIds,
+      infiniteSaveIds: newInfiniteIds,
+    );
   }
 
   // Vérifier si l'utilisateur peut créer une sauvegarde compétitive
   bool canCreateCompetitiveSave() {
-    // Utiliser la liste actuelle des sauvegardes compétitives
     return competitiveSaveIds.length < 3;
   }
 
-  // Mettre à jour les statistiques globales
-  void updateGlobalStats(Map<String, dynamic> newStats) {
-    _globalStats.addAll(newStats);
+  // Mettre à jour les statistiques globales - renvoie un nouveau profil
+  UserProfile updateGlobalStats(Map<String, dynamic> newStats) {
+    Map<String, dynamic> updatedStats = Map.from(globalStats)..addAll(newStats);
+    return this.copyWith(globalStats: updatedStats);
   }
 
   // Conversion en Map pour la sérialisation
@@ -93,14 +91,14 @@ class UserProfile {
       'userId': userId,
       'displayName': displayName,
       'googleId': googleId,
-      'profileImageUrl': _profileImageUrl ?? profileImageUrl,
+      'profileImageUrl': profileImageUrl,
       'profileImagePath': profileImagePath,
       'customAvatarPath': customAvatarPath,
       'privacySettings': privacySettings,
       'globalStats': globalStats,
       'competitiveSaveIds': competitiveSaveIds,
       'infiniteSaveIds': infiniteSaveIds,
-      'lastLogin': _lastLogin.toIso8601String(),
+      'lastLogin': lastLogin.toIso8601String(),
     };
   }
 
@@ -149,14 +147,14 @@ class UserProfile {
       userId: userId ?? this.userId,
       displayName: displayName ?? this.displayName,
       googleId: googleId ?? this.googleId,
-      profileImageUrl: profileImageUrl ?? this._profileImageUrl ?? this.profileImageUrl,
+      profileImageUrl: profileImageUrl ?? this.profileImageUrl,
       profileImagePath: profileImagePath ?? this.profileImagePath,
       customAvatarPath: customAvatarPath ?? this.customAvatarPath,
       privacySettings: privacySettings ?? this.privacySettings,
       globalStats: globalStats ?? this.globalStats,
-      competitiveSaveIds: competitiveSaveIds ?? this._competitiveSaveIds,
-      infiniteSaveIds: infiniteSaveIds ?? this._infiniteSaveIds,
-      lastLogin: lastLogin ?? this._lastLogin,
+      competitiveSaveIds: competitiveSaveIds ?? this.competitiveSaveIds,
+      infiniteSaveIds: infiniteSaveIds ?? this.infiniteSaveIds,
+      lastLogin: lastLogin ?? this.lastLogin,
     );
   }
 }

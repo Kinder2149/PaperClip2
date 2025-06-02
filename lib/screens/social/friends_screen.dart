@@ -1,6 +1,7 @@
 // lib/screens/social/friends_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../main.dart' show serviceLocator;
 import '../../services/social/friends_service.dart';
 import '../../services/user/user_manager.dart';
 import '../../models/social/friend_model.dart';
@@ -56,7 +57,13 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
     final userId = userManager.currentProfile?.userId;
 
     if (userId != null) {
-      _friendsService = FriendsService(userId, userManager);
+      // Utiliser des paramètres nommés pour le constructeur
+      _friendsService = FriendsService(
+        userId: userId,
+        userManager: userManager,
+        socialService: serviceLocator.socialService!,
+        analyticsService: serviceLocator.analyticsService!,
+      );
       _loadData();
     } else {
       setState(() {

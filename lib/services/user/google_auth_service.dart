@@ -23,6 +23,13 @@ class GoogleAuthService extends ChangeNotifier {
   // Clés pour les préférences partagées
   static const String _playerInfoKey = 'google_player_info';
   static const String _lastSignInKey = 'last_google_signin';
+  
+  // État d'authentification
+  bool _isSignedIn = false;
+  
+  // Cache pour le token d'accès
+  String? _cachedAccessToken;
+  DateTime? _tokenExpirationTime;
 
   // Accesseurs
   bool get isSignedIn => _authService.isAuthenticated;
@@ -157,9 +164,10 @@ class GoogleAuthService extends ChangeNotifier {
       }
 
       // Token pas en cache ou expiré, en obtenir un nouveau
-      if (_auth.currentUser != null) {
-        final idToken = await _auth.currentUser!.getIdToken();
-        _cachedAccessToken = idToken;
+      // Vérifier si nous pouvons obtenir un token via AuthService
+      final token = await _authService.getIdToken();
+      if (token != null) {
+        _cachedAccessToken = token;
         _tokenExpirationTime = DateTime.now().add(const Duration(minutes: 55));
         return _cachedAccessToken;
       }
@@ -269,7 +277,7 @@ class GoogleAuthService extends ChangeNotifier {
   /// Se déconnecte de Google.
   Future<void> signOut() async {
     try {
-      await _auth.signOut();
+      await _authService.logout();
       await _googleSignIn.signOut();
       _cachedAccessToken = null;
       _tokenExpirationTime = null;

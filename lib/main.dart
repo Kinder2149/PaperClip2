@@ -21,7 +21,7 @@ import 'screens/user_profile_screen.dart';
 
 // Imports des configurations
 import 'env_config.dart';
-import 'api_config.dart';
+import 'config/api_config.dart';
 
 // Imports des services utilisateur
 import 'package:paperclip2/services/user/user_manager.dart';
@@ -78,18 +78,29 @@ class ServiceLocator {
     try {
       final profile = userManager.currentProfile;
 
-      if (profile != null) {
+      if (profile != null && socialService != null && analyticsService != null) {
         // Tenter d'initialiser avec le profil local
         debugPrint('Initialisation des services sociaux pour l\'utilisateur: ${profile.userId}');
 
-        // Initialiser les services sociaux avec l'ID du profil local
-        friendsService = FriendsService(profile.userId, userManager);
-        userStatsService = UserStatsService(profile.userId, userManager);
+        // Initialiser les services sociaux avec les services requis et les paramètres userId et userManager
+        friendsService = FriendsService(
+          userId: profile.userId,
+          userManager: userManager,
+          socialService: socialService!, 
+          analyticsService: analyticsService!
+        );
+        
+        userStatsService = UserStatsService(
+          userId: profile.userId,
+          userManager: userManager,
+          socialService: socialService!,
+          analyticsService: analyticsService!
+        );
 
         return;
       }
 
-      debugPrint('Impossible d\'initialiser les services sociaux: utilisateur non authentifié');
+      debugPrint('Impossible d\'initialiser les services sociaux: utilisateur non authentifié ou services manquants');
     } catch (e, stack) {
       debugPrint('Erreur lors de l\'initialisation des services sociaux: $e');
       analyticsService?.recordError(e, stack, reason: 'Social services init error');
@@ -274,12 +285,59 @@ Future<void> main() async {
 }
 
 Future<void> _initializeServices() async {
+  print('Initializing services...');
+  
   try {
+    // Initialiser l'ApiClient (doit être fait en premier)
+    final apiClient = serviceLocator.apiClient;
+    await apiClient?.initialize();
+    print('API Client initialized');
+    
+    // Initialiser les services API
+    final authService = serviceLocator.authService;
+    await authService?.initialize();
+    print('Auth Service initialized');
+    
+    final analyticsService = serviceLocator.analyticsService;
+    await analyticsService?.initialize();
+    print('Analytics Service initialized');
+    
+    final storageService = serviceLocator.storageService;
+    await storageService?.initialize();
+    print('Storage Service initialized');
+    
+    final configService = serviceLocator.configService;
+    await configService?.initialize();
+    print('Config Service initialized');
+    
+    final socialService = serviceLocator.socialService;
+    await socialService?.initialize();
+    print('Social Service initialized');
+    
+    final saveService = serviceLocator.saveService;
+    await saveService?.initialize();
+    print('Save Service initialized');
+    
+    // Le UserManager sera initialisé ailleurs car il n'est pas dans serviceLocator
+    // mais est accessible directement comme singleton via UserManager.instance
+    await UserManager.instance.initialize();
+    print('User Manager initialized');
+    
+    // Initialiser la musique de fond
     await backgroundMusicService.initialize();
     print('Background music initialized');
-  } catch (e) {
-    serviceLocator.analyticsService?.recordError(e, StackTrace.current);
-    print('Error initializing background music: $e');
+    
+    print('All services initialized successfully');
+  } catch (e, stack) {
+    // Utiliser directement analyticsService si disponible
+    // (si l'erreur se produit avant l'initialisation de analyticsService,
+    // cela va échouer silencieusement)
+    try {
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Service initialization error');
+    } catch (_) {}
+    
+    print('Error initializing services: $e');
+    print(stack);
   }
 }
 

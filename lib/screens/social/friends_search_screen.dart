@@ -44,7 +44,13 @@ class _FriendsSearchScreenState extends State<FriendsSearchScreen> with SingleTi
     final userId = userManager.currentProfile?.userId;
 
     if (userId != null) {
-      _friendsService = FriendsService(userId, userManager);
+      // Utilisation de paramètres nommés pour le constructeur
+      _friendsService = FriendsService(
+        userId: userId,
+        userManager: userManager,
+        socialService: serviceLocator.socialService!,
+        analyticsService: serviceLocator.analyticsService!,
+      );
       // Charger automatiquement les suggestions au démarrage
       _loadSuggestions();
     }
@@ -73,10 +79,21 @@ class _FriendsSearchScreenState extends State<FriendsSearchScreen> with SingleTi
     });
 
     try {
-      final results = await _friendsService.searchUsers(query);
-
+      // _friendsService.searchUsers retourne une List<UserProfile>
+      final userProfiles = await _friendsService.searchUsers(query);
+      
       setState(() {
-        _searchResults = results;
+        // Convertir chaque UserProfile en Map<String, dynamic> pour compatibilité
+        _searchResults = userProfiles.map((profile) => {
+          'userId': profile.userId,
+          'displayName': profile.displayName,
+          'photoUrl': profile.profileImageUrl,
+          'email': profile.googleId ?? '',
+          'bio': profile.globalStats['bio'] ?? '',
+          'level': profile.globalStats['level'] ?? 1,
+          'xp': profile.globalStats['xp'] ?? 0,
+          'registrationDate': profile.lastLogin.toIso8601String(),
+        }).toList();
         _isSearching = false;
       });
     } catch (e) {
@@ -113,18 +130,33 @@ class _FriendsSearchScreenState extends State<FriendsSearchScreen> with SingleTi
       // Normaliser l'ID (supprimer les espaces, etc.)
       final normalizedId = userId.trim();
 
-      final result = await _friendsService.findUserById(normalizedId);
+      // findUserById retourne directement un UserProfile?
+      final userProfile = await _friendsService.findUserById(normalizedId);
 
       setState(() {
-        _foundUserById = result;
+        // Pour le _foundUserById, on convertit en Map<String, dynamic> si non null
+        if (userProfile != null) {
+          _foundUserById = {
+            'userId': userProfile.userId,
+            'displayName': userProfile.displayName,
+            'photoUrl': userProfile.profileImageUrl,
+            'email': userProfile.googleId ?? '',
+            'bio': userProfile.globalStats['bio'] ?? '',
+            'level': userProfile.globalStats['level'] ?? 1,
+            'xp': userProfile.globalStats['xp'] ?? 0,
+            'registrationDate': userProfile.lastLogin.toIso8601String(),
+          };
+        } else {
+          _foundUserById = null;
+        }
         _isSearchingById = false;
       });
-
-      if (result == null && mounted) {
+      
+      if (userProfile == null && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Utilisateur non trouvé avec cet identifiant'),
-            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 2),
           ),
         );
       }
@@ -151,18 +183,27 @@ class _FriendsSearchScreenState extends State<FriendsSearchScreen> with SingleTi
     });
 
     try {
-      // Utiliser la méthode getSuggestedUsers du FriendsService
-      final suggestions = await _friendsService.getSuggestedUsers();
-
+      // Utiliser la méthode getSuggestedUsers du FriendsService qui retourne une List<UserProfile>
+      final userProfiles = await _friendsService.getSuggestedUsers();
+      
       setState(() {
-        _suggestedUsers = suggestions;
+        // Convertir chaque UserProfile en Map<String, dynamic> pour compatibilité 
+        _suggestedUsers = userProfiles.map((profile) => {
+          'userId': profile.userId,
+          'displayName': profile.displayName,
+          'photoUrl': profile.profileImageUrl,
+          'email': profile.googleId ?? '',
+          'bio': profile.globalStats['bio'] ?? '',
+          'level': profile.globalStats['level'] ?? 1,
+          'xp': profile.globalStats['xp'] ?? 0,
+          'registrationDate': profile.lastLogin.toIso8601String(),
+        }).toList();
+        
         _isLoadingSuggestions = false;
       });
-    } catch (e, stack) {
-      debugPrint('Erreur lors du chargement des suggestions: $e');
-      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Friends search error');
-
+    } catch (e) {
       setState(() {
+        _suggestedUsers = [];
         _isLoadingSuggestions = false;
       });
 
@@ -188,19 +229,32 @@ class _FriendsSearchScreenState extends State<FriendsSearchScreen> with SingleTi
     });
 
     try {
+      // sendFriendRequest retourne un bool indiquant le succès ou l'échec
       final success = await _friendsService.sendFriendRequest(targetUserId, targetName);
-
-      if (success && mounted) {
+      
+      if (mounted) {
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Demande envoyée à $targetName'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Erreur lors de l\'envoi de la demande'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // Gérer les exceptions
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Demande envoyée à $targetName'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erreur lors de l\'envoi de la demande'),
+            content: Text('Erreur: $e'),
             backgroundColor: Colors.red,
           ),
         );

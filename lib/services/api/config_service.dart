@@ -275,4 +275,57 @@ class ConfigService {
       setDefaultValue(key, value);
     });
   }
+  
+  /// Récupère les données utilisateur depuis le backend
+  /// Remplace la fonction Firestore de récupération des documents utilisateur
+  Future<Map<String, dynamic>> getUserData(String userId, String dataType) async {
+    try {
+      final data = await _apiClient.get(
+        '/config/user-data',
+        queryParams: {
+          'user_id': userId,
+          'data_type': dataType,
+        },
+      );
+      
+      return {
+        'success': data['success'] ?? false, 
+        'message': data['message'] ?? '',
+        'data': data['data'] ?? {}
+      };
+    } catch (e) {
+      debugPrint('Erreur lors de la récupération des données utilisateur: $e');
+      return {
+        'success': false,
+        'message': e.toString(),
+        'data': {}
+      };
+    }
+  }
+  
+  /// Sauvegarde les données utilisateur sur le backend
+  /// Remplace la fonction Firestore de sauvegarde des documents utilisateur
+  Future<Map<String, dynamic>> saveUserData(String userId, String dataType, Map<String, dynamic> data) async {
+    try {
+      final response = await _apiClient.post(
+        '/config/user-data',
+        body: {
+          'user_id': userId,
+          'data_type': dataType,
+          'data': data,
+        },
+      );
+      
+      return {
+        'success': response['success'] ?? false,
+        'message': response['message'] ?? ''
+      };
+    } catch (e) {
+      debugPrint('Erreur lors de la sauvegarde des données utilisateur: $e');
+      return {
+        'success': false,
+        'message': e.toString()
+      };
+    }
+  }
 }

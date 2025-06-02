@@ -8,24 +8,47 @@ import '../user/user_manager.dart';
 import '../api/api_services.dart';
 
 class UserStatsService extends ChangeNotifier {
-  final String _userId;
-  final UserManager _userManager;
+  String _userId;
   
   // Services API
-  final ApiClient _apiClient = ApiClient();
-  final SocialService _socialService = SocialService();
-  final AnalyticsService _analyticsService = AnalyticsService();
+  final SocialService _socialService;
+  final AnalyticsService _analyticsService;
+  final UserManager _userManager;
 
   // Durée minimale entre deux mises à jour de stats
   static const Duration _minUpdateInterval = Duration(minutes: 5);
   DateTime _lastUpdate = DateTime.now().subtract(Duration(minutes: 10));
 
   // Constructeur
-  UserStatsService(this._userId, this._userManager);
+  UserStatsService({
+    required String userId,
+    required UserManager userManager,
+    required SocialService socialService,
+    required AnalyticsService analyticsService,
+  }) : 
+    _userId = userId,
+    _userManager = userManager,
+    _socialService = socialService,
+    _analyticsService = analyticsService {
+    
+    // Si l'utilisateur change, mettre à jour l'ID
+    _userManager.profileChanged.addListener(() {
+      final profile = _userManager.profileChanged.value;
+      if (profile != null && profile.userId != _userId) {
+        _userId = profile.userId;
+        notifyListeners();
+      }
+    });
+  }
 
   // Mettre à jour les statistiques publiques
   Future<bool> updatePublicStats(GameState gameState) async {
     try {
+      // Vérifier si l'ID utilisateur est valide
+      if (_userId.isEmpty) {
+        return false;
+      }
+      
       // Vérifier l'intervalle de mise à jour
       final now = DateTime.now();
       if (now.difference(_lastUpdate) < _minUpdateInterval) {
@@ -48,7 +71,12 @@ class UserStatsService extends ChangeNotifier {
       );
 
       // Envoyer les statistiques au backend
-      await _socialService.updateUserStats(stats.toJson());
+      final response = await _socialService.updateUserStats(userId: _userId, stats: stats.toJson());
+      
+      if (response is! Map<String, dynamic> || response['success'] == false) {
+        debugPrint('Échec de la mise à jour des statistiques: ${response['message'] ?? 'Erreur inconnue'}');
+        return false;
+      }
       
       // Log événement
       _analyticsService.logEvent('stats_updated', parameters: {
@@ -59,7 +87,7 @@ class UserStatsService extends ChangeNotifier {
       return true;
     } catch (e, stack) {
       debugPrint('Erreur lors de la mise à jour des statistiques: $e');
-      _analyticsService.recordCrash(e, stack, reason: 'Error updating public stats');
+      _analyticsService.recordError(e, stack);
       return false;
     }
   }
@@ -68,22 +96,28 @@ class UserStatsService extends ChangeNotifier {
   Future<UserStatsModel?> getFriendStats(String friendId) async {
     try {
       // Récupérer les statistiques via l'API
-      final statsData = await _socialService.getUserStats(friendId);
+      final statsResponse = await _socialService.getUserStats(userId: friendId);
       
-      if (statsData == null) {
+      if (statsResponse is! Map<String, dynamic> || statsResponse['success'] == false) {
+        debugPrint('Échec de la récupération des statistiques: ${statsResponse['message'] ?? 'Erreur inconnue'}');
         return null;
       }
+      
+      final statsData = statsResponse['stats'] ?? {};
       
       // Récupérer les informations du profil
-      final userData = await _socialService.getUserProfile(friendId);
+      final userResponse = await _socialService.getUserProfile(userId: friendId);
       
-      if (userData == null) {
+      if (userResponse is! Map<String, dynamic> || userResponse['success'] == false) {
+        debugPrint('Échec de la récupération du profil: ${userResponse['message'] ?? 'Erreur inconnue'}');
         return null;
       }
+      
+      final userData = userResponse['user'] ?? {};
 
       return UserStatsModel(
         userId: friendId,
-        displayName: userData.displayName,
+        displayName: userData['displayName'] ?? 'Inconnu',
         totalPaperclips: statsData['totalPaperclips'] ?? 0,
         level: statsData['level'] ?? 1,
         money: (statsData['money'] as num?)?.toDouble() ?? 0.0,
@@ -94,7 +128,7 @@ class UserStatsService extends ChangeNotifier {
       );
     } catch (e, stack) {
       debugPrint('Erreur lors de la récupération des statistiques de l\'ami: $e');
-      _analyticsService.recordCrash(e, stack, reason: 'Error getting friend stats');
+      _analyticsService.recordError(e, stack);
       return null;
     }
   }
@@ -143,7 +177,7 @@ class UserStatsService extends ChangeNotifier {
       };
     } catch (e, stack) {
       debugPrint('Erreur lors de la comparaison avec l\'ami: $e');
-      _analyticsService.recordCrash(e, stack, reason: 'Error comparing with friend');
+      _analyticsService.recordError(e, stack);
       return null;
     }
   }
@@ -152,10 +186,74 @@ class UserStatsService extends ChangeNotifier {
   Future<List<UserStatsModel>> getFriendsLeaderboard() async {
     try {
       // Récupérer le classement via l'API
-      return await _socialService.getFriendsLeaderboard();
+      final Map<String, dynamic> response = await _socialService.getLeaderboardEntries(
+        leaderboardId: "friends", 
+        friendsOnly: true
+      ) as Map<String, dynamic>;
+      
+      if (response.isEmpty) {
+        debugPrint('Échec de la récupération du classement des amis: réponse vide');
+        return [];
+      }
+      
+      // Vérifier le champ success dans la réponse
+      if (!response.keys.contains('success')) {
+        debugPrint('Échec de la récupération du classement des amis: champ success manquant');
+        return [];
+      }
+      
+      final dynamic successValue = response['success'];
+      if (successValue is! bool || !successValue) {
+        // Récupérer le message d'erreur s'il existe
+        String message = 'Erreur inconnue';
+        if (response.keys.contains('message')) {
+          final dynamic msgValue = response['message'];
+          if (msgValue is String) {
+            message = msgValue;
+          }
+        }
+        debugPrint('Échec de la récupération du classement des amis: $message');
+        return [];
+      }
+      
+      // Récupérer les données du classement
+      if (!response.keys.contains('data')) {
+        debugPrint('Échec de la récupération du classement: champ data manquant');
+        return [];
+      }
+      
+      // Utiliser un accès sûr avec cast explicite
+      final dynamic entriesData = response['data'] as dynamic;
+      if (entriesData == null) {
+        debugPrint('Échec de la récupération du classement: aucune donnée');
+        return [];
+      }
+      
+      final List<dynamic> entries = entriesData is List ? entriesData : (entriesData['entries'] ?? []);
+      final List<UserStatsModel> leaderboard = [];
+      
+      for (var entry in entries) {
+        try {
+          leaderboard.add(UserStatsModel(
+            userId: entry['userId'] ?? '',
+            displayName: entry['displayName'] ?? 'Inconnu',
+            totalPaperclips: entry['score'] ?? 0,
+            level: entry['level'] ?? 1,
+            money: (entry['money'] as num?)?.toDouble() ?? 0.0,
+            bestScore: entry['bestScore'] ?? 0,
+            efficiency: (entry['efficiency'] as num?)?.toDouble() ?? 0.0,
+            upgradesBought: entry['upgradesBought'] ?? 0,
+            lastUpdated: DateTime.parse(entry['lastUpdated'] ?? DateTime.now().toIso8601String()),
+          ));
+        } catch (e) {
+          debugPrint('Erreur lors du traitement d\'une entrée du classement: $e');
+        }
+      }
+      
+      return leaderboard;
     } catch (e, stack) {
       debugPrint('Erreur lors de la récupération du classement des amis: $e');
-      _analyticsService.recordCrash(e, stack, reason: 'Error getting friends leaderboard');
+      _analyticsService.recordError(e, stack);
       return [];
     }
   }
@@ -164,10 +262,76 @@ class UserStatsService extends ChangeNotifier {
   Future<List<UserStatsModel>> getGlobalLeaderboard() async {
     try {
       // Récupérer le classement via l'API
-      return await _socialService.getGlobalLeaderboard();
+      final Map<String, dynamic> response = await _socialService.getLeaderboardEntries(
+        leaderboardId: "global", 
+        limit: 100,
+        offset: 0,
+        friendsOnly: false
+      ) as Map<String, dynamic>;
+      
+      if (response.isEmpty) {
+        debugPrint('Échec de la récupération du classement global: réponse vide');
+        return [];
+      }
+      
+      // Vérifier le champ success dans la réponse
+      if (!response.keys.contains('success')) {
+        debugPrint('Échec de la récupération du classement global: champ success manquant');
+        return [];
+      }
+      
+      final dynamic successValue = response['success'];
+      if (successValue is! bool || !successValue) {
+        // Récupérer le message d'erreur s'il existe
+        String message = 'Erreur inconnue';
+        if (response.keys.contains('message')) {
+          final dynamic msgValue = response['message'];
+          if (msgValue is String) {
+            message = msgValue;
+          }
+        }
+        debugPrint('Échec de la récupération du classement global: $message');
+        return [];
+      }
+      
+      // Récupérer les données du classement
+      if (!response.keys.contains('data')) {
+        debugPrint('Échec de la récupération du classement: champ data manquant');
+        return [];
+      }
+      
+      // Utiliser un accès sûr avec cast explicite
+      final dynamic entriesData = response['data'] as dynamic;
+      if (entriesData == null) {
+        debugPrint('Échec de la récupération du classement: aucune donnée');
+        return [];
+      }
+      
+      final List<dynamic> entries = entriesData is List ? entriesData : (entriesData['entries'] ?? []);
+      final List<UserStatsModel> leaderboard = [];
+      
+      for (var entry in entries) {
+        try {
+          leaderboard.add(UserStatsModel(
+            userId: entry['userId'] ?? '',
+            displayName: entry['displayName'] ?? 'Inconnu',
+            totalPaperclips: entry['score'] ?? 0,
+            level: entry['level'] ?? 1,
+            money: (entry['money'] as num?)?.toDouble() ?? 0.0,
+            bestScore: entry['bestScore'] ?? 0,
+            efficiency: (entry['efficiency'] as num?)?.toDouble() ?? 0.0,
+            upgradesBought: entry['upgradesBought'] ?? 0,
+            lastUpdated: DateTime.parse(entry['lastUpdated'] ?? DateTime.now().toIso8601String()),
+          ));
+        } catch (e) {
+          debugPrint('Erreur lors du traitement d\'une entrée du classement: $e');
+        }
+      }
+      
+      return leaderboard;
     } catch (e, stack) {
       debugPrint('Erreur lors de la récupération du classement global: $e');
-      _analyticsService.recordCrash(e, stack, reason: 'Error getting global leaderboard');
+      _analyticsService.recordError(e, stack);
       return [];
     }
   }
@@ -176,10 +340,45 @@ class UserStatsService extends ChangeNotifier {
   Future<List<Map<String, dynamic>>> getUserAchievements() async {
     try {
       // Récupérer les succès via l'API
-      return await _socialService.getUserAchievements();
+      final response = await _socialService.getUserAchievements();
+      
+      // Traiter la réponse correctement
+      if (response is! Map<String, dynamic>) {
+        debugPrint('Format de réponse getUserAchievements invalide');
+        return [];
+      }
+      
+      final success = response['success'];
+      if (success is bool && !success) {
+        final message = response['message'];
+        debugPrint('Échec de la récupération des succès: ${message is String ? message : 'Erreur inconnue'}');
+        return [];
+      }
+      
+      final dynamic achievementsData = response['data'];
+      if (achievementsData == null) {
+        debugPrint('Aucun succès trouvé');
+        return [];
+      }
+      
+      final List<Map<String, dynamic>> userAchievements = [];
+      
+      // Convertir les données en liste de Map<String, dynamic>
+      if (achievementsData is List) {
+        for (var achievement in achievementsData) {
+          if (achievement is Map<String, dynamic>) {
+            userAchievements.add(achievement);
+          }
+        }
+      } else if (achievementsData is Map<String, dynamic>) {
+        // Si c'est un seul objet, on l'ajoute directement
+        userAchievements.add(achievementsData);
+      }
+      
+      return userAchievements;
     } catch (e, stack) {
       debugPrint('Erreur lors de la récupération des succès: $e');
-      _analyticsService.recordCrash(e, stack, reason: 'Error getting user achievements');
+      _analyticsService.recordError(e, stack);
       return [];
     }
   }

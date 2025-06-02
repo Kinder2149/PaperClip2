@@ -34,6 +34,10 @@ class AuthService {
   String? get username => _username;
   bool get isAdmin => _isAdmin;
   
+  // Getters supplémentaires pour la compatibilité avec Google Auth
+  String? get email => null; // À remplacer par la valeur réelle quand disponible
+  String? get photoUrl => null; // À remplacer par la valeur réelle quand disponible
+  
   // Constructeur interne
   AuthService._internal();
   
@@ -218,6 +222,16 @@ class AuthService {
       debugPrint('Erreur lors de la liaison avec Google: $e');
       return {'success': false, 'message': e.toString()};
     }
+  }
+  
+  // Sauvegarder le token d'authentification
+  Future<void> _saveAuthToken(String token, DateTime expiration) async {
+    await _apiClient.setAuthToken(token, expiration);
+  }
+  
+  // Récupérer le token d'authentification (pour compatibilité avec l'ancien code)
+  Future<String?> getIdToken() async {
+    return _apiClient.authToken;
   }
   
   // Déconnexion

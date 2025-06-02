@@ -59,9 +59,10 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^3.0.1
   flutter_launcher_icons: ^0.13.1
-  mockito: ^5.4.2
-  build_runner: ^2.4.6  # Nécessaire pour la génération de code mockito
+  mockito: ^5.4.5
+  build_runner: ^2.4.15  # Nécessaire pour la génération de code mockito
   http_mock_adapter: ^0.6.1  # Pour mocker les requêtes HTTP
+  test: ^1.25.8
 
 flutter_icons:
   android: "ic_launcher"

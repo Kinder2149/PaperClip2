@@ -54,8 +54,9 @@ class AppConfig {
   /// Récupère et active la configuration à distance
   Future<bool> fetchAndActivateConfig() async {
     try {
-      final config = await _configService.getConfig();
-      if (config != null && config.isNotEmpty) {
+      // Utiliser getAll() qui est disponible dans notre ConfigService
+      final config = _configService.getAll();
+      if (config.isNotEmpty) {
         _configValues.addAll(config);
         return true;
       }
@@ -132,11 +133,17 @@ class AppConfig {
   /// Sauvegarde une partie dans le cloud
   Future<SaveResult> saveGameToCloud(String userId, String saveData) async {
     try {
-      final result = await _configService.saveUserData(userId, 'game_save', saveData);
+      // Conversion de la chaîne en Map pour le format attendu par l'API
+      final Map<String, dynamic> saveDataMap = {
+        'save_content': saveData,
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+      
+      final result = await _configService.saveUserData(userId, 'game_save', saveDataMap);
       return SaveResult(
-        success: result.success,
-        message: result.message,
-        data: result.data,
+        success: result['success'] ?? false,
+        message: result['message'] ?? 'Erreur inconnue',
+        // data reste null car c'est une sauvegarde
       );
     } catch (e, stack) {
       debugPrint('Erreur lors de la sauvegarde dans le cloud: $e');
@@ -152,10 +159,12 @@ class AppConfig {
   Future<SaveResult> loadGameFromCloud(String userId) async {
     try {
       final result = await _configService.getUserData(userId, 'game_save');
+      final saveData = result['data'] ?? {};
+      
       return SaveResult(
-        success: result.success,
-        message: result.message,
-        data: result.data,
+        success: result['success'] ?? false,
+        message: result['message'] ?? 'Erreur inconnue',
+        data: saveData['save_content'], // Extraire le contenu réel de la sauvegarde
       );
     } catch (e, stack) {
       debugPrint('Erreur lors du chargement depuis le cloud: $e');

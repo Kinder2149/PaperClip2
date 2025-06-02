@@ -24,7 +24,7 @@ class SocialService {
   // ======== GESTION DES AMIS ========
   
   /// Envoi d'une demande d'amitié
-  Future<Map<String, dynamic>> sendFriendRequest(String receiverId) async {
+  Future<Map<String, dynamic>> sendFriendRequest({required String receiverId}) async {
     try {
       final data = await _apiClient.post(
         '/social/friends/requests',
@@ -54,43 +54,64 @@ class SocialService {
   }
   
   /// Récupération des demandes d'amitié reçues
-  Future<List<Map<String, dynamic>>> getReceivedFriendRequests() async {
+  Future<Map<String, dynamic>> getReceivedFriendRequests({String? userId}) async {
     try {
       final data = await _apiClient.get('/social/friends/requests/received');
       
-      return List<Map<String, dynamic>>.from(data['requests'] ?? []);
+      return {
+        'success': true,
+        'data': List<Map<String, dynamic>>.from(data['requests'] ?? [])
+      };
     } catch (e) {
       debugPrint('Erreur lors de la récupération des demandes d\'amitié reçues: $e');
-      return [];
+      return {
+        'success': false,
+        'message': e.toString(),
+        'data': []
+      };
     }
   }
   
   /// Récupération des demandes d'amitié envoyées
-  Future<List<Map<String, dynamic>>> getSentFriendRequests() async {
+  Future<Map<String, dynamic>> getSentFriendRequests({String? userId}) async {
     try {
       final data = await _apiClient.get('/social/friends/requests/sent');
       
-      return List<Map<String, dynamic>>.from(data['requests'] ?? []);
+      return {
+        'success': true,
+        'data': List<Map<String, dynamic>>.from(data['requests'] ?? [])
+      };
     } catch (e) {
       debugPrint('Erreur lors de la récupération des demandes d\'amitié envoyées: $e');
-      return [];
+      return {
+        'success': false,
+        'message': e.toString(),
+        'data': []
+      };
     }
   }
   
   /// Récupération de la liste d'amis
-  Future<List<Map<String, dynamic>>> getFriends() async {
+  Future<Map<String, dynamic>> getFriends({String? userId}) async {
     try {
       final data = await _apiClient.get('/social/friends');
       
-      return List<Map<String, dynamic>>.from(data['friends'] ?? []);
+      return {
+        'success': true,
+        'data': List<Map<String, dynamic>>.from(data['friends'] ?? [])
+      };
     } catch (e) {
       debugPrint('Erreur lors de la récupération de la liste d\'amis: $e');
-      return [];
+      return {
+        'success': false,
+        'message': e.toString(),
+        'data': []
+      };
     }
   }
   
   /// Suppression d'un ami
-  Future<bool> removeFriend(String friendId) async {
+  Future<bool> removeFriend({required String friendId}) async {
     try {
       await _apiClient.delete('/social/friends/$friendId');
       
@@ -102,31 +123,45 @@ class SocialService {
   }
   
   /// Recherche d'utilisateurs
-  Future<List<Map<String, dynamic>>> searchUsers(String query) async {
+  Future<Map<String, dynamic>> searchUsers({required String query}) async {
     try {
       final data = await _apiClient.get(
         '/social/users/search',
         queryParams: {'query': query},
       );
       
-      return List<Map<String, dynamic>>.from(data['users'] ?? []);
+      return {
+        'success': true,
+        'data': List<Map<String, dynamic>>.from(data['users'] ?? [])
+      };
     } catch (e) {
       debugPrint('Erreur lors de la recherche d\'utilisateurs: $e');
-      return [];
+      return {
+        'success': false,
+        'message': e.toString(),
+        'data': []
+      };
     }
   }
   
   // ======== GESTION DES CLASSEMENTS ========
   
   /// Récupération des classements disponibles
-  Future<List<Map<String, dynamic>>> getLeaderboards() async {
+  Future<Map<String, dynamic>> getLeaderboards() async {
     try {
       final data = await _apiClient.get('/social/leaderboards');
       
-      return List<Map<String, dynamic>>.from(data['leaderboards'] ?? []);
+      return {
+        'success': true,
+        'data': List<Map<String, dynamic>>.from(data['leaderboards'] ?? [])
+      };
     } catch (e) {
       debugPrint('Erreur lors de la récupération des classements: $e');
-      return [];
+      return {
+        'success': false,
+        'message': e.toString(),
+        'data': []
+      };
     }
   }
   
@@ -158,8 +193,8 @@ class SocialService {
   }
   
   /// Récupération des entrées d'un classement
-  Future<List<Map<String, dynamic>>> getLeaderboardEntries(
-    String leaderboardId, {
+  Future<List<Map<String, dynamic>>> getLeaderboardEntries({
+    required String leaderboardId,
     int limit = 100,
     int offset = 0,
     bool friendsOnly = false,
@@ -198,17 +233,88 @@ class SocialService {
     }
   }
   
+  /// Récupération du profil d'un utilisateur
+  Future<Map<String, dynamic>> getUserProfile({required String userId}) async {
+    try {
+      final data = await _apiClient.get('/social/users/$userId/profile');
+      
+      return data;
+    } catch (e) {
+      debugPrint('Erreur lors de la récupération du profil utilisateur: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Accepter une demande d'amitié
+  Future<Map<String, dynamic>> acceptFriendRequest({required String requestId}) async {
+    try {
+      final data = await _apiClient.put(
+        '/social/friends/requests/$requestId/accept',
+      );
+      
+      return data;
+    } catch (e) {
+      debugPrint('Erreur lors de l\'acceptation de la demande d\'amitié: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Décliner une demande d'amitié
+  Future<Map<String, dynamic>> declineFriendRequest({required String requestId}) async {
+    try {
+      final data = await _apiClient.put(
+        '/social/friends/requests/$requestId/decline',
+      );
+      
+      return data;
+    } catch (e) {
+      debugPrint('Erreur lors du refus de la demande d\'amitié: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Récupérer des suggestions d'amis
+  Future<Map<String, dynamic>> getSuggestedFriends({String? userId}) async {
+    try {
+      final queryParams = userId != null ? {'user_id': userId} : <String, String>{};
+      
+      final data = await _apiClient.get(
+        '/social/friends/suggestions',
+        queryParams: queryParams,
+      );
+      
+      return {
+        'success': true,
+        'data': List<Map<String, dynamic>>.from(data['users'] ?? [])
+      };
+    } catch (e) {
+      debugPrint('Erreur lors de la récupération des suggestions d\'amis: $e');
+      return {
+        'success': false,
+        'message': e.toString(),
+        'data': []
+      };
+    }
+  }
+
   // ======== GESTION DES SUCCÈS ========
   
   /// Récupération des succès disponibles
-  Future<List<Map<String, dynamic>>> getAchievements() async {
+  Future<Map<String, dynamic>> getAchievements() async {
     try {
       final data = await _apiClient.get('/social/achievements');
       
-      return List<Map<String, dynamic>>.from(data['achievements'] ?? []);
+      return {
+        'success': true,
+        'data': List<Map<String, dynamic>>.from(data['achievements'] ?? [])
+      };
     } catch (e) {
       debugPrint('Erreur lors de la récupération des succès: $e');
-      return [];
+      return {
+        'success': false,
+        'message': e.toString(),
+        'data': []
+      };
     }
   }
   
@@ -225,14 +331,21 @@ class SocialService {
   }
   
   /// Récupération des succès de l'utilisateur
-  Future<List<Map<String, dynamic>>> getUserAchievements() async {
+  Future<Map<String, dynamic>> getUserAchievements() async {
     try {
       final data = await _apiClient.get('/social/user/achievements');
       
-      return List<Map<String, dynamic>>.from(data['achievements'] ?? []);
+      return {
+        'success': true,
+        'data': List<Map<String, dynamic>>.from(data['achievements'] ?? [])
+      };
     } catch (e) {
       debugPrint('Erreur lors de la récupération des succès de l\'utilisateur: $e');
-      return [];
+      return {
+        'success': false,
+        'message': e.toString(),
+        'data': []
+      };
     }
   }
   
@@ -275,19 +388,26 @@ class SocialService {
   // ======== GESTION DES STATISTIQUES UTILISATEUR ========
   
   /// Récupération des statistiques d'un utilisateur
-  Future<Map<String, dynamic>> getUserStats(String userId) async {
+  Future<Map<String, dynamic>> getUserStats({required String userId}) async {
     try {
       final data = await _apiClient.get('/social/users/$userId/stats');
       
-      return data['stats'] ?? {};
+      return {
+        'success': true,
+        'data': data['stats'] ?? {}
+      };
     } catch (e) {
       debugPrint('Erreur lors de la récupération des statistiques de l\'utilisateur: $e');
-      return {};
+      return {
+        'success': false,
+        'message': e.toString(),
+        'data': {}
+      };
     }
   }
   
   /// Mise à jour des statistiques de l'utilisateur
-  Future<Map<String, dynamic>> updateUserStats(String userId, Map<String, dynamic> stats) async {
+  Future<Map<String, dynamic>> updateUserStats({required String userId, required Map<String, dynamic> stats}) async {
     try {
       final data = await _apiClient.put(
         '/social/user/stats/$userId',

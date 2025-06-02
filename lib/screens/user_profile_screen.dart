@@ -145,7 +145,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             const SizedBox(height: 16),
             // Photo de profil
             GestureDetector(
-              onTap: () => _userManager.uploadProfileImage(),
+              onTap: () => _userManager.uploadProfileImage(null),
               child: CircleAvatar(
                 radius: 60,
                 backgroundColor: Colors.grey[300],

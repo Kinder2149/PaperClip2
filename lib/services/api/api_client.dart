@@ -1,11 +1,13 @@
 // lib/services/api/api_client.dart
 
+import '../../config/api_config.dart';
+
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../api_config.dart';
+// Le chemin est corrigé ici, car nous avons crée le fichier dans lib/config/api_config.dart
 
 /// Service client pour communiquer avec le backend API
 class ApiClient {
@@ -20,6 +22,18 @@ class ApiClient {
   // Getters
   String get baseUrl => ApiConfig.apiBaseUrl;
   bool get isAuthenticated => _authToken != null && (_tokenExpiration?.isAfter(DateTime.now()) ?? false);
+  String? get authToken => _authToken;
+  
+  // Méthode pour définir le token d'auth et l'expiration
+  Future<void> setAuthToken(String token, DateTime expiration) async {
+    _authToken = token;
+    _tokenExpiration = expiration;
+    
+    // Sauvegarder dans les SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    prefs.setString('auth_token', token);
+    prefs.setString('token_expiration', expiration.toIso8601String());
+  }
 
   // Constructeur interne
   ApiClient._internal();
@@ -125,8 +139,8 @@ class ApiClient {
   }
 
   /// Effectue une requête POST
-  Future<dynamic> post(String endpoint, {dynamic body, bool requiresAuth = true}) async {
-    final uri = Uri.parse('$baseUrl$endpoint');
+  Future<dynamic> post(String endpoint, {dynamic body, bool requiresAuth = true, Map<String, String>? queryParams}) async {
+    final uri = Uri.parse('$baseUrl$endpoint').replace(queryParameters: queryParams);
     
     try {
       final response = await http.post(
@@ -144,8 +158,8 @@ class ApiClient {
   }
 
   /// Effectue une requête PUT
-  Future<dynamic> put(String endpoint, {dynamic body, bool requiresAuth = true}) async {
-    final uri = Uri.parse('$baseUrl$endpoint');
+  Future<dynamic> put(String endpoint, {dynamic body, bool requiresAuth = true, Map<String, String>? queryParams}) async {
+    final uri = Uri.parse('$baseUrl$endpoint').replace(queryParameters: queryParams);
     
     try {
       final response = await http.put(
@@ -163,8 +177,8 @@ class ApiClient {
   }
 
   /// Effectue une requête DELETE
-  Future<dynamic> delete(String endpoint, {bool requiresAuth = true}) async {
-    final uri = Uri.parse('$baseUrl$endpoint');
+  Future<dynamic> delete(String endpoint, {bool requiresAuth = true, Map<String, String>? queryParams}) async {
+    final uri = Uri.parse('$baseUrl$endpoint').replace(queryParameters: queryParams);
     
     try {
       final response = await http.delete(
@@ -181,8 +195,8 @@ class ApiClient {
   }
 
   /// Upload d'un fichier
-  Future<dynamic> uploadFile(String endpoint, File file, {String? fileName, bool requiresAuth = true}) async {
-    final uri = Uri.parse('$baseUrl$endpoint');
+  Future<dynamic> uploadFile(String endpoint, File file, {String? fileName, bool requiresAuth = true, Map<String, String>? queryParams}) async {
+    final uri = Uri.parse('$baseUrl$endpoint').replace(queryParameters: queryParams);
     
     try {
       final request = http.MultipartRequest('POST', uri);

@@ -269,7 +269,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             'showTotalPaperclips': value,
                           },
                         );
-                        await userManager.updateProfile(updatedProfile);
+                        await userManager.updateProfileObject(updatedProfile);
                       },
                     ),
                     SwitchListTile(
@@ -283,7 +283,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             'showLevel': value,
                           },
                         );
-                        await userManager.updateProfile(updatedProfile);
+                        await userManager.updateProfileObject(updatedProfile);
                       },
                     ),
                     SwitchListTile(
@@ -297,7 +297,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             'showMoney': value,
                           },
                         );
-                        await userManager.updateProfile(updatedProfile);
+                        await userManager.updateProfileObject(updatedProfile);
                       },
                     ),
                     SwitchListTile(
@@ -311,7 +311,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             'showEfficiency': value,
                           },
                         );
-                        await userManager.updateProfile(updatedProfile);
+                        await userManager.updateProfileObject(updatedProfile);
                       },
                     ),
                     SwitchListTile(
@@ -325,7 +325,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             'showUpgrades': value,
                           },
                         );
-                        await userManager.updateProfile(updatedProfile);
+                        await userManager.updateProfileObject(updatedProfile);
                       },
                     ),
                   ],

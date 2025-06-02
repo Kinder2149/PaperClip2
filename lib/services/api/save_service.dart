@@ -275,4 +275,51 @@ class SaveService {
       return false;
     }
   }
+  
+  /// Ajouter une sauvegarde au profil de l'utilisateur
+  Future<Map<String, dynamic>> addSaveToProfile(
+    String saveId,
+    String gameMode, {
+    Map<String, dynamic>? metadata,
+  }) async {
+    try {
+      final response = await _apiClient.post(
+        '/user/profile/saves',
+        body: {
+          'save_id': saveId,
+          'game_mode': gameMode,
+          'metadata': metadata ?? {},
+        },
+      );
+      
+      return response;
+    } catch (e) {
+      debugPrint('Erreur lors de l\'ajout de la sauvegarde au profil: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+  
+  /// Retirer une sauvegarde du profil de l'utilisateur
+  Future<Map<String, dynamic>> removeSaveFromProfile(
+    String saveId, {
+    bool deleteFile = false,
+  }) async {
+    try {
+      final queryParams = <String, String>{};
+      
+      if (deleteFile) {
+        queryParams['delete_file'] = 'true';
+      }
+      
+      final response = await _apiClient.delete(
+        '/user/profile/saves/$saveId',
+        queryParams: queryParams,
+      );
+      
+      return response;
+    } catch (e) {
+      debugPrint('Erreur lors du retrait de la sauvegarde du profil: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
 }

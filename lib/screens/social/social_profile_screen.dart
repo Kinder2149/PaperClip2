@@ -150,7 +150,7 @@ class _SocialProfileScreenState extends State<SocialProfileScreen> {
       );
 
       // Mettre à jour le profil
-      await userManager.updateProfile(updatedProfile);
+      await userManager.updateProfileObject(updatedProfile);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -185,7 +185,7 @@ class _SocialProfileScreenState extends State<SocialProfileScreen> {
 
     try {
       final userManager = Provider.of<UserManager>(context, listen: false);
-      await userManager.uploadProfileImageFromFile(imageFile);
+      await userManager.uploadProfileImage(imageFile);
 
       // Rafraîchir l'interface
       setState(() {
@@ -439,7 +439,7 @@ class _SocialProfileScreenState extends State<SocialProfileScreen> {
       );
 
       // Mettre à jour le profil
-      await userManager.updateProfile(updatedProfile);
+      await userManager.updateProfileObject(updatedProfile);
 
       setState(() {
         _isUsingPredefinedAvatar = false;
@@ -477,7 +477,7 @@ class _SocialProfileScreenState extends State<SocialProfileScreen> {
 
     try {
       final userManager = Provider.of<UserManager>(context, listen: false);
-      await userManager.uploadProfileImage();
+      await userManager.uploadProfileImage(null);
 
       // Rafraîchir l'interface
       setState(() {});

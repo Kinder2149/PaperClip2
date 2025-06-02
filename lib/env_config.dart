@@ -47,7 +47,7 @@ class EnvConfig {
   // Configuration API
   static String get apiBaseUrl => kDebugMode 
       ? (dotenv.env['API_DEV_URL'] ?? 'http://10.0.2.2:8000/api') 
-      : (dotenv.env['API_PROD_URL'] ?? 'https://paperclip2-api.onrender.com/api');
+      : (dotenv.env['API_PROD_URL'] ?? 'https://paperclip2-backend.onrender.com/api');
       
   static String get apiKey => dotenv.env['API_KEY'] ?? '';
 

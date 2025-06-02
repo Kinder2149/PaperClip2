@@ -12,13 +12,11 @@ keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 
 def flutterRoot = localProperties.getProperty('flutter.sdk')
 if (flutterRoot == null) {
-    throw new GradleException("Flutter SDK not found. Define location with flutter.sdk in local.properties")
+    throw new Exception("Flutter SDK not found. Define location with flutter.sdk in local.properties")
 }
 
 apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
-apply plugin: 'com.google.gms.google-services'
-apply plugin: 'com.google.firebase.crashlytics'
 apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
 
 android {
@@ -92,22 +90,13 @@ dependencies {
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.multidex:multidex:2.0.1'
     
-    // Firebase
-    implementation platform('com.google.firebase:firebase-bom:32.7.2')
-    implementation 'com.google.firebase:firebase-analytics-ktx'
-    implementation 'com.google.firebase:firebase-crashlytics-ktx'
-    
-    // Google Play Services - Une seule version
-    implementation 'com.google.android.gms:play-services-games-v2:17.0.0'
+    // Google Play Services - Une seule version (pour l'authentification Google uniquement)
     implementation 'com.google.android.gms:play-services-auth:20.7.0'
 }
 
 configurations.all {
     resolutionStrategy {
         // Forcer les versions spécifiques
-        force 'com.google.android.gms:play-services-games-v2:17.0.0'
         force 'com.google.android.gms:play-services-auth:20.7.0'
     }
 }
-
-apply plugin: 'com.google.gms.google-services'

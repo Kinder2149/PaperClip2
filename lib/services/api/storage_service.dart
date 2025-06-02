@@ -48,17 +48,23 @@ class StorageService {
   }
   
   /// Upload d'une image de profil
-  Future<String> uploadProfileImage(File imageFile, String userId) async {
+  Future<Map<String, dynamic>> uploadProfileImage({required File imageFile, required String userId}) async {
     try {
       final data = await _apiClient.uploadFile(
         '/storage/profile-image/$userId',
         imageFile,
       );
       
-      return data['file_url'];
+      return {
+        'success': true,
+        'url': data['file_url'],
+      };
     } catch (e) {
       debugPrint('Erreur lors de l\'upload de l\'image de profil: $e');
-      rethrow;
+      return {
+        'success': false,
+        'message': e.toString(),
+      };
     }
   }
   

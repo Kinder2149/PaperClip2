@@ -1,6 +1,7 @@
 // lib/screens/social/friend_comparison_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../main.dart' show serviceLocator;
 import '../../models/social/user_stats_model.dart';
 import '../../services/social/user_stats_service.dart';
 import '../../services/user/user_manager.dart';
@@ -46,7 +47,13 @@ class _FriendComparisonScreenState extends State<FriendComparisonScreen> {
         throw Exception('Utilisateur non connecté');
       }
 
-      _userStatsService = UserStatsService(userId, userManager);
+      // Utiliser des paramètres nommés pour le constructeur
+      _userStatsService = UserStatsService(
+        userId: userId,
+        userManager: userManager,
+        socialService: serviceLocator.socialService!,
+        analyticsService: serviceLocator.analyticsService!,
+      );
 
       // Mettre à jour nos statistiques avant la comparaison
       await _userStatsService.updatePublicStats(gameState);
@@ -57,8 +64,9 @@ class _FriendComparisonScreenState extends State<FriendComparisonScreen> {
         gameState,
       );
 
+      // La méthode compareWithFriend retourne déjà null en cas d'échec
       if (comparisonData == null) {
-        throw Exception('Impossible de récupérer les statistiques');
+        throw Exception('Impossible de récupérer les statistiques de comparaison');
       }
 
       setState(() {

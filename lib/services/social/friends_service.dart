@@ -1,4 +1,5 @@
 // lib/services/social/friends_service.dart
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../../models/social/friend_model.dart';
 import '../../models/social/friend_request_model.dart';
@@ -10,22 +11,54 @@ import '../user/user_manager.dart';
 import '../api/api_services.dart';
 
 class FriendsService extends ChangeNotifier {
-  final String _userId;
-  final UserManager _userManager;
+  late String _userId;
   
   // Services API
-  final ApiClient _apiClient = ApiClient();
-  final SocialService _socialService = SocialService();
-  final AnalyticsService _analyticsService = AnalyticsService();
+  final SocialService _socialService;
+  final AnalyticsService _analyticsService;
+  final UserManager _userManager;
   
   // Streams pour les données
   final ValueNotifier<List<FriendModel>> friends = ValueNotifier<List<FriendModel>>([]);
   final ValueNotifier<List<FriendRequestModel>> receivedRequests = ValueNotifier<List<FriendRequestModel>>([]);
   final ValueNotifier<List<FriendRequestModel>> sentRequests = ValueNotifier<List<FriendRequestModel>>([]);
 
+  // Streams controllers pour compatibilité avec le code existant
+  final _friendsStreamController = StreamController<List<FriendModel>>.broadcast();
+  final _receivedRequestsStreamController = StreamController<List<FriendRequestModel>>.broadcast();
+  final _sentRequestsStreamController = StreamController<List<FriendRequestModel>>.broadcast();
+
   // Constructeur
-  FriendsService(this._userId, this._userManager) {
+  FriendsService({
+    required String userId,
+    required UserManager userManager,
+    required SocialService socialService,
+    required AnalyticsService analyticsService,
+  }) : 
+    _userId = userId,
+    _userManager = userManager,
+    _socialService = socialService,
+    _analyticsService = analyticsService {
+    
+    // Initialiser les streams
     _initStreams();
+    
+    // Si l'utilisateur change, mettre à jour l'ID
+    _userManager.profileChanged.addListener(() {
+      final profile = _userManager.profileChanged.value;
+      if (profile != null && profile.userId != _userId) {
+        _userId = profile.userId;
+        _initStreams();
+      }
+    });
+  }
+  
+  @override
+  void dispose() {
+    _friendsStreamController.close();
+    _receivedRequestsStreamController.close();
+    _sentRequestsStreamController.close();
+    super.dispose();
   }
   
   // Initialiser les streams
@@ -33,57 +66,127 @@ class FriendsService extends ChangeNotifier {
     _refreshFriends();
     _refreshReceivedRequests();
     _refreshSentRequests();
+    
+    // Mettre à jour les StreamControllers lorsque les ValueNotifiers changent
+    friends.addListener(() {
+      _friendsStreamController.add(friends.value);
+    });
+    
+    receivedRequests.addListener(() {
+      _receivedRequestsStreamController.add(receivedRequests.value);
+    });
+    
+    sentRequests.addListener(() {
+      _sentRequestsStreamController.add(sentRequests.value);
+    });
   }
   
   // Rafraîchir les données des amis
   Future<void> _refreshFriends() async {
     try {
-      final friendsList = await _socialService.getFriends();
-      friends.value = friendsList;
+      final response = await _socialService.getFriends(userId: _userId);
+      
+      // Vérifier si la réponse est dans le format enveloppé {success, message, data}
+      if (response is Map<String, dynamic>) {
+        if (response['success'] == false) {
+          debugPrint('Erreur lors du chargement des amis: ${response['message'] ?? "Erreur inconnue"}');
+          return;
+        }
+        
+        // Si la réponse est un succès, récupérer les données
+        final List<dynamic> friendsList = response['data'] ?? [];
+        final List<FriendModel> friendModels = friendsList
+            .where((friend) => friend is Map<String, dynamic>)
+            .map((friend) => FriendModel.fromJson(friend as Map<String, dynamic>))
+            .toList();
+        
+        friends.value = friendModels;
+      } else {
+        // Format de réponse non reconnu
+        debugPrint('Format de réponse inattendu pour getFriends: $response');
+      }
     } catch (e, stack) {
       debugPrint('Erreur lors du chargement des amis: $e');
-      _analyticsService.recordCrash(e, stack, reason: 'Error loading friends');
+      _analyticsService.recordError(e, stack);
     }
   }
   
   // Rafraîchir les demandes reçues
   Future<void> _refreshReceivedRequests() async {
     try {
-      final requests = await _socialService.getReceivedFriendRequests();
-      receivedRequests.value = requests;
+      final response = await _socialService.getReceivedFriendRequests(userId: _userId);
+      
+      // Vérifier si la réponse est dans le format enveloppé {success, message, data}
+      if (response is Map<String, dynamic>) {
+        if (response['success'] == false) {
+          debugPrint('Erreur lors du chargement des demandes reçues: ${response['message'] ?? "Erreur inconnue"}');
+          return;
+        }
+        
+        // Si la réponse est un succès, récupérer les données
+        final List<dynamic> requestsList = response['data'] ?? [];
+        final List<FriendRequestModel> requestModels = requestsList
+            .where((request) => request is Map<String, dynamic>)
+            .map((request) => FriendRequestModel.fromJson(request as Map<String, dynamic>))
+            .toList();
+        
+        receivedRequests.value = requestModels;
+      } else {
+        // Format de réponse non reconnu
+        debugPrint('Format de réponse inattendu pour getReceivedFriendRequests: $response');
+      }
     } catch (e, stack) {
       debugPrint('Erreur lors du chargement des demandes reçues: $e');
-      _analyticsService.recordCrash(e, stack, reason: 'Error loading received requests');
+      _analyticsService.recordError(e, stack);
     }
   }
   
   // Rafraîchir les demandes envoyées
   Future<void> _refreshSentRequests() async {
     try {
-      final requests = await _socialService.getSentFriendRequests();
-      sentRequests.value = requests;
+      final response = await _socialService.getSentFriendRequests(userId: _userId);
+      
+      // Vérifier si la réponse est dans le format enveloppé {success, message, data}
+      if (response is Map<String, dynamic>) {
+        if (response['success'] == false) {
+          debugPrint('Erreur lors du chargement des demandes envoyées: ${response['message'] ?? "Erreur inconnue"}');
+          return;
+        }
+        
+        // Si la réponse est un succès, récupérer les données
+        final List<dynamic> requestsList = response['data'] ?? [];
+        final List<FriendRequestModel> requestModels = requestsList
+            .where((request) => request is Map<String, dynamic>)
+            .map((request) => FriendRequestModel.fromJson(request as Map<String, dynamic>))
+            .toList();
+        
+        sentRequests.value = requestModels;
+      } else {
+        // Format de réponse non reconnu
+        debugPrint('Format de réponse inattendu pour getSentFriendRequests: $response');
+      }
     } catch (e, stack) {
       debugPrint('Erreur lors du chargement des demandes envoyées: $e');
-      _analyticsService.recordCrash(e, stack, reason: 'Error loading sent requests');
+      _analyticsService.recordError(e, stack);
     }
   }
 
   // Stream pour les amis (pour compatibilité avec le code existant)
   Stream<List<FriendModel>> friendsStream() {
     _refreshFriends();
-    return friends.stream;
+    return _friendsStreamController.stream;
   }
 
   // Stream pour les demandes d'amitié reçues
   Stream<List<FriendRequestModel>> receivedRequestsStream() {
     _refreshReceivedRequests();
-    return receivedRequests.stream;
+    return _receivedRequestsStreamController.stream;
   }
 
   // Stream pour les demandes d'amitié envoyées
   Stream<List<FriendRequestModel>> sentRequestsStream() {
     _refreshSentRequests();
-    return sentRequests.stream;
+    return _sentRequestsStreamController.stream;
   }
 
   // Rechercher des utilisateurs
@@ -93,13 +196,22 @@ class FriendsService extends ChangeNotifier {
     }
 
     try {
-      final results = await _socialService.searchUsers(query);
+      final response = await _socialService.searchUsers(query: query);
+      if (response is! Map<String, dynamic> || response['success'] == false) {
+        debugPrint('Échec de la recherche d\'utilisateurs: ${response['message'] ?? 'Erreur inconnue'}');
+        return [];
+      }
+      
+      final List<dynamic> usersList = response['users'] ?? [];
+      final List<UserProfile> userProfiles = usersList
+          .map((user) => UserProfile.fromJson(user))
+          .toList();
       
       // Filtrer pour exclure l'utilisateur actuel
-      return results.where((profile) => profile.userId != _userId).toList();
+      return userProfiles.where((profile) => profile.userId != _userId).toList();
     } catch (e, stack) {
       debugPrint('Erreur lors de la recherche d\'utilisateurs: $e');
-      _analyticsService.recordCrash(e, stack, reason: 'Error searching users');
+      _analyticsService.recordError(e, stack);
       return [];
     }
   }
@@ -111,10 +223,16 @@ class FriendsService extends ChangeNotifier {
     }
 
     try {
-      return await _socialService.getUserProfile(userId);
+      final response = await _socialService.getUserProfile(userId: userId);
+      if (response is! Map<String, dynamic> || response['success'] == false) {
+        debugPrint('Échec de la recherche de l\'utilisateur: ${response['message'] ?? 'Erreur inconnue'}');
+        return null;
+      }
+      
+      return UserProfile.fromJson(response['user']);
     } catch (e, stack) {
       debugPrint('Erreur lors de la recherche de l\'utilisateur: $e');
-      _analyticsService.recordCrash(e, stack, reason: 'Error finding user by ID');
+      _analyticsService.recordError(e, stack);
       return null;
     }
   }
@@ -122,21 +240,21 @@ class FriendsService extends ChangeNotifier {
   // Obtenir des suggestions d'amis
   Future<List<UserProfile>> getSuggestedUsers() async {
     try {
-      // Récupérer les suggestions depuis le backend
-      final suggestions = await _socialService.getSuggestedFriends();
+      final response = await _socialService.getSuggestedFriends(userId: _userId);
+      if (response is! Map<String, dynamic> || response['success'] == false) {
+        debugPrint('Échec de la récupération des suggestions d\'amis: ${response['message'] ?? 'Erreur inconnue'}');
+        return [];
+      }
       
-      // Filtrer pour exclure les amis existants et les demandes en cours
-      final currentFriendIds = friends.value.map((friend) => friend.userId).toSet();
-      final pendingRequestIds = sentRequests.value.map((req) => req.receiverId).toSet();
+      final List<dynamic> suggestionsList = response['suggestions'] ?? [];
+      final List<UserProfile> userProfiles = suggestionsList
+          .map((user) => UserProfile.fromJson(user))
+          .toList();
       
-      return suggestions.where((profile) => 
-        profile.userId != _userId && 
-        !currentFriendIds.contains(profile.userId) &&
-        !pendingRequestIds.contains(profile.userId)
-      ).toList();
+      return userProfiles;
     } catch (e, stack) {
       debugPrint('Erreur lors de la récupération des suggestions d\'amis: $e');
-      _analyticsService.recordCrash(e, stack, reason: 'Error getting suggested users');
+      _analyticsService.recordError(e, stack);
       return [];
     }
   }
@@ -150,29 +268,28 @@ class FriendsService extends ChangeNotifier {
         return false; // Demande déjà envoyée
       }
       
-      // Récupérer les infos du profil actuel
-      final currentProfile = _userManager.currentProfile;
-      if (currentProfile == null) {
+      // Envoyer la demande via l'API
+      final response = await _socialService.sendFriendRequest(
+        receiverId: targetUserId
+      );
+      
+      if (response is! Map<String, dynamic> || response['success'] == false) {
+        debugPrint('Échec de l\'envoi de la demande d\'amitié: ${response['message'] ?? 'Erreur inconnue'}');
         return false;
       }
       
-      // Envoyer la demande via l'API
-      final success = await _socialService.sendFriendRequest(targetUserId);
+      // Rafraîchir les demandes envoyées
+      await _refreshSentRequests();
       
-      if (success) {
-        // Rafraîchir les demandes envoyées
-        await _refreshSentRequests();
-        
-        // Log événement
-        _analyticsService.logEvent('friend_request_sent', parameters: {
-          'target_user_id': targetUserId,
-        });
-      }
+      // Log événement
+      _analyticsService.logEvent('friend_request_sent', parameters: {
+        'target_user_id': targetUserId,
+      });
       
-      return success;
+      return true;
     } catch (e, stack) {
       debugPrint('Erreur lors de l\'envoi de la demande d\'amitié: $e');
-      _analyticsService.recordCrash(e, stack, reason: 'Error sending friend request');
+      _analyticsService.recordError(e, stack);
       return false;
     }
   }
@@ -181,25 +298,44 @@ class FriendsService extends ChangeNotifier {
   Future<bool> acceptFriendRequest(String requestId) async {
     try {
       // Accepter la demande via l'API
-      final success = await _socialService.acceptFriendRequest(requestId);
+      final Map<String, dynamic> response = await _socialService.acceptFriendRequest(requestId: requestId) as Map<String, dynamic>;
       
-      if (success) {
-        // Rafraîchir les données
-        await _refreshFriends();
-        await _refreshReceivedRequests();
-        
-        // Log événement
-        _analyticsService.logEvent('friend_request_accepted', parameters: {
-          'request_id': requestId,
-        });
-        
-        notifyListeners();
+      if (response.isEmpty) {
+        debugPrint('Échec de l\'acceptation de la demande d\'amitié: réponse vide');
+        return false;
       }
       
-      return success;
+      // Vérifier le champ success dans la réponse
+      if (response.keys.contains('success')) {
+        final dynamic successValue = response['success'] as dynamic;
+        if (successValue is bool && !successValue) {
+          // Récupérer le message d'erreur s'il existe
+          String message = 'Erreur inconnue';
+          if (response.keys.contains('message')) {
+            final dynamic msgValue = response['message'] as dynamic;
+            if (msgValue is String) {
+              message = msgValue;
+            }
+          }
+          debugPrint('Échec de l\'acceptation de la demande d\'amitié: $message');
+          return false;
+        }
+      }
+      
+      // Rafraîchir les données
+      await _refreshFriends();
+      await _refreshReceivedRequests();
+      
+      // Log événement
+      _analyticsService.logEvent('friend_request_accepted', parameters: {
+        'request_id': requestId,
+      });
+      
+      notifyListeners();
+      return true;
     } catch (e, stack) {
       debugPrint('Erreur lors de l\'acceptation de la demande d\'amitié: $e');
-      _analyticsService.recordCrash(e, stack, reason: 'Error accepting friend request');
+      _analyticsService.recordError(e, stack);
       return false;
     }
   }
@@ -208,19 +344,38 @@ class FriendsService extends ChangeNotifier {
   Future<bool> declineFriendRequest(String requestId) async {
     try {
       // Refuser la demande via l'API
-      final success = await _socialService.declineFriendRequest(requestId);
+      final Map<String, dynamic> response = await _socialService.declineFriendRequest(requestId: requestId) as Map<String, dynamic>;
       
-      if (success) {
-        // Rafraîchir les demandes reçues
-        await _refreshReceivedRequests();
-        
-        notifyListeners();
+      if (response.isEmpty) {
+        debugPrint('Échec du refus de la demande d\'amitié: réponse vide');
+        return false;
       }
       
-      return success;
+      // Vérifier le champ success dans la réponse
+      if (response.keys.contains('success')) {
+        final dynamic successValue = response['success'] as dynamic;
+        if (successValue is bool && !successValue) {
+          // Récupérer le message d'erreur s'il existe
+          String message = 'Erreur inconnue';
+          if (response.keys.contains('message')) {
+            final dynamic msgValue = response['message'] as dynamic;
+            if (msgValue is String) {
+              message = msgValue;
+            }
+          }
+          debugPrint('Échec du refus de la demande d\'amitié: $message');
+          return false;
+        }
+      }
+      
+      // Rafraîchir les demandes reçues
+      await _refreshReceivedRequests();
+      
+      notifyListeners();
+      return true;
     } catch (e, stack) {
       debugPrint('Erreur lors du refus de la demande d\'amitié: $e');
-      _analyticsService.recordCrash(e, stack, reason: 'Error declining friend request');
+      _analyticsService.recordError(e, stack);
       return false;
     }
   }
@@ -229,19 +384,41 @@ class FriendsService extends ChangeNotifier {
   Future<bool> removeFriend(String friendshipId) async {
     try {
       // Supprimer l'ami via l'API
-      final success = await _socialService.removeFriend(friendshipId);
+      final Map<String, dynamic> response = await _socialService.removeFriend(friendId: friendshipId) as Map<String, dynamic>;
       
-      if (success) {
-        // Rafraîchir la liste des amis
-        await _refreshFriends();
-        
-        notifyListeners();
+      if (response.isEmpty) {
+        debugPrint('Échec de la suppression de l\'ami: réponse vide');
+        return false;
       }
       
-      return success;
+      // Vérifier le champ success dans la réponse
+      if (response.keys.contains('success')) {
+        final dynamic successValue = response['success'] as dynamic;
+        if (successValue is bool && !successValue) {
+          // Récupérer le message d'erreur s'il existe
+          String message = 'Erreur inconnue';
+          if (response.keys.contains('message')) {
+            final dynamic msgValue = response['message'] as dynamic;
+            if (msgValue is String) {
+              message = msgValue;
+            }
+          }
+          debugPrint('Échec de la suppression de l\'ami: $message');
+          return false;
+        }
+      } else {
+        debugPrint('Échec de la suppression de l\'ami: Champ success manquant');
+        return false;
+      }
+      
+      // Rafraîchir la liste des amis
+      await _refreshFriends();
+      
+      notifyListeners();
+      return true;
     } catch (e, stack) {
       debugPrint('Erreur lors de la suppression de l\'ami: $e');
-      _analyticsService.recordCrash(e, stack, reason: 'Error removing friend');
+      _analyticsService.recordError(e, stack);
       return false;
     }
   }
@@ -260,7 +437,7 @@ class FriendsService extends ChangeNotifier {
       return friends.value.any((friend) => friend.userId == userId);
     } catch (e, stack) {
       debugPrint('Erreur lors de la vérification de l\'amitié: $e');
-      _analyticsService.recordCrash(e, stack, reason: 'Error checking friend status');
+      _analyticsService.recordError(e, stack);
       return false;
     }
   }
