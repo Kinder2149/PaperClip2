@@ -237,7 +237,7 @@ class AnalyticsService {
       }
       
       final data = await _apiClient.get(
-        '/analytics/events/stats',
+        '/analytics/stats',
         queryParams: queryParams,
       );
       

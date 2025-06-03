@@ -3,11 +3,15 @@ import 'package:just_audio/just_audio.dart';
 class BackgroundMusicService {
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool _isPlaying = false;
+  bool _isInitialized = false;
 
   Future<void> initialize() async {
+    if (_isInitialized) return;
+    
     try {
       await _audioPlayer.setAsset('assets/audio/screenmusic.wav');
       await _audioPlayer.setLoopMode(LoopMode.one);
+      _isInitialized = true;
     } catch (e) {
       print('Error initializing background music: $e');
     }

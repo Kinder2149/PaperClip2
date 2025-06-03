@@ -17,6 +17,24 @@ social_service = SocialService()
 router = APIRouter(prefix="/social", tags=["Social"])
 
 # Routes pour la gestion des amis
+
+@router.delete("/friends/{friend_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_friend(
+    friend_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Supprime un ami (relation d'amitié)"""
+    try:
+        # Utiliser le service SocialService pour supprimer l'amitié
+        social_service.delete_friendship(db=db, user_id=current_user.id, friend_id=friend_id)
+        return
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erreur lors de la suppression de l'ami: {str(e)}"
+        )
+
 @router.post("/friends/requests", response_model=FriendRequest, status_code=status.HTTP_201_CREATED)
 async def send_friend_request(
     request_data: FriendRequestCreate,

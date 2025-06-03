@@ -24,6 +24,14 @@ class ApiClient {
   bool get isAuthenticated => _authToken != null && (_tokenExpiration?.isAfter(DateTime.now()) ?? false);
   String? get authToken => _authToken;
   
+  // Debugging
+  void printConfig() {
+    debugPrint('=== API Client Configuration ===');
+    debugPrint('Base URL: $baseUrl');
+    debugPrint('Is Authenticated: $isAuthenticated');
+    debugPrint('Token Expiry: ${_tokenExpiration?.toIso8601String() ?? "null"}');
+  }
+  
   // Méthode pour définir le token d'auth et l'expiration
   Future<void> setAuthToken(String token, DateTime expiration) async {
     _authToken = token;

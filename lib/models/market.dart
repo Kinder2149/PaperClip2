@@ -118,6 +118,10 @@ class MarketManager extends ChangeNotifier {
   double _lastNotifiedPercentage = 100.0;
   static const double MARKET_25_PERCENT = GameConstants.INITIAL_MARKET_METAL *
       0.25;
+  DateTime _lastCrisisLogTime = DateTime.now();
+  DateTime _lastResourceEventTime = DateTime.now();
+  static const Duration _crisisLogInterval = Duration(minutes: 5);
+  static const Duration _resourceEventInterval = Duration(minutes: 10);
 
   void setContext(BuildContext context) {
     _context = context;
@@ -277,19 +281,33 @@ class MarketManager extends ChangeNotifier {
       return false;  // Capacité de stockage dépassée
     }
 
-    _checkMarketDepletion();
+    // Ne vérifier les seuils de crise que si le stock est tombé en dessous d'un seuil critique
+    // pour éviter des vérifications excessives à chaque vente
+    if (marketMetalStock <= GameConstants.WARNING_THRESHOLD) {
+      _checkMarketDepletion();
+    }
+    
     notifyListeners();
     return true;
   }
 
   void _checkMarketDepletion() {
-    print('Vérification des seuils de crise'); // Debug
-    print('Stock actuel: $marketMetalStock'); // Debug
-    print('Notifications déjà envoyées: $_sentCrisisNotifications'); // Debug
+    // Déterminer s'il faut générer des logs
+    bool shouldLog = DateTime.now().difference(_lastCrisisLogTime) > _crisisLogInterval;
+    
+    // Mettre à jour le timestamp seulement si nous décidons de logger
+    if (shouldLog && kDebugMode) {
+      print('Vérification des seuils de crise - Stock métal: $marketMetalStock - Notifications envoyées: $_sentCrisisNotifications');
+      _lastCrisisLogTime = DateTime.now();
+    }
 
+    // Vérification du seuil critique uniquement si ce n'est pas déjà notifié
     if (!_sentCrisisNotifications.contains('0') &&
         marketMetalStock <= GameConstants.METAL_CRISIS_THRESHOLD_0) {
-      print('Déclenchement notification crise - 0%'); // Debug
+      // Ce log est important car il indique l'envoi d'une notification de crise
+      if (kDebugMode) {
+        print('IMPORTANT: Déclenchement notification de crise - seuil 0% atteint');
+      }
       _sendCrisisNotification('0');
     }
   }
@@ -456,24 +474,23 @@ class MarketManager extends ChangeNotifier {
     dynamics.updateMarketConditions();
     updateMetalPrice();  // Changer _updateMetalPrice en updateMetalPrice
     _checkMarketDepletion();
-
-    if (marketMetalStock <= GameConstants.WARNING_THRESHOLD) {  // Utiliser marketMetalStock au lieu de _marketMetalStock
-      EventManager.instance.addEvent(
-          EventType.RESOURCE_DEPLETION,
-          'Rupture Imminente des Stocks de Métal',
-          description: 'Les réserves de métal du marché sont presque épuisées.',
-          importance: EventImportance.CRITICAL
-      );
-    }
+    _checkResourceLevels(); // Utiliser la méthode dédiée avec throttling
   }
   void _checkResourceLevels() {
-    if (marketMetalStock <= GameConstants.WARNING_THRESHOLD) {
+    // N'envoyer des événements de ressources que si un intervalle minimum s'est écoulé depuis le dernier
+    bool shouldSendResourceEvent = DateTime.now().difference(_lastResourceEventTime) > _resourceEventInterval;
+    
+    if (shouldSendResourceEvent && marketMetalStock <= GameConstants.WARNING_THRESHOLD) {
+      if (kDebugMode) {
+        print('Envoi d\'un événement de diminution des ressources - Stock: $marketMetalStock');
+      }
       EventManager.instance.addEvent(
           EventType.RESOURCE_DEPLETION,
           "Ressources en diminution",
           description: "Les réserves mondiales de métal s'amenuisent",
           importance: EventImportance.HIGH
       );
+      _lastResourceEventTime = DateTime.now();
     }
   }
 

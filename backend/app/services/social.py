@@ -9,6 +9,21 @@ from app.models.user import User
 import uuid
 
 class SocialService:
+    @staticmethod
+    def delete_friendship(db: Session, user_id: str, friend_id: str) -> None:
+        """
+        Supprime la relation d'amitié entre deux utilisateurs.
+        Args:
+            db: Session de base de données
+            user_id: ID de l'utilisateur courant
+            friend_id: ID de l'ami à supprimer
+        """
+        db.execute(
+            "DELETE FROM friendships WHERE (user_id = :uid AND friend_id = :fid) OR (user_id = :fid AND friend_id = :uid)",
+            {"uid": user_id, "fid": friend_id}
+        )
+        db.commit()
+
     """Service pour gérer les fonctionnalités sociales"""
     
     @staticmethod

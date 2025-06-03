@@ -56,7 +56,10 @@ class SocialService {
   /// Récupération des demandes d'amitié reçues
   Future<Map<String, dynamic>> getReceivedFriendRequests({String? userId}) async {
     try {
-      final data = await _apiClient.get('/social/friends/requests/received');
+      final data = await _apiClient.get(
+  '/social/friends/requests',
+  queryParams: {'type': 'received'},
+);
       
       return {
         'success': true,
@@ -75,7 +78,10 @@ class SocialService {
   /// Récupération des demandes d'amitié envoyées
   Future<Map<String, dynamic>> getSentFriendRequests({String? userId}) async {
     try {
-      final data = await _apiClient.get('/social/friends/requests/sent');
+      final data = await _apiClient.get(
+  '/social/friends/requests',
+  queryParams: {'type': 'sent'},
+);
       
       return {
         'success': true,
@@ -113,7 +119,7 @@ class SocialService {
   /// Suppression d'un ami
   Future<bool> removeFriend({required String friendId}) async {
     try {
-      await _apiClient.delete('/social/friends/$friendId');
+      await _apiClient.delete('/social/friends/$friendId'); // Vérifier que ce endpoint existe côté backend, sinon l'implémenter.
       
       return true;
     } catch (e) {

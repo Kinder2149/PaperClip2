@@ -8,6 +8,9 @@ import 'package:just_audio/just_audio.dart';
 import 'package:flutter/services.dart';
 import 'dart:ui' as ui show PlatformDispatcher;
 
+// Import de l'écran de débogage
+import 'debug_auth.dart';
+
 // Imports des écrans
 import './screens/start_screen.dart';
 import './screens/main_screen.dart';
@@ -341,23 +344,85 @@ Future<void> _initializeServices() async {
   }
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({Key? key}) : super(key: key);
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Gérer le cycle de vie de l'application
+    switch (state) {
+      case AppLifecycleState.paused:
+        // L'application est en arrière-plan mais toujours visible
+        backgroundMusicService.pause();
+        // Sauvegarder l'état actuel du jeu
+        if (gameState.isInitialized) {
+          gameState.saveOnImportantEvent();
+        }
+        break;
+      case AppLifecycleState.detached:
+        // L'application est fermée complètement
+        _cleanupResources();
+        break;
+      case AppLifecycleState.inactive:
+        // L'application est temporairement inactive (ex: appel téléphonique)
+        backgroundMusicService.pause();
+        break;
+      case AppLifecycleState.resumed:
+        // L'application revient au premier plan
+        // Ne pas reprendre la musique automatiquement car elle dépend du contexte du jeu
+        break;
+      default:
+        break;
+    }
+  }
+  
+  // Méthode pour nettoyer les ressources lorsque l'application est fermée
+  void _cleanupResources() {
+    try {
+      // Sauvegarde finale
+      if (gameState.isInitialized) {
+        gameState.saveOnImportantEvent();
+      }
+      // Arrêter la musique
+      backgroundMusicService.stop();
+      backgroundMusicService.dispose();
+      // Autres nettoyages si nécessaire
+      final analyticsService = Provider.of<AnalyticsService>(context, listen: false);
+      analyticsService.logEvent('app_close');
+    } catch (e) {
+      // Ignorer les erreurs lors du nettoyage
+      print('Erreur lors du nettoyage des ressources: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      navigatorKey: navigatorKey,
       title: 'PaperClip Game',
+      debugShowCheckedModeBanner: false,
+      navigatorKey: navigatorKey,
       theme: ThemeData(
-        primarySwatch: Colors.deepPurple,
+        primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
       home: const AuthCheckScreen(),
-      routes: {
-        '/profile': (context) => const UserProfileScreen(),
-      },
-      debugShowCheckedModeBanner: false,
     );
   }
 }
@@ -370,11 +435,15 @@ class AuthCheckScreen extends StatefulWidget {
 }
 
 class _AuthCheckScreenState extends State<AuthCheckScreen> {
-  bool _isChecking = true;
-  bool _hasProfile = false;
-  String? _errorMessage;
+  bool _isLoading = true;
+  bool _isCreateLocalProfile = false;
+  bool _debugMode = true; // Activer le mode débogage par défaut
+  final UserManager _userManager = UserManager();
+  final TextEditingController _nicknameController = TextEditingController();
   int _retryCount = 0;
   static const int MAX_RETRIES = 3;
+  
+  String _errorMessage = '';
 
   @override
   void initState() {
@@ -386,8 +455,8 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
     if (!mounted) return;
 
     setState(() {
-      _isChecking = true;
-      _errorMessage = null;
+      _isLoading = true;
+      _errorMessage = '';
     });
 
     try {
@@ -401,12 +470,12 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
       if (!mounted) return;
 
       setState(() {
-        _hasProfile = userManager.hasProfile;
-        _isChecking = false;
+        _isCreateLocalProfile = !userManager.hasProfile;
+        _isLoading = false;
       });
 
       // Si un profil existe, passer à l'écran de démarrage
-      if (_hasProfile) {
+      if (!userManager.hasProfile) {
         if (mounted) {
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (_) => const LoadingScreen()),
@@ -421,22 +490,10 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
       serviceLocator.analyticsService?.recordError(e, stack, reason: 'Application error');
 
       // Implémenter un mécanisme de retry
-      if (_retryCount < MAX_RETRIES && mounted) {
-        _retryCount++;
+      if (_isLoading && mounted) {
         setState(() {
-          _errorMessage = 'Tentative $_retryCount/$MAX_RETRIES...';
-          _isChecking = false;
-        });
-
-        // Attendre un peu avant de réessayer
-        await Future.delayed(const Duration(seconds: 2));
-        if (mounted) {
-          _checkProfile();
-        }
-      } else if (mounted) {
-        setState(() {
-          _errorMessage = 'Problème de connexion. Vérifiez votre connexion internet.';
-          _isChecking = false;
+          _errorMessage = 'Erreur lors de la vérification du profil';
+          _isLoading = false;
         });
       }
     }
@@ -447,8 +504,8 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
 
     try {
       setState(() {
-        _isChecking = true;
-        _errorMessage = null;
+        _isLoading = true;
+        _errorMessage = '';
       });
 
       final userManager = Provider.of<UserManager>(context, listen: false);
@@ -473,7 +530,7 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
       );
 
       setState(() {
-        _isChecking = false;
+        _isLoading = false;
       });
 
       if (result == true && mounted) {
@@ -496,7 +553,7 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
 
       if (mounted) {
         setState(() {
-          _isChecking = false;
+          _isLoading = false;
           _errorMessage = 'Erreur: $e';
         });
 
@@ -519,39 +576,118 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
 
     try {
       setState(() {
-        _isChecking = true;
+        _isLoading = true;
         _errorMessage = 'Connexion à Google en cours...';
       });
+      
+      // Vérification des variables d'environnement
+      if (kDebugMode) {
+        print('=== VÉRIFICATION ENVIRONNEMENT ===');
+        print('Google Client ID: ${EnvConfig.googleClientId}');
+        print('API Base URL: ${EnvConfig.apiBaseUrl}');
+        
+        if (EnvConfig.googleClientId.isEmpty) {
+          print('ERREUR: Google Client ID non défini dans .env');
+        }
+        
+        if (EnvConfig.apiBaseUrl.isEmpty) {
+          print('ERREUR: API Base URL non définie dans .env');
+        }
+      }
 
       final userManager = Provider.of<UserManager>(context, listen: false);
+      if (kDebugMode) print('Tentative de connexion Google via UserManager...');
+      
       final result = await userManager.signInWithGoogle();
 
       if (!mounted) return;
 
       setState(() {
-        _isChecking = false;
+        _isLoading = false;
       });
 
       if (result != null) {
-        // Profil créé avec succès, passer à l'écran de démarrage
-        if (mounted) {
+        if (kDebugMode) {
+  final userId = userManager.authService?.userId;
+  print('Connexion Google réussie. ID utilisateur: $userId');
+}
+        // En mode debug, naviguer vers l'écran de débogage d'authentification
+        if (kDebugMode && mounted) {
+          // Afficher un menu de choix pour le développeur
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Connexion réussie'),
+              content: const Text('Où voulez-vous aller?'),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(builder: (_) => const LoadingScreen()),
+                    );
+                  },
+                  child: const Text('Application principale'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(builder: (_) => const AuthDebugScreen()),
+                    );
+                  },
+                  child: const Text('Écran de débogage'),
+                ),
+              ],
+            ),
+          );
+        } else if (mounted) {
+          // En production, aller directement à l'écran principal
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (_) => const LoadingScreen()),
           );
         }
       } else {
+        if (kDebugMode) print('Échec de la connexion Google: résultat null');
         if (mounted) {
           setState(() {
             _errorMessage = 'Échec de la connexion à Google. Essayez en mode local.';
           });
+          
+          // En mode debug, proposer d'aller à l'écran de débogage
+          if (kDebugMode) {
+            showDialog(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Erreur de connexion'),
+                content: const Text('Voulez-vous aller à l\'écran de débogage?'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Non'),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const AuthDebugScreen()),
+                      );
+                    },
+                    child: const Text('Oui'),
+                  ),
+                ],
+              ),
+            );
+          }
         }
       }
     } catch (e, stack) {
-      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Application error');
+      if (kDebugMode) {
+        print('Erreur détaillée de connexion: $e');
+        print('Stack trace: $stack');
+      }
+      serviceLocator.analyticsService?.recordError(e, stack, reason: 'Google auth error');
 
       if (mounted) {
         setState(() {
-          _isChecking = false;
+          _isLoading = false;
           _errorMessage = 'Erreur de connexion: $e';
         });
 
@@ -559,6 +695,14 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
           SnackBar(
             content: Text('Erreur: $e'),
             backgroundColor: Colors.red,
+            action: kDebugMode ? SnackBarAction(
+              label: 'Débogage',
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AuthDebugScreen()),
+                );
+              },
+            ) : null,
           ),
         );
       }
@@ -567,27 +711,90 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isChecking) {
+    if (_debugMode) {
       return Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(height: 16),
-              Text(_errorMessage ?? 'Vérification du profil...'),
-            ],
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFF2A2A72), Color(0xFF009FFD)],
+            ),
+          ),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_isLoading)
+                  const CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                const SizedBox(height: 24),
+                Text(
+                  _isLoading ? 'Chargement du profil...' : 'Bienvenue dans le mode débogage',
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => const AuthDebugScreen(),
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.blue.shade900,
+                  ),
+                  child: const Text('Ouvrir l\'écran de débogage'),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      _debugMode = false;
+                    });
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Colors.white),
+                  ),
+                  child: const Text('Continuer normalement'),
+                ),
+              ],
+            ),
           ),
         ),
       );
     }
-
-    if (_hasProfile) {
-      // Si un profil existe, l'écran de démarrage sera affiché
-      // dans _checkProfile, donc ce widget ne sera pas rendu
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
+    
+    if (_isLoading) {
+      return Scaffold(
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFF2A2A72), Color(0xFF009FFD)],
+            ),
+          ),
+          child: const Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+                SizedBox(height: 24),
+                Text(
+                  'Chargement du profil...',
+                  style: TextStyle(color: Colors.white, fontSize: 16),
+                ),
+              ],
+            ),
+          ),
         ),
       );
     }

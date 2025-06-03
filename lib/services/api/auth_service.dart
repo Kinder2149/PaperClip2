@@ -4,6 +4,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+import '../../env_config.dart';
+import '../../config/api_config.dart';
 import 'api_client.dart';
 
 /// Service d'authentification utilisant le backend personnalisé
@@ -100,36 +103,126 @@ class AuthService {
     }
   }
   
-  // Connexion avec Google
+  /// Connexion avec Google
   Future<bool> signInWithGoogle() async {
     try {
-      // Déclencher le flux de connexion Google
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      debugPrint('=== AUTHENTIFICATION GOOGLE VIA AUTH SERVICE ===');
       
+      // Vérification de la configuration
+      final googleClientId = EnvConfig.googleClientId;
+      final apiBaseUrl = ApiConfig.apiBaseUrl;
+      
+      debugPrint('Config - Google Client ID: ${googleClientId ?? "NON DÉFINI"}');
+      debugPrint('Config - API Base URL: ${apiBaseUrl ?? "NON DÉFINI"}');
+      
+      if (googleClientId == null || googleClientId.isEmpty) {
+        debugPrint('ERREUR: Google Client ID manquant dans la configuration');
+      }
+      
+      if (apiBaseUrl == null || apiBaseUrl.isEmpty) {
+        debugPrint('ERREUR: API Base URL manquante dans la configuration');
+      }
+      
+      // Récupérer un compte Google via GoogleSignIn
+      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
       if (googleUser == null) {
+        debugPrint('Aucun compte Google sélectionné');
         return false;
       }
+
+      debugPrint('Compte Google obtenu: ${googleUser.displayName} (${googleUser.email})');
       
       // Obtenir les informations d'authentification
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
       
-      // Connexion au backend avec les informations Google
-      final data = await _apiClient.loginWithProvider(
-        'google',
-        googleUser.id,
-        googleUser.email,
-        username: googleUser.displayName,
-        profileImageUrl: googleUser.photoUrl,
-      );
+      // Vérifier qu'on a bien un token
+      if (googleAuth.accessToken == null) {
+        debugPrint('ERREUR: Pas de token d\'accès Google');
+        return false;
+      }
       
-      _userId = data['user_id'];
-      _username = data['username'];
-      _isAdmin = data['is_admin'] ?? false;
+      debugPrint('Token Google obtenu avec succès');
+
+      // Envoyer les informations au backend
+      debugPrint('Envoi des informations au backend...');
+      try {
+        final result = await _apiClient.loginWithProvider(
+          'google',
+          googleUser.id,
+          googleUser.email,
+          username: googleUser.displayName,
+          profileImageUrl: googleUser.photoUrl,
+        );
+        
+        debugPrint('Réponse du backend: $result');
+
+        // Si la connexion réussit, stocker les informations
+        if (result.containsKey('access_token') && result.containsKey('expires_at')) {
+          _userId = result['user_id'];
+          _username = result['username'];
+          _isAdmin = result['is_admin'] ?? false;
+          authStateChanged.value = true;
+          debugPrint('Connexion réussie pour l\'utilisateur: $_username');
+          return true;
+        } else {
+          debugPrint('Réponse du backend incorrecte: Token manquant');
+          if (result.containsKey('error')) {
+            debugPrint('Erreur du backend: ${result["error"]}');
+          }
+        }
+      } catch (e) {
+        debugPrint('Erreur lors de l\'appel au backend: $e');
+        // On continue pour essayer une approche alternative
+      }
       
-      authStateChanged.value = true;
-      return true;
-    } catch (e) {
-      debugPrint('Erreur lors de la connexion avec Google: $e');
+      // Approche alternative pour le débogage - tenter d'utiliser directement le token
+      try {
+        debugPrint('Tentative directe avec le token Google...');
+        final url = '$apiBaseUrl/auth/provider';
+        final headers = {
+          'Content-Type': 'application/json',
+        };
+        
+        final body = json.encode({
+          'provider': 'google',
+          'token': googleAuth.accessToken,
+          'id': googleUser.id,
+          'email': googleUser.email,
+          'username': googleUser.displayName,
+          'profile_image_url': googleUser.photoUrl,
+        });
+        
+        debugPrint('URL: $url');
+        debugPrint('Body: $body');
+        
+        final response = await http.post(
+          Uri.parse(url),
+          headers: headers,
+          body: body,
+        );
+        
+        debugPrint('Statut de la réponse: ${response.statusCode}');
+        debugPrint('Contenu de la réponse: ${response.body}');
+        
+        if (response.statusCode == 200) {
+          final result = json.decode(response.body);
+          if (result.containsKey('access_token') && result.containsKey('expires_at')) {
+            _userId = result['user_id'];
+            _username = result['username'];
+            _isAdmin = result['is_admin'] ?? false;
+            authStateChanged.value = true;
+            debugPrint('Connexion alternative réussie');
+            return true;
+          }
+        }
+      } catch (e) {
+        debugPrint('Erreur lors de la tentative alternative: $e');
+      }
+
+      return false;
+    } catch (e, stack) {
+      debugPrint('Erreur globale lors de la connexion Google: $e');
+      debugPrint('Stack trace: $stack');
       return false;
     }
   }

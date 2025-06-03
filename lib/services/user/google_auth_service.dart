@@ -195,53 +195,102 @@ class GoogleAuthService extends ChangeNotifier {
   /// Se connecte avec Google en utilisant AuthService ou Google Play Games.
   Future<Map<String, dynamic>?> signInWithGoogle() async {
     try {
-      debugPrint('Démarrage du processus de connexion Google');
+      debugPrint('=== DÉMARRAGE DU PROCESSUS DE CONNEXION GOOGLE ===');
 
+      // Désactiver temporairement Google Play Games pour débogage
+      bool useGooglePlayGames = false;
+      
       // Essayer d'abord Google Play Games
-      try {
-        debugPrint('Tentative avec Google Play Games...');
-        await GamesServices.signIn();
-        final isPlayGamesSignedIn = await GamesServices.isSignedIn;
+      if (useGooglePlayGames) {
+        try {
+          debugPrint('Tentative avec Google Play Games...');
+          await GamesServices.signIn();
+          final isPlayGamesSignedIn = await GamesServices.isSignedIn;
 
-        if (isPlayGamesSignedIn) {
-          debugPrint('Connexion réussie via Google Play Games');
+          if (isPlayGamesSignedIn) {
+            debugPrint('Connexion réussie via Google Play Games');
 
-          // Marquer comme connecté
-          _isSignedIn = true;
-          notifyListeners();
+            // Marquer comme connecté
+            _isSignedIn = true;
+            notifyListeners();
 
-          // Sauvegarder le timestamp de connexion
-          _saveLastSignInTime();
+            // Sauvegarder le timestamp de connexion
+            _saveLastSignInTime();
 
-          // Quand on utilise Games Services, nous n'avons pas toutes les infos
-          // Donc on crée un objet avec des infos minimales
-          return {
-            'id': 'gps_${DateTime.now().millisecondsSinceEpoch}', // ID unique
-            'displayName': 'Joueur Google',
-            'email': null,
-            'photoUrl': null,
-          };
+            // Quand on utilise Games Services, nous n'avons pas toutes les infos
+            // Donc on crée un objet avec des infos minimales
+            return {
+              'id': 'gps_${DateTime.now().millisecondsSinceEpoch}', // ID unique
+              'displayName': 'Joueur Google',
+              'email': null,
+              'photoUrl': null,
+            };
+          }
+        } catch (e) {
+          debugPrint('Échec Google Play Games : $e');
+          // Continuer avec AuthService
         }
-      } catch (e) {
-        debugPrint('Échec Google Play Games : $e');
-        // Continuer avec AuthService
       }
 
       // Sinon, essayer AuthService
-      debugPrint('Tentative avec AuthService...');
+      debugPrint('Tentative avec GoogleSignIn...');
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
         debugPrint('L\'utilisateur a annulé la connexion Google');
         return null;
       }
 
+      debugPrint('Compte Google obtenu: ${googleUser.displayName} (${googleUser.email})');
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      debugPrint('Authentication Google réussie. Token obtenu: ${googleAuth.accessToken != null}');
       
       // Utiliser AuthService pour se connecter avec Google
+      debugPrint('Tentative d\'authentification via AuthService...');
+      
+      // Déboguer les informations utilisées pour l'authentification
+      debugPrint('Google ID: ${googleUser.id}');
+      debugPrint('Email: ${googleUser.email}');
+      debugPrint('Display name: ${googleUser.displayName}');
+      
       final success = await _authService.signInWithGoogle();
       
       if (!success) {
         debugPrint('AuthService n\'a pas réussi à authentifier l\'utilisateur');
+        
+        // Essayer une approche alternative pour le débogage
+        debugPrint('Tentative d\'utilisation directe du token Google...');
+        try {
+          // Pour le débogage, essayer de nous connecter directement avec le backend
+          final apiClient = ApiClient();
+          apiClient.printConfig(); // Afficher la configuration API
+          
+          final result = await apiClient.loginWithProvider(
+            'google',
+            googleUser.id,
+            googleUser.email,
+            username: googleUser.displayName,
+            profileImageUrl: googleUser.photoUrl,
+          );
+          
+          debugPrint('Résultat de la connexion directe: $result');
+          
+          // Si on a un token, on le sauvegarde
+          if (result['access_token'] != null && result['expires_at'] != null) {
+            _isSignedIn = true;
+            notifyListeners();
+            _saveLastSignInTime();
+            
+            return {
+              'id': result['user_id'] ?? googleUser.id,
+              'displayName': googleUser.displayName,
+              'email': googleUser.email,
+              'photoUrl': googleUser.photoUrl,
+            };
+          }
+        } catch (e) {
+          debugPrint('Échec de la tentative alternative: $e');
+        }
+        
         return null;
       }
 
