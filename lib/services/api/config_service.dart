@@ -117,68 +117,81 @@ class ConfigService {
     }
   }
   
+  // Applique la configuration par défaut quand l'API n'est pas disponible
+  void _applyDefaultConfig() {
+    _activeConfig = Map<String, dynamic>.from(_defaultConfig);
+    _lastFetchTime = DateTime.now(); // Évite les tentatives répétées
+    _configVersion = 'default';
+    _saveCachedConfig();
+    configChanged.value = Map<String, dynamic>.from(_activeConfig);
+    debugPrint('Configuration par défaut activée: ${_activeConfig.length} paramètres');
+  }
+  
   // Récupération de la configuration depuis le serveur
   Future<bool> fetch() async {
     try {
-      // Essayer d'obtenir la configuration active
-      try {
-        debugPrint('Tentative de récupération de la configuration depuis le serveur...');
-        final data = await _apiClient.get(
-          '/config/active',
-          requiresAuth: false,
-        );
+      // Vérifier si l'intervalle minimum est respecté
+      if (_lastFetchTime != null) {
+        final now = DateTime.now();
+        final difference = now.difference(_lastFetchTime!);
         
-        _activeConfig = Map<String, dynamic>.from(data['parameters'] ?? {});
-        _configVersion = data['version'] ?? '0';
-        _lastFetchTime = DateTime.now();
-        
-        debugPrint('Configuration récupérée avec succès. Version: $_configVersion');
-        await _saveCachedConfig();
-        return true;
-      } catch (apiError) {
-        // Si l'endpoint n'existe pas (404) ou autre erreur serveur, utiliser la configuration par défaut
-        if (apiError is ApiException && (apiError.statusCode == 404 || apiError.statusCode >= 500)) {
-          debugPrint('Endpoint /config/active non disponible (${apiError.statusCode}), utilisation de la configuration par défaut');
-          
-          // Fusionner les configurations locales et par défaut
-          _activeConfig = Map<String, dynamic>.from(_defaultConfig);
-          
-          // Ajouter ApiConfig.defaultConfig pour être sûr d'avoir toutes les valeurs nécessaires
-          _activeConfig.addAll(ApiConfig.defaultConfig);
-          
-          // Ajouter un message spécial pour indiquer que nous utilisons la configuration par défaut
-          _activeConfig['welcome_message'] = 'Bienvenue sur PaperClip2 (Mode hors ligne)';
-          _activeConfig['app_enabled'] = true; // Activer l'application malgré l'erreur
-          
-          _lastFetchTime = DateTime.now();
-          await _saveCachedConfig();
-          configChanged.value = Map<String, dynamic>.from(_activeConfig);
-          
-          debugPrint('Configuration par défaut activée: ${_activeConfig.length} paramètres');
-          return true;
+        if (difference < _minimumFetchInterval) {
+          debugPrint('Fetch ignoré: dernier fetch il y a ${difference.inMinutes} minutes, intervalle minimum ${_minimumFetchInterval.inMinutes} minutes');
+          return false;
         }
-        // Propager l'erreur au bloc catch externe
-        throw apiError;
+      }
+      
+      // Récupérer la configuration active depuis l'API
+      debugPrint('Récupération de la configuration active depuis l\'API...');
+      
+      try {
+        final result = await _apiClient.get('/config/active');
+        
+        if (result != null && result is Map<String, dynamic>) {
+          // Mettre à jour la dernière heure de fetch
+          _lastFetchTime = DateTime.now();
+          
+          // Extraire la version de la configuration
+          if (result.containsKey('version')) {
+            _configVersion = result['version'].toString();
+          }
+          
+          // Extraire les données de configuration
+          Map<String, dynamic> newConfig;
+          if (result.containsKey('data') && result['data'] is Map) {
+            newConfig = Map<String, dynamic>.from(result['data']);
+          } else {
+            // Si la structure ne contient pas de 'data', on considère tout comme configuration
+            newConfig = Map<String, dynamic>.from(result);
+          }
+          
+          // Fusionner avec les valeurs par défaut pour assurer la présence de toutes les clés
+          _defaultConfig.forEach((key, value) {
+            if (!newConfig.containsKey(key)) {
+              newConfig[key] = value;
+            }
+          });
+          
+          // Appliquer temporairement (sans activer)
+          _activeConfig = newConfig;
+          await _saveCachedConfig();
+          
+          debugPrint('Configuration récupérée avec succès: ${_activeConfig.length} paramètres, version $_configVersion');
+          return true;
+        } else {
+          debugPrint('Format de configuration invalide ou vide');
+          _applyDefaultConfig();
+          return false;
+        }
+      } catch (apiError) {
+        // Gestion spécifique pour le cas où l'endpoint n'existe pas (404) ou autre erreur API
+        debugPrint('Endpoint /config/active non disponible (${apiError.toString()}), utilisation de la configuration par défaut');
+        _applyDefaultConfig();
+        return false;
       }
     } catch (e) {
-      debugPrint('Erreur lors du fetch de la configuration: $e');
-      
-      // Même en cas d'erreur, essayer de charger la dernière configuration en cache
-      if (_activeConfig.isEmpty) {
-        debugPrint('Tentative de récupération de la dernière configuration en cache');
-        await _loadCachedConfig();
-        
-        if (_activeConfig.isEmpty) {
-          _activeConfig = Map<String, dynamic>.from(_defaultConfig);
-          configChanged.value = Map<String, dynamic>.from(_activeConfig);
-          debugPrint('Aucune configuration en cache, utilisation des valeurs par défaut');
-        } else {
-          debugPrint('Configuration récupérée depuis le cache');
-        }
-        
-        return true; // Retourner true car nous avons une configuration (même par défaut)
-      }
-      
+      debugPrint('Erreur lors de la récupération de la configuration: $e');
+      _applyDefaultConfig();
       return false;
     }
   }

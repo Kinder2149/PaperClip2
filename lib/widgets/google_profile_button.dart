@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:paperclip2/services/games_services_controller.dart';
+import '../services/games_services_controller.dart';
+import '../services/api/auth_service.dart';
+import 'package:provider/provider.dart';
 
 class GoogleProfileButton extends StatefulWidget {
   final Function()? onProfileUpdated;
@@ -56,10 +58,12 @@ class _GoogleProfileButtonState extends State<GoogleProfileButton> {
 
     try {
       final gamesServices = GamesServicesController();
+      final authService = Provider.of<AuthService>(context, listen: false);
 
       if (!_isSignedIn) {
-        // Si pas connecté, tenter de se connecter
-        final success = await gamesServices.signIn();
+        // Si pas connecté, tenter de se connecter via notre service d'authentification Google
+        debugPrint('Tentative d\'authentification via AuthService.signInWithGoogle()...');
+        final success = await authService.signInWithGoogle();
 
         if (success) {
           // Si connecté avec succès, récupérer les infos du joueur
@@ -68,6 +72,22 @@ class _GoogleProfileButtonState extends State<GoogleProfileButton> {
             _isSignedIn = true;
             _playerName = playerInfo?.displayName ?? "Joueur Google";
           });
+          
+          // Afficher un message de succès
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Connexion Google réussie'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else {
+          // Afficher un message d'erreur
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Échec de l\'authentification Google'),
+              backgroundColor: Colors.red,
+            ),
+          );
         }
       } else {
         // Si déjà connecté, montrer les options
@@ -128,15 +148,41 @@ class _GoogleProfileButtonState extends State<GoogleProfileButton> {
               Navigator.pop(context);
               setState(() => _isLoading = true);
 
-              // Comme signOut n'est pas disponible, on force une reconnexion
-              final gamesServices = GamesServicesController();
-              await gamesServices.signIn();
-              await _checkSignInStatus();
-
-              setState(() => _isLoading = false);
-
-              if (widget.onProfileUpdated != null) {
-                widget.onProfileUpdated!();
+              try {
+                // Utiliser AuthService pour déconnecter l'utilisateur
+                final authService = Provider.of<AuthService>(context, listen: false);
+                
+                // Déconnexion complète
+                await authService.logout();
+                
+                await _checkSignInStatus();
+                
+                // Notification de déconnexion réussie
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Déconnexion réussie'),
+                      backgroundColor: Colors.blue,
+                    ),
+                  );
+                }
+              } catch (e) {
+                debugPrint('Erreur lors de la déconnexion: $e');
+                
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Erreur lors de la déconnexion: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              } finally {
+                setState(() => _isLoading = false);
+                
+                if (widget.onProfileUpdated != null) {
+                  widget.onProfileUpdated!();
+                }
               }
             },
           ),

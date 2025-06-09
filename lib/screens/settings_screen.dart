@@ -18,6 +18,7 @@ import '../services/background_music.dart';
 import '../services/save/save_types.dart';
 import '../services/save/save_system.dart';
 import '../services/user/user_manager.dart';
+import '../services/api/auth_service.dart';
 
 // Import des écrans
 import 'save_load_screen.dart';
@@ -851,13 +852,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       setState(() => _isLoading = true);
 
-      final authService = serviceLocator.authService;
+      // Utiliser l'instance de AuthService via Provider
+      final authService = Provider.of<AuthService>(context, listen: false);
       if (authService == null) {
         throw Exception("Le service d'authentification n'est pas disponible");
       }
 
-      final gamesServices = GamesServicesController();
-      await gamesServices.signIn();
+      debugPrint('Tentative d\'authentification Google dans SettingsScreen...');
+      // Utiliser directement notre méthode signInWithGoogle améliorée
+      final success = await authService.signInWithGoogle();
+      
+      if (!success) {
+        throw Exception("Échec de l'authentification Google");
+      }
 
       // Réinitialiser le UserManager pour charger le profil nouvellement connecté
       final userManager = Provider.of<UserManager>(context, listen: false);
@@ -869,7 +876,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Connexion réussie'),
+            content: Text('Connexion Google réussie'),
             backgroundColor: Colors.green,
           ),
         );

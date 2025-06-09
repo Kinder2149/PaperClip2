@@ -66,6 +66,8 @@ class AuthService {
       
       _userId = userData['id'];
       _username = userData['username'];
+      _email = userData['email'];
+      _photoUrl = userData['profile_image_url'];
       _isAdmin = userData['is_admin'] ?? false;
     } catch (e) {
       debugPrint('Erreur lors du chargement des informations utilisateur: $e');
@@ -108,8 +110,14 @@ class AuthService {
   }
   
   /// Connexion avec Google - Implémentation robuste avec échange de token
-/// Paramètre silent: si true, tente une connexion silencieuse sans interface utilisateur
-  Future<bool> signInWithGoogle({bool silent = false}) async {
+  /// @param silent: si true, tente une connexion silencieuse sans interface utilisateur
+  /// @param googleAccount: le compte Google déjà authentifié (optionnel)
+  /// @param googleAuth: l'authentification Google déjà obtenue (optionnel)
+  Future<bool> signInWithGoogle({
+    bool silent = false,
+    GoogleSignInAccount? googleAccount,
+    GoogleSignInAuthentication? googleAuth,
+  }) async {
     try {
       debugPrint('=== AUTHENTIFICATION GOOGLE VIA AUTH SERVICE ===');
       
@@ -128,37 +136,70 @@ class AuthService {
         debugPrint('ERREUR: API Base URL manquante dans la configuration');
       }
       
-      // Récupérer un compte Google via GoogleSignIn
-    GoogleSignInAccount? googleUser;
-    
-    if (silent) {
-      // En mode silencieux, essayer de récupérer la session actuelle sans UI
-      googleUser = await GoogleSignIn().signInSilently();
-      debugPrint('Tentative de connexion silencieuse: ${googleUser != null ? "réussie" : "échouée"}');
-    } else {
-      // En mode normal, afficher l'interface de sélection de compte Google
-      googleUser = await GoogleSignIn().signIn();
-    }
-    
-    if (googleUser == null) {
-      debugPrint('Aucun compte Google sélectionné ou session expirée');
-      return false;
-    }
-
-      debugPrint('Compte Google obtenu: ${googleUser.displayName} (${googleUser.email})');
+      // Utiliser le compte Google passé en paramètre ou en récupérer un nouveau
+      GoogleSignInAccount? googleUser = googleAccount;
+      GoogleSignInAuthentication? auth = googleAuth;
       
-      // Obtenir les informations d'authentification complètes
-      // Nous avons besoin à la fois de l'accessToken et de l'idToken pour une authentification sécurisée
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      // Si aucun compte n'est fourni, obtenir un nouveau compte Google
+      if (googleUser == null) {
+        if (silent) {
+          // En mode silencieux, essayer de récupérer la session actuelle sans UI
+          googleUser = await GoogleSignIn().signInSilently();
+          debugPrint('Tentative de connexion silencieuse: ${googleUser != null ? "réussie" : "échouée"}');
+        } else {
+          // En mode normal, afficher l'interface de sélection de compte Google
+          googleUser = await GoogleSignIn().signIn();
+        }
+        
+        if (googleUser == null) {
+          debugPrint('Aucun compte Google sélectionné ou session expirée');
+          return false;
+        }
+        
+        debugPrint('Compte Google obtenu: ${googleUser.displayName} (${googleUser.email})');
+        
+        // Obtenir les informations d'authentification complètes si elles ne sont pas fournies
+        try {
+          auth = await googleUser.authentication.catchError((error) {
+            debugPrint('Erreur lors de l\'obtention des tokens Google: $error');
+            return null;
+          });
+          
+          // Si l'auth est nulle ou l'idToken est manquant, tenter une nouvelle connexion
+          if (auth == null || auth.idToken == null) {
+            debugPrint('Tokens invalides, tentative de reconnexion Google...');
+            // Déconnexion et reconnexion pour forcer un rafraîchissement
+            await GoogleSignIn().signOut();
+            final refreshedUser = await GoogleSignIn().signIn();
+            if (refreshedUser != null) {
+              googleUser = refreshedUser; // Mettre à jour la référence de l'utilisateur
+              debugPrint('Nouvel utilisateur Google obtenu: ${googleUser.displayName}');
+              auth = await refreshedUser.authentication;
+              debugPrint('Nouveaux tokens obtenus: idToken présent=${auth?.idToken != null}, accessToken présent=${auth?.accessToken != null}');
+            }
+          }
+        } catch (e) {
+          debugPrint('Exception lors de la récupération des tokens: $e');
+        }
+      } else {
+        debugPrint('Utilisation du compte Google déjà authentifié: ${googleUser.displayName}');
+      }
       
-      // L'idToken est crucial pour la vérification côté serveur
-      if (googleAuth.idToken == null) {
-        debugPrint('ERREUR: Pas de ID token Google');
+      // Vérifier que nous avons bien l'authentification
+      if (auth == null) {
+        debugPrint('ERREUR: Authentification Google manquante après tentatives');
         return false;
       }
       
-      if (googleAuth.accessToken == null) {
-        debugPrint('ERREUR: Pas de token d\'accès Google');
+      // L'idToken est crucial pour la vérification côté serveur
+      if (auth.idToken == null) {
+        debugPrint('ERREUR: Pas de ID token Google après récupération');
+        debugPrint('Tentative d\'utiliser l\'accessToken pour l\'authentification...');
+        // On continue même sans idToken, on utilisera l'accessToken si disponible
+      }
+      
+      if (auth.accessToken == null && auth.idToken == null) {
+        debugPrint('ERREUR CRITIQUE: Aucun token disponible (ni idToken ni accessToken)');
         return false;
       }
       
@@ -166,18 +207,36 @@ class AuthService {
 
       // Étape 1: Authentifier avec le backend en utilisant les tokens Google
       try {
+        // Préparer les données en fonction des tokens disponibles
         final Map<String, dynamic> bodyData = {
-          'id_token': googleAuth.idToken,
           'provider': 'google',
-          'provider_id': googleUser.id,
-          'email': googleUser.email,
-          'display_name': googleUser.displayName,
-          'profile_image_url': googleUser.photoUrl,
+          'provider_id': googleUser?.id ?? '',
+          'email': googleUser?.email ?? '',
+          'display_name': googleUser?.displayName ?? '',
+          'profile_image_url': googleUser?.photoUrl ?? '',
         };
+        
+        // Ajouter les tokens disponibles
+        if (auth.idToken != null) {
+          bodyData['id_token'] = auth.idToken;
+          debugPrint('ID Token ajouté à la requête');
+        }
+        
+        if (auth.accessToken != null) {
+          bodyData['access_token'] = auth.accessToken;
+          debugPrint('Access Token ajouté à la requête');
+        }
+        
+        // Vérifier que nous avons suffisamment d'informations
+        if (bodyData['email'] == null) {
+          debugPrint('ERREUR: Email manquant dans les données utilisateur');
+          return false;
+        }
 
-        debugPrint('Échange du token Google contre un JWT avec le backend...');
+        debugPrint('Échange des tokens Google contre un JWT avec le backend...');
         
         final uri = Uri.parse('$apiBaseUrl/auth/oauth/google');
+        debugPrint('Tentative d\'appel à $uri');
         
         final response = await http.post(
           uri,
@@ -186,6 +245,12 @@ class AuthService {
             'Accept': 'application/json',
           },
           body: json.encode(bodyData),
+        ).timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            debugPrint('Timeout lors de la connexion à l\'API - passage au mode de secours');
+            return http.Response('{"état": "timeout"}', 408); // Créer une réponse de timeout
+          },
         );
         
         debugPrint('Statut de la réponse: ${response.statusCode}');
@@ -199,12 +264,14 @@ class AuthService {
             final DateTime expiration = DateTime.parse(result['expires_at']);
             
             // Sauvegarder dans l'ApiClient
-            await _saveAuthToken(token, expiration);
+            await _apiClient.setAuthToken(token, expiration); // Utiliser directement _apiClient
             
             // Stocker les informations utilisateur
-            _userId = result['user_id'] ?? googleUser.id;
-            _username = result['username'] ?? googleUser.displayName;
+            _userId = result['user_id'] ?? googleUser?.id ?? '';
+            _username = result['username'] ?? googleUser?.displayName ?? '';
             _isAdmin = result['is_admin'] ?? false;
+            _email = result['email'] ?? googleUser?.email ?? '';
+            _photoUrl = result['photo_url'] ?? googleUser?.photoUrl ?? '';
             
             // Notifier du changement d'état
             authStateChanged.value = true;
@@ -218,20 +285,25 @@ class AuthService {
         // Cas où l'endpoint /auth/oauth/google n'existe pas encore
         else if (response.statusCode == 404) {
           debugPrint('Endpoint OAuth non disponible, fallback vers l\'ancienne méthode...');
-          return await _legacyGoogleAuthentication(googleUser, googleAuth);
+          return await _legacyGoogleAuthentication(googleUser, auth);
+        }
+        // Timeout ou problème réseau
+        else if (response.statusCode == 408 || response.statusCode >= 500) {
+          debugPrint('Problème de connexion au serveur, tentative avec la méthode de secours...');
+          return await _legacyGoogleAuthentication(googleUser, auth);
         }
         else {
           debugPrint('Erreur HTTP: ${response.statusCode}');
           debugPrint('Détails: ${response.body}');
           
           // On essaie la méthode de fallback si le nouvel endpoint échoue
-          return await _legacyGoogleAuthentication(googleUser, googleAuth);
+          return await _legacyGoogleAuthentication(googleUser, auth);
         }
       } catch (e) {
         debugPrint('Exception lors de l\'échange de token: $e');
         
         // En cas d'erreur, on essaie avec l'ancienne méthode
-        return await _legacyGoogleAuthentication(googleUser, googleAuth);
+        return await _legacyGoogleAuthentication(googleUser, auth);
       }
 
       return false;
@@ -248,7 +320,7 @@ class AuthService {
   /// Méthode de secours qui tente de créer un compte utilisateur avec les données Google
   /// Utilisée quand toutes les autres méthodes d'authentification ont échoué
   Future<bool> _createGoogleAccountFallback(
-    GoogleSignInAccount googleUser,
+    GoogleSignInAccount? googleUser,
     GoogleSignInAuthentication googleAuth
   ) async {
     try {
@@ -259,13 +331,13 @@ class AuthService {
       
       // Créer le compte avec les infos Google
       final result = await registerFull(
-        googleUser.displayName ?? 'Utilisateur Google',
-        googleUser.email,
+        googleUser?.displayName ?? 'Utilisateur Google',
+        googleUser?.email,
         randomPassword,
       );
       
       if (result.containsKey('access_token') && result.containsKey('user_id')) {
-        debugPrint('Compte créé avec succès pour ${googleUser.email}');
+        debugPrint('Compte créé avec succès pour ${googleUser?.email}');
         
         // Maintenant essayer de lier le compte Google
         try {
@@ -297,41 +369,63 @@ class AuthService {
   
   /// Méthode de repli pour l'authentification Google utilisant l'ancien endpoint
   Future<bool> _legacyGoogleAuthentication(
-    GoogleSignInAccount googleUser,
+    GoogleSignInAccount? googleUser,
     GoogleSignInAuthentication googleAuth
   ) async {
     try {
+      // Vérification si googleUser est null
+      if (googleUser == null) {
+        debugPrint('ERREUR FALLBACK: GoogleSignInAccount est null');
+        return false;
+      }
+      
       debugPrint('Utilisation de la méthode d\'authentification Google de secours');
       
-      // Vérifier que les tokens nécessaires sont bien présents
-      if (googleAuth.idToken == null) {
-        debugPrint('ERREUR FALLBACK: ID Token Google manquant');
-        // Tentative de régénération du token en demandant de nouveau l'authentification
-        final GoogleSignInAuthentication refreshedAuth = await googleUser.authentication;
-        if (refreshedAuth.idToken == null) {
-          debugPrint('ÉCHEC: Impossible d\'obtenir un ID Token Google même après nouvelle tentative');
-          return false;
+      // Récuperer tous les tokens disponibles
+      String? idToken = googleAuth.idToken;
+      String? accessToken = googleAuth.accessToken;
+      
+      // Si aucun token n'est disponible, tenter une dernière récupération
+      if (idToken == null && accessToken == null) {
+        debugPrint('ERREUR FALLBACK: Aucun token disponible, tentative de régénération...');
+        try {
+          // Déconnexion et reconnexion pour forcer le rafraîchissement
+          await GoogleSignIn().signOut();
+          final refreshedUser = await GoogleSignIn().signIn();
+          if (refreshedUser != null) {
+            // Mise à jour de l'utilisateur
+            googleUser = refreshedUser;
+            final refreshedAuth = await refreshedUser.authentication;
+            idToken = refreshedAuth.idToken;
+            accessToken = refreshedAuth.accessToken;
+            debugPrint('Tokens régénérés - idToken: ${idToken != null}, accessToken: ${accessToken != null}');
+          }
+        } catch (e) {
+          debugPrint('Erreur lors de la régénération des tokens: $e');
         }
-        // Utiliser les nouveaux tokens pour la suite
-        googleAuth = refreshedAuth;
-        debugPrint('ID Token régénéré avec succès');
+      }
+      
+      // Vérifier si nous avons au moins un token
+      if (idToken == null && accessToken == null) {
+        debugPrint('ÉCHEC: Impossible d\'obtenir des tokens Google après plusieurs tentatives');
+        return false;
       }
       
       // Tenter de se connecter via l'API client standard
       final result = await _apiClient.loginWithProvider(
         'google',
-        googleUser.id,
-        googleUser.email,
-        username: googleUser.displayName,
-        profileImageUrl: googleUser.photoUrl,
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken, // Ajout explicite de l'ID Token
+        googleUser?.id ?? '',
+        googleUser?.email ?? '',
+        username: googleUser?.displayName,
+        profileImageUrl: googleUser?.photoUrl,
+        accessToken: accessToken,
+        idToken: idToken,
       );
       
       // Vérifier si la réponse contient bien les infos attendues
       if (result.containsKey('access_token') && result.containsKey('expires_at')) {
-        _userId = result['user_id'] ?? googleUser.id;
-        _username = result['username'] ?? googleUser.displayName;
+        _userId = result['user_id'] ?? googleUser?.id;
+        _username = result['username'] ?? googleUser?.displayName;
         _isAdmin = result['is_admin'] ?? false;
         
         authStateChanged.value = true;
@@ -344,8 +438,8 @@ class AuthService {
       
       final queryParams = {
         'provider': 'google',
-        'provider_id': googleUser.id,
-        'email': googleUser.email,
+        'provider_id': googleUser?.id,
+        'email': googleUser?.email,
       };
       
       final headers = {
@@ -363,8 +457,8 @@ class AuthService {
         uri,
         headers: headers.cast<String, String>(),
         body: json.encode({
-          'username': googleUser.displayName,
-          'profile_image_url': googleUser.photoUrl,
+          'username': googleUser?.displayName,
+          'profile_image_url': googleUser?.photoUrl,
           'id_token': googleAuth.idToken, // Ajouter l'ID token dans le corps également
         }),
       );
@@ -379,8 +473,8 @@ class AuthService {
           // Sauvegarder le token
           await _saveAuthToken(token, expiration);
           
-          _userId = data['user_id'] ?? googleUser.id;
-          _username = data['username'] ?? googleUser.displayName;
+          _userId = data['user_id'] ?? googleUser?.id;
+          _username = data['username'] ?? googleUser?.displayName;
           _isAdmin = data['is_admin'] ?? false;
           
           authStateChanged.value = true;
@@ -411,12 +505,26 @@ class AuthService {
   // Enregistrement d'un nouvel utilisateur avec plus d'options
   Future<Map<String, dynamic>> registerFull(String displayName, String? email, String? password) async {
     try {
+      // Vérifier que les champs obligatoires sont renseignés
+      if (email == null || email.isEmpty) {
+        debugPrint('ERREUR: Email obligatoire pour l\'enregistrement');
+        return {'success': false, 'message': 'Email obligatoire'};
+      }
+      
+      if (password == null || password.isEmpty) {
+        debugPrint('ERREUR: Mot de passe obligatoire pour l\'enregistrement');
+        return {'success': false, 'message': 'Mot de passe obligatoire'};
+      }
+
+      // Loguer les données d'enregistrement pour débogage
+      debugPrint('Tentative d\'enregistrement avec: username=$displayName, email=$email');
+      
       final data = await _apiClient.post(
         '/auth/register',
         body: {
           'username': displayName,
-          'email': email ?? '',
-          'password': password ?? '',
+          'email': email,
+          'password': password,
         },
       );
       
@@ -467,107 +575,81 @@ class AuthService {
     return updateProfile(profileData);
   }
   
-  // Lier le compte à Google
   /// Lie le compte utilisateur actuel avec un compte Google
-/// Transmet explicitement les tokens Google au backend pour une authentification sécurisée
-Future<Map<String, dynamic>> linkWithGoogle() async {
-  try {
-    debugPrint('Démarrage du processus de liaison avec Google...');
-    
-    // Vérifier que l'utilisateur est bien authentifié
-    if (!isAuthenticated) {
-      debugPrint('Liaison impossible: utilisateur non authentifié');
-      return {'success': false, 'message': 'User not authenticated'};
-    }
-    
-    // Déclencher le flux de connexion Google
-    final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-    
-    if (googleUser == null) {
-      debugPrint('Liaison annulée par l\'utilisateur');
-      return {'success': false, 'message': 'Google sign-in cancelled'};
-    }
-    
-    debugPrint('Compte Google sélectionné: ${googleUser.displayName} (${googleUser.email})');
-    
-    // Obtenir les tokens d'authentification
-    final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-    
-    // Vérifier la présence des tokens
-    if (googleAuth.idToken == null) {
-      debugPrint('Liaison impossible: ID Token Google manquant');
-      return {'success': false, 'message': 'Missing Google ID Token'};
-    }
-    
-    if (googleAuth.accessToken == null) {
-      debugPrint('Liaison impossible: Access Token Google manquant');
-      return {'success': false, 'message': 'Missing Google Access Token'};
-    }
-    
-    debugPrint('Tokens Google obtenus avec succès');
-    
-    // Préparer les données complètes pour la liaison
-    final Map<String, dynamic> bodyData = {
-      'google_id': googleUser.id,
-      'email': googleUser.email,
-      'display_name': googleUser.displayName,
-      'profile_image_url': googleUser.photoUrl,
-      'id_token': googleAuth.idToken,       // Ajout explicite de l'ID Token
-      'access_token': googleAuth.accessToken, // Ajout explicite de l'Access Token
-    };
-    
-    debugPrint('Envoi de la requête de liaison au backend...');
-    
-    // Essayer d'abord l'endpoint moderne
+  /// Transmet explicitement les tokens Google au backend pour une authentification sécurisée
+  Future<Map<String, dynamic>> linkWithGoogle() async {
     try {
-      final modernData = await _apiClient.post(
-        '/auth/link/google',
-        body: bodyData,
-      );
+      // Déclencher le flux de connexion Google
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       
-      if (modernData['success'] == true) {
-        debugPrint('Liaison avec Google réussie via l\'endpoint moderne');
-        return modernData;
+      if (googleUser == null) {
+        debugPrint('Liaison annulée par l\'utilisateur');
+        return {'success': false, 'message': 'Google sign-in cancelled'};
+      }
+      
+      debugPrint('Compte Google sélectionné: ${googleUser.displayName} (${googleUser.email})');
+      
+      // Obtenir les tokens d'authentification
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      
+      // Préparer les données complètes pour la liaison
+      final Map<String, dynamic> bodyData = {
+        'google_id': googleUser.id,
+        'email': googleUser.email,
+        'display_name': googleUser.displayName,
+        'profile_image_url': googleUser.photoUrl,
+        'id_token': googleAuth.idToken,
+        'access_token': googleAuth.accessToken,
+      };
+      
+      try {
+        final modernData = await _apiClient.post(
+          '/auth/link/google',
+          body: bodyData,
+        );
+        
+        if (modernData['success'] == true) {
+          debugPrint('Liaison avec Google réussie via l\'endpoint moderne');
+          return modernData;
+        }
+      } catch (e) {
+        debugPrint('Endpoint moderne indisponible ou erreur: $e');
+        // Continuer avec le fallback
+      }
+      
+      // Méthode de secours - essayer un endpoint alternatif
+      try {
+        final fallbackData = await _apiClient.post(
+          '/user/link/google',
+          body: bodyData,
+        );
+        
+        if (fallbackData['success'] == true) {
+          debugPrint('Liaison avec Google réussie via l\'endpoint alternatif');
+          return fallbackData;
+        } else {
+          debugPrint('Échec de la liaison: ${fallbackData['message'] ?? "Raison inconnue"}');
+          return fallbackData;
+        }
+      } catch (e) {
+        debugPrint('Échec de la méthode de secours: $e');
+        return {'success': false, 'message': 'API connection error: ${e.toString()}'};
       }
     } catch (e) {
-      debugPrint('Endpoint moderne indisponible ou erreur: $e');
-      // Continuer avec le fallback
-    }
-    
-    // Méthode de secours - essayer un endpoint alternatif
-    try {
-      final fallbackData = await _apiClient.post(
-        '/user/link/google',
-        body: bodyData,
-      );
-      
-      if (fallbackData['success'] == true) {
-        debugPrint('Liaison avec Google réussie via l\'endpoint alternatif');
-        return fallbackData;
-      } else {
-        debugPrint('Échec de la liaison: ${fallbackData['message'] ?? "Raison inconnue"}');
-        return fallbackData;
+      debugPrint('Erreur lors de la liaison avec Google: $e');
+      // Enregistrement de l'erreur pour analyse
+      try {
+        // Accès via une méthode d'évaluation dynamique pour éviter des erreurs de compilation
+        final analytics = getAnalyticsService();
+        if (analytics != null) {
+          analytics.recordError(e, stack: StackTrace.current, reason: 'Google authentication error');
+        }
+      } catch (logError) {
+        debugPrint('Impossible d\'enregistrer l\'erreur: $logError');
       }
-    } catch (e) {
-      debugPrint('Échec de la méthode de secours: $e');
-      return {'success': false, 'message': 'API connection error: ${e.toString()}'};
+      return {'success': false, 'message': e.toString()};
     }
-  } catch (e, stack) {
-    debugPrint('Erreur lors de la liaison avec Google: $e');
-    // Enregistrement de l'erreur pour analyse
-    try {
-      // Accès via une méthode d'évaluation dynamique pour éviter des erreurs de compilation
-      // en attendant une meilleure implémentation de l'injection de dépendance
-      final analytics = getAnalyticsService();
-      if (analytics != null) {
-        analytics.recordError(e, stack, reason: 'Google authentication error');
-      }
-    } catch (logError) {
-      debugPrint('Impossible d\'enregistrer l\'erreur: $logError');
-    }
-    return {'success': false, 'message': e.toString()};
   }
-}
   
   // Sauvegarder le token d'authentification
   Future<void> _saveAuthToken(String token, DateTime expiration) async {
@@ -648,6 +730,8 @@ Future<Map<String, dynamic>> linkWithGoogle() async {
       _userId = null;
       _username = null;
       _isAdmin = false;
+      _email = null;
+      _photoUrl = null;
       
       authStateChanged.value = false;
     }

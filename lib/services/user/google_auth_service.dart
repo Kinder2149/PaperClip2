@@ -3,6 +3,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:games_services/games_services.dart';
+import 'dart:math' as math;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api_services.dart';
@@ -252,7 +253,18 @@ class GoogleAuthService extends ChangeNotifier {
       debugPrint('Email: ${googleUser.email}');
       debugPrint('Display name: ${googleUser.displayName}');
       
-      final success = await _authService.signInWithGoogle();
+      // Debugger les informations des tokens Google
+      debugPrint('ID token présent: ${googleAuth.idToken != null}');
+      if (googleAuth.idToken != null) {
+        debugPrint('Longueur ID token: ${googleAuth.idToken!.length}');
+        debugPrint('Début ID token: ${googleAuth.idToken!.substring(0, math.min(20, googleAuth.idToken!.length))}...');
+      }
+      
+      // Passer les tokens et les informations du compte à AuthService
+      final success = await _authService.signInWithGoogle(
+        googleAccount: googleUser,
+        googleAuth: googleAuth,
+      );
       
       if (!success) {
         debugPrint('AuthService n\'a pas réussi à authentifier l\'utilisateur');
