@@ -19,10 +19,11 @@ import '../../models/game_state.dart';
 
 // Import des services API
 import '../api/api_services.dart';
+import '../api/api_client.dart';
 // Import du ServiceLocator
 import '../../main.dart' show serviceLocator;
 
-class UserManager {
+class UserManager extends ChangeNotifier {
   // Singleton instance
   static final UserManager instance = UserManager._internal();
   
@@ -70,6 +71,163 @@ class UserManager {
   
   // Vérifier si l'utilisateur est connecté
   bool get isLoggedIn => _authService?.isAuthenticated ?? false;
+  
+  // Rafraîchir l'état d'authentification après une connexion réussie
+  Future<void> refreshAuthState() async {
+    final isSignedIn = await GamesServicesController().isSignedIn();
+    
+    if (isSignedIn && _currentProfile == null) {
+      // Récupérer les informations du joueur depuis GamesServicesController
+      final playerInfo = GamesServicesController().cachedPlayerInfo;
+      
+      if (playerInfo != null) {
+        // Créer ou mettre à jour le profil utilisateur
+        _currentProfile = UserProfile(
+          userId: playerInfo.id,
+          displayName: playerInfo.displayName,
+          profileImageUrl: playerInfo.iconImageUrl,
+        );
+        
+        // Notifier les écouteurs
+        _profileNotifier.value = _currentProfile;
+        profileChanged.value = _currentProfile;
+        
+        // Authentification avec l'API en utilisant les identifiants Google
+        if (_authService != null) {
+          try {
+            debugPrint('UserManager: Authentification avec Google pour ${playerInfo.id}');
+            
+            // Utiliser les informations Google pour s'authentifier auprès de notre API
+            final result = await _authService!.signInWithGoogle();
+            
+            if (result) {
+              debugPrint('UserManager: Authentification réussie pour l\'utilisateur ${playerInfo.id}');
+            } else {
+              debugPrint('UserManager: Échec de l\'authentification pour l\'utilisateur ${playerInfo.id}');
+              // En cas d'échec, on peut essayer de créer un compte
+              if (_authService != null) {
+                await _authService!.registerFull(
+                  playerInfo.displayName,
+                  null, // email (sera récupéré par Google OAuth)
+                  null, // password (sera généré côté serveur)
+                );
+                debugPrint('UserManager: Tentative de création de compte pour ${playerInfo.displayName}');
+              }
+            }
+          } catch (e) {
+            debugPrint('UserManager: Erreur lors de l\'authentification API: $e');
+          }
+        }
+        
+        // Initialiser les services dépendants de l'authentification
+        await _initializeAuthenticatedServices();
+      
+        // Notifier les écouteurs
+        notifyListeners();
+        debugPrint('UserManager: Etat d\'authentification mis a jour - Connecte');
+      }
+    } else if (!isSignedIn && _currentProfile != null) {
+      debugPrint('UserManager: Déconnexion détectée, réinitialisation des services');
+      
+      // Réinitialisation en cas de déconnexion
+      _currentProfile = null;
+      _profileNotifier.value = null;
+      profileChanged.value = null;
+      
+      // Déconnexion de l'API
+      if (_authService != null) {
+        try {
+          await _authService!.logout();
+          debugPrint('UserManager: Déconnexion du compte API réussie');
+        } catch (e) {
+          debugPrint('UserManager: Erreur lors de la déconnexion API: $e');
+          // Même en cas d'erreur, on efface le token local
+          final ApiClient apiClient = ApiClient();
+          await apiClient.clearAuthToken();
+        }
+      }
+      
+      // Réinitialiser les services en mode non authentifié
+      try {
+        // Réinitialiser tous les services avec userAuthenticated=false
+        await updateServices(); // Ceci appellera les services avec userAuthenticated=false
+        debugPrint('UserManager: Tous les services réinitialisés en mode non authentifié');
+        
+        // Effacer les services sociaux secondaires
+        _friendsService = null;
+        _userStatsService = null;
+        
+      } catch (e, stack) {
+        debugPrint('UserManager: Erreur lors de la réinitialisation des services: $e');
+        _analyticsService?.recordError(e, stack, reason: 'Service reset error on logout');
+      }
+      
+      notifyListeners();
+      debugPrint('UserManager: Etat d\'authentification mis a jour - Deconnecte');
+    }
+  }
+  
+  // Initialiser les services qui nécessitent une authentification
+  Future<void> _initializeAuthenticatedServices() async {
+    if (_currentProfile == null) {
+      debugPrint('UserManager: Impossible d\'initialiser les services authentifiés - Aucun profil utilisateur');
+      return;
+    }
+    
+    // Vérifier que nous avons bien un token d'authentification
+    final isAuthenticated = _authService?.isAuthenticated ?? false;
+    if (!isAuthenticated) {
+      debugPrint('UserManager: Impossible d\'initialiser les services authentifiés - Utilisateur non authentifié');
+      return;
+    }
+    
+    debugPrint('UserManager: Initialisation des services authentifiés pour ${_currentProfile!.userId}');
+    
+    try {
+      // 1. Réinitialiser tous les services avec userAuthenticated = true
+      await updateServices(); // Va appeler les services avec le statut d'authentification correct
+      
+      // 2. Définir l'ID utilisateur pour l'analytique
+      if (_analyticsService != null) {
+        _analyticsService!.setUserId(_currentProfile!.userId);
+        debugPrint('UserManager: ID utilisateur défini pour AnalyticsService');
+      } else {
+        debugPrint('UserManager: Impossible de définir l\'ID utilisateur - AnalyticsService manquant');
+      }
+      
+      // 3. Initialiser FriendsService
+      if (_socialService != null && _analyticsService != null) {
+        _friendsService = FriendsService(
+          userId: _currentProfile!.userId,
+          userManager: this,
+          socialService: _socialService!,
+          analyticsService: _analyticsService!,
+        );
+        debugPrint('UserManager: FriendsService initialisé avec succès');
+      } else {
+        debugPrint('UserManager: Impossible d\'initialiser FriendsService - Services requis manquants');
+      }
+      
+      // 4. Initialiser UserStatsService
+      if (_socialService != null && _analyticsService != null) {
+        _userStatsService = UserStatsService(
+          userId: _currentProfile!.userId,
+          userManager: this,
+          socialService: _socialService!,
+          analyticsService: _analyticsService!,
+        );
+        debugPrint('UserManager: UserStatsService initialisé avec succès');
+      } else {
+        debugPrint('UserManager: Impossible d\'initialiser UserStatsService - Services requis manquants');
+      }
+      
+      // 5. Initialiser d'autres services authentifiés si nécessaire...
+      
+    } catch (e, stack) {
+      debugPrint('UserManager: Erreur lors de l\'initialisation des services authentifiés: $e');
+      _analyticsService?.recordError(e, stack, reason: 'Auth services initialization error');
+    }
+  }
 
   // État interne
   UserProfile? _currentProfile;
@@ -116,63 +274,122 @@ class UserManager {
       _analyticsService ??= serviceLocator.analyticsService;
       _socialService ??= serviceLocator.socialService;
       _saveService ??= serviceLocator.saveService;
+
+      // Vérifier que tous les services requis sont disponibles
+      bool servicesMissing = false;
       
-      // Initialiser les services sociaux
-      _friendsService = FriendsService(
-        userId: currentProfile?.userId ?? '',
-        userManager: this,
-        socialService: _socialService!,
-        analyticsService: _analyticsService!,
-      );
+      if (_authService == null) {
+        debugPrint('Erreur: Service d\'authentification manquant');
+        servicesMissing = true;
+      }
       
-      _userStatsService = UserStatsService(
-        userId: currentProfile?.userId ?? '',
-        userManager: this,
-        socialService: _socialService!,
-        analyticsService: _analyticsService!,
-      );
+      if (_storageService == null) {
+        debugPrint('Erreur: Service de stockage manquant');
+        servicesMissing = true;
+      }
       
-      // Essayer de charger le profil localement d'abord
+      if (_analyticsService == null) {
+        debugPrint('Erreur: Service d\'analytique manquant');
+        // Moins critique, continuer sans analytiques
+      }
+      
+      if (_socialService == null) {
+        debugPrint('Erreur: Service social manquant');
+        // On peut continuer sans service social, mais les fonctionnalités sociales seront désactivées
+      }
+      
+      if (_saveService == null) {
+        debugPrint('Erreur: Service de sauvegarde manquant');
+        servicesMissing = true;
+      }
+      
+      // Si les services critiques sont manquants, arrêter l'initialisation
+      if (servicesMissing) {
+        debugPrint('Erreur: Certains services API critiques sont manquants');
+        _initialized = true; // Marquer comme initialisé pour éviter des tentatives répétées
+        return;
+      }
+      
+      // Initialiser les services sociaux seulement si les services API sont disponibles
+      if (_socialService != null && _analyticsService != null) {
+        _friendsService = FriendsService(
+          userId: currentProfile?.userId ?? '',
+          userManager: this,
+          socialService: _socialService!,
+          analyticsService: _analyticsService!,
+        );
+        
+        _userStatsService = UserStatsService(
+          userId: currentProfile?.userId ?? '',
+          userManager: this,
+          socialService: _socialService!,
+          analyticsService: _analyticsService!,
+        );
+      }
+      
+      // Essayer de charger le profil existant s'il y en a un
       await _loadProfileFromLocal();
       
-      // Si un profil existe déjà dans le cloud, le charger
-      if (_authService?.isAuthenticated ?? false) {
-        final userId = _authService!.userId;
-        if (userId != null) {
-          await _loadProfileFromServer(userId);
+      // Si l'utilisateur est connecté, essayer de charger depuis le serveur
+      if (_authService?.isAuthenticated == true && _authService?.userId != null) {
+        try {
+          await _loadProfileFromServer(_authService!.userId!);
+        } catch (e, stackTrace) {
+          debugPrint('Erreur lors du chargement du profil depuis le serveur: $e');
+          _analyticsService?.recordError(e, stackTrace);
+          // Continuer avec le profil local
         }
       }
       
       _initialized = true;
-      debugPrint('UserManager: Initialisation terminée');
+      debugPrint('UserManager initialisé: ${_currentProfile != null ? "Profil trouvé" : "Aucun profil"}');
     } catch (e, stackTrace) {
-      _analyticsService?.recordError(e, stackTrace);
       debugPrint('Exception lors de l\'initialisation: $e');
+      _analyticsService?.recordError(e, stackTrace);
     }
   }
 
   // Créer un profil utilisateur
-  Future<bool> createProfile(String displayName) async {
+  Future<bool> createProfile(String displayName, {bool isOAuthUser = false}) async {
     try {
-      // Créer un compte sur le backend
-      final result = await _authService!.registerFull(displayName, "", "");
+      // Si l'utilisateur est déjà authentifié via OAuth (Google, Apple, etc.)
+      // on ne fait pas d'appel à registerFull car l'utilisateur est déjà créé sur le backend
+      String? userId;
       
-      if (result is! Map<String, dynamic> || result['success'] == false) {
-        debugPrint('Échec de la création du profil: ${result['message'] ?? 'Erreur inconnue'}');
-        return false;
+      if (!isOAuthUser) {
+        // Créer un compte sur le backend uniquement si ce n'est pas un utilisateur OAuth
+        final result = await _authService!.registerFull(displayName, "", "");
+        
+        if (result is! Map<String, dynamic> || result['success'] == false) {
+          debugPrint('Échec de la création du profil: ${result['message'] ?? 'Erreur inconnue'}');
+          return false;
+        }
+        
+        userId = result['user_id'];
+      } else {
+        // Pour un utilisateur OAuth, on récupère directement l'ID utilisateur de l'AuthService
+        debugPrint('Création de profil pour utilisateur OAuth déjà authentifié');
+        userId = _authService?.userId;
       }
       
-      // Récupérer l'ID utilisateur
-      final userId = _authService?.userId;
+      // Vérifier que nous avons un ID utilisateur valide
       if (userId == null) {
-        debugPrint('ID utilisateur null après création du compte');
+        debugPrint('Impossible de récupérer l\'ID utilisateur');
         return false;
       }
       
       // Créer un profil local
+      // Stocker l'information d'administrateur dans les statistiques globales
+      final isAdmin = _authService?.isAdmin ?? false;
+      
       _currentProfile = UserProfile(
         userId: userId,
         displayName: displayName,
+        lastLogin: DateTime.now(),
+        globalStats: {
+          'lastUpdated': DateTime.now().toIso8601String(),
+          'isAdmin': isAdmin,
+        },
       );
       
       // Notifier les auditeurs
@@ -184,7 +401,7 @@ class UserManager {
       
       // Définir l'ID utilisateur pour l'analytique
       if (_analyticsService != null) {
-        await _analyticsService?.setUserId(_currentProfile!.userId);
+        await _analyticsService?.setUserId(userId);
       }
       
       return true;
@@ -530,10 +747,10 @@ class UserManager {
 
   // Notifier les services externes des changements
   void _notifyExternalServices() {
-    if (_currentProfile == null) return;
+    if (_currentProfile == null || _analyticsService == null) return;
     
     // Mettre à jour l'ID utilisateur pour l'analytique
-    _analyticsService?.setUserId(_currentProfile!.userId);
+    _analyticsService!.setUserId(_currentProfile!.userId);
     
     // Notifier d'autres services si nécessaire
   }
@@ -590,6 +807,68 @@ class UserManager {
       _analyticsService?.recordError(e, stackTrace);
       debugPrint('Exception lors de la mise à jour du profil: $e');
       return false;
+    }
+  }
+  
+  // Mettre à jour les services API après l'authentification
+  Future<void> updateServices({
+    AnalyticsService? analyticsService,
+    SocialService? socialService,
+    StorageService? storageService,
+    SaveService? saveService,
+  }) async {
+    // Vérifier si l'utilisateur est authentifié
+    final bool isAuthenticated = _authService?.isAuthenticated ?? false;
+    debugPrint('UserManager: Mise à jour des services (authentifié: $isAuthenticated)');
+    
+    // Mettre à jour les services fournis ou utiliser ceux existants
+    _analyticsService = analyticsService ?? _analyticsService;
+    _socialService = socialService ?? _socialService;
+    _storageService = storageService ?? _storageService;
+    _saveService = saveService ?? _saveService;
+    
+    // Réinitialiser les services avec le statut d'authentification
+    if (_analyticsService != null) {
+      await _analyticsService!.initialize(userAuthenticated: isAuthenticated);
+      // Mettre à jour l'ID utilisateur si authentifié et profil existant
+      if (isAuthenticated && _currentProfile != null) {
+        _analyticsService!.setUserId(_currentProfile!.userId);
+      }
+      debugPrint('UserManager: AnalyticsService réinitialisé (mode ${isAuthenticated ? "authentifié" : "silencieux"})');
+    }
+    
+    if (_storageService != null) {
+      await _storageService!.initialize(userAuthenticated: isAuthenticated);
+      debugPrint('UserManager: StorageService réinitialisé (mode ${isAuthenticated ? "authentifié" : "hors ligne"})');
+    }
+    
+    if (_socialService != null) {
+      await _socialService!.initialize(userAuthenticated: isAuthenticated);
+      debugPrint('UserManager: SocialService réinitialisé (mode ${isAuthenticated ? "authentifié" : "simulation"})');
+    }
+    
+    // Réinitialiser les services sociaux secondaires si l'utilisateur est authentifié
+    if (isAuthenticated && _socialService != null && _currentProfile != null) {
+      _friendsService = FriendsService(
+        userId: _currentProfile!.userId,
+        userManager: this,
+        socialService: _socialService!,
+        analyticsService: _analyticsService ?? serviceLocator.analyticsService!
+      );
+      
+      _userStatsService = UserStatsService(
+        userId: _currentProfile!.userId,
+        userManager: this,
+        socialService: _socialService!,
+        analyticsService: _analyticsService ?? serviceLocator.analyticsService!
+      );
+      
+      debugPrint('UserManager: Services sociaux secondaires mis à jour');
+    } else if (!isAuthenticated) {
+      // Effacer les services sociaux secondaires si l'utilisateur n'est pas authentifié
+      _friendsService = null;
+      _userStatsService = null;
+      debugPrint('UserManager: Services sociaux secondaires effacés (utilisateur non authentifié)');
     }
   }
 }

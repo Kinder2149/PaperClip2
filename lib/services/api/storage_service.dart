@@ -1,6 +1,8 @@
 // lib/services/api/storage_service.dart
 
+import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -19,10 +21,51 @@ class StorageService {
   // Constructeur interne
   StorageService._internal();
   
+  // Mode hors ligne pour fonctionner sans authentification
+  bool _offlineMode = false;
+  
+  // Dossier de stockage local temporaire
+  String? _localStorageDir;
+  
   /// Initialisation du service
-  Future<void> initialize() async {
-    // Aucune initialisation spécifique requise pour le moment
-    debugPrint('StorageService initialisé');
+  Future<void> initialize({bool userAuthenticated = false}) async {
+    try {
+      debugPrint('Initialisation du service de stockage (auth: $userAuthenticated)');
+      
+      // Activer le mode hors ligne si l'utilisateur n'est pas authentifié
+      _offlineMode = !userAuthenticated;
+      
+      // Initialiser le stockage local temporaire
+      try {
+        final tempDir = await getTemporaryDirectory();
+        _localStorageDir = '${tempDir.path}/paperclip_storage';
+        final storageDir = Directory(_localStorageDir!);
+        if (!await storageDir.exists()) {
+          await storageDir.create(recursive: true);
+        }
+        debugPrint('Dossier de stockage local initialisé: $_localStorageDir');
+      } catch (e) {
+        debugPrint('Erreur lors de l\'initialisation du stockage local: $e');
+      }
+      
+      if (_offlineMode) {
+        debugPrint('Mode hors ligne activé pour le service de stockage - les fichiers seront stockés localement uniquement');
+      } else {
+        // Vérifier que les endpoints de stockage sont disponibles
+        try {
+          await _apiClient.get('/storage/status');
+          debugPrint('Endpoints de stockage disponibles');
+        } catch (e) {
+          debugPrint('Endpoints de stockage non disponibles: $e');
+          _offlineMode = true;
+        }
+      }
+      
+      debugPrint('StorageService initialisé avec succès');
+    } catch (e) {
+      debugPrint('Erreur lors de l\'initialisation du service de stockage: $e');
+      _offlineMode = true;
+    }
   }
   
   /// Upload d'un fichier

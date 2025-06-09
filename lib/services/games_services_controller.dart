@@ -110,6 +110,9 @@ class GamesServicesController extends ChangeNotifier {
   final ValueNotifier<bool> signInStatusChanged = ValueNotifier<bool>(false);
   final ValueNotifier<GooglePlayerInfo?> playerInfoChanged = ValueNotifier<GooglePlayerInfo?>(null);
 
+  // Accesseur pour les informations du joueur en cache
+  GooglePlayerInfo? get cachedPlayerInfo => _cachedPlayerInfo;
+
   bool get isInitialized => _isInitialized;
 
   Future<void> initialize() async {
@@ -190,6 +193,16 @@ class GamesServicesController extends ChangeNotifier {
 
         // Notifier les écouteurs
         signInStatusChanged.value = true;
+
+        // Synchroniser avec UserManager
+        try {
+          // Accès direct à userManager qui est une propriété de serviceLocator
+          if (serviceLocator.userManager != null) {
+            await serviceLocator.userManager!.refreshAuthState();
+          }
+        } catch (e) {
+          debugPrint("Erreur lors de la synchronisation avec UserManager: $e");
+        }
 
         debugPrint("Connexion aux services de jeu réussie");
         return true;

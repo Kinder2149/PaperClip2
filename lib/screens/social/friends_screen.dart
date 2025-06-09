@@ -1,16 +1,18 @@
 // lib/screens/social/friends_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../main.dart' show serviceLocator;
+
 import '../../services/social/friends_service.dart';
 import '../../services/user/user_manager.dart';
-import '../../models/social/friend_model.dart';
-import '../../models/social/friend_request_model.dart';
-import '../../widgets/social/widget_friend_item.dart';
-import '../../widgets/social/widget_friend_request_item.dart';
-import 'friend_comparison_screen.dart';
+import '../../services/api/analytics_service.dart';
+import '../../services/api/auth_service.dart';
+import '../../services/api/social_service.dart'; // Ajout de l'import pour SocialService
+import '../../services/games_services_controller.dart';
+
 import 'friends_search_screen.dart';
 import 'social_profile_screen.dart';
+import '../../models/social/friend_model.dart';
+import '../../models/social/friend_request_model.dart';
 
 class FriendsScreen extends StatefulWidget {
   const FriendsScreen({Key? key}) : super(key: key);
@@ -20,24 +22,32 @@ class FriendsScreen extends StatefulWidget {
 }
 
 class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProviderStateMixin {
+  // Clé pour le scaffold, utilisée pour afficher des snackbars
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   late TabController _tabController;
   int _selectedIndex = 0;
-  late final FriendsService? _friendsService;
+  FriendsService? _friendsService;
+  
+  // Écouteurs pour les changements d'état d'authentification
+  late ValueNotifier<bool> _signInStatusListener;
+  late ValueNotifier<GooglePlayerInfo?> _playerInfoListener;
 
-  // Stockage local des données pour éviter les problèmes de stream
-  List<FriendModel> _friendsList = [];
-  List<FriendRequestModel> _receivedRequests = [];
-  List<FriendRequestModel> _sentRequests = [];
-
+  // États de chargement
   bool _isLoadingFriends = true;
   bool _isLoadingReceivedRequests = true;
   bool _isLoadingSentRequests = true;
   String? _errorMessage;
 
+  // Données
+  List<FriendModel> _friendsList = [];
+  List<FriendRequestModel> _receivedRequests = [];
+  List<FriendRequestModel> _sentRequests = [];
+
   @override
   void initState() {
     super.initState();
-    // Modifier TabController pour 3 onglets au lieu de 2
+    
+    // Initialiser TabController
     _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
@@ -46,32 +56,123 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
         });
       }
     });
-
-    // Initialiser le service d'amis
+    
+    // Écouter les changements d'état d'authentification
+    _signInStatusListener = GamesServicesController().signInStatusChanged;
+    _playerInfoListener = GamesServicesController().playerInfoChanged;
+    
+    // Configurer les écouteurs
+    _signInStatusListener.addListener(_onAuthStateChanged);
+    _playerInfoListener.addListener(_onPlayerInfoChanged);
+    
     _initializeFriendsService();
   }
+  
+  @override
+  void dispose() {
+    // Supprimer les écouteurs
+    _signInStatusListener.removeListener(_onAuthStateChanged);
+    _playerInfoListener.removeListener(_onPlayerInfoChanged);
+    _tabController.dispose();
+    super.dispose();
+  }
+  
+  // Réagir aux changements d'état d'authentification
+  void _onAuthStateChanged() {
+    debugPrint('_FriendsScreenState: État d\'authentification changé ${_signInStatusListener.value}');
+    // Si connecté, réinitialiser
+    if (_signInStatusListener.value) {
+      setState(() {
+        _errorMessage = null;
+        _isLoadingFriends = true;
+        _isLoadingReceivedRequests = true;
+        _isLoadingSentRequests = true;
+      });
+      _initializeFriendsService();
+    } else {
+      // Si déconnecté, afficher un message
+      setState(() {
+        _errorMessage = "Connectez-vous pour accéder aux fonctionnalités sociales";
+        _isLoadingFriends = false;
+        _isLoadingReceivedRequests = false;
+        _isLoadingSentRequests = false;
+        _friendsService = null;
+      });
+    }
+  }
+  
+  // Réagir aux changements d'informations du joueur
+  void _onPlayerInfoChanged() {
+    // Si les infos du joueur sont mises à jour, on réinitialise le service
+    if (_playerInfoListener.value != null) {
+      _initializeFriendsService();
+    }
+  }
 
-
-  void _initializeFriendsService() {
+  Future<void> _initializeFriendsService() async {
     final userManager = Provider.of<UserManager>(context, listen: false);
     final userId = userManager.currentProfile?.userId;
+    final isSignedIn = await GamesServicesController().isSignedIn();
+    
+    debugPrint('_FriendsScreenState.initializeFriendsService - isSignedIn: $isSignedIn, userId: $userId');
 
-    if (userId != null) {
-      // Utiliser des paramètres nommés pour le constructeur
+    // Vérifier si l'utilisateur est authentifié via isSignedIn et userId
+    if (!isSignedIn || userId == null) {
+      // Tenter de rafraîchir l'état d'authentification si connecté mais pas de profil
+      if (isSignedIn && userId == null) {
+        debugPrint('_FriendsScreenState: Authentifié mais pas de profil, rafraîchissement du UserManager');
+        await userManager.refreshAuthState();
+        // Révérifier après rafraîchissement
+        final refreshedUserId = userManager.currentProfile?.userId;
+        if (refreshedUserId != null) {
+          debugPrint('_FriendsScreenState: Profil utilisateur récupéré après rafraîchissement: $refreshedUserId');
+        } else {
+          // Toujours pas de profil
+          setState(() {
+            _errorMessage = "Connecté, mais profil utilisateur non disponible. Veuillez réessayer.";
+            _isLoadingFriends = false;
+            _isLoadingReceivedRequests = false;
+            _isLoadingSentRequests = false;
+          });
+          return;
+        }
+      } else {
+        // Pas connecté
+        setState(() {
+          _errorMessage = "Connectez-vous pour accéder aux fonctionnalités sociales";
+          _isLoadingFriends = false;
+          _isLoadingReceivedRequests = false;
+          _isLoadingSentRequests = false;
+        });
+        return;
+      }
+    }
+
+    // Essayer de créer le FriendsService
+    try {
+      // Créer des instances de services
+      final socialServiceInstance = SocialService(); 
+      final analyticsServiceInstance = AnalyticsService();
+      
+      // Initialiser FriendsService (userId est non-null à ce point du code)
       _friendsService = FriendsService(
-        userId: userId,
+        userId: userId!, // Le point d'exclamation ici car on a déjà vérifié que userId n'est pas null
         userManager: userManager,
-        socialService: serviceLocator.socialService!,
-        analyticsService: serviceLocator.analyticsService!,
+        socialService: socialServiceInstance,
+        analyticsService: analyticsServiceInstance,
       );
+      
+      // Charger toutes les données
       _loadData();
-    } else {
+    } catch (e) {
+      print('Erreur lors de l\'initialisation du service d\'amis: $e');
       setState(() {
-        _errorMessage = "Utilisateur non connecté";
+        _errorMessage = "Fonctionnalités sociales temporairement indisponibles";
         _isLoadingFriends = false;
         _isLoadingReceivedRequests = false;
         _isLoadingSentRequests = false;
       });
+      return;
     }
   }
 
@@ -182,10 +283,41 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
     );
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
+  // La méthode dispose() est déjà définie plus haut dans la classe
+
+  // Méthode pour afficher le dialogue de connexion
+  void _showLoginDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Connexion requise'),
+        content: const Text('Vous devez vous connecter pour accéder aux fonctionnalités sociales.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              // Tenter de se connecter via Games Services
+              final success = await GamesServicesController().signIn();
+              if (success && mounted) {
+                // Réinitialiser et recharger si l'utilisateur s'est connecté
+                setState(() {
+                  _errorMessage = null;
+                  _isLoadingFriends = true;
+                  _isLoadingReceivedRequests = true;
+                  _isLoadingSentRequests = true;
+                });
+                _initializeFriendsService();
+              }
+            },
+            child: const Text('Se connecter'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -251,14 +383,56 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.error_outline, size: 48, color: Colors.red),
-            const SizedBox(height: 16),
-            Text(_errorMessage!),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _loadFriendsList,
-              child: const Text('Réessayer'),
+            Icon(
+              _errorMessage!.contains("Connectez-vous") ? Icons.login : Icons.cloud_off,
+              size: 64,
+              color: _errorMessage!.contains("Connectez-vous") ? Colors.orange : Colors.grey,
             ),
+            const SizedBox(height: 16),
+            Text(
+              _errorMessage!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 18,
+                color: Colors.grey,
+              ),
+            ),
+            if (_errorMessage!.contains("Connectez-vous")) ...[  
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: () {
+                  // Rediriger vers l'écran de connexion ou ouvrir le dialogue de connexion
+                  _showLoginDialog();
+                },
+                icon: const Icon(Icons.login),
+                label: const Text("Se connecter"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepPurple,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+            if (_errorMessage!.contains("Fonctionnalités sociales temporairement")) ...[  
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: () {
+                  // Réessayer d'initialiser le service
+                  setState(() {
+                    _errorMessage = null;
+                    _isLoadingFriends = true;
+                    _isLoadingReceivedRequests = true;
+                    _isLoadingSentRequests = true;
+                  });
+                  _initializeFriendsService();
+                },
+                icon: const Icon(Icons.refresh),
+                label: const Text("Réessayer"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepPurple,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
           ],
         ),
       );
@@ -304,46 +478,62 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
       itemCount: _friendsList.length,
       itemBuilder: (context, index) {
         final friend = _friendsList[index];
-        return WidgetFriendItem(
-          friend: friend,
-          onCompare: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => FriendComparisonScreen(friendId: friend.userId),
-              ),
-            );
-          },
-          onRemove: () async {
-            // Confirmation avant suppression
-            final confirm = await showDialog<bool>(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('Supprimer cet ami'),
-                content: Text('Voulez-vous vraiment supprimer ${friend.displayName} de vos amis ?'),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: const Text('Annuler'),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    child: const Text('Supprimer'),
-                  ),
-                ],
-              ),
-            );
-
-            if (confirm == true && _friendsService != null) {
-              await _friendsService!.removeFriend(friend.id);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('${friend.displayName} a été retiré de vos amis'),
+        return Card(
+          margin: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+          child: ListTile(
+            leading: CircleAvatar(
+              backgroundColor: Colors.deepPurple.shade100,
+              child: Text(friend.displayName?.substring(0, 1) ?? '?'),
+            ),
+            title: Text(friend.displayName ?? 'Ami'),
+            subtitle: Text('Ami depuis le ${friend.createdAt?.toString().split(' ')[0] ?? 'récemment'}'),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: Icon(Icons.compare_arrows),
+                  onPressed: () {
+                    // Navigation vers l'écran de comparaison a été remplacée
+                    // car FriendComparisonScreen n'existe pas
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Comparaison avec ${friend.displayName}'))
+                    );
+                  },
                 ),
-              );
-              _loadFriendsList(); // Rafraîchir la liste
-            }
-          },
+                IconButton(
+                  icon: Icon(Icons.remove_circle_outline, color: Colors.red),
+                  onPressed: () async {
+                    // Confirmation avant suppression
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Supprimer cet ami'),
+                        content: Text('Voulez-vous vraiment supprimer ${friend.displayName} de vos amis ?'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Annuler'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('Supprimer'),
+                          ),
+                        ],
+                      ),
+                    );
+
+                    if (confirm == true && _friendsService != null) {
+                      await _friendsService!.removeFriend(friend.id);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('${friend.displayName} a été retiré de vos amis')),
+                      );
+                      _loadFriendsList(); // Rafraîchir la liste
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
         );
       },
     );
@@ -402,34 +592,58 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
       itemCount: _receivedRequests.length,
       itemBuilder: (context, index) {
         final request = _receivedRequests[index];
-        return WidgetFriendRequestItem(
-          request: request,
-          onAccept: () async {
-            if (_friendsService == null) return;
+        return Card(
+          margin: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+          child: ListTile(
+            leading: CircleAvatar(
+              backgroundColor: Colors.blue.shade100,
+              child: Text(request.senderName?.substring(0, 1) ?? '?'),
+            ),
+            title: Text(request.senderName ?? 'Utilisateur'),
+            subtitle: Text('Demande reçue le ${request.timestamp.toString().split(' ')[0]}'),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: Icon(Icons.check_circle_outline, color: Colors.green),
+                  onPressed: () async {
+                    if (_friendsService == null) return;
 
-            final success = await _friendsService!.acceptFriendRequest(request.id);
-            if (success && mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Demande de ${request.senderName} acceptée'),
+                    final success = await _friendsService!.acceptFriendRequest(request.id);
+                    if (success && mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Demande d\'amitié de ${request.senderName} acceptée'),
+                        ),
+                      );
+                      _loadReceivedRequests(); // Rafraîchir les demandes reçues
+                      _loadSentRequests(); // Rafraîchir les demandes envoyées
+                      _loadFriendsList(); // Rafraîchir la liste des amis
+                    }
+                  },
                 ),
-              );
-              _loadData(); // Rafraîchir toutes les listes
-            }
-          },
-          onDecline: () async {
-            if (_friendsService == null) return;
+                IconButton(
+                  icon: Icon(Icons.cancel_outlined, color: Colors.red),
+                  onPressed: () async {
+                    if (_friendsService == null) return;
 
-            final success = await _friendsService!.declineFriendRequest(request.id);
-            if (success && mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Demande de ${request.senderName} refusée'),
+                    // Utiliser directement l'ID de la demande d'ami
+                    final requestId = request.id;
+                    final success = await _friendsService?.declineFriendRequest(requestId) ?? false;
+                    if (success && mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Demande d\'amitié de ${request.senderName ?? ''} refusée'),
+                        ),
+                      );
+                      _loadReceivedRequests(); // Rafraîchir les demandes reçues
+                      _loadSentRequests(); // Rafraîchir les demandes envoyées
+                    }
+                  },
                 ),
-              );
-              _loadReceivedRequests(); // Rafraîchir les demandes
-            }
-          },
+              ],
+            ),
+          ),
         );
       },
     );
@@ -467,21 +681,17 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
         // Calculer le statut d'affichage
         String status;
         Color statusColor;
-
-        switch (request.status) {
-          case FriendRequestStatus.accepted:
-            status = 'Acceptée';
-            statusColor = Colors.green;
-            break;
-          case FriendRequestStatus.declined:
-            status = 'Refusée';
-            statusColor = Colors.red;
-            break;
-          case FriendRequestStatus.pending:
-          default:
-            status = 'En attente';
-            statusColor = Colors.orange;
-            break;
+        
+        // Utiliser des comparaisons directes plutôt qu'un switch/case
+        if (request.status == FriendRequestStatus.accepted) {
+          status = 'Acceptée';
+          statusColor = Colors.green;
+        } else if (request.status == FriendRequestStatus.declined) {
+          status = 'Refusée';
+          statusColor = Colors.red;
+        } else {
+          status = 'En attente';
+          statusColor = Colors.orange;
         }
 
         return ListTile(

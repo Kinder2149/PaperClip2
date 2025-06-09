@@ -73,6 +73,9 @@ class ServiceLocator {
   SocialService? socialService;
   SaveService? saveService;
   
+  // Gestion utilisateur
+  UserManager? userManager;
+  
   // Services sociaux
   FriendsService? friendsService;
   UserStatsService? userStatsService;
@@ -138,42 +141,56 @@ Future<void> main() async {
       print('API configuration loaded: ${apiConfig.baseUrl}');
     }
     
-    // Initialisation des services API
+    // Initialisation des services API - initialiser seulement les services essentiels d'abord
     final apiClient = ApiClient();
     await apiClient.initialize();
     
+    if (kDebugMode) {
+      print('API Client initialisé, token présent: ${apiClient.isAuthenticated}');
+    }
+    
+    // Initialiser d'abord les services qui ne nécessitent pas d'authentification
     final authService = AuthService();
-    final analyticsService = AnalyticsService();
     final storageService = StorageService();
     final configService = ConfigService();
-    final socialService = SocialService();
-    final saveService = SaveService();
-
-    // Ajouter les services au ServiceLocator
+    
+    // Ajouter les services essentiels au ServiceLocator
     serviceLocator.apiClient = apiClient;
     serviceLocator.authService = authService;
-    serviceLocator.analyticsService = analyticsService;
     serviceLocator.storageService = storageService;
     serviceLocator.configService = configService;
-    serviceLocator.socialService = socialService;
+    
+    // Les services nécessitant authentification seront initialisés plus tard
+    AnalyticsService? analyticsService;
+    SocialService? socialService;
+    final saveService = SaveService(); // Ce service n'utilise pas directement l'API
     serviceLocator.saveService = saveService;
 
-    // Configuration de la gestion d'erreurs
+    // Configuration de la gestion d'erreurs - différée jusqu'à ce que analyticsService soit initialisé
     FlutterError.onError = (FlutterErrorDetails details) {
       if (kDebugMode) {
         print('Flutter Error: ${details.exception}');
       }
-      analyticsService.recordFlutterError(details);
+      // Seulement enregistrer si le service analytics est disponible
+      analyticsService?.recordFlutterError(details);
     };
 
     // Capturer les erreurs non gérées
     ui.PlatformDispatcher.instance.onError = (error, stack) {
-      analyticsService.recordError(
-        error,
-        stack,
-        fatal: true,
-        reason: 'Unhandled platform error',
-      );
+      if (analyticsService != null) {
+        analyticsService.recordError(
+          error,
+          stack,
+          fatal: true,
+          reason: 'Unhandled platform error',
+        );
+      } else {
+        // Fallback quand analyticsService n'est pas disponible
+        if (kDebugMode) {
+          print('Error non géré: $error');
+          print('Stack trace: $stack');
+        }
+      }
       return true;
     };
 
@@ -188,12 +205,12 @@ Future<void> main() async {
     final gameState = GameState();
 
     // IMPORTANT: Créer et connecter UserManager et SaveSystem correctement
-    // pour éviter la dépendance circulaire
+    // pour éviter la dépendance circulaire - avec services optionnels
     final userManager = UserManager(
       authService: authService,
       storageService: storageService,
-      analyticsService: analyticsService,
-      socialService: socialService,
+      analyticsService: null, // Sera configuré après l'initialisation
+      socialService: null, // Sera configuré après l'initialisation
       saveService: saveService
     );
     final saveSystem = SaveSystem();
@@ -229,10 +246,42 @@ Future<void> main() async {
       print('SaveSystem initialisé');
     }
 
-    // Initialiser les services sociaux
-    await serviceLocator.initializeSocialServices(userManager);
-    if (kDebugMode) {
-      print('Services sociaux initialisés');
+    // Initialiser les services qui nécessitent authentification SEULEMENT après que UserManager est initialisé
+    if (apiClient.isAuthenticated) {
+      if (kDebugMode) {
+        print('User authentifié, initialisation des services qui nécessitent authentification');
+      }
+      
+      // Maintenant que nous avons un token, initialiser les services qui nécessitent authentification
+      analyticsService = AnalyticsService();
+      socialService = SocialService();
+      
+      // Ajouter les services au ServiceLocator
+      serviceLocator.analyticsService = analyticsService;
+      serviceLocator.socialService = socialService;
+      
+      // Mettre à jour UserManager avec les services nouvellement créés
+      userManager.updateServices(
+        analyticsService: analyticsService,
+        socialService: socialService
+      );
+      
+      // Initialiser les services sociaux
+      await serviceLocator.initializeSocialServices(userManager);
+      if (kDebugMode) {
+        print('Services sociaux initialisés');
+      }
+      
+      // Configurer et logger l'analytics
+      await analyticsService.logAppOpen();
+      await analyticsService.setAnalyticsCollectionEnabled(true);
+    } else {
+      if (kDebugMode) {
+        print('User non authentifié, les services nécessitant authentification seront initialisés après login');
+      }
+      // Créer des services vides pour éviter les erreurs null
+      serviceLocator.analyticsService = null;
+      serviceLocator.socialService = null;
     }
 
     // Maintenant que tout est correctement initialisé, vérifier et restaurer les sauvegardes
@@ -240,9 +289,7 @@ Future<void> main() async {
       await gameState.checkAndRestoreFromBackup();
     }
 
-    // Configurer et logger l'analytics
-    await analyticsService.logAppOpen();
-    await analyticsService.setAnalyticsCollectionEnabled(true);
+    // Analytics est déjà configuré si l'utilisateur est authentifié, sinon c'est reporté
 
     // Lancer l'application avec la gestion d'erreur
     runApp(
@@ -251,22 +298,25 @@ Future<void> main() async {
           ChangeNotifierProvider.value(value: gameState),
           Provider<BackgroundMusicService>.value(value: backgroundMusicService),
           ChangeNotifierProvider.value(value: EventManager.instance),
-          // Remplacer ChangeNotifierProvider par Provider pour UserManager
-          Provider<UserManager>.value(value: userManager),
+          // Utiliser ChangeNotifierProvider pour UserManager puisqu'il étend ChangeNotifier
+          ChangeNotifierProvider<UserManager>.value(value: userManager),
           Provider<SaveSystem>.value(value: saveSystem),
           // Conservez ChangeNotifierProvider pour GamesServicesController
           ChangeNotifierProvider<GamesServicesController>.value(
             value: gamesServices,
           ),
           // Provider pour ServiceLocator
-          Provider<ServiceLocator>.value(value: serviceLocator),
-          // Providers pour les services API
+          // Provider<ServiceLocator>.value(value: serviceLocator),
+          // Providers pour les services API (conditionnels)
           Provider<ApiClient>.value(value: apiClient),
           Provider<AuthService>.value(value: authService),
-          Provider<AnalyticsService>.value(value: analyticsService),
+          // Services qui peuvent être null (initialisation conditionnelle)
+          if (analyticsService != null)
+            Provider<AnalyticsService>.value(value: analyticsService),
           Provider<StorageService>.value(value: storageService),
           Provider<ConfigService>.value(value: configService),
-          Provider<SocialService>.value(value: socialService),
+          if (socialService != null)
+            Provider<SocialService>.value(value: socialService),
           Provider<SaveService>.value(value: saveService),
         ],
         child: const MyApp(),
@@ -296,41 +346,52 @@ Future<void> _initializeServices() async {
     await apiClient?.initialize();
     print('API Client initialized');
     
+    // Vérifier si l'utilisateur est authentifié
+    bool isUserAuthenticated = apiClient?.isAuthenticated ?? false;
+    print('User authentication status: ${isUserAuthenticated ? "authenticated" : "not authenticated"}');
+    
     // Initialiser les services API
     final authService = serviceLocator.authService;
     await authService?.initialize();
     print('Auth Service initialized');
     
+    // Initialiser les services avec le statut d'authentification
     final analyticsService = serviceLocator.analyticsService;
-    await analyticsService?.initialize();
+    await analyticsService?.initialize(userAuthenticated: isUserAuthenticated);
     print('Analytics Service initialized');
     
     final storageService = serviceLocator.storageService;
-    await storageService?.initialize();
+    await storageService?.initialize(userAuthenticated: isUserAuthenticated);
     print('Storage Service initialized');
     
     final configService = serviceLocator.configService;
-    await configService?.initialize();
+    await configService?.initialize(); // ConfigService a déjà sa propre gestion de fallback
     print('Config Service initialized');
     
     final socialService = serviceLocator.socialService;
-    await socialService?.initialize();
+    await socialService?.initialize(userAuthenticated: isUserAuthenticated);
     print('Social Service initialized');
     
     final saveService = serviceLocator.saveService;
     await saveService?.initialize();
     print('Save Service initialized');
     
-    // Le UserManager sera initialisé ailleurs car il n'est pas dans serviceLocator
-    // mais est accessible directement comme singleton via UserManager.instance
+    // Initialiser le UserManager et l'assigner au serviceLocator
     await UserManager.instance.initialize();
-    print('User Manager initialized');
+    serviceLocator.userManager = UserManager.instance; // Important: assigner l'instance au serviceLocator
+    print('User Manager initialized and assigned to serviceLocator');
     
     // Initialiser la musique de fond
     await backgroundMusicService.initialize();
     print('Background music initialized');
     
     print('All services initialized successfully');
+    
+    // Si l'utilisateur est authentifié, mettre à jour l'état des services authentifiés
+    if (isUserAuthenticated && serviceLocator.userManager != null) {
+      print('Updating services for authenticated user');
+      await serviceLocator.userManager!.updateServices();
+    }
   } catch (e, stack) {
     // Utiliser directement analyticsService si disponible
     // (si l'erreur se produit avant l'initialisation de analyticsService,

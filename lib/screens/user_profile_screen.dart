@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../services/user/user_manager.dart';
 import '../services/user/user_profile.dart';
 import '../services/user/google_auth_service.dart';
+import '../services/file/file_service.dart'; // Import du FileService
 import '../widgets/resource_widgets.dart';
 import '../models/game_config.dart'; // Ajout de l'import pour GameMode
 import '../widgets/app_bar/widget_appbar_jeu.dart';
@@ -145,7 +146,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             const SizedBox(height: 16),
             // Photo de profil
             GestureDetector(
-              onTap: () => _userManager.uploadProfileImage(null),
+              onTap: () => _pickProfileImage(),
               child: CircleAvatar(
                 radius: 60,
                 backgroundColor: Colors.grey[300],
@@ -375,9 +376,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     });
 
     try {
-      final googleInfo = await _authService.signInWithGoogle();
-      if (googleInfo != null) {
-        await _userManager.createProfile(googleInfo['displayName'] ?? 'Joueur');
+      // signInWithGoogle retourne un bool indiquant le succès de l'authentification
+      final success = await _authService.signInWithGoogle();
+      if (success == true) {
+        await _userManager.createProfile(_authService.username ?? 'Joueur Google', isOAuthUser: true);
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -430,6 +432,44 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Erreur: $e')),
+      );
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+  
+  /// Utilise le FileService pour sélectionner une image de profil
+  Future<void> _pickProfileImage() async {
+    try {
+      setState(() {
+        _isLoading = true;
+      });
+      
+      // Utiliser le FileService pour choisir une image
+      final imagePath = await FileService.pickSingleFile(
+        allowedExtensions: ['jpg', 'jpeg', 'png'],
+        dialogTitle: 'Choisir une image de profil',
+      );
+      
+      if (imagePath != null) {
+        // Convertir le chemin de fichier en objet File
+        final File imageFile = File(imagePath);
+        
+        // Utiliser le UserManager pour uploader l'image
+        await _userManager.uploadProfileImage(imageFile);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Image de profil mise à jour'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur lors de la sélection de l\'image: $e')),
       );
     } finally {
       setState(() {

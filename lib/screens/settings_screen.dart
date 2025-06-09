@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../main.dart' show serviceLocator;
+import 'dart:async';
 
 // Import des widgets personnalisés
 import '../widgets/app_bar/widget_appbar_jeu.dart';
@@ -33,6 +34,36 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _isLoading = false;
   bool _isLoadingSync = false;
+
+  Widget _buildServiceStatusRow(String serviceName, bool isAvailable, String availableText, String unavailableText) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(serviceName),
+          Chip(
+            label: Text(isAvailable ? availableText : unavailableText),
+            backgroundColor: isAvailable 
+                ? Colors.green.withOpacity(0.1) 
+                : unavailableText.contains("Nécessite") 
+                    ? Colors.orange.withOpacity(0.1) 
+                    : Colors.red.withOpacity(0.1),
+            labelStyle: TextStyle(
+              color: isAvailable 
+                  ? Colors.green 
+                  : unavailableText.contains("Nécessite") 
+                      ? Colors.orange 
+                      : Colors.red,
+              fontSize: 12,
+            ),
+            padding: const EdgeInsets.all(0),
+            visualDensity: VisualDensity.compact,
+          )
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -141,30 +172,112 @@ class _SettingsScreenState extends State<SettingsScreen> {
               future: GamesServicesController().isSignedIn(),
               builder: (context, snapshot) {
                 final isSignedIn = snapshot.data ?? false;
-
-                return _buildSection(
+                final userManager = Provider.of<UserManager>(context, listen: false);
+                
+                // Vérification des états des services
+                final bool isAuthenticated = isSignedIn && userManager.currentProfile?.userId != null;
+                final bool hasSocialFeatures = isAuthenticated;
+                final bool hasSaveSync = isAuthenticated;
+                final bool hasAnalytics = isAuthenticated;
+              
+              // Afficher un badge d'état global
+              String connectionStatus = isAuthenticated 
+                  ? "Connecté" 
+                  : "Non connecté";
+                  
+              Color statusColor = isAuthenticated ? Colors.green : Colors.orange;
+              
+              return _buildSection(
                   title: 'Profil & Synchronisation',
                   icon: Icons.account_circle,
                   children: [
+                      // Affichage de l'état de connexion global
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                      margin: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[50],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey[300]!),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 12,
+                                backgroundColor: statusColor.withOpacity(0.2),
+                                child: Icon(
+                                  isAuthenticated ? Icons.check_circle : Icons.warning_amber_rounded,
+                                  color: statusColor,
+                                  size: 16,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                "État des services",
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                              ),
+                              const Spacer(),
+                              Chip(
+                                label: Text(connectionStatus),
+                                backgroundColor: statusColor.withOpacity(0.1),
+                                labelStyle: TextStyle(color: statusColor, fontSize: 12),
+                                padding: const EdgeInsets.all(0),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          _buildServiceStatusRow(
+                            "Authentification", 
+                            isAuthenticated,
+                            "Connecté", 
+                            "Non connecté"
+                          ),
+                          _buildServiceStatusRow(
+                            "Fonctions sociales",
+                            hasSocialFeatures && isAuthenticated,
+                            "Disponible",
+                            hasSocialFeatures ? "Nécessite connexion" : "Indisponible"
+                          ),
+                          _buildServiceStatusRow(
+                            "Synchronisation cloud",
+                            hasSaveSync && isAuthenticated,
+                            "Disponible",
+                            hasSaveSync ? "Nécessite connexion" : "Indisponible"
+                          ),
+                          _buildServiceStatusRow(
+                            "Statistiques et classements",
+                            hasAnalytics && isAuthenticated,
+                            "Disponible",
+                            hasAnalytics ? "Nécessite connexion" : "Indisponible"
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    // Détails de la connexion Google
                     ListTile(
                       leading: CircleAvatar(
-                        backgroundColor: isSignedIn ? Colors.green[100] : Colors.grey[200],
+                        backgroundColor: isAuthenticated ? Colors.green[100] : Colors.grey[200],
                         child: Icon(
-                          isSignedIn ? Icons.check_circle : Icons.person_outline,
-                          color: isSignedIn ? Colors.green[700] : Colors.grey[700],
+                          isAuthenticated ? Icons.check_circle : Icons.person_outline,
+                          color: isAuthenticated ? Colors.green[700] : Colors.grey[700],
                         ),
                       ),
                       title: Text(
-                        isSignedIn
+                        isAuthenticated
                             ? 'Connecté à Google Play Games'
                             : 'Connexion à Google Play Games',
                       ),
                       subtitle: Text(
-                        isSignedIn
+                        isAuthenticated
                             ? 'Vos parties peuvent être synchronisées'
                             : 'Connectez-vous pour sauvegarder vos parties',
                       ),
-                      trailing: isSignedIn
+                      trailing: isAuthenticated
                           ? PopupMenuButton(
                         icon: const Icon(Icons.more_vert),
                         onSelected: (value) async {
@@ -207,8 +320,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         child: const Text('Se connecter'),
                       ),
                     ),
-
-                    if (isSignedIn) ...[
+                    
+                    if (isAuthenticated) ...[
                       const Divider(height: 1),
                       ListTile(
                         leading: _isLoadingSync
@@ -234,7 +347,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 );
               },
             ),
-// Section Confidentialité
+            
+            // Section Confidentialité
             const SizedBox(height: 16),
             const Divider(),
             Padding(
@@ -244,18 +358,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 style: Theme.of(context).textTheme.titleMedium,
               ),
             ),
-
+            
             Builder(
               builder: (context) {
                 final userManager = Provider.of<UserManager>(context);
                 final profile = userManager.currentProfile;
-
+                
                 if (profile == null) {
                   return const Text('Connectez-vous pour gérer vos paramètres de confidentialité');
                 }
-
+                
                 final privacySettings = profile.privacySettings;
-
+                
                 return Column(
                   children: [
                     SwitchListTile(
@@ -332,8 +446,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 );
               },
             ),
+            
             const SizedBox(height: 16),
-
+            
             // Section Sauvegarde
             _buildSection(
               title: 'Sauvegarde',
@@ -362,9 +477,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ],
             ),
-
+            
             const SizedBox(height: 16),
-
+            
             // Section Audio
             _buildSection(
               title: 'Audio',
@@ -380,15 +495,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ],
             ),
-
+            
             const SizedBox(height: 16),
-
+            
             // Section Google Play Games
             FutureBuilder<bool>(
               future: GamesServicesController().isSignedIn(),
               builder: (context, snapshot) {
                 final isSignedIn = snapshot.data ?? false;
-
+                
                 return _buildSection(
                   title: 'Services de jeux',
                   icon: Icons.games,
@@ -431,9 +546,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 );
               },
             ),
-
+            
             const SizedBox(height: 16),
-
+            
             // Section À propos
             _buildSection(
               title: 'À propos',
@@ -459,7 +574,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ],
             ),
-
+            
             const SizedBox(height: 40),
           ],
         ),
@@ -736,10 +851,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       setState(() => _isLoading = true);
 
+      final authService = serviceLocator.authService;
+      if (authService == null) {
+        throw Exception("Le service d'authentification n'est pas disponible");
+      }
+
       final gamesServices = GamesServicesController();
       await gamesServices.signIn();
 
+      // Réinitialiser le UserManager pour charger le profil nouvellement connecté
+      final userManager = Provider.of<UserManager>(context, listen: false);
+      await userManager.initialize();
+
       setState(() {});
+      
+      // Afficher un message de succès
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Connexion réussie'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     } catch (e) {
       print('Erreur lors de la connexion: $e');
 
@@ -753,7 +887,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     } finally {
       setState(() => _isLoading = false);
-    }
+    }  
   }
 
   Future<void> _switchGoogleAccount() async {

@@ -316,9 +316,16 @@ class MockGamesServicesController implements GamesServicesController {
 
   // Méthode pour simuler les services natifs
   static void setupMockMethods() {
-    // Intercepter les appels aux méthodes natives de GamesServices
-    GamesServices.isSignedIn = Future.value(false);
+    // Au lieu de tenter de remplacer la propriété, utilisons une approche de mock appropriée
+    // Ceci sera implémenté dans une classe de mock à l'intérieur du test
+    mockGamesServicesIsSignedIn();
     // Ajouter d'autres méthodes au besoin
+  }
+  
+  // Cette méthode implémente un mock pour GamesServices.isSignedIn
+  static void mockGamesServicesIsSignedIn() {
+    // Ici, nous mettrions en place un mock approprié
+    // Pour le moment, c'est juste un stub sans implémentation réelle
   }
   
   void recordCall(String method, [Map<String, dynamic>? params]) {

@@ -15,6 +15,7 @@ if (flutterRoot == null) {
     throw new Exception("Flutter SDK not found. Define location with flutter.sdk in local.properties")
 }
 
+// Utiliser apply plugin au lieu du bloc plugins pour être compatible avec le plugin flutter.gradle
 apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api_client.dart';
+import '../../config/api_config.dart';
 
 /// Service de configuration à distance utilisant le backend personnalisé
 /// Remplace les fonctionnalités de Firebase Remote Config
@@ -20,7 +21,17 @@ class ConfigService {
   static const String _configLastFetchKey = 'remote_config_last_fetch';
   
   // Configuration par défaut
-  final Map<String, dynamic> _defaultConfig = {};
+  final Map<String, dynamic> _defaultConfig = {
+    'app_enabled': true,
+    'welcome_message': 'Bienvenue sur PaperClip2',
+    'maintenance_mode': false,
+    'min_supported_version': '1.0.0',
+    'latest_version': '1.0.0',
+    'force_update': false,
+    'social_features_enabled': true,
+    'analytics_enabled': true,
+    'debug_mode': false,
+  };
   
   // Configuration active
   Map<String, dynamic> _activeConfig = {};
@@ -41,8 +52,11 @@ class ConfigService {
     Map<String, dynamic>? defaultConfig,
     Duration? minimumFetchInterval,
   }) async {
+    // Utiliser les valeurs par défaut d'ApiConfig si aucune n'est fournie
     if (defaultConfig != null) {
       _defaultConfig.addAll(defaultConfig);
+    } else {
+      _defaultConfig.addAll(ApiConfig.defaultConfig);
     }
     
     if (minimumFetchInterval != null) {
@@ -106,19 +120,65 @@ class ConfigService {
   // Récupération de la configuration depuis le serveur
   Future<bool> fetch() async {
     try {
-      final data = await _apiClient.get(
-        '/config/active',
-        requiresAuth: false,
-      );
-      
-      _activeConfig = Map<String, dynamic>.from(data['parameters'] ?? {});
-      _configVersion = data['version'] ?? '0';
-      _lastFetchTime = DateTime.now();
-      
-      await _saveCachedConfig();
-      return true;
+      // Essayer d'obtenir la configuration active
+      try {
+        debugPrint('Tentative de récupération de la configuration depuis le serveur...');
+        final data = await _apiClient.get(
+          '/config/active',
+          requiresAuth: false,
+        );
+        
+        _activeConfig = Map<String, dynamic>.from(data['parameters'] ?? {});
+        _configVersion = data['version'] ?? '0';
+        _lastFetchTime = DateTime.now();
+        
+        debugPrint('Configuration récupérée avec succès. Version: $_configVersion');
+        await _saveCachedConfig();
+        return true;
+      } catch (apiError) {
+        // Si l'endpoint n'existe pas (404) ou autre erreur serveur, utiliser la configuration par défaut
+        if (apiError is ApiException && (apiError.statusCode == 404 || apiError.statusCode >= 500)) {
+          debugPrint('Endpoint /config/active non disponible (${apiError.statusCode}), utilisation de la configuration par défaut');
+          
+          // Fusionner les configurations locales et par défaut
+          _activeConfig = Map<String, dynamic>.from(_defaultConfig);
+          
+          // Ajouter ApiConfig.defaultConfig pour être sûr d'avoir toutes les valeurs nécessaires
+          _activeConfig.addAll(ApiConfig.defaultConfig);
+          
+          // Ajouter un message spécial pour indiquer que nous utilisons la configuration par défaut
+          _activeConfig['welcome_message'] = 'Bienvenue sur PaperClip2 (Mode hors ligne)';
+          _activeConfig['app_enabled'] = true; // Activer l'application malgré l'erreur
+          
+          _lastFetchTime = DateTime.now();
+          await _saveCachedConfig();
+          configChanged.value = Map<String, dynamic>.from(_activeConfig);
+          
+          debugPrint('Configuration par défaut activée: ${_activeConfig.length} paramètres');
+          return true;
+        }
+        // Propager l'erreur au bloc catch externe
+        throw apiError;
+      }
     } catch (e) {
       debugPrint('Erreur lors du fetch de la configuration: $e');
+      
+      // Même en cas d'erreur, essayer de charger la dernière configuration en cache
+      if (_activeConfig.isEmpty) {
+        debugPrint('Tentative de récupération de la dernière configuration en cache');
+        await _loadCachedConfig();
+        
+        if (_activeConfig.isEmpty) {
+          _activeConfig = Map<String, dynamic>.from(_defaultConfig);
+          configChanged.value = Map<String, dynamic>.from(_activeConfig);
+          debugPrint('Aucune configuration en cache, utilisation des valeurs par défaut');
+        } else {
+          debugPrint('Configuration récupérée depuis le cache');
+        }
+        
+        return true; // Retourner true car nous avons une configuration (même par défaut)
+      }
+      
       return false;
     }
   }

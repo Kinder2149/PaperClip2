@@ -7,21 +7,34 @@ import '../env_config.dart';
 /// Configuration de l'API pour différentes plateformes
 class ApiConfig {
   /// URL de base de l'API (constante ou depuis les variables d'environnement)
-  static String get apiBaseUrl {
-    // Récupération propre de l'URL sans formatage Markdown
-    final url = EnvConfig.apiBaseUrl;
-    if (kDebugMode) {
-      // Vérification du format de l'URL
-      print('API URL brute: $url');
-      
-      // Si l'URL ressemble à un format Markdown, extraire l'URL réelle
-      if (url.startsWith('[') && url.contains('](')) {
-        final cleanUrl = url.substring(1, url.indexOf(']'));
-        print('URL nettoyée: $cleanUrl');
-        return cleanUrl;
-      }
+  static String apiBaseUrl = 'https://paperclip2-api.onrender.com/api';
+  
+  /// URL de repli pour l'API
+  static String fallbackUrl = 'https://paperclip2-api-fallback.onrender.com/api';
+  
+  /// Valeurs de configuration par défaut (utilisées si le serveur est indisponible)
+  static final Map<String, dynamic> defaultConfig = {
+    'welcome_message': 'Bienvenue sur Paperclip2!',
+    'game_speed': 1.0,
+    'initial_metal': 1000,
+    'initial_money': 5000,
+    'achievements_enabled': true,
+    'debug_mode': false,
+    'max_auto_save_slots': 3,
+    'social_features_enabled': true,
+    'max_crisis_level': 5,
+    'market_volatility': 0.2
+  };
+  
+  /// Initialiser les URL
+  static void initialize(String baseUrl) {
+    if (baseUrl.isNotEmpty) {
+      // Nettoyer l'URL pour enlever les parenthèses markdown
+      apiBaseUrl = baseUrl.replaceAll('\[', '').replaceAll('\]', '').replaceAll('\(', '').replaceAll('\)', '');
+      debugPrint('URL nettoyée: $apiBaseUrl');
+    } else {
+      apiBaseUrl = 'https://paperclip2-api.onrender.com/api';
     }
-    return url.isNotEmpty ? url : 'https://paperclip2-api.onrender.com/api';
   }
   
   /// Timeout pour les requêtes API (en secondes)

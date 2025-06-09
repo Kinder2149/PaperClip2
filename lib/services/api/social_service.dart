@@ -15,10 +15,36 @@ class SocialService {
   // Constructeur interne
   SocialService._internal();
   
+  // Mode simulé pour fonctionner sans authentification
+  bool _mockMode = false;
+  
   /// Initialisation du service
-  Future<void> initialize() async {
-    // Aucune initialisation spécifique requise pour le moment
-    debugPrint('SocialService initialisé');
+  Future<void> initialize({bool userAuthenticated = false}) async {
+    try {
+      debugPrint('Initialisation du service social (auth: $userAuthenticated)');
+      
+      // Activer le mode simulé si l'utilisateur n'est pas authentifié
+      _mockMode = !userAuthenticated;
+      
+      if (_mockMode) {
+        debugPrint('Mode simulé activé pour le service social - les fonctionnalités sociales seront limitées');
+      } else {
+        // Vérifier que les endpoints sociaux sont disponibles
+        try {
+          await _apiClient.get('/social/status');
+          debugPrint('Endpoints sociaux disponibles');
+        } catch (e) {
+          debugPrint('Endpoints sociaux non disponibles: $e');
+          _mockMode = true;
+        }
+      }
+      
+      debugPrint('SocialService initialisé avec succès');
+    } catch (e) {
+      debugPrint('Erreur lors de l\'initialisation du service social: $e');
+      // Activer le mode simulé en cas d'erreur
+      _mockMode = true;
+    }
   }
   
   // ======== GESTION DES AMIS ========

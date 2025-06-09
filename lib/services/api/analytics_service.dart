@@ -26,10 +26,34 @@ class AnalyticsService {
   // Constructeur interne
   AnalyticsService._internal();
   
+  // Flag indiquant si le service est en mode silencieux (pas d'envoi au backend)
+  bool _silentMode = false;
+
   // Initialisation du service
-  Future<void> initialize() async {
-    await _loadDeviceInfo();
-    await _loadAppInfo();
+  Future<void> initialize({bool userAuthenticated = false}) async {
+    try {
+      debugPrint('Initialisation du service d\'analytics (auth: $userAuthenticated)');
+      
+      // Toujours charger les infos locales
+      await _loadDeviceInfo();
+      await _loadAppInfo();
+      
+      // Si l'utilisateur n'est pas authentifié, utiliser le mode silencieux
+      _silentMode = !userAuthenticated;
+      
+      // Logger l'ouverture de l'application uniquement si nous ne sommes pas en mode silencieux
+      if (!_silentMode) {
+        logAppOpen();
+      } else {
+        debugPrint('Mode silencieux activé pour les analytics - les événements ne seront pas envoyés au backend');
+      }
+      
+      debugPrint('Service d\'analytics initialisé avec succès');
+    } catch (e) {
+      debugPrint('Erreur lors de l\'initialisation du service d\'analytics: $e');
+      // Activer le mode silencieux en cas d'erreur
+      _silentMode = true;
+    }
   }
   
   // Chargement des informations sur l'appareil
@@ -71,6 +95,12 @@ class AnalyticsService {
     String? userId,
   }) async {
     try {
+      // Ne pas envoyer d'événements si en mode silencieux
+      if (_silentMode) {
+        debugPrint('[Analytics silencieux] Événement: $eventName, Paramètres: $parameters');
+        return;
+      }
+      
       final eventData = {
         'event_name': eventName,
         'parameters': parameters ?? {},
@@ -110,6 +140,17 @@ class AnalyticsService {
     String? userId,
   }) async {
     try {
+      // Toujours enregistrer localement les crashes, même en mode silencieux
+      debugPrint('CRASH: ${exception.toString()}');
+      debugPrint('REASON: ${reason ?? "Non spécifié"}');
+      debugPrint('STACK TRACE: ${stack.toString().split("\n").take(10).join("\n")}...');
+      
+      // Ne pas envoyer au serveur si en mode silencieux
+      if (_silentMode) {
+        debugPrint('[Analytics silencieux] Crash enregistré localement uniquement');
+        return;
+      }
+      
       final crashData = {
         'exception': exception.toString(),
         'stack_trace': stack.toString(),
