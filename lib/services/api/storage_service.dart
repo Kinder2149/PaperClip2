@@ -53,7 +53,7 @@ class StorageService {
       } else {
         // Vérifier que les endpoints de stockage sont disponibles
         try {
-          await _apiClient.get('/storage/status');
+          await _apiClient.get('/storage/status', requiresAuth: false);
           debugPrint('Endpoints de stockage disponibles');
         } catch (e) {
           debugPrint('Endpoints de stockage non disponibles: $e');

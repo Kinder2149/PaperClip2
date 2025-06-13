@@ -124,7 +124,7 @@ class ApiClient {
           _authToken = null;
           _tokenExpiration = null;
           await prefs.remove('auth_token');
-          await prefs.remove('token_expiry');
+          await prefs.remove('token_expiration');
         }
       } catch (e) {
         debugPrint(
@@ -132,7 +132,7 @@ class ApiClient {
         _authToken = null;
         _tokenExpiration = null;
         await prefs.remove('auth_token');
-        await prefs.remove('token_expiry');
+        await prefs.remove('token_expiration');
       }
     } else {
       debugPrint('[DEBUG API] Aucune date d\'expiration trouvée');
@@ -165,7 +165,7 @@ class ApiClient {
   Future<void> clearAuthToken() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('auth_token');
-    await prefs.remove('token_expiration');  // Correction: token_expiry → token_expiration
+    await prefs.remove('token_expiration');
     await prefs.remove('refresh_token');
 
     _authToken = null;
@@ -261,39 +261,55 @@ class ApiClient {
           final Uri originalUrl = response.request!.url;
           final String method = response.request!.method;
           
-          // Récupérer le body original si disponible
-          String? originalBody;
-          if (method == 'POST' || method == 'PUT' || method == 'PATCH') {
-            try {
-              // Tenter de récupérer le body original depuis response.request
-              // Cette partie peut nécessiter des ajustements selon l'implémentation de http
-              // Pour une approche plus robuste, il faudrait stocker le body original ailleurs
-              originalBody = null; // à adapter selon l'implémentation http
-            } catch (e) {
-              debugPrint('[DEBUG API] Impossible de récupérer le body original: $e');
-            }
-          }
+          // On ne peut pas récupérer facilement le body original avec le package http
+          // Nous allons simplement relancer la requête avec le nouveau token
+          // Pour une approche plus robuste, il faudrait modifier toutes les méthodes HTTP
+          // pour qu'elles conservent le body original en cas de retry
+          debugPrint('[DEBUG API] Relance de la requête avec le nouveau token: $method ${originalUrl.path}');
+          
+          // On ajoutera un paramètre pour indiquer que c'est une requête après rafraîchissement
+          final queryParams = Map<String, dynamic>.from(originalUrl.queryParameters);
+          queryParams['_refresh_retry'] = 'true';
           
           // Refaire la requête originale avec le nouveau token
           final newHeaders = _createHeaders(requiresAuth: true);
           http.Response newResponse;
           
-          switch (method) {
-            case 'GET':
-              newResponse = await http.get(originalUrl, headers: newHeaders);
-              break;
-            case 'POST':
-              newResponse = await http.post(originalUrl, headers: newHeaders, body: originalBody);
-              break;
-            case 'PUT':
-              newResponse = await http.put(originalUrl, headers: newHeaders, body: originalBody);
-              break;
-            case 'DELETE':
-              newResponse = await http.delete(originalUrl, headers: newHeaders);
-              break;
-            default:
-              throw ApiException('Méthode HTTP non supportée pour le retry: $method', 0, '');
+          // Recréer l'URI avec les paramètres modifiés
+          final newUri = Uri(
+            scheme: originalUrl.scheme,
+            host: originalUrl.host,
+            port: originalUrl.port,
+            path: originalUrl.path,
+            queryParameters: queryParams,
+          );
+          
+          debugPrint('[DEBUG API] Nouvelle URI pour retry: $newUri');
+          
+          // Lancer une nouvelle requête simple sans body pour vérifier si l'authentification fonctionne
+          newResponse = await http.get(newUri, headers: newHeaders);
+          
+          // Si GET échoue, pas la peine d'essayer d'autres méthodes
+          if (newResponse.statusCode >= 400) {
+            throw ApiException(
+              'Erreur API lors de la vérification après rafraîchissement du token: ${newResponse.statusCode}',
+              newResponse.statusCode,
+              newResponse.body,
+            );
           }
+          
+          // Si GET réussit mais que la requête originale n'était pas GET, on demande à l'utilisateur de réessayer l'action
+          if (method != 'GET') {
+            debugPrint('[DEBUG API] Token rafraîchi avec succès mais la requête originale était $method');
+            debugPrint('[DEBUG API] L\'utilisateur devra relancer sa dernière action');
+            throw ApiException(
+              'Votre session a expiré mais a été restaurée. Veuillez réessayer votre dernière action.',
+              newResponse.statusCode,
+              '',
+            );
+          }
+          
+          // Pour GET, on utilise directement la réponse de la nouvelle requête
           
           // Traiter la nouvelle réponse (sans tenter un nouveau refresh en cas d'échec)
           if (newResponse.statusCode >= 200 && newResponse.statusCode < 300) {
@@ -646,7 +662,37 @@ class ApiClient {
       }
       debugPrint('[ApiClient] Tentative d\'authentification avec $provider via $endpoint');
       
-      final data = await post(endpoint, body: requestBody, requiresAuth: false);
+      // Variable pour stocker les données de réponse
+      Map<String, dynamic> data;
+      
+      // Pour Google, le backend attend les paramètres dans l'URL et non dans le body
+      if (provider == 'google') {
+        // Construire les query parameters pour l'URL
+        final queryParams = <String, String>{
+          'provider': provider,
+          'provider_id': providerId,
+          'email': email,
+        };
+        
+        // Ajouter les tokens dans l'URL si présents
+        if (idToken != null) queryParams['id_token'] = idToken;
+        if (accessToken != null) queryParams['access_token'] = accessToken;
+        
+        // Construire l'URI avec les paramètres dans l'URL
+        final uri = Uri.parse('${ApiConfig.apiBaseUrl}$endpoint').replace(queryParameters: queryParams);
+        debugPrint('[ApiClient] URI construite: $uri');
+        
+        // Headers pour la requête
+        final headers = {'Content-Type': 'application/json'};
+        
+        // Faire la requête directement sans utiliser la méthode post
+        final response = await http.post(uri, headers: headers);
+        final responseData = await _handleResponse(response);
+        data = responseData as Map<String, dynamic>;
+      } else {
+        // Pour les autres providers, continuer avec l'approche body
+        data = await post(endpoint, body: requestBody, requiresAuth: false) as Map<String, dynamic>;
+      }
       
       // Sauvegarder le access token
       if (data['access_token'] != null && data['expires_at'] != null) {
@@ -732,8 +778,8 @@ Future<Map<String, dynamic>?> linkWithProvider({
       body: json.encode(requestBody),
     );
     
-    final data = _handleResponse(response);
-    return data;
+    final data = await _handleResponse(response);
+    return data as Map<String, dynamic>?;
   } catch (e) {
     debugPrint('[ApiClient] Erreur lors de la liaison avec $provider: $e');
     return {'success': false, 'message': 'Erreur de liaison: $e'};

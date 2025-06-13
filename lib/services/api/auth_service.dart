@@ -629,9 +629,10 @@ class AuthService {
   // Récupération du profil utilisateur
   Future<Map<String, dynamic>?> getUserProfile(String userId) async {
     try {
-      return await _callAuthenticatedApi(
+      final response = await _callAuthenticatedApi(
         () => _apiClient.get('/users/$userId'), // Corrigé: suppression de /profile
       );
+      return response as Map<String, dynamic>?;
     } catch (e) {
       debugPrint('Erreur lors de la récupération du profil utilisateur $userId (après tentative de refresh): $e');
       return null;
@@ -671,11 +672,12 @@ class AuthService {
       // Utiliser la nouvelle implémentation de linkWithProvider qui gère les fallbacks automatiquement
       final response = await _callAuthenticatedApi(
         () => _apiClient.linkWithProvider(
-        provider: 'google',
-        providerId: googleUser.id,
-        email: googleUser.email,
-        idToken: googleAuth.idToken,
-        accessToken: googleAuth.accessToken,
+          provider: 'google',
+          providerId: googleUser.id,
+          email: googleUser.email,
+          idToken: googleAuth.idToken,
+          accessToken: googleAuth.accessToken,
+        )
       );
 
       if (response == null) {
