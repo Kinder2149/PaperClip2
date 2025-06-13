@@ -16,7 +16,7 @@ class UserProfileSave(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     # Métadonnées supplémentaires (stockées en JSON)
-    metadata = Column(JSON, nullable=True)
+    save_metadata = Column(JSON, nullable=True)
     
     # Relations
     user = relationship("User", backref="profile_saves")

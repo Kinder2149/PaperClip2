@@ -43,7 +43,7 @@ async def add_save_to_profile(
     if existing_profile_save:
         # Mise à jour des données existantes
         existing_profile_save.game_mode = save_data.game_mode
-        existing_profile_save.metadata = save_data.metadata
+        existing_profile_save.save_metadata = save_data.save_metadata
         db.commit()
         db.refresh(existing_profile_save)
         return existing_profile_save
@@ -54,7 +54,7 @@ async def add_save_to_profile(
         user_id=current_user.id,
         save_id=save_data.save_id,
         game_mode=save_data.game_mode,
-        metadata=save_data.metadata
+        save_metadata=save_data.save_metadata
     )
     
     db.add(user_profile_save)
