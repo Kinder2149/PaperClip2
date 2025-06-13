@@ -1,5 +1,5 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'dart:io' show Directory;
+import 'dart:io' show Directory, Platform;
 import 'package:flutter/foundation.dart';
 
 class EnvConfig {
@@ -12,20 +12,38 @@ class EnvConfig {
 
       await dotenv.load(fileName: ".env");
 
-      final requiredKeys = [
-        'FIREBASE_WEB_API_KEY',
-        'FIREBASE_WEB_APP_ID',
-        'FIREBASE_WEB_PROJECT_ID',
-        'FIREBASE_WEB_AUTH_DOMAIN',
-        'FIREBASE_WEB_DATABASE_URL',
-        'FIREBASE_WEB_STORAGE_BUCKET',
-        'FIREBASE_ANDROID_API_KEY',
-        'FIREBASE_ANDROID_APP_ID',
-        'FIREBASE_IOS_API_KEY',
-        'FIREBASE_IOS_APP_ID'
-      ];
+      // Liste des clés requises en fonction de la plateforme
+      List<String> requiredKeys = [];
+      
+      // Ajout des clés Android si on est sur Android
+      if (Platform.isAndroid) {
+        requiredKeys.addAll([
+          'FIREBASE_ANDROID_API_KEY',
+          'FIREBASE_ANDROID_APP_ID',
+        ]);
+      }
+      
+      // Ajout des clés iOS si on est sur iOS
+      if (Platform.isIOS) {
+        requiredKeys.addAll([
+          'FIREBASE_IOS_API_KEY',
+          'FIREBASE_IOS_APP_ID',
+        ]);
+      }
+      
+      // Ajout des clés Web si on est sur le Web
+      if (kIsWeb) {
+        requiredKeys.addAll([
+          'FIREBASE_WEB_API_KEY',
+          'FIREBASE_WEB_APP_ID',
+          'FIREBASE_WEB_PROJECT_ID',
+          'FIREBASE_WEB_AUTH_DOMAIN',
+          'FIREBASE_WEB_DATABASE_URL',
+          'FIREBASE_WEB_STORAGE_BUCKET',
+        ]);
+      }
 
-      // Vérification des clés
+      // Vérification des clés requises pour la plateforme actuelle
       for (final key in requiredKeys) {
         if (dotenv.env[key]?.isEmpty ?? true) {
           throw Exception('Configuration manquante: $key n\'est pas défini dans le fichier .env');

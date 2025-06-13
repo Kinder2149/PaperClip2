@@ -56,19 +56,38 @@ void main() async {
       print('Orientation set to portrait');
     }
 
-    // Chargement des variables d'environnement avec plus de contexte
+    // Chargement des variables d'environnement avec plus de contexte et gestion d'erreur
     if (kDebugMode) {
       print('Loading environment variables...');
     }
-    await EnvConfig.load();
+    try {
+      await EnvConfig.load();
+    } catch (e) {
+      if (kDebugMode) {
+        print('Warning: could not load all environment variables: $e');
+        print('Continuing with default Firebase configuration...');
+      }
+      // On continue même si le chargement des variables d'environnement échoue
+    }
 
-    // Initialisation de Firebase avec vérification
+    // Initialisation de Firebase avec vérification et résilience
     if (kDebugMode) {
       print('Initializing Firebase...');
     }
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+    try {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+      if (kDebugMode) {
+        print('Firebase initialized successfully');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error initializing Firebase: $e');
+        print('The app will continue with limited functionality');
+      }
+      // L'application continue même si Firebase n'est pas initialisé
+    }
 
     // Initialiser les services de jeu
     // Initialisation des services de jeu

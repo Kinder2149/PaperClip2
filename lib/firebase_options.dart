@@ -30,8 +30,8 @@ class DefaultFirebaseOptions {
   );
 
   static final FirebaseOptions android = FirebaseOptions(
-    apiKey: EnvConfig.firebaseAndroidApiKey,
-    appId: EnvConfig.firebaseAndroidAppId,
+    apiKey: kDebugMode ? 'AIzaSyD-9tSrke72PouQMnMX-a7eZSW0jkFMBWY' : EnvConfig.firebaseAndroidApiKey,
+    appId: '1:426827215567:android:3ad9dbbddffce7c8ef2dd0',
     messagingSenderId: '426827215567',
     projectId: 'paperclip2-2149',
     databaseURL: 'https://paperclip2-2149-default-rtdb.europe-west1.firebasedatabase.app',
