@@ -84,6 +84,24 @@ class GameSave(GameSaveBase):
     
     class Config:
         orm_mode = True
+        
+# Schémas pour les sauvegardes de profil utilisateur
+class UserProfileSaveCreate(BaseModel):
+    save_id: str
+    game_mode: str
+    metadata: Optional[Dict[str, Any]] = {}
+    
+class UserProfileSaveResponse(BaseModel):
+    id: str
+    user_id: str
+    save_id: str
+    game_mode: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    metadata: Optional[Dict[str, Any]] = {}
+    
+    class Config:
+        orm_mode = True
 
 # Schémas pour les événements d'analytique
 class AnalyticsEventCreate(BaseModel):

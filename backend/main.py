@@ -2,7 +2,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.db.database import engine, Base
-from app.routes import auth, users, storage, analytics, config, social
+from app.routes import auth, users, storage, analytics, config, social, user_saves
 
 # Création des tables dans la base de données
 Base.metadata.create_all(bind=engine)
@@ -29,6 +29,7 @@ app.include_router(storage.router, prefix="/api", tags=["Storage"])
 app.include_router(analytics.router, prefix="/api", tags=["Analytics"])
 app.include_router(config.router, prefix="/api", tags=["Remote Config"])
 app.include_router(social.router, prefix="/api", tags=["Social"])
+app.include_router(user_saves.router, prefix="/api", tags=["User Profile"])
 
 @app.get("/", tags=["Root"])
 async def root():
