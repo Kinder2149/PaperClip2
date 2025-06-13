@@ -1,3 +1,8 @@
+plugins {
+    id 'com.android.application'
+    id 'kotlin-android'
+}
+
 def localProperties = new Properties()
 def localPropertiesFile = rootProject.file('local.properties')
 if (localPropertiesFile.exists()) {
@@ -6,19 +11,19 @@ if (localPropertiesFile.exists()) {
     }
 }
 
-def keystorePropertiesFile = rootProject.file("key.properties")
-def keystoreProperties = new Properties()
-keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
-
 def flutterRoot = localProperties.getProperty('flutter.sdk')
 if (flutterRoot == null) {
     throw new Exception("Flutter SDK not found. Define location with flutter.sdk in local.properties")
 }
 
-// Utiliser apply plugin au lieu du bloc plugins pour être compatible avec le plugin flutter.gradle
-apply plugin: 'com.android.application'
-apply plugin: 'kotlin-android'
+// Ajouter le plugin Flutter de manière impérative - standard pour les projets Flutter actuels
 apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
+
+def keystorePropertiesFile = rootProject.file("key.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
 
 android {
     namespace "com.kinder2149.paperclip2"
@@ -100,4 +105,4 @@ configurations.all {
         // Forcer les versions spécifiques
         force 'com.google.android.gms:play-services-auth:20.7.0'
     }
-}
+} 

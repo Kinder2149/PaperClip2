@@ -27,6 +27,16 @@ class Token(BaseModel):
     user_id: str
     username: str
     expires_at: datetime
+    refresh_token: Optional[str] = None
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+    
+class RefreshTokenResponse(BaseModel):
+    access_token: str
+    token_type: str
+    refresh_token: Optional[str] = None
+    expires_at: datetime
 
 class TokenData(BaseModel):
     user_id: Optional[str] = None

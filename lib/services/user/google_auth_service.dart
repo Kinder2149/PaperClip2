@@ -255,9 +255,14 @@ class GoogleAuthService extends ChangeNotifier {
       
       // Debugger les informations des tokens Google
       debugPrint('ID token présent: ${googleAuth.idToken != null}');
+      debugPrint('Access token présent: ${googleAuth.accessToken != null}');
       if (googleAuth.idToken != null) {
         debugPrint('Longueur ID token: ${googleAuth.idToken!.length}');
         debugPrint('Début ID token: ${googleAuth.idToken!.substring(0, math.min(20, googleAuth.idToken!.length))}...');
+      }
+      if (googleAuth.accessToken != null) {
+        debugPrint('Longueur Access token: ${googleAuth.accessToken!.length}');
+        debugPrint('Début Access token: ${googleAuth.accessToken!.substring(0, math.min(20, googleAuth.accessToken!.length))}...');
       }
       
       // Passer les tokens et les informations du compte à AuthService
@@ -276,24 +281,45 @@ class GoogleAuthService extends ChangeNotifier {
           final apiClient = ApiClient();
           apiClient.printConfig(); // Afficher la configuration API
           
+          // Préparer le payload avec les données disponibles
+          final Map<String, dynamic> payload = {
+            'provider': 'google',
+            'providerId': googleUser.id,
+            'email': googleUser.email,
+          };
+          
+          // Ajouter les tokens disponibles
+          if (googleAuth.idToken != null) {
+            payload['idToken'] = googleAuth.idToken;
+          }
+          if (googleAuth.accessToken != null) {
+            payload['accessToken'] = googleAuth.accessToken;
+          }
+          
+          // Vérification de sécurité avant d'envoyer la requête
+          if (payload['idToken'] == null && payload['accessToken'] == null) {
+            debugPrint('ERREUR: Aucun token disponible pour l\'authentification Google');
+            return null;
+          }
+          
           final result = await apiClient.loginWithProvider(
-            'google',
-            googleUser.id,
-            googleUser.email,
-            username: googleUser.displayName,
-            profileImageUrl: googleUser.photoUrl,
+            provider: payload['provider'],
+            providerId: payload['providerId'],
+            email: payload['email'],
+            idToken: payload['idToken'],
+            accessToken: payload['accessToken'],
           );
           
           debugPrint('Résultat de la connexion directe: $result');
           
           // Si on a un token, on le sauvegarde
-          if (result['access_token'] != null && result['expires_at'] != null) {
+          if (result != null && result['access_token'] != null && result['expires_at'] != null) {
             _isSignedIn = true;
             notifyListeners();
             _saveLastSignInTime();
             
             return {
-              'id': result['user_id'] ?? googleUser.id,
+              'id': result != null ? (result['user_id'] ?? googleUser.id) : googleUser.id,
               'displayName': googleUser.displayName,
               'email': googleUser.email,
               'photoUrl': googleUser.photoUrl,

@@ -18,6 +18,27 @@ router = APIRouter(prefix="/storage", tags=["Storage"])
 # Initialiser le service de stockage
 storage_service = StorageService()
 
+@router.get("/status")
+async def get_storage_status(
+    current_user: User = Depends(get_current_user)
+):
+    """Retourne le statut du service de stockage et l'utilisation de l'utilisateur"""
+    try:
+        # Vérifier si le service de stockage est disponible
+        storage_type = storage_service.get_storage_type()
+        usage_info = storage_service.get_usage_info(current_user.id)
+        
+        return {
+            "status": "available",
+            "storage_type": storage_type,
+            "user_storage": usage_info
+        }
+    except Exception as e:
+        return {
+            "status": "unavailable",
+            "error": str(e)
+        }
+
 @router.post("/saves", response_model=GameSave, status_code=status.HTTP_201_CREATED)
 async def create_game_save(
     save_data: GameSaveCreate,

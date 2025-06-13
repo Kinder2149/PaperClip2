@@ -449,4 +449,40 @@ class FriendsService extends ChangeNotifier {
     await _refreshSentRequests();
     notifyListeners();
   }
+
+  // Récupérer directement la liste des amis
+  Future<List<FriendModel>> getFriends() async {
+    try {
+      await _refreshFriends();
+      return friends.value;
+    } catch (e, stack) {
+      debugPrint('Erreur lors de la récupération directe des amis: $e');
+      _analyticsService.recordError(e, stack);
+      rethrow; // Propager l'erreur pour la gestion dans le widget appelant
+    }
+  }
+
+  // Récupérer directement les demandes d'amitié reçues
+  Future<List<FriendRequestModel>> getReceivedFriendRequests() async {
+    try {
+      await _refreshReceivedRequests();
+      return receivedRequests.value;
+    } catch (e, stack) {
+      debugPrint('Erreur lors de la récupération directe des demandes reçues: $e');
+      _analyticsService.recordError(e, stack);
+      rethrow; // Propager l'erreur pour la gestion dans le widget appelant
+    }
+  }
+
+  // Récupérer directement les demandes d'amitié envoyées
+  Future<List<FriendRequestModel>> getSentFriendRequests() async {
+    try {
+      await _refreshSentRequests();
+      return sentRequests.value;
+    } catch (e, stack) {
+      debugPrint('Erreur lors de la récupération directe des demandes envoyées: $e');
+      _analyticsService.recordError(e, stack);
+      rethrow; // Propager l'erreur pour la gestion dans le widget appelant
+    }
+  }
 }

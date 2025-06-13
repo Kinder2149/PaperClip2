@@ -859,30 +859,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
 
       debugPrint('Tentative d\'authentification Google dans SettingsScreen...');
-      // Utiliser directement notre méthode signInWithGoogle améliorée
-      final success = await authService.signInWithGoogle();
+      
+      // CORRECTION IMPORTANTE : Utiliser skipStateUpdate pour éviter l'erreur de widget démonté
+      // L'état sera mis à jour via l'initialisation du UserManager après
+      final success = await authService.signInWithGoogle(skipStateUpdate: true);
       
       if (!success) {
         throw Exception("Échec de l'authentification Google");
       }
 
+      // CORRECTION: Vérifier si le widget est toujours monté avant de continuer
+      if (!mounted) {
+        debugPrint("Widget démonté après authentification Google - arrêt contrôlé");
+        return;
+      }
+
       // Réinitialiser le UserManager pour charger le profil nouvellement connecté
       final userManager = Provider.of<UserManager>(context, listen: false);
       await userManager.initialize();
+      
+      // CORRECTION: Forcer la mise à jour explicite de l'état d'authentification
+      // pour s'assurer qu'il est bien propagé dans l'application
+      authService.authStateChanged.value = true;
 
+      // CORRECTION: Vérifier à nouveau si le widget est monté avant de mettre à jour l'UI
+      if (!mounted) {
+        debugPrint("Widget démonté pendant l'initialisation - arrêt contrôlé");
+        return;
+      }
+      
       setState(() {});
       
       // Afficher un message de succès
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Connexion Google réussie'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Connexion Google réussie'),
+          backgroundColor: Colors.green,
+        ),
+      );
     } catch (e) {
-      print('Erreur lors de la connexion: $e');
+      debugPrint('Erreur lors de la connexion: $e');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -893,7 +909,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       }
     } finally {
-      setState(() => _isLoading = false);
+      // Vérifier si le widget est toujours monté avant d'appeler setState
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }  
   }
 

@@ -1,6 +1,10 @@
 // lib/models/social/user_stats_model.dart
 import 'package:flutter/foundation.dart';
+import 'package:json_annotation/json_annotation.dart';
 
+part 'user_stats_model.g.dart';
+
+@JsonSerializable(explicitToJson: true)
 class UserStatsModel {
   final String userId;
   final String displayName;
@@ -24,37 +28,18 @@ class UserStatsModel {
     DateTime? lastUpdated,
   }) : this.lastUpdated = lastUpdated ?? DateTime.now();
 
-  // Création depuis les données JSON
-  factory UserStatsModel.fromJson(Map<String, dynamic> json, {String? id}) {
-    return UserStatsModel(
-      userId: id ?? json['userId'] ?? '',
-      displayName: json['displayName'] ?? 'Utilisateur inconnu',
-      totalPaperclips: json['totalPaperclips'] ?? 0,
-      level: json['level'] ?? 1,
-      money: (json['money'] as num?)?.toDouble() ?? 0.0,
-      bestScore: json['bestScore'] ?? 0,
-      efficiency: (json['efficiency'] as num?)?.toDouble() ?? 0.0,
-      upgradesBought: json['upgradesBought'] ?? 0,
-      lastUpdated: json['lastUpdated'] != null 
-          ? DateTime.parse(json['lastUpdated']) 
-          : DateTime.now(),
-    );
+  // Méthode générée par json_serializable
+  factory UserStatsModel.fromJson(Map<String, dynamic> json) => _$UserStatsModelFromJson(json);
+  
+  // Pour conserver la compatibilité avec l'ancien code qui utilise l'ID en paramètre
+  factory UserStatsModel.fromJsonWithId(Map<String, dynamic> json, {String? id}) {
+    var updatedJson = Map<String, dynamic>.from(json);
+    if (id != null) updatedJson['userId'] = id;
+    return _$UserStatsModelFromJson(updatedJson);
   }
 
-  // Conversion en Map pour API
-  Map<String, dynamic> toJson() {
-    return {
-      'userId': userId,
-      'displayName': displayName,
-      'totalPaperclips': totalPaperclips,
-      'level': level,
-      'money': money,
-      'bestScore': bestScore,
-      'efficiency': efficiency,
-      'upgradesBought': upgradesBought,
-      'lastUpdated': lastUpdated.toIso8601String(),
-    };
-  }
+  // Méthode générée par json_serializable
+  Map<String, dynamic> toJson() => _$UserStatsModelToJson(this);
 
   // Création depuis GameState
   factory UserStatsModel.fromGameState(String userId, String displayName, dynamic gameState) {

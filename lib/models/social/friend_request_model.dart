@@ -1,12 +1,17 @@
 // lib/models/social/friend_request_model.dart
 import 'package:flutter/foundation.dart';
+import 'package:json_annotation/json_annotation.dart';
 
+part 'friend_request_model.g.dart';
+
+@JsonEnum()
 enum FriendRequestStatus {
   pending,
   accepted,
   declined
 }
 
+@JsonSerializable(explicitToJson: true)
 class FriendRequestModel {
   final String id;
   final String senderId;
@@ -26,20 +31,8 @@ class FriendRequestModel {
     DateTime? timestamp,
   }) : this.timestamp = timestamp ?? DateTime.now();
 
-  factory FriendRequestModel.fromJson(Map<String, dynamic> json, {String? id}) {
-    return FriendRequestModel(
-      id: id ?? json['id'] ?? '',
-      senderId: json['senderId'] ?? '',
-      receiverId: json['receiverId'] ?? '',
-      senderName: json['senderName'] ?? 'Utilisateur inconnu',
-      senderPhotoUrl: json['senderPhotoUrl'],
-      status: _parseStatus(json['status']),
-      timestamp: json['timestamp'] != null 
-          ? DateTime.parse(json['timestamp']) 
-          : DateTime.now(),
-    );
-  }
-
+  // Cette méthode est maintenant gérée par json_serializable
+  // Mais nous la conservons pour la compatibilité avec le code existant
   static FriendRequestStatus _parseStatus(String? status) {
     switch (status) {
       case 'accepted':
@@ -52,17 +45,9 @@ class FriendRequestModel {
     }
   }
 
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'senderId': senderId,
-      'receiverId': receiverId,
-      'senderName': senderName,
-      'senderPhotoUrl': senderPhotoUrl,
-      'status': status.toString().split('.').last,
-      'timestamp': timestamp.toIso8601String(),
-    };
-  }
+  // Méthodes générées automatiquement pour la sérialisation JSON
+  factory FriendRequestModel.fromJson(Map<String, dynamic> json) => _$FriendRequestModelFromJson(json);
+  Map<String, dynamic> toJson() => _$FriendRequestModelToJson(this);
 
   // Création d'une copie avec un statut modifié
   FriendRequestModel withStatus(FriendRequestStatus newStatus) {

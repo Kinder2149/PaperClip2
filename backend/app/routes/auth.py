@@ -1,24 +1,111 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
 from app.db.database import get_db
-from app.models.schemas import UserCreate, Token, UserLogin
+from app.models.schemas import UserCreate, Token, UserLogin, RefreshTokenRequest, RefreshTokenResponse
 from app.models.user import User
 from app.auth.auth import (
     verify_password, get_password_hash, create_access_token, get_current_user,
     authenticate_user, create_user, authenticate_with_provider,
     change_password, reset_password_request, reset_password_confirm
 )
-import os
-
-# Configuration des clés secrètes et des paramètres JWT
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "YOUR_SECRET_KEY_HERE_CHANGE_IN_PRODUCTION")
-ALGORITHM = "HS256"
+# Utilisation des variables importées depuis jwt.py pour éviter les duplications
+from app.auth.jwt import verify_refresh_token, create_refresh_token, SECRET_KEY, ALGORITHM
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+
+# Endpoint de refresh token
+@router.post("/refresh", response_model=RefreshTokenResponse)
+async def refresh_token(
+    refresh_request: RefreshTokenRequest = Body(...),
+    db: Session = Depends(get_db)
+):
+    """Rafraîchit un access token expiré en utilisant un refresh token valide"""
+    try:
+        # Vérifier et décoder le refresh token
+        token_data = verify_refresh_token(refresh_request.refresh_token)
+        
+        if token_data is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token de rafraîchissement invalide ou expiré",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Vérifier l'existence de l'utilisateur
+        user = db.query(User).filter(User.id == token_data.user_id).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Utilisateur non trouvé",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Générer un nouvel access token
+        access_token, expires_at = create_access_token(
+            data={"sub": user.id}
+        )
+        
+        # Option: générer un nouveau refresh token pour la rotation des tokens
+        # Décommenter pour activer cette fonctionnalité
+        # new_refresh_token, _ = create_refresh_token(data={"sub": user.id})
+        
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            # "refresh_token": new_refresh_token,  # Décommenter pour activer la rotation des refresh tokens
+            "expires_at": expires_at
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Erreur lors du rafraîchissement du token: {str(e)}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+# Endpoints OAuth modernes
+@router.post("/oauth/google")
+async def oauth_google(
+    provider_id: str,
+    email: str,
+    username: Optional[str] = None,
+    profile_image_url: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Endpoint OAuth moderne pour Google - Compatible avec Flutter"""
+    # Utiliser le même service que le endpoint provider legacy
+    user = authenticate_with_provider(
+        db=db,
+        provider="google",
+        provider_id=provider_id,
+        email=email,
+        username=username,
+        profile_image_url=profile_image_url
+    )
+    
+    # Mettre à jour la date de dernière connexion
+    user.last_login = datetime.utcnow()
+    db.commit()
+    
+    # Générer un token JWT
+    access_token = create_access_token(
+        data={"sub": user.id}
+    )
+    
+    # Calculer la date d'expiration
+    expires_delta = timedelta(minutes=60 * 24 * 7)  # 7 jours
+    expires_at = datetime.utcnow() + expires_delta
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user_id": user.id,
+        "username": user.username,
+        "expires_at": expires_at
+    }
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
@@ -76,20 +163,22 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = 
     db.commit()
     
     # Générer un token JWT
-    access_token = create_access_token(
+    access_token, expires_at = create_access_token(
         data={"sub": user.id}
     )
     
-    # Calculer la date d'expiration
-    expires_delta = timedelta(minutes=60 * 24 * 7)  # 7 jours
-    expires_at = datetime.utcnow() + expires_delta
+    # Générer un refresh token
+    refresh_token, _ = create_refresh_token(
+        data={"sub": user.id}
+    )
     
     return {
         "access_token": access_token,
         "token_type": "bearer",
         "user_id": user.id,
         "username": user.username,
-        "expires_at": expires_at
+        "expires_at": expires_at,
+        "refresh_token": refresh_token
     }
 
 @router.post("/login", response_model=Token)
@@ -110,20 +199,22 @@ async def login_with_email(login_data: UserLogin, db: Session = Depends(get_db))
     db.commit()
     
     # Générer un token JWT
-    access_token = create_access_token(
+    access_token, expires_at = create_access_token(
         data={"sub": user.id}
     )
     
-    # Calculer la date d'expiration
-    expires_delta = timedelta(minutes=60 * 24 * 7)  # 7 jours
-    expires_at = datetime.utcnow() + expires_delta
+    # Générer un refresh token
+    refresh_token, _ = create_refresh_token(
+        data={"sub": user.id}
+    )
     
     return {
         "access_token": access_token,
         "token_type": "bearer",
         "user_id": user.id,
         "username": user.username,
-        "expires_at": expires_at
+        "expires_at": expires_at,
+        "refresh_token": refresh_token
     }
 
 @router.get("/me")

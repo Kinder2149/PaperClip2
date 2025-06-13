@@ -6,6 +6,7 @@ import '../../services/social/friends_service.dart';
 import '../../services/user/user_manager.dart';
 import '../../services/api/analytics_service.dart';
 import '../../services/api/auth_service.dart';
+import '../../services/auth/auth_widget_lifecycle.dart';
 import '../../services/api/social_service.dart'; // Ajout de l'import pour SocialService
 import '../../services/games_services_controller.dart';
 
@@ -21,7 +22,7 @@ class FriendsScreen extends StatefulWidget {
   State<FriendsScreen> createState() => _FriendsScreenState();
 }
 
-class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProviderStateMixin {
+class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProviderStateMixin, AuthWidgetLifecycleMixin<FriendsScreen> {
   // Clé pour le scaffold, utilisée pour afficher des snackbars
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   late TabController _tabController;
@@ -80,6 +81,9 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   // Réagir aux changements d'état d'authentification
   void _onAuthStateChanged() {
     debugPrint('_FriendsScreenState: État d\'authentification changé ${_signInStatusListener.value}');
+    // Vérifier si le widget est toujours monté
+    if (isDisposed) return;
+    
     // Si connecté, réinitialiser
     if (_signInStatusListener.value) {
       setState(() {
@@ -103,13 +107,53 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   
   // Réagir aux changements d'informations du joueur
   void _onPlayerInfoChanged() {
+    if (isDisposed) return;
+    
     // Si les infos du joueur sont mises à jour, on réinitialise le service
     if (_playerInfoListener.value != null) {
       _initializeFriendsService();
     }
   }
+  
+  // Gérer les erreurs 401 Unauthorized
+  Future<void> _handleUnauthorizedError() async {
+    debugPrint('Tentative de reconnexion après erreur 401');
+    try {
+      // Tentative de reconnexion silencieuse via Google
+      final success = await AuthService().signInWithGoogle(silent: true, skipStateUpdate: true);
+      
+      if (success && !isDisposed) {
+        // Si la reconnexion a réussi, recharger les données
+        debugPrint('Reconnexion réussie, rechargement des données');
+        _loadData();
+      } else if (!isDisposed) {
+        // Si la reconnexion a échoué, afficher un message d'erreur
+        setState(() {
+          _errorMessage = 'Session expirée, veuillez vous reconnecter';
+          _isLoadingFriends = false;
+          _isLoadingReceivedRequests = false;
+          _isLoadingSentRequests = false;
+        });
+        
+        // Montrer une boîte de dialogue de reconnexion
+        _showLoginDialog();
+      }
+    } catch (e) {
+      debugPrint('Erreur lors de la tentative de reconnexion: $e');
+      if (!isDisposed) {
+        setState(() {
+          _errorMessage = 'Session expirée, veuillez vous reconnecter';
+          _isLoadingFriends = false;
+          _isLoadingReceivedRequests = false;
+          _isLoadingSentRequests = false;
+        });
+      }
+    }
+  }
 
   Future<void> _initializeFriendsService() async {
+    if (isDisposed) return;
+    
     final userManager = Provider.of<UserManager>(context, listen: false);
     final userId = userManager.currentProfile?.userId;
     final isSignedIn = await GamesServicesController().isSignedIn();
@@ -177,113 +221,109 @@ class _FriendsScreenState extends State<FriendsScreen> with SingleTickerProvider
   }
 
   // Charger toutes les données nécessaires
-  void _loadData() {
+  Future<void> _loadData() async {
     _loadFriendsList();
     _loadReceivedRequests();
     _loadSentRequests();
   }
 
   // Charger la liste des amis
-  void _loadFriendsList() {
-    if (_friendsService == null) {
-      setState(() {
-        _isLoadingFriends = false;
-        _errorMessage = "Service d'amis non disponible";
-      });
-      return;
+  Future<void> _loadFriendsList() async {
+    if (_friendsService == null || isDisposed) return;
+    
+    try {
+      if (!isDisposed) {
+        setState(() => _isLoadingFriends = true);
+      }
+      
+      // Récupérer la liste des amis
+      final friendsList = await _friendsService!.getFriends();
+      
+      if (!isDisposed) {
+        setState(() {
+          _friendsList = friendsList;
+          _isLoadingFriends = false;
+          _errorMessage = null;
+        });
+      }
+    } catch (e) {
+      debugPrint('Erreur lors du chargement des amis: $e');
+      
+      // Si l'erreur est une 401, essayer de se reconnecter silencieusement
+      if (e.toString().contains('401') || e.toString().contains('unauthorized')) {
+        await _handleUnauthorizedError();
+      } else if (!isDisposed) {
+        setState(() {
+          _errorMessage = 'Erreur lors du chargement de vos amis';
+          _isLoadingFriends = false;
+        });
+      }
     }
-
-    setState(() {
-      _isLoadingFriends = true;
-    });
-
-    _friendsService!.friendsStream().listen(
-            (friends) {
-          if (mounted) {
-            setState(() {
-              _friendsList = friends;
-              _isLoadingFriends = false;
-            });
-          }
-        },
-        onError: (error) {
-          if (mounted) {
-            setState(() {
-              _errorMessage = "Erreur: $error";
-              _isLoadingFriends = false;
-            });
-          }
-        }
-    );
   }
 
-  // Charger les demandes reçues
-  void _loadReceivedRequests() {
-    if (_friendsService == null) {
-      setState(() {
-        _isLoadingReceivedRequests = false;
-      });
-      return;
+  // Charger les demandes d'amitié reçues
+  Future<void> _loadReceivedRequests() async {
+    if (_friendsService == null || isDisposed) return;
+    
+    try {
+      if (!isDisposed) {
+        setState(() => _isLoadingReceivedRequests = true);
+      }
+      
+      // Récupérer les demandes d'amitié reçues
+      final requests = await _friendsService!.getReceivedFriendRequests();
+      
+      if (!isDisposed) {
+        setState(() {
+          _receivedRequests = requests;
+          _isLoadingReceivedRequests = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Erreur lors du chargement des demandes reçues: $e');
+      
+      // Si l'erreur est une 401, essayer de se reconnecter silencieusement
+      if (e.toString().contains('401') || e.toString().contains('unauthorized')) {
+        await _handleUnauthorizedError();
+      } else if (!isDisposed) {
+        setState(() {
+          _isLoadingReceivedRequests = false;
+        });
+      }
     }
-
-    setState(() {
-      _isLoadingReceivedRequests = true;
-    });
-
-    _friendsService!.receivedRequestsStream().listen(
-            (requests) {
-          if (mounted) {
-            setState(() {
-              _receivedRequests = requests;
-              _isLoadingReceivedRequests = false;
-            });
-          }
-        },
-        onError: (error) {
-          if (mounted) {
-            setState(() {
-              _errorMessage = "Erreur: $error";
-              _isLoadingReceivedRequests = false;
-            });
-          }
-        }
-    );
   }
 
-  // Charger les demandes envoyées
-  void _loadSentRequests() {
-    if (_friendsService == null) {
-      setState(() {
-        _isLoadingSentRequests = false;
-      });
-      return;
+  // Charger les demandes d'amitié envoyées
+  Future<void> _loadSentRequests() async {
+    if (_friendsService == null || isDisposed) return;
+    
+    try {
+      if (!isDisposed) {
+        setState(() => _isLoadingSentRequests = true);
+      }
+      
+      // Récupérer les demandes d'amitié envoyées
+      final requests = await _friendsService!.getSentFriendRequests();
+      
+      if (!isDisposed) {
+        setState(() {
+          _sentRequests = requests;
+          _isLoadingSentRequests = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Erreur lors du chargement des demandes envoyées: $e');
+      
+      // Si l'erreur est une 401, essayer de se reconnecter silencieusement
+      if (e.toString().contains('401') || e.toString().contains('unauthorized')) {
+        await _handleUnauthorizedError();
+      } else if (!isDisposed) {
+        setState(() {
+          _isLoadingSentRequests = false;
+        });
+      }
     }
-
-    setState(() {
-      _isLoadingSentRequests = true;
-    });
-
-    _friendsService!.sentRequestsStream().listen(
-            (requests) {
-          if (mounted) {
-            setState(() {
-              _sentRequests = requests;
-              _isLoadingSentRequests = false;
-            });
-          }
-        },
-        onError: (error) {
-          if (mounted) {
-            setState(() {
-              _errorMessage = "Erreur: $error";
-              _isLoadingSentRequests = false;
-            });
-          }
-        }
-    );
   }
-
-  // La méthode dispose() est déjà définie plus haut dans la classe
 
   // Méthode pour afficher le dialogue de connexion
   void _showLoginDialog() {

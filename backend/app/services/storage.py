@@ -291,3 +291,77 @@ class StorageService:
         
         else:
             raise ValueError("Configuration de stockage invalide")
+            
+    def get_storage_type(self) -> str:
+        """
+        Retourne le type de stockage utilisé
+        
+        Returns:
+            Le type de stockage ("local" ou "s3")
+        """
+        return STORAGE_TYPE
+    
+    def get_usage_info(self, user_id: str) -> dict:
+        """
+        Retourne les informations d'utilisation du stockage pour un utilisateur
+        
+        Args:
+            user_id: L'ID de l'utilisateur
+            
+        Returns:
+            Un dictionnaire contenant les informations d'utilisation
+        """
+        total_size = 0
+        file_count = 0
+        save_count = 0
+        
+        try:
+            if STORAGE_TYPE == "local":
+                # Stockage local - Calcul de la taille totale des fichiers de l'utilisateur
+                user_dir = os.path.join(LOCAL_STORAGE_PATH, user_id)
+                
+                if os.path.exists(user_dir):
+                    # Parcourir tous les fichiers de l'utilisateur
+                    for root, _, files in os.walk(user_dir):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            total_size += os.path.getsize(file_path)
+                            file_count += 1
+                            
+                            # Compter les sauvegardes
+                            if root.endswith('/saves') and file.endswith('.json'):
+                                save_count += 1
+            
+            elif STORAGE_TYPE == "s3" and s3_client:
+                # Stockage S3 - Liste des objets et calcul de la taille
+                paginator = s3_client.get_paginator('list_objects_v2')
+                for page in paginator.paginate(Bucket=S3_BUCKET, Prefix=f"{user_id}/"):
+                    if 'Contents' in page:
+                        for obj in page['Contents']:
+                            total_size += obj['Size']
+                            file_count += 1
+                            
+                            # Compter les sauvegardes
+                            if 'saves/' in obj['Key'] and obj['Key'].endswith('.json'):
+                                save_count += 1
+        
+        except Exception as e:
+            print(f"Erreur lors du calcul de l'utilisation du stockage: {e}")
+            # En cas d'erreur, retourner des valeurs par défaut
+            return {
+                "total_size": 0,
+                "total_size_mb": 0,
+                "file_count": 0,
+                "save_count": 0,
+                "error": str(e)
+            }
+        
+        # Convertir la taille en Mo avec 2 décimales
+        total_size_mb = round(total_size / (1024 * 1024), 2)
+        
+        return {
+            "total_size": total_size,
+            "total_size_mb": total_size_mb,
+            "file_count": file_count,
+            "save_count": save_count
+        }

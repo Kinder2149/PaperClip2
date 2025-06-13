@@ -1,6 +1,10 @@
 // lib/models/social/friend_model.dart
 import 'package:flutter/foundation.dart';
+import 'package:json_annotation/json_annotation.dart';
 
+part 'friend_model.g.dart';
+
+@JsonSerializable(explicitToJson: true)
 class FriendModel {
   final String id;
   final String userId;
@@ -20,21 +24,9 @@ class FriendModel {
         this.createdAt = createdAt ?? DateTime.now(),
         this.lastActive = lastActive ?? DateTime.now();
 
-  // Création depuis un JSON
-  factory FriendModel.fromJson(Map<String, dynamic> json, {String? id}) {
-    return FriendModel(
-      id: id ?? json['id'] ?? '',
-      userId: json['userId'] ?? '',
-      displayName: json['displayName'] ?? 'Utilisateur inconnu',
-      photoUrl: json['photoUrl'],
-      createdAt: json['createdAt'] != null ? 
-          DateTime.parse(json['createdAt']) : 
-          DateTime.now(),
-      lastActive: json['lastActive'] != null ? 
-          DateTime.parse(json['lastActive']) : 
-          DateTime.now(),
-    );
-  }
+  // Méthodes générées automatiquement pour la sérialisation JSON
+  factory FriendModel.fromJson(Map<String, dynamic> json) => _$FriendModelFromJson(json);
+  Map<String, dynamic> toJson() => _$FriendModelToJson(this);
 
   // Création depuis un UserProfile
   factory FriendModel.fromUserProfile(Map<String, dynamic> profile) {
@@ -50,17 +42,6 @@ class FriendModel {
       DateTime.parse(profile['lastLogin']) :
       DateTime.now(),
     );
-  }
-
-  // Conversion en Map
-  Map<String, dynamic> toJson() {
-    return {
-      'userId': userId,
-      'displayName': displayName,
-      'photoUrl': photoUrl,
-      'createdAt': createdAt.toIso8601String(),
-      'lastActive': lastActive.toIso8601String(),
-    };
   }
 
   // Copie avec modifications

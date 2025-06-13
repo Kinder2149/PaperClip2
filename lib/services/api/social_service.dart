@@ -3,8 +3,8 @@
 import 'package:flutter/material.dart';
 import 'api_client.dart';
 
-/// Service social utilisant le backend personnalisé
-/// Remplace les fonctionnalités sociales de Firebase (amis, classements, succès)
+/// Service social utilisant le backend personnalisé pour la gestion
+/// des fonctionnalités sociales (amis, classements, succès)
 class SocialService {
   static final SocialService _instance = SocialService._internal();
   factory SocialService() => _instance;
@@ -12,38 +12,42 @@ class SocialService {
   // Client API
   final ApiClient _apiClient = ApiClient();
   
+  // États du service
+  bool _isInitialized = false;
+  
   // Constructeur interne
   SocialService._internal();
   
-  // Mode simulé pour fonctionner sans authentification
-  bool _mockMode = false;
-  
   /// Initialisation du service
-  Future<void> initialize({bool userAuthenticated = false}) async {
+  Future<Map<String, dynamic>> initialize({bool userAuthenticated = false}) async {
     try {
-      debugPrint('Initialisation du service social (auth: $userAuthenticated)');
+      debugPrint('Initialisation du service social');
       
-      // Activer le mode simulé si l'utilisateur n'est pas authentifié
-      _mockMode = !userAuthenticated;
-      
-      if (_mockMode) {
-        debugPrint('Mode simulé activé pour le service social - les fonctionnalités sociales seront limitées');
-      } else {
-        // Vérifier que les endpoints sociaux sont disponibles
-        try {
-          await _apiClient.get('/social/status');
-          debugPrint('Endpoints sociaux disponibles');
-        } catch (e) {
-          debugPrint('Endpoints sociaux non disponibles: $e');
-          _mockMode = true;
-        }
+      // Vérifier que les endpoints sociaux sont disponibles
+      try {
+        final statusResponse = await _apiClient.get('/social/status');
+        _isInitialized = true;
+        debugPrint('Service social initialisé avec succès');
+        return {
+          'success': true,
+          'message': 'Service social initialisé avec succès',
+          'data': statusResponse
+        };
+      } catch (e) {
+        debugPrint('Erreur lors de la vérification des endpoints sociaux: $e');
+        return {
+          'success': false,
+          'message': 'Endpoints sociaux non disponibles: $e',
+          'error': e.toString()
+        };
       }
-      
-      debugPrint('SocialService initialisé avec succès');
     } catch (e) {
       debugPrint('Erreur lors de l\'initialisation du service social: $e');
-      // Activer le mode simulé en cas d'erreur
-      _mockMode = true;
+      return {
+        'success': false,
+        'message': 'Erreur lors de l\'initialisation du service social',
+        'error': e.toString()
+      };
     }
   }
   
@@ -57,10 +61,18 @@ class SocialService {
         body: {'receiver_id': receiverId},
       );
       
-      return data;
+      return {
+        'success': true,
+        'message': 'Demande d\'amitié envoyée avec succès',
+        'data': data
+      };
     } catch (e) {
       debugPrint('Erreur lors de l\'envoi de la demande d\'amitié: $e');
-      rethrow;
+      return {
+        'success': false,
+        'message': 'Erreur lors de l\'envoi de la demande d\'amitié',
+        'error': e.toString()
+      };
     }
   }
   
@@ -72,10 +84,18 @@ class SocialService {
         body: {'status': status},
       );
       
-      return data;
+      return {
+        'success': true,
+        'message': 'Réponse à la demande d\'amitié envoyée avec succès',
+        'data': data
+      };
     } catch (e) {
       debugPrint('Erreur lors de la réponse à la demande d\'amitié: $e');
-      rethrow;
+      return {
+        'success': false,
+        'message': 'Erreur lors de la réponse à la demande d\'amitié',
+        'error': e.toString()
+      };
     }
   }
   
@@ -143,14 +163,22 @@ class SocialService {
   }
   
   /// Suppression d'un ami
-  Future<bool> removeFriend({required String friendId}) async {
+  Future<Map<String, dynamic>> removeFriend({required String friendId}) async {
     try {
-      await _apiClient.delete('/social/friends/$friendId'); // Vérifier que ce endpoint existe côté backend, sinon l'implémenter.
+      await _apiClient.delete('/social/friends/$friendId');
       
-      return true;
+      return {
+        'success': true,
+        'message': 'Ami supprimé avec succès',
+        'data': {'friend_id': friendId}
+      };
     } catch (e) {
       debugPrint('Erreur lors de la suppression de l\'ami: $e');
-      return false;
+      return {
+        'success': false,
+        'message': 'Erreur lors de la suppression de l\'ami',
+        'error': e.toString()
+      };
     }
   }
   
@@ -202,10 +230,18 @@ class SocialService {
     try {
       final data = await _apiClient.get('/social/leaderboards/$leaderboardId');
       
-      return data;
+      return {
+        'success': true,
+        'data': data,
+        'message': 'Classement récupéré avec succès'
+      };
     } catch (e) {
       debugPrint('Erreur lors de la récupération du classement: $e');
-      rethrow;
+      return {
+        'success': false,
+        'message': 'Erreur lors de la récupération du classement',
+        'error': e.toString()
+      };
     }
   }
   
@@ -217,15 +253,23 @@ class SocialService {
         body: {'score': score},
       );
       
-      return data;
+      return {
+        'success': true,
+        'data': data,
+        'message': 'Score soumis avec succès'
+      };
     } catch (e) {
       debugPrint('Erreur lors de la soumission du score: $e');
-      rethrow;
+      return {
+        'success': false,
+        'message': 'Erreur lors de la soumission du score',
+        'error': e.toString()
+      };
     }
   }
   
   /// Récupération des entrées d'un classement
-  Future<List<Map<String, dynamic>>> getLeaderboardEntries({
+  Future<Map<String, dynamic>> getLeaderboardEntries({
     required String leaderboardId,
     int limit = 100,
     int offset = 0,
@@ -246,22 +290,45 @@ class SocialService {
         queryParams: queryParams,
       );
       
-      return List<Map<String, dynamic>>.from(data['entries'] ?? []);
+      return {
+        'success': true,
+        'data': List<Map<String, dynamic>>.from(data['entries'] ?? []),
+        'message': 'Entrées du classement récupérées avec succès',
+        'pagination': {
+          'total': data['total'] ?? 0,
+          'offset': offset,
+          'limit': limit
+        }
+      };
     } catch (e) {
       debugPrint('Erreur lors de la récupération des entrées du classement: $e');
-      return [];
+      return {
+        'success': false,
+        'message': 'Erreur lors de la récupération des entrées du classement',
+        'error': e.toString(),
+        'data': []
+      };
     }
   }
   
   /// Récupération du rang de l'utilisateur dans un classement
-  Future<Map<String, dynamic>?> getUserRank(String leaderboardId) async {
+  Future<Map<String, dynamic>> getUserRank(String leaderboardId) async {
     try {
       final data = await _apiClient.get('/social/leaderboards/$leaderboardId/user-rank');
       
-      return data;
+      return {
+        'success': true,
+        'data': data,
+        'message': 'Rang de l\'utilisateur récupéré avec succès'
+      };
     } catch (e) {
       debugPrint('Erreur lors de la récupération du rang de l\'utilisateur: $e');
-      return null;
+      return {
+        'success': false,
+        'message': 'Erreur lors de la récupération du rang de l\'utilisateur',
+        'error': e.toString(),
+        'data': null
+      };
     }
   }
   
@@ -270,7 +337,11 @@ class SocialService {
     try {
       final data = await _apiClient.get('/social/users/$userId/profile');
       
-      return data;
+      return {
+        'success': true,
+        'data': data,
+        'message': 'Profil utilisateur récupéré avec succès'
+      };
     } catch (e) {
       debugPrint('Erreur lors de la récupération du profil utilisateur: $e');
       return {'success': false, 'message': e.toString()};
@@ -284,10 +355,18 @@ class SocialService {
         '/social/friends/requests/$requestId/accept',
       );
       
-      return data;
+      return {
+        'success': true,
+        'message': 'Demande d\'amitié acceptée avec succès',
+        'data': data
+      };
     } catch (e) {
       debugPrint('Erreur lors de l\'acceptation de la demande d\'amitié: $e');
-      return {'success': false, 'message': e.toString()};
+      return {
+        'success': false, 
+        'message': 'Erreur lors de l\'acceptation de la demande d\'amitié',
+        'error': e.toString()
+      };
     }
   }
 
@@ -298,10 +377,18 @@ class SocialService {
         '/social/friends/requests/$requestId/decline',
       );
       
-      return data;
+      return {
+        'success': true,
+        'message': 'Demande d\'amitié déclinée avec succès',
+        'data': data
+      };
     } catch (e) {
       debugPrint('Erreur lors du refus de la demande d\'amitié: $e');
-      return {'success': false, 'message': e.toString()};
+      return {
+        'success': false, 
+        'message': 'Erreur lors du refus de la demande d\'amitié',
+        'error': e.toString()
+      };
     }
   }
 
@@ -355,10 +442,19 @@ class SocialService {
     try {
       final data = await _apiClient.get('/social/achievements/$achievementId');
       
-      return data;
+      return {
+        'success': true,
+        'message': 'Succès récupéré avec succès',
+        'data': data
+      };
     } catch (e) {
       debugPrint('Erreur lors de la récupération du succès: $e');
-      rethrow;
+      return {
+        'success': false,
+        'message': 'Erreur lors de la récupération du succès',
+        'error': e.toString(),
+        'data': null
+      };
     }
   }
   
@@ -387,15 +483,32 @@ class SocialService {
     Map<String, dynamic>? progress,
   }) async {
     try {
+      // Préparer le corps de la requête
+      final Map<String, dynamic> requestBody = {
+        'achievement_id': achievementId,
+      };
+      if (progress != null) {
+        requestBody['progress'] = progress;
+      }
+
       final data = await _apiClient.post(
-        '/social/achievements/$achievementId/unlock',
-        body: progress != null ? {'progress': progress} : null,
+        '/social/achievements/unlock',
+        body: requestBody,
       );
       
-      return data;
+      return {
+        'success': true,
+        'message': 'Succès débloqué avec succès',
+        'data': data
+      };
     } catch (e) {
       debugPrint('Erreur lors du déblocage du succès: $e');
-      rethrow;
+      return {
+        'success': false,
+        'message': 'Erreur lors du déblocage du succès',
+        'error': e.toString(),
+        'data': null
+      };
     }
   }
   
@@ -410,10 +523,19 @@ class SocialService {
         body: {'progress': progress},
       );
       
-      return data;
+      return {
+        'success': true,
+        'message': 'Progression du succès mise à jour avec succès',
+        'data': data
+      };
     } catch (e) {
       debugPrint('Erreur lors de la mise à jour de la progression du succès: $e');
-      rethrow;
+      return {
+        'success': false,
+        'message': 'Erreur lors de la mise à jour de la progression du succès',
+        'error': e.toString(),
+        'data': null
+      };
     }
   }
   
@@ -446,10 +568,19 @@ class SocialService {
         body: {'stats': stats},
       );
       
-      return data;
+      return {
+        'success': true,
+        'message': 'Statistiques utilisateur mises à jour avec succès',
+        'data': data
+      };
     } catch (e) {
       debugPrint('Erreur lors de la mise à jour des statistiques de l\'utilisateur: $e');
-      return {'success': false, 'message': e.toString()};
+      return {
+        'success': false,
+        'message': 'Erreur lors de la mise à jour des statistiques de l\'utilisateur',
+        'error': e.toString(),
+        'data': null
+      };
     }
   }
 }

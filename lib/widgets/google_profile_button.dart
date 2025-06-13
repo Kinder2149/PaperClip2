@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/games_services_controller.dart';
 import '../services/api/auth_service.dart';
+import '../config/api_config.dart';
 import 'package:provider/provider.dart';
 
 class GoogleProfileButton extends StatefulWidget {
@@ -13,41 +14,72 @@ class GoogleProfileButton extends StatefulWidget {
 }
 
 class _GoogleProfileButtonState extends State<GoogleProfileButton> {
+  bool _isLoading = false;
+  bool _hasError = false;
+  String? _errorMessage;
+  String _debugInfo = '';
   bool _isSignedIn = false;
-  bool _isLoading = true;
   String? _playerName;
+  
+  // Services nécessaires
+  final AuthService _authService = AuthService();
+  final GamesServicesController _gamesServices = GamesServicesController();
 
   @override
   void initState() {
     super.initState();
-    _checkSignInStatus();
+    
+    // Initialisation asynchrone
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkSignInStatus();
+    });
   }
 
   Future<void> _checkSignInStatus() async {
-    setState(() => _isLoading = true);
-
     try {
-      final gamesServices = GamesServicesController();
-      final isSignedIn = await gamesServices.isSignedIn();
-
-      // Essayer de récupérer les informations du joueur si connecté
-      String? displayName;
+      // silentSignIn renvoie un booléen et non un objet GooglePlayerInfo
+      final bool isSignedIn = await _gamesServices.silentSignIn();
+      
       if (isSignedIn) {
-        final playerInfo = await gamesServices.getCurrentPlayerInfo();
-        displayName = playerInfo?.displayName;
+        // Si connecté, récupérer les infos du joueur séparément
+        final playerInfo = await _gamesServices.getCurrentPlayerInfo();
+        
+        setState(() {
+          _isSignedIn = true;
+          _playerName = playerInfo?.displayName ?? "Joueur Google";
+        });
+        
+        if (widget.onProfileUpdated != null) {
+          widget.onProfileUpdated!();
+        }
       }
-
+      
       setState(() {
-        _isSignedIn = isSignedIn;
-        _playerName = displayName ?? "Joueur Google";
         _isLoading = false;
       });
     } catch (e) {
-      print("Erreur lors de la vérification du statut: $e");
       setState(() {
-        _isSignedIn = false;
-        _isLoading = false;
+        _hasError = true;
+        _errorMessage = e.toString();
+        _debugInfo += '\nException: ${e.toString()}';
       });
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+  
+  /// Charge les informations du joueur depuis le service de jeu
+  Future<void> _checkPlayerInfo() async {
+    try {
+      final playerInfo = await _gamesServices.getCurrentPlayerInfo();
+      
+      if (playerInfo != null) {
+        setState(() {
+          _playerName = playerInfo.displayName;
+        });
+      }
+    } catch (e) {
+      debugPrint('Erreur lors du chargement des infos joueur: $e');
     }
   }
 
@@ -62,45 +94,71 @@ class _GoogleProfileButtonState extends State<GoogleProfileButton> {
 
       if (!_isSignedIn) {
         // Si pas connecté, tenter de se connecter via notre service d'authentification Google
-        debugPrint('Tentative d\'authentification via AuthService.signInWithGoogle()...');
-        final success = await authService.signInWithGoogle();
-
-        if (success) {
-          // Si connecté avec succès, récupérer les infos du joueur
-          final playerInfo = await gamesServices.getCurrentPlayerInfo();
-          setState(() {
-            _isSignedIn = true;
-            _playerName = playerInfo?.displayName ?? "Joueur Google";
-          });
-          
-          // Afficher un message de succès
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Connexion Google réussie'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        } else {
-          // Afficher un message d'erreur
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Échec de l\'authentification Google'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+        await _loginWithGoogle();
       } else {
         // Si déjà connecté, montrer les options
         _showAccountOptions();
       }
     } catch (e) {
-      print("Erreur lors de la gestion du tap: $e");
-      // Montrer message d'erreur si nécessaire
+      setState(() {
+        _hasError = true;
+        _errorMessage = e.toString();
+        _debugInfo += '\nException: ${e.toString()}';
+      });
     } finally {
       setState(() => _isLoading = false);
 
       if (widget.onProfileUpdated != null) {
         widget.onProfileUpdated!();
+      }
+    }
+  }
+
+  Future<void> _loginWithGoogle() async {
+    setState(() {
+      _isLoading = true;
+      _hasError = false;
+      _errorMessage = null;
+      _debugInfo = 'Démarrage authentification Google...';
+    });
+    
+    try {
+      // Vérification simplifiée - nous ne faisons pas de vérification d'endpoint ici
+      // car cela nécessiterait des appels réseau supplémentaires
+      final success = await _authService.signInWithGoogle();
+      
+      if (!success) {
+        setState(() {
+          _hasError = true;
+          _errorMessage = "L'authentification Google a échoué";
+          _debugInfo += '\nÉchec de l\'authentification Google';
+        });
+      } else {
+        // Authentification réussie, récupérer le profil
+        setState(() {
+          _isLoading = false;
+          _isSignedIn = true;
+          _debugInfo += '\nConnexion Google réussie!';
+        });
+        
+        // Charge le profil après la connexion
+        await _checkPlayerInfo();
+        
+        if (widget.onProfileUpdated != null) {
+          widget.onProfileUpdated!();
+        }
+      }
+    } catch (e) {
+      setState(() {
+        _hasError = true;
+        _errorMessage = e.toString();
+        _debugInfo += '\nException: ${e.toString()}';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
       }
     }
   }
@@ -124,20 +182,28 @@ class _GoogleProfileButtonState extends State<GoogleProfileButton> {
               Navigator.pop(context);
               setState(() => _isLoading = true);
 
-              final gamesServices = GamesServicesController();
-              final success = await gamesServices.switchAccount();
+              try {
+                final gamesServices = GamesServicesController();
+                final success = await gamesServices.switchAccount();
 
-              if (success) {
-                final playerInfo = await gamesServices.getCurrentPlayerInfo();
+                if (success) {
+                  final playerInfo = await gamesServices.getCurrentPlayerInfo();
+                  setState(() {
+                    _playerName = playerInfo?.displayName ?? "Joueur Google";
+                  });
+                }
+
+                setState(() => _isLoading = false);
+
+                if (widget.onProfileUpdated != null) {
+                  widget.onProfileUpdated!();
+                }
+              } catch (e) {
                 setState(() {
-                  _playerName = playerInfo?.displayName ?? "Joueur Google";
+                  _hasError = true;
+                  _errorMessage = e.toString();
+                  _debugInfo += '\nException: ${e.toString()}';
                 });
-              }
-
-              setState(() => _isLoading = false);
-
-              if (widget.onProfileUpdated != null) {
-                widget.onProfileUpdated!();
               }
             },
           ),

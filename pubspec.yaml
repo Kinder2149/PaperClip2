@@ -53,6 +53,9 @@ dependencies:
   # Configuration
   flutter_dotenv: ^5.1.0
   package_info_plus: ^4.0.0
+  
+  # Sérialisation JSON
+  json_annotation: ^4.9.0
 
 dev_dependencies:
   flutter_test:
@@ -60,7 +63,8 @@ dev_dependencies:
   flutter_lints: ^3.0.1
   flutter_launcher_icons: ^0.13.1
   mockito: ^5.4.5
-  build_runner: ^2.4.15  # Nécessaire pour la génération de code mockito
+  build_runner: ^2.4.15  # Nécessaire pour la génération de code
+  json_serializable: ^6.7.1  # Pour la génération des fromJson/toJson
   http_mock_adapter: ^0.6.1  # Pour mocker les requêtes HTTP
   test: ^1.25.8
 
