@@ -1,0 +1,26 @@
+// This script patches the Flutter engine to avoid conflicts with androidx libraries
+// that are incompatible with our compileSdkVersion (34)
+
+// To be applied in build.gradle after the Flutter plugin
+
+afterEvaluate {
+    // Find all configurations that might contain androidx dependencies
+    def configNames = configurations.findAll { config ->
+        config.name.toLowerCase().contains('implementation') ||
+        config.name.toLowerCase().contains('api') ||
+        config.name.toLowerCase().contains('compile')
+    }.collect { it.name }
+    
+    // Apply the fixes to each configuration
+    configNames.each { configName ->
+        configurations[configName].resolutionStrategy.eachDependency { details ->
+            // Downgrade any androidx.core that's being pulled at version 1.15.0 to 1.10.1
+            if (details.requested.group == 'androidx.core') {
+                if (details.requested.version == '1.15.0') {
+                    details.useVersion '1.10.1'
+                    details.because "Forcing lower version compatible with compileSdkVersion 34"
+                }
+            }
+        }
+    }
+}
