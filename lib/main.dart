@@ -3,12 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:flutter/services.dart';
-import 'firebase_options.dart';
-import 'dart:ui' as ui show PlatformDispatcher;
 
 // Imports des écrans
 import './screens/start_screen.dart';
@@ -29,14 +24,10 @@ import './models/progression_system.dart';
 import './services/save_manager.dart';
 import './services/background_music.dart';
 import './utils/update_manager.dart';
-import './services/firebase_config.dart';
 import './widgets/notification_widgets.dart';
-import 'services/games_services_controller.dart';
 
 // Export du navigatorKey
 export 'package:paperclip2/main.dart' show navigatorKey;
-
-
 
 // Services globaux
 final gameState = GameState();
@@ -56,7 +47,7 @@ void main() async {
       print('Orientation set to portrait');
     }
 
-    // Chargement des variables d'environnement avec plus de contexte et gestion d'erreur
+    // Chargement des variables d'environnement
     if (kDebugMode) {
       print('Loading environment variables...');
     }
@@ -65,74 +56,26 @@ void main() async {
     } catch (e) {
       if (kDebugMode) {
         print('Warning: could not load all environment variables: $e');
-        print('Continuing with default Firebase configuration...');
       }
-      // On continue même si le chargement des variables d'environnement échoue
     }
 
-    // Initialisation de Firebase avec vérification et résilience
-    if (kDebugMode) {
-      print('Initializing Firebase...');
-    }
-    try {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-      if (kDebugMode) {
-        print('Firebase initialized successfully');
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print('Error initializing Firebase: $e');
-        print('The app will continue with limited functionality');
-      }
-      // L'application continue même si Firebase n'est pas initialisé
-    }
-
-    // Initialiser les services de jeu
-    // Initialisation des services de jeu
-    final gamesServices = GamesServicesController();
-    await gamesServices.initialize();
-
-    // Configuration de Crashlytics
+    // Gestion simple des erreurs
     FlutterError.onError = (FlutterErrorDetails details) {
       if (kDebugMode) {
         print('Flutter Error: ${details.exception}');
       }
-      FirebaseCrashlytics.instance.recordFlutterError(details);
     };
-
-    // Capturer les erreurs non gérées avec plus de contexte
-    ui.PlatformDispatcher.instance.onError = (error, stack) {
-      FirebaseCrashlytics.instance.recordError(
-        error,
-        stack,
-        fatal: true,
-        reason: 'Unhandled platform error',
-      );
-      return true;
-    };
-
-    // Initialiser Firebase Config
-    await FirebaseConfig.initialize();
 
     // Vérifier et restaurer les sauvegardes
     await gameState.checkAndRestoreFromBackup();
 
-    // Configurer et logger l'analytics
-    await FirebaseAnalytics.instance.logAppOpen();
-    await FirebaseAnalytics.instance.setAnalyticsCollectionEnabled(true);
-
-    // Lancer l'application avec la gestion d'erreur
+    // Lancer l'application
     runApp(
       MultiProvider(
         providers: [
           ChangeNotifierProvider.value(value: gameState),
           Provider<BackgroundMusicService>.value(value: backgroundMusicService),
           ChangeNotifierProvider.value(value: EventManager.instance),
-          Provider<GamesServicesController>(
-            create: (context) => gamesServices,
-          ),
         ],
         child: const MyApp(),
       ),
@@ -142,12 +85,6 @@ void main() async {
       print('Fatal error during initialization: $e');
       print('Stack trace: $stackTrace');
     }
-    FirebaseCrashlytics.instance.recordError(
-      e,
-      stackTrace,
-      reason: 'Error during app initialization',
-      fatal: true,
-    );
     rethrow;
   }
 }
@@ -157,7 +94,6 @@ Future<void> _initializeServices() async {
     await backgroundMusicService.initialize();
     print('Background music initialized');
   } catch (e) {
-    FirebaseCrashlytics.instance.recordError(e, StackTrace.current);
     print('Error initializing background music: $e');
   }
 }
@@ -203,7 +139,10 @@ class _LoadingScreenState extends State<LoadingScreen> {
         );
       }
     } catch (e, stack) {
-      FirebaseCrashlytics.instance.recordError(e, stack);
+      if (kDebugMode) {
+        print('Error during game initialization: $e');
+        print(stack);
+      }
     }
   }
 

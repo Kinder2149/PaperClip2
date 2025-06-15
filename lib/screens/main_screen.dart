@@ -13,14 +13,13 @@ import '../models/progression_system.dart';
 // Imports des services
 import '../services/save_manager.dart';
 import '../services/background_music.dart';
-import 'package:paperclip2/services/cloud_save_manager.dart';
 
 // Imports des widgets
 import '../widgets/level_widgets.dart';
 import '../widgets/resource_widgets.dart';
 import '../widgets/notification_widgets.dart';
 import '../widgets/chart_widgets.dart';
-import 'package:paperclip2/widgets/production_button.dart';
+import '../widgets/production_button.dart';
 import '../widgets/competitive_mode_indicator.dart';
 
 // Imports des écrans
@@ -31,12 +30,8 @@ import 'event_log_screen.dart';
 import 'save_load_screen.dart';
 import 'start_screen.dart';
 import 'introduction_screen.dart';
-import 'new_metal_production_screen.dart';  // À ajouter en haut
-import 'package:paperclip2/screens/statistics_screen.dart';
-import 'package:paperclip2/services/games_services_controller.dart';
-
-import 'package:games_services/games_services.dart' as gs;
-import 'package:paperclip2/services/save_manager.dart' as sm;
+import 'new_metal_production_screen.dart';
+import 'statistics_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -67,10 +62,6 @@ class _MainScreenState extends State<MainScreen> {
     final gameState = context.read<GameState>();
     await Future.delayed(Duration.zero);
     gameState.setContext(context);
-
-    // Initialiser les services de jeux
-    final gamesServices = GamesServicesController();
-    await gamesServices.initialize();
   }
 
   Future<void> _playBackgroundMusic() async {
@@ -731,546 +722,256 @@ class _MainScreenState extends State<MainScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) =>
-          DraggableScrollableSheet(
-            initialChildSize: 0.6,
-            minChildSize: 0.3,
-            maxChildSize: 0.9,
-            expand: false,
-            builder: (context, scrollController) =>
-                Container(
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.vertical(
-                        top: Radius.circular(20)),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Barre de glissement
-                      Container(
-                        width: 40,
-                        height: 4,
-                        margin: const EdgeInsets.symmetric(vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[300],
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-
-                      // Contenu scrollable
-                      Expanded(
-                        child: ListView(
-                          controller: scrollController,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          children: [
-                            // En-tête
-                            Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              child: Row(
-                                children: const [
-                                  Icon(Icons.settings, size: 24),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Paramètres',
-                                    style: TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            const Divider(),
-
-                            // Section Informations
-                            Card(
-                              elevation: 0,
-                              color: Colors.grey[50],
-                              child: ExpansionTile(
-                                leading: const Icon(Icons.info_outline),
-                                title: const Text('Informations'),
-                                initiallyExpanded: true,
-                                children: [
-                                  ListTile(
-                                    leading: const Icon(Icons.timer_outlined),
-                                    title: const Text('Temps de jeu'),
-                                    subtitle: Text(gameState.formattedPlayTime),
-                                  ),
-                                  ListTile(
-                                    leading: const Icon(Icons.stars_outlined),
-                                    title: const Text('Niveau'),
-                                    subtitle: Text('${gameState.level.level}'),
-                                  ),
-                                  ListTile(
-                                    leading: const Icon(
-                                        Icons.inventory_2_outlined),
-                                    title: const Text('Trombones produits'),
-                                    subtitle: Text(
-                                        '${gameState.totalPaperclipsProduced}'),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            const SizedBox(height: 8),
-
-                            // Nouvelle section Statistiques
-                            Card(
-                              elevation: 0,
-                              color: Colors.grey[50],
-                              child: ListTile(
-                                leading: const Icon(Icons.analytics),
-                                title: const Text('Statistiques'),
-                                subtitle: const Text(
-                                    'Voir les statistiques détaillées'),
-                                onTap: () => _showStatistics(context),
-                              ),
-                            ),
-
-                            const SizedBox(height: 8),
-
-                            // Section Google Play Games
-                            FutureBuilder<bool>(
-  future: GamesServicesController().isSignedIn(),
-  builder: (context, snapshot) {
-    final isSignedIn = snapshot.data ?? false;
-
-    return FutureBuilder<bool>(
-      future: GamesServicesController().isSignedIn(),
-      builder: (context, snapshot) {
-        final isSignedIn = snapshot.data ?? false;
-
-        return Card(
-          elevation: 0,
-          color: Colors.grey[50],
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.3,
+        maxChildSize: 0.9,
+        expand: false,
+        builder: (context, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(
+                top: Radius.circular(20)),
+          ),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              ListTile(
-                leading: Icon(
-                  isSignedIn ? Icons.games : Icons.gamepad_outlined,
-                  color: isSignedIn ? Colors.green : Colors.grey,
-                ),
-                title: Text(
-                  isSignedIn
-                      ? 'Connecté à Google Play Games'
-                      : 'Google Play Games',
-                ),
-                subtitle: Text(
-                  isSignedIn
-                      ? 'Vos parties peuvent être synchronisées'
-                      : 'Connectez-vous pour sauvegarder vos parties',
-                ),
-                trailing: isSignedIn
-                    ? PopupMenuButton(
-                  icon: const Icon(Icons.more_vert),
-                  onSelected: (value) async {
-                    if (value == 'switch') {
-                      await GamesServicesController().switchAccount();
-                      setState(() {});
-                    } else if (value == 'logout') {
-                      // Comme signOut n'est pas disponible, on peut simplement réinitialiser l'état
-                      await GamesServicesController().signIn();
-                      setState(() {});
-                    }
-                  },
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(
-                      value: 'switch',
-                      child: Text('Changer de compte'),
-                    ),
-                    const PopupMenuItem(
-                      value: 'logout',
-                      child: Text('Déconnexion'),
-                    ),
-                  ],
-                )
-                    : TextButton(
-                  onPressed: () async {
-                    try {
-                      await GamesServicesController()
-                          .signIn();
-                      setState(() {});
-                    } catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context)
-                            .showSnackBar(
-                          SnackBar(
-                            content: Text(
-                                'Erreur de connexion: $e'),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-                    }
-                  },
-                  child: const Text('Se connecter'),
+              // Barre de glissement
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
 
-              // Garder le reste des sections comme avant
-              if (isSignedIn) ...[
-                                        const Divider(height: 1),
-                                        ListTile(
-                                          leading: const Icon(Icons.cloud_sync),
-                                          title: const Text(
-                                              'Synchroniser les sauvegardes'),
-                                          subtitle: const Text(
-                                              'Mettre à jour vos sauvegardes dans le cloud'),
-                                          onTap: () async {
-                                            try {
-                                              final success = await gameState
-                                                  .syncSavesToCloud();
-                                              if (context.mounted) {
-                                                ScaffoldMessenger.of(context)
-                                                    .showSnackBar(
-                                                  SnackBar(
-                                                    content: Text(
-                                                        success
-                                                            ? 'Synchronisation réussie'
-                                                            : 'Échec de la synchronisation'
-                                                    ),
-                                                    backgroundColor: success
-                                                        ? Colors.green
-                                                        : Colors.red,
-                                                  ),
-                                                );
-                                              }
-                                            } catch (e) {
-                                              if (context.mounted) {
-                                                ScaffoldMessenger.of(context)
-                                                    .showSnackBar(
-                                                  SnackBar(
-                                                    content: Text('Erreur: $e'),
-                                                    backgroundColor: Colors.red,
-                                                  ),
-                                                );
-                                              }
-                                            }
-                                          },
-                                        ),
-                                        const Divider(height: 1),
-                                        ListTile(
-                                          leading: const Icon(
-                                              Icons.cloud_download),
-                                          title: const Text(
-                                              'Charger depuis le cloud'),
-                                          subtitle: const Text(
-                                              'Sélectionner une sauvegarde cloud'),
-                                          onTap: () async {
-                                            try {
-                                              await gameState
-                                                  .showCloudSaveSelector();
-                                            } catch (e) {
-                                              if (context.mounted) {
-                                                ScaffoldMessenger.of(context)
-                                                    .showSnackBar(
-                                                  SnackBar(
-                                                    content: Text('Erreur: $e'),
-                                                    backgroundColor: Colors.red,
-                                                  ),
-                                                );
-                                              }
-                                            }
-                                          },
-                                        ),
-                                      ],
+              // Contenu scrollable
+              Expanded(
+                child: ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  children: [
+                    // En-tête
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: const [
+                          Icon(Icons.settings, size: 24),
+                          SizedBox(width: 8),
+                          Text(
+                            'Paramètres',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const Divider(),
+
+                    // Section Informations
+                    Card(
+                      elevation: 0,
+                      color: Colors.grey[50],
+                      child: ExpansionTile(
+                        leading: const Icon(Icons.info_outline),
+                        title: const Text('Informations'),
+                        initiallyExpanded: true,
+                        children: [
+                          ListTile(
+                            leading: const Icon(Icons.timer_outlined),
+                            title: const Text('Temps de jeu'),
+                            subtitle: Text(gameState.formattedPlayTime),
+                          ),
+                          ListTile(
+                            leading: const Icon(Icons.stars_outlined),
+                            title: const Text('Niveau'),
+                            subtitle: Text('${gameState.level.level}'),
+                          ),
+                          ListTile(
+                            leading: const Icon(
+                                Icons.inventory_2_outlined),
+                            title: const Text('Trombones produits'),
+                            subtitle: Text(
+                                '${gameState.totalPaperclipsProduced}'),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    // Nouvelle section Statistiques
+                    Card(
+                      elevation: 0,
+                      color: Colors.grey[50],
+                      child: ListTile(
+                        leading: const Icon(Icons.analytics),
+                        title: const Text('Statistiques'),
+                        subtitle: const Text(
+                            'Voir les statistiques détaillées'),
+                        onTap: () => _showStatistics(context),
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    // Section Sauvegarde
+                    Card(
+                      elevation: 0,
+                      color: Colors.grey[50],
+                      child: Column(
+                        children: [
+                          ListTile(
+                            leading: const Icon(Icons.save),
+                            title: const Text('Sauvegarder'),
+                            subtitle: Text(
+                              'Dernière sauvegarde: ${_getLastSaveTimeText(
+                                  gameState)}',
+                            ),
+                            onTap: () => _saveGame(context),
+                          ),
+                          const Divider(height: 1),
+                          ListTile(
+                            leading: const Icon(Icons.folder_open),
+                            title: const Text('Charger une partie'),
+                            onTap: () {
+                              Navigator.pop(context);
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (
+                                      context) => const SaveLoadScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    // Section Audio
+                    Card(
+                      elevation: 0,
+                      color: Colors.grey[50],
+                      child: Consumer<BackgroundMusicService>(
+                        builder: (context, musicService, _) =>
+                            SwitchListTile(
+                              secondary: Icon(
+                                musicService.isPlaying
+                                    ? Icons.volume_up
+                                    : Icons.volume_off,
+                              ),
+                              title: const Text('Musique'),
+                              value: musicService.isPlaying,
+                              onChanged: (value) => _toggleMusic(),
+                            ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+                    
+                    // Section Services de jeu
+                    Card(
+                      elevation: 0,
+                      color: Colors.grey[50],
+                      child: Column(
+                        children: [
+                          ListTile(
+                            leading: const Icon(Icons.games),
+                            title: const Text('Mode hors ligne'),
+                            subtitle: const Text('Les scores sont stockés localement'),
+                            onTap: () async {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context)
+                                    .showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Application en mode hors ligne - Scores stockés localement'),
+                                    duration: Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Section À propos
+                    Card(
+                      elevation: 0,
+                      color: Colors.grey[50],
+                      child: Column(
+                        children: [
+                          ListTile(
+                            leading: const Icon(Icons.info),
+                            title: Text(
+                                'Version ${GameConstants.VERSION}'),
+                            onTap: () => _showAboutInfo(context),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment
+                                  .start,
+                              children: [
+                                Text('${GameConstants.APP_NAME}'),
+                                const SizedBox(height: 8),
+                                const Text(
+                                    'Un jeu de gestion incrémentale de production de trombones.'),
+                                const SizedBox(height: 8),
+                                const Text(
+                                    'Développé avec ❤️ par Kinder2149'),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+                  ],
+                ),
+              ),
             ],
           ),
-        );
-      },
+        ),
+      ),
     );
-  },
-                            ),
+  }
 
-
-                            const SizedBox(height: 8),
-
-                            // Section Sauvegarde
-                            Card(
-                              elevation: 0,
-                              color: Colors.grey[50],
-                              child: Column(
-                                children: [
-                                  ListTile(
-                                    leading: const Icon(Icons.save),
-                                    title: const Text('Sauvegarder'),
-                                    subtitle: Text(
-                                      'Dernière sauvegarde: ${_getLastSaveTimeText(
-                                          gameState)}',
-                                    ),
-                                    onTap: () => _saveGame(context),
-                                  ),
-                                  const Divider(height: 1),
-                                  ListTile(
-                                    leading: const Icon(Icons.folder_open),
-                                    title: const Text('Charger une partie'),
-                                    onTap: () {
-                                      Navigator.pop(context);
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (
-                                              context) => const SaveLoadScreen(),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            const SizedBox(height: 8),
-
-                            // Section Audio
-                            Card(
-                              elevation: 0,
-                              color: Colors.grey[50],
-                              child: Consumer<BackgroundMusicService>(
-                                builder: (context, musicService, _) =>
-                                    SwitchListTile(
-                                      secondary: Icon(
-                                        musicService.isPlaying
-                                            ? Icons.volume_up
-                                            : Icons.volume_off,
-                                      ),
-                                      title: const Text('Musique'),
-                                      value: musicService.isPlaying,
-                                      onChanged: (value) => _toggleMusic(),
-                                    ),
-                              ),
-                            ),
-
-                            const SizedBox(height: 8),
-                            // Section Services de jeux
-                            Card(
-                              elevation: 0,
-                              color: Colors.grey[50],
-                              child: Column(
-                                children: [
-                                  // En-tête avec statut de connexion
-                                  ListTile(
-                                    leading: const Icon(Icons.games),
-                                    title: const Text('Services de jeux'),
-                                    trailing: FutureBuilder<bool>(
-                                      future: GamesServicesController()
-                                          .isSignedIn(),
-                                      builder: (context, snapshot) {
-                                        final isSignedIn = snapshot.data ??
-                                            false;
-                                        return Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              isSignedIn
-                                                  ? Icons.check_circle
-                                                  : Icons.error_outline,
-                                              color: isSignedIn
-                                                  ? Colors.green
-                                                  : Colors.grey,
-                                            ),
-                                            if (!isSignedIn)
-                                              TextButton(
-                                                onPressed: () =>
-                                                    GamesServicesController()
-                                                        .signIn(),
-                                                child: const Text(
-                                                    'Se connecter'),
-                                              ),
-                                          ],
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                  const Divider(height: 1),
-
-                                  // Classement général
-                                  ListTile(
-                                    leading: const Icon(Icons.leaderboard),
-                                    title: const Text('Classement Général'),
-                                    subtitle: Text('Score global: ${gameState
-                                        .totalPaperclipsProduced}'),
-                                    onTap: () async {
-                                      final controller = GamesServicesController();
-                                      if (await controller.isSignedIn()) {
-                                        gameState.updateLeaderboard();
-                                        controller.showLeaderboard(leaderboardID: GamesServicesController.generalLeaderboardID);
-                                      } else {
-                                        await controller.signIn();
-                                        if (await controller.isSignedIn()) {
-                                          controller.showLeaderboard(leaderboardID: GamesServicesController.generalLeaderboardID);
-                                        }
-                                      }
-                                    },
-                                  ),
-                                  const Divider(height: 1),
-
-                                  // Classement production
-                                  ListTile(
-                                    leading: const Icon(
-                                        Icons.precision_manufacturing),
-                                    title: const Text('Meilleurs Producteurs'),
-                                    subtitle: Text(
-                                        'Production totale: ${gameState
-                                            .totalPaperclipsProduced}'),
-                                    onTap: () =>
-                                        gameState.showProductionLeaderboard(),
-                                  ),
-                                  const Divider(height: 1),
-
-                                  // Classement banquier
-                                  ListTile(
-                                    leading: const Icon(Icons.attach_money),
-                                    title: const Text('Plus Grandes Fortunes'),
-                                    subtitle: Text(
-                                        'Fortune: ${gameState.statistics
-                                            .getTotalMoneyEarned().toInt()}'),
-                                    onTap: () =>
-                                        gameState.showBankerLeaderboard(),
-                                  ),
-                                  const Divider(height: 1),
-
-                                  // Succès
-                                  ListTile(
-                                    leading: const Icon(Icons.emoji_events),
-                                    title: const Text('Succès'),
-                                    subtitle: const Text(
-                                        'Voir vos accomplissements'),
-                                    onTap: () async {
-                                      final controller = GamesServicesController();
-                                      if (await controller.isSignedIn()) {
-                                        controller.showAchievements();
-                                      } else {
-                                        await controller.signIn();
-                                        if (await controller.isSignedIn()) {
-                                          controller.showAchievements();
-                                        }
-                                      }
-                                    },
-                                  ),
-                                  const Divider(height: 1),
-
-                                  // Synchronisation
-                                  ListTile(
-                                    leading: const Icon(Icons.sync),
-                                    title: const Text(
-                                        'Synchroniser les scores'),
-                                    subtitle: const Text(
-                                        'Mettre à jour tous les classements'),
-                                    onTap: () async {
-                                      final controller = GamesServicesController();
-                                      if (await controller.isSignedIn()) {
-                                        gameState.updateLeaderboard();
-                                        if (context.mounted) {
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            const SnackBar(
-                                              content: Text(
-                                                  'Scores synchronisés !'),
-                                              duration: Duration(seconds: 2),
-                                            ),
-                                          );
-                                        }
-                                      } else {
-                                        if (context.mounted) {
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            const SnackBar(
-                                              content: Text(
-                                                  'Veuillez vous connecter aux services de jeux'),
-                                              duration: Duration(seconds: 2),
-                                            ),
-                                          );
-                                        }
-                                      }
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            // Section À propos
-                            Card(
-                              elevation: 0,
-                              color: Colors.grey[50],
-                              child: Column(
-                                children: [
-                                  ListTile(
-                                    leading: const Icon(Icons.info),
-                                    title: Text(
-                                        'Version ${GameConstants.VERSION}'),
-                                    onTap: () => _showAboutInfo(context),
-                                  ),
-                                  Padding(
-                                    padding: const EdgeInsets.all(16),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment
-                                          .start,
-                                      children: [
-                                        Text('${GameConstants.APP_NAME}'),
-                                        const SizedBox(height: 8),
-                                        const Text(
-                                            'Un jeu de gestion incrémentale de production de trombones.'),
-                                        const SizedBox(height: 8),
-                                        const Text(
-                                            'Développé avec ❤️ par Kinder2149'),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            const SizedBox(height: 16),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+  // Méthode pour la gestion de la sauvegarde
+  Future<void> _handleSave(BuildContext context, GameState gameState) async {
+    try {
+      if (gameState.gameName == null) {
+        throw SaveError('NO_NAME', 'Aucun nom de partie défini');
+      }
+      await gameState.saveGame(gameState.gameName!);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Partie sauvegardée'),
+            backgroundColor: Colors.green,
           ),
-    );
-
-
-
-
-
-
-
-
-
-
-
-// Ajoutez cette méthode pour la gestion de la sauvegarde
-    Future<void> _handleSave(BuildContext context, GameState gameState) async {
-      try {
-        if (gameState.gameName == null) {
-          throw SaveError('NO_NAME', 'Aucun nom de partie défini');
-        }
-        await gameState.saveGame(gameState.gameName!);
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Partie sauvegardée'),
-              backgroundColor: Colors.green,
-            ),
-          );
-          Navigator.pop(context);
-        }
-      } catch (e) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Erreur de sauvegarde: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur de sauvegarde: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
-
-
   }
 }
 

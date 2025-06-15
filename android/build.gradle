@@ -1,66 +1,16 @@
-buildscript {
-    ext {
-        kotlin_version = '1.9.22'
-        compileSdkVersion = 34
-    }
-    
-    repositories {
-        google()
-        mavenCentral()
-    }
-
-    dependencies {
-        classpath 'com.android.tools.build:gradle:8.2.1'
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-        classpath 'com.google.gms:google-services:4.4.0'
-        classpath 'com.google.firebase:firebase-crashlytics-gradle:2.9.9'
-    }
-}
-
 allprojects {
     repositories {
         google()
         mavenCentral()
     }
-
-    beforeEvaluate { project ->
-        project.setProperty('android.useAndroidX', true)
-        project.setProperty('android.enableJetifier', true)
-    }
 }
 
-rootProject.buildDir = '../build'
+rootProject.buildDir = "../build"
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
-    project.evaluationDependsOn(':app')
-    
-    if (project.name.startsWith("flutter")) {
-        project.configurations.all {
-            resolutionStrategy {
-                force 'androidx.core:core-ktx:1.12.0'
-                force 'androidx.annotation:annotation:1.7.0'
-            }
-        }
-    }
-    
-    project.plugins.withId('com.android.library') {
-        project.android {
-            compileSdkVersion rootProject.ext.compileSdkVersion
-            
-            compileOptions {
-                sourceCompatibility JavaVersion.VERSION_21
-                targetCompatibility JavaVersion.VERSION_21
-            }
-        }
-    }
-    
-    project.plugins.withId('org.jetbrains.kotlin.android') {
-        project.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
-            kotlinOptions {
-                jvmTarget = '21'
-            }
-        }
-    }
+}
+subprojects {
+    project.evaluationDependsOn(":app")
 }
 
 tasks.register("clean", Delete) {

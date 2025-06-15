@@ -9,7 +9,6 @@ import '../widgets/production_button.dart';
 import '../services/save_manager.dart';
 import '../models/event_system.dart';
 import '../utils/notification_manager.dart';
-import 'package:paperclip2/services/games_services_controller.dart';
 
 class NewMetalProductionScreen extends StatefulWidget {
   const NewMetalProductionScreen({Key? key}) : super(key: key);
@@ -267,11 +266,7 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
                     color: Colors.blue.shade100,
                     leaderboardId: 'CgkI-ICryvIBEAIQAg',
                     onTap: (bool friendsOnly) async {
-                      final controller = GamesServicesController();
-                      if (await controller.isSignedIn()) {
-                        // Utilisez 'CgkI-ICryvIBEAIQAg' directement ici au lieu de leaderboardId
-                        controller.showLeaderboard(leaderboardID: 'CgkI-ICryvIBEAIQAg');
-                      }
+                      // Fonctionnalité supprimée - jeu en mode hors ligne,
                     },
                   ),
                   const SizedBox(height: 16),
@@ -285,10 +280,7 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
                     color: Colors.green.shade100,
                     leaderboardId: 'CgkI-ICryvIBEAIQAw', // Ajouter cet ID
                     onTap: (bool friendsOnly) async {
-                      final controller = GamesServicesController();
-                      if (await controller.isSignedIn()) {
-                        controller.showProductionLeaderboard(friendsOnly: friendsOnly);
-                      }
+                      // Fonctionnalité supprimée - jeu en mode hors ligne,
                     },
                   ),
                   const SizedBox(height: 16),
@@ -302,10 +294,7 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
                     color: Colors.amber.shade100,
                     leaderboardId: 'CgkI-ICryvIBEAIQBA', // Ajouter cet ID
                     onTap: (bool friendsOnly) async {
-                      final controller = GamesServicesController();
-                      if (await controller.isSignedIn()) {
-                        controller.showBankerLeaderboard(friendsOnly: friendsOnly);
-                      }
+                      // Fonctionnalité supprimée - jeu en mode hors ligne,
                     },
                   ),
                 ],
@@ -361,7 +350,7 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
             const Divider(),
             FutureBuilder<double?>(
               // Utilisez la constante du contrôleur pour l'ID
-              future: GamesServicesController().getAchievementProgress('CgkI-ICryvIBEAIQAQ'),
+              future: Future.value(0.0),
               builder: (context, snapshot) {
                 if (snapshot.hasData) {
                   final progress = snapshot.data ?? 0.0;
@@ -426,8 +415,8 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
               ],
             ),
             const SizedBox(height: 12),
-            FutureBuilder<LeaderboardInfo?>(
-              future: GamesServicesController().getLeaderboardInfo(leaderboardId, title),
+            FutureBuilder<Map<String, dynamic>?>(
+              future: Future.value(null),
               builder: (context, snapshot) {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -452,9 +441,7 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
                           style: TextStyle(color: Colors.grey.shade700),
                         ),
                         Text(
-                          snapshot.hasData && snapshot.data != null
-                              ? formatNumber(snapshot.data!.bestScore.toDouble())
-                              : mainValue,
+                          mainValue,
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             color: Colors.green,
@@ -462,7 +449,7 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
                         ),
                       ],
                     ),
-                    if (snapshot.hasData && snapshot.data?.rank != null) ...[
+                    if (false) ...[
                       const SizedBox(height: 8),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -471,7 +458,7 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
                             style: TextStyle(color: Colors.grey.shade700),
                           ),
                           Text(
-                            '#${snapshot.data!.rank}',
+                            '#0',
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ],

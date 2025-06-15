@@ -8,8 +8,6 @@ import 'save_load_screen.dart';
 import 'introduction_screen.dart';
 import 'package:paperclip2/screens/main_screen.dart';
 import 'package:paperclip2/main.dart';
-import 'package:paperclip2/services/games_services_controller.dart';
-import '../widgets/google_profile_button.dart';
 
 class StartScreen extends StatefulWidget {
   const StartScreen({super.key});
@@ -22,16 +20,10 @@ class _StartScreenState extends State<StartScreen> {
   bool _isLoading = false;
   String? _lastSaveInfo;
 
-  // Variables pour la gestion de la connexion Google Play
-  bool _isCheckingSignIn = true;
-  bool _isSignedIn = false;
-  String? _playerName;
-
   @override
   void initState() {
     super.initState();
     _loadLastSaveInfo();
-    _checkGoogleSignIn();
   }
 
   Future<void> _loadLastSaveInfo() async {
@@ -44,96 +36,6 @@ class _StartScreenState extends State<StartScreen> {
   }
 
 
-  // Récupérer le nom du joueur (si disponible dans votre implémentation)
-  Future<String?> _getPlayerName() async {
-    // Cette méthode peut être implémentée si votre package games_services
-    // propose une façon d'obtenir le nom du joueur.
-    // Dans le cas contraire, retournez simplement null.
-    return null;
-  }
-
-  // Se connecter à Google Play Games
-  Future<void> _signInToGooglePlay() async {
-    final gamesServices = GamesServicesController();
-
-    try {
-      await gamesServices.signIn();
-      final isSignedIn = await gamesServices.isSignedIn();
-
-      if (isSignedIn) {
-        final playerName = await _getPlayerName();
-
-        if (mounted) {
-          setState(() {
-            _isSignedIn = true;
-            _playerName = playerName;
-          });
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Connexion réussie à Google Play Games'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      print('Erreur lors de la connexion: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erreur de connexion: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  // Charger une sauvegarde depuis le cloud
-  Future<void> _loadCloudSave() async {
-    final gameState = context.read<GameState>();
-
-    try {
-      await gameState.showCloudSaveSelector();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erreur: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-  Future<void> _checkGoogleSignIn() async {
-    final gamesServices = GamesServicesController();
-
-    setState(() {
-      _isCheckingSignIn = true;
-    });
-
-    try {
-      final isSignedIn = await gamesServices.isSignedIn();
-
-      if (mounted) {
-        setState(() {
-          _isSignedIn = isSignedIn;
-          _playerName = isSignedIn ? "Joueur Google Play" : null;
-          _isCheckingSignIn = false;
-        });
-      }
-    } catch (e) {
-      print('Erreur lors de la vérification de connexion: $e');
-      if (mounted) {
-        setState(() {
-          _isCheckingSignIn = false;
-        });
-      }
-    }
-  }
-
   Future<void> _continueLastGame() async {
     setState(() => _isLoading = true);
     try {
@@ -143,8 +45,7 @@ class _StartScreenState extends State<StartScreen> {
         if (mounted) {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (
-                context) => const MainScreen()), // MainGame -> MainScreen
+            MaterialPageRoute(builder: (context) => const MainScreen()),
           );
         }
       } else {
@@ -180,7 +81,6 @@ class _StartScreenState extends State<StartScreen> {
 
     // Variable pour suivre le mode sélectionné
     GameMode selectedMode = GameMode.INFINITE;
-    bool syncToCloud = _isSignedIn; // Activé par défaut si connecté
 
     showDialog(
       context: context,
@@ -261,21 +161,6 @@ class _StartScreenState extends State<StartScreen> {
                     ),
                   ),
 
-                // Option de synchronisation cloud (uniquement si connecté)
-                if (_isSignedIn)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 16.0),
-                    child: SwitchListTile(
-                      title: const Text('Synchroniser avec le cloud'),
-                      subtitle: const Text('Sauvegardez votre partie sur Google Play Games'),
-                      value: syncToCloud,
-                      onChanged: (value) {
-                        setState(() => syncToCloud = value);
-                      },
-                      activeColor: Colors.deepPurple,
-                    ),
-                  ),
-
                 const SizedBox(height: 8),
                 const Text(
                   'Cette action créera une nouvelle sauvegarde',
@@ -318,7 +203,7 @@ class _StartScreenState extends State<StartScreen> {
                   setState(() => _isLoading = true);
                   try {
                     // Utiliser le mode sélectionné lors de la création
-                    await context.read<GameState>().startNewGame(gameName, mode: selectedMode, syncToCloud: syncToCloud);
+                    await context.read<GameState>().startNewGame(gameName, mode: selectedMode);
 
                     if (context.mounted) {
                       // Créer une classe intermédiaire pour la navigation
@@ -425,36 +310,6 @@ class _StartScreenState extends State<StartScreen> {
                   ),
                 ),
 
-                // Affichage du statut de connexion
-                if (_isSignedIn && _playerName != null)
-                  Container(
-                    margin: const EdgeInsets.only(top: 8),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.check_circle,
-                          color: Colors.white,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Connecté: $_playerName',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
                 const SizedBox(height: 40),
 
                 // Boutons du menu (avec ajouts pour le cloud)
@@ -509,31 +364,6 @@ class _StartScreenState extends State<StartScreen> {
                   color: Colors.deepPurple[500],
                   textColor: Colors.white,
                 ),
-
-                // Si connecté, ajouter l'option de chargement depuis le cloud
-                if (_isSignedIn)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 16.0),
-                    child: GoogleProfileButton(
-                      onProfileUpdated: () {
-                        // Rafraîchir l'état pour mettre à jour l'UI
-                        _checkGoogleSignIn();
-                      },
-                    ),
-                  ),
-
-                // Si non connecté, ajouter l'option de connexion
-                if (!_isSignedIn && !_isCheckingSignIn)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 16.0),
-                    child: _buildMenuButton(
-                      onPressed: _isLoading ? null : _signInToGooglePlay,
-                      icon: Icons.games,
-                      label: 'Se connecter à Google Play Games',
-                      color: Colors.green[500],
-                      textColor: Colors.white,
-                    ),
-                  ),
 
                 if (_isLoading) ...[
                   const SizedBox(height: 24),

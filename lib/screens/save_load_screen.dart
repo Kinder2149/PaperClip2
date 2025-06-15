@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import '../models/game_config.dart';
 import 'package:paperclip2/screens/main_screen.dart';
-import 'package:paperclip2/services/games_services_controller.dart';
 import 'package:paperclip2/services/save_manager.dart';
 
 class SaveLoadScreen extends StatefulWidget {
@@ -17,8 +16,6 @@ class SaveLoadScreen extends StatefulWidget {
 
 enum SaveFilter {
   ALL,
-  LOCAL,
-  CLOUD,
   COMPETITIVE,
   INFINITE
 }
@@ -32,14 +29,9 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
 
   // Variables d'état
   SaveFilter _currentFilter = SaveFilter.ALL;
-  bool _isSyncing = false;
 
   List<SaveGameInfo> _filterSaves(List<SaveGameInfo> saves) {
     switch (_currentFilter) {
-      case SaveFilter.LOCAL:
-        return saves.where((save) => !save.isSyncedWithCloud).toList();
-      case SaveFilter.CLOUD:
-        return saves.where((save) => save.isSyncedWithCloud).toList();
       case SaveFilter.COMPETITIVE:
         return saves.where((save) => save.gameMode == GameMode.COMPETITIVE).toList();
       case SaveFilter.INFINITE:
@@ -50,68 +42,10 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
     }
   }
 
-  Future<void> _syncSaves() async {
-    setState(() {
-      _isSyncing = true;
-    });
-
-    try {
-      final gamesServices = GamesServicesController();
-      final isSignedIn = await gamesServices.isSignedIn();
-
-      if (!isSignedIn) {
-        await gamesServices.signIn();
-      }
-
-      final success = await gamesServices.syncSaves();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(success
-                ? 'Sauvegardes synchronisées avec succès'
-                : 'Échec de la synchronisation des sauvegardes'),
-            backgroundColor: success ? Colors.green : Colors.red,
-          ),
-        );
-
-        // Rafraîchir la liste
-        _refreshSaves();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erreur lors de la synchronisation: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSyncing = false;
-        });
-      }
-    }
-  }
-
   // Méthode pour charger une sauvegarde
   Future<void> _loadGame(BuildContext context, SaveGameInfo saveInfo) async {
     try {
       final gameState = Provider.of<GameState>(context, listen: false);
-
-      // Si c'est une sauvegarde cloud sans version locale, la télécharger d'abord
-      if (saveInfo.isSyncedWithCloud && saveInfo.cloudId != null && !await SaveManager.saveExists(saveInfo.name)) {
-        final gamesServices = GamesServicesController();
-        final cloudSave = await gamesServices.loadGameFromCloud(saveInfo.cloudId!);
-
-        if (cloudSave != null) {
-          await SaveManager.saveGame(cloudSave);
-        } else {
-          throw SaveError('CLOUD_ERROR', 'Impossible de charger la sauvegarde depuis le cloud');
-        }
-      }
 
       // Chargement normal
       await gameState.loadGame(saveInfo.name);
@@ -173,18 +107,6 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
         title: const Text('Sauvegardes'),
         elevation: 0,
         actions: [
-          // Bouton de synchronisation
-          IconButton(
-            icon: _isSyncing
-                ? const CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-              strokeWidth: 2,
-            )
-                : const Icon(Icons.sync),
-            onPressed: _isSyncing ? null : _syncSaves,
-            tooltip: 'Synchroniser avec le cloud',
-          ),
-
           // Menu de filtres
           PopupMenuButton<SaveFilter>(
             icon: const Icon(Icons.filter_list),
@@ -198,14 +120,6 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
               const PopupMenuItem(
                 value: SaveFilter.ALL,
                 child: Text('Toutes les sauvegardes'),
-              ),
-              const PopupMenuItem(
-                value: SaveFilter.LOCAL,
-                child: Text('Sauvegardes locales'),
-              ),
-              const PopupMenuItem(
-                value: SaveFilter.CLOUD,
-                child: Text('Sauvegardes cloud'),
               ),
               const PopupMenuItem(
                 value: SaveFilter.COMPETITIVE,
@@ -372,21 +286,6 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                       ),
                     ),
                   ),
-
-                  // Indicateur de synchronisation cloud
-                  if (save.isSyncedWithCloud)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8.0),
-                      child: Tooltip(
-                        message: 'Sauvegarde synchronisée avec le cloud',
-                        child: Icon(
-                          Icons.cloud_done,
-                          color: Colors.blue[400],
-                          size: 20,
-                        ),
-                      ),
-                    ),
-
                   // Menu d'options
                   PopupMenuButton(
                     itemBuilder: (context) => [
@@ -400,18 +299,6 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                           ],
                         ),
                       ),
-                      // Option de synchronisation cloud pour les sauvegardes non synchronisées
-                      if (!save.isSyncedWithCloud)
-                        PopupMenuItem(
-                          value: 'cloud_sync',
-                          child: Row(
-                            children: [
-                              Icon(Icons.cloud_upload, color: Colors.blue[400]),
-                              const SizedBox(width: 8),
-                              const Text('Synchroniser'),
-                            ],
-                          ),
-                        ),
                       PopupMenuItem(
                         value: 'delete',
                         child: Row(
@@ -426,30 +313,6 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                     onSelected: (value) async {
                       if (value == 'load') {
                         _loadGame(context, save);
-                      } else if (value == 'cloud_sync') {
-                        // Synchroniser avec le cloud
-                        final gamesServices = GamesServicesController();
-                        if (await gamesServices.isSignedIn()) {
-                          // Charger la sauvegarde complète
-                          final fullSave = await SaveManager.loadGame(save.name);
-                          if (fullSave != null) {
-                            final success = await gamesServices.saveGameToCloud(fullSave);
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(success
-                                      ? 'Sauvegarde synchronisée avec succès'
-                                      : 'Échec de la synchronisation'),
-                                  backgroundColor: success ? Colors.green : Colors.red,
-                                ),
-                              );
-                              _refreshSaves();
-                            }
-                          }
-                        } else {
-                          // Demander la connexion
-                          await gamesServices.signIn();
-                        }
                       } else if (value == 'delete') {
                         _confirmDelete(context, save.name);
                       }

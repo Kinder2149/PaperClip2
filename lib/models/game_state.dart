@@ -1,9 +1,6 @@
 // lib/models/game_state.dart
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-// lib/models/game_state.dart
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import '../screens/competitive_result_screen.dart';
 import 'dart:async';
 import 'package:flutter/services.dart';
@@ -20,11 +17,7 @@ import 'dart:convert';
 import '../utils/notification_manager.dart';
 import '../dialogs/metal_crisis_dialog.dart';
 import '../services/auto_save_service.dart';
-import 'package:paperclip2/services/games_services_controller.dart';
-import 'package:games_services/games_services.dart' hide SaveGame;
 import '../screens/main_screen.dart';
-import 'package:paperclip2/services/cloud_save_manager.dart';
-import 'package:games_services/games_services.dart' as gs;
 import '../services/save_manager.dart' show SaveGame, SaveError, SaveGameInfo, SaveManager;
 
 class GameState extends ChangeNotifier {
@@ -53,11 +46,9 @@ class GameState extends ChangeNotifier {
   GameMode get gameMode => _gameMode;
   DateTime? get competitiveStartTime => _competitiveStartTime;
 
-
   bool _isInitialized = false;
   String? _gameName;
   BuildContext? _context;
-
 
   bool get showingCrisisView => _showingCrisisView;
   DateTime? get crisisStartTime => _crisisStartTime;
@@ -71,6 +62,7 @@ class GameState extends ChangeNotifier {
   GameState() {
     _initializeManagers();
   }
+
   void _initializeManagers() {
     if (!_isInitialized) {
       // Étape 1 : Création des managers
@@ -107,12 +99,9 @@ class GameState extends ChangeNotifier {
       rethrow;
     }
   }
+
   void _updateLeaderboardsOnMilestone() {
-    if (_totalPaperclipsProduced % 100 == 0 ||     // Tous les 100 trombones
-        levelSystem.level % 5 == 0 ||               // Tous les 5 niveaux
-        _totalTimePlayedInSeconds % 3600 == 0) {    // Toutes les heures
-      updateLeaderboard();
-    }
+    // Disabled in offline version
   }
 
   void _configureAndStart() {
@@ -120,14 +109,13 @@ class GameState extends ChangeNotifier {
       _levelSystem.onLevelUp = _handleLevelUp;
       _missionSystem.initialize();
       _autoSaveService.initialize();
-      _setupLifecycleListeners();  // Ajouter cette ligne
+      _setupLifecycleListeners();
       _startTimers();
     } catch (e) {
       print('Erreur lors de la configuration: $e');
       rethrow;
     }
   }
-
 
   DateTime _lastUpdateTime = DateTime.now();
   DateTime? _lastSaveTime;
@@ -136,20 +124,17 @@ class GameState extends ChangeNotifier {
   int _totalTimePlayedInSeconds = 0;
   int _totalPaperclipsProduced = 0;
   double _maintenanceCosts = 0.0;
-  // Constructeur privé
-
 
   // Gestionnaire de timers centralisé
   final Map<String, Timer> _timers = {};
+
   DateTime? get lastSaveTime => _lastSaveTime;
 
   int get totalTimePlayed => _totalTimePlayedInSeconds;
   int get totalPaperclipsProduced => _totalPaperclipsProduced;
   double get maintenanceCosts => _maintenanceCosts;
 
-
   // Timers
-  // Ajouter après les propriétés existantes (vers ligne 43)
   static const Duration GAME_LOOP_INTERVAL = Duration(milliseconds: 100);
   static const Duration MARKET_UPDATE_INTERVAL = Duration(seconds: 2);
   static const Duration AUTOSAVE_INTERVAL = Duration(minutes: 5);
@@ -159,8 +144,6 @@ class GameState extends ChangeNotifier {
   int _ticksSinceLastMarketUpdate = 0;
   int _ticksSinceLastAutoSave = 0;
   int _ticksSinceLastMaintenance = 0;
-
-
 
   String get formattedPlayTime {
     int hours = _totalTimePlayedInSeconds ~/ 3600;
@@ -181,16 +164,7 @@ class GameState extends ChangeNotifier {
     // Calculer les métriques de la partie compétitive
     final competitiveScore = calculateCompetitiveScore();
 
-    // Mise à jour des classements
-    final gamesServices = GamesServicesController();
-    gamesServices.submitCompetitiveScore(
-        score: competitiveScore,
-        paperclips: _totalPaperclipsProduced,
-        money: playerManager.money,
-        timePlayed: competitivePlayTime.inSeconds,
-        level: levelSystem.level,
-        efficiency: calculateEfficiencyRating()
-    );
+    // No leaderboards in offline version
 
     // Déverrouiller les succès compétitifs si nécessaire
     _checkCompetitiveAchievements(competitiveScore);
@@ -208,7 +182,7 @@ class GameState extends ChangeNotifier {
               level: levelSystem.level,
               efficiency: calculateEfficiencyRating(),
               onNewGame: () => _startNewCompetitiveGame(context),
-              onShowLeaderboard: () => gamesServices.showCompetitiveLeaderboard(),
+              onShowLeaderboard: () => {},
             ),
           ),
         );
@@ -273,55 +247,12 @@ class GameState extends ChangeNotifier {
 
   // Vérification des réalisations (achievements) compétitifs
   void _checkCompetitiveAchievements(int score) {
-    final gamesServices = GamesServicesController();
-
-    // Vérifier les seuils de score
-    if (score >= 100000) {
-      gamesServices.unlockCompetitiveAchievement(CompetitiveAchievement.SCORE_100K);
-    } else if (score >= 50000) {
-      gamesServices.unlockCompetitiveAchievement(CompetitiveAchievement.SCORE_50K);
-    } else if (score >= 10000) {
-      gamesServices.unlockCompetitiveAchievement(CompetitiveAchievement.SCORE_10K);
-    }
-
-    // Vérifier le temps de jeu (parties rapides)
-    if (competitivePlayTime.inMinutes < 10 && _isInCrisisMode) {
-      gamesServices.unlockCompetitiveAchievement(CompetitiveAchievement.SPEED_RUN);
-    }
-
-    // Vérifier l'efficacité
-    if (calculateEfficiencyRating() > 8.0) {
-      gamesServices.unlockCompetitiveAchievement(CompetitiveAchievement.EFFICIENCY_MASTER);
-    }
+    // Achievements disabled in offline version
   }
-  Future<bool> syncSavesToCloud() async {
-    final gamesServices = GamesServicesController();
-    if (!await gamesServices.isSignedIn()) {
-      if (_context != null) {
-        ScaffoldMessenger.of(_context!).showSnackBar(
-          const SnackBar(
-            content: Text('Connectez-vous à Google Play Games pour synchroniser'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
-      return false;
-    }
 
-    try {
-      return await gamesServices.syncSaves();
-    } catch (e) {
-      print('Erreur lors de la synchronisation: $e');
-      if (_context != null) {
-        ScaffoldMessenger.of(_context!).showSnackBar(
-          SnackBar(
-            content: Text('Erreur de synchronisation: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      return false;
-    }
+  Future<bool> syncSavesToCloud() async {
+    // No cloud sync in offline version
+    return false;
   }
 
   void enterCrisisMode() {
@@ -408,6 +339,7 @@ class GameState extends ChangeNotifier {
       notifyListeners();
     }
   }
+
   void _unlockCrisisFeatures() {
     // Supprimer les références au recyclage
     _crisisTransitionComplete = true;
@@ -423,11 +355,6 @@ class GameState extends ChangeNotifier {
     notifyListeners();
   }
 
-
-
-
-
-
   Map<String, Upgrade> get upgrades => playerManager.upgrades;
   double get maxMetalStorage => playerManager.maxMetalStorage;
   PlayerManager get player => playerManager;
@@ -435,21 +362,11 @@ class GameState extends ChangeNotifier {
   ResourceManager get resources => resourceManager;
   LevelSystem get level => levelSystem;
 
-
-
   double get autocliperCost {
     double baseCost = GameConstants.BASE_AUTOCLIPPER_COST * (1.15 * player.autoclippers);
     double automationDiscount = 1.0 - ((player.upgrades['automation']?.level ?? 0) * 0.10);
     return baseCost * automationDiscount;
   }
-
-
-
-
-
-
-
-
 
   void reset() {
     _stopAllTimers();
@@ -467,7 +384,6 @@ class GameState extends ChangeNotifier {
     _marketManager = MarketManager(MarketDynamics());
     market.updateMarket();
   }
-
 
   double _calculateManualProduction(double elapsed) {
     if (playerManager.metal < GameConstants.METAL_PER_PAPERCLIP) return 0;
@@ -508,10 +424,6 @@ class GameState extends ChangeNotifier {
     });
   }
 
-
-
-
-
   void _stopAllTimers() {
     _gameLoopTimer?.cancel();
     _gameLoopTimer = null;
@@ -520,6 +432,7 @@ class GameState extends ChangeNotifier {
     _playTimeTimer?.cancel();
     _playTimeTimer = null;
   }
+
   void _applyMaintenanceCosts() {
     if (player.autoclippers == 0) return;
 
@@ -584,17 +497,6 @@ class GameState extends ChangeNotifier {
     }
   }
 
-
-
-
-
-
-
-
-
-
-
-
   void processProduction() {
     if (!_isInitialized || _isPaused) return;
 
@@ -633,11 +535,11 @@ class GameState extends ChangeNotifier {
 
       // Mise à jour des statistiques
       _statistics.updateProduction(
-          isManual: false,
-          amount: actualProduction,
-          metalUsed: metalUsed,
-          metalSaved: metalSaved,
-          efficiency: reduction * 100
+        isManual: false,
+        amount: actualProduction,
+        metalUsed: metalUsed,
+        metalSaved: metalSaved,
+        efficiency: reduction * 100
       );
 
       // Expérience pour la production automatique
@@ -647,10 +549,6 @@ class GameState extends ChangeNotifier {
 
     notifyListeners();
   }
-
-
-
-
 
   void _applyProduction(double amount) {
     if (amount <= 0) return;
@@ -663,24 +561,6 @@ class GameState extends ChangeNotifier {
         MissionType.PRODUCE_PAPERCLIPS,
         amount
     );
-  }
-  Future<void> _autoSave() async {
-    if (!_isInitialized || _gameName == null) return;
-
-    try {
-      await saveGame(_gameName!);
-      _lastSaveTime = DateTime.now();
-    } catch (e) {
-      print('Erreur lors de la sauvegarde automatique: $e');
-      if (_context != null) {
-        ScaffoldMessenger.of(_context!).showSnackBar(
-          SnackBar(
-            content: Text('Erreur de sauvegarde automatique: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
   }
 
   void _processMarket() {
@@ -719,10 +599,6 @@ class GameState extends ChangeNotifier {
     }
   }
 
-
-
-
-
   void checkResourceCrisis() {
     if (marketManager.marketMetalStock <= 0 && !_isInCrisisMode) {
       print("Déclenchement de la crise - Stock épuisé");
@@ -747,6 +623,7 @@ class GameState extends ChangeNotifier {
       }
     }
   }
+
   bool validateCrisisTransition() {
     if (!_isInCrisisMode) {
       print("Erreur: Mode crise non activé");
@@ -761,7 +638,6 @@ class GameState extends ChangeNotifier {
 
     return true;
   }
-
 
   // Actions du jeu
   void buyMetal() {
@@ -847,7 +723,6 @@ class GameState extends ChangeNotifier {
     }
   }
 
-
   void setSellPrice(double newPrice) {
     if (market.isPriceExcessive(newPrice)) {
       final notification = NotificationEvent(
@@ -893,8 +768,7 @@ class GameState extends ChangeNotifier {
     }
 
     // Mise à jour de l'achievement progressif
-    final gamesServices = GamesServicesController();
-    gamesServices.incrementAchievement(levelSystem);
+    // No achievements in offline version
 
     saveOnImportantEvent();
     checkMilestones();
@@ -912,11 +786,10 @@ class GameState extends ChangeNotifier {
         importance: EventImportance.MEDIUM
     );
   }
-  // Dans GameState, ajoutez un logger pour le debug
-  // Mise à jour pour prendre en charge la synchronisation cloud
-  Future<void> startNewGame(String name, {GameMode mode = GameMode.INFINITE, bool syncToCloud = false}) async {
+
+  Future<void> startNewGame(String name, {GameMode mode = GameMode.INFINITE}) async {
     try {
-      print('Starting new game with name: $name, mode: $mode, syncToCloud: $syncToCloud');
+      print('Starting new game with name: $name, mode: $mode');
       _gameName = name;
       _gameMode = mode;
 
@@ -943,19 +816,10 @@ class GameState extends ChangeNotifier {
         gameData: gameData,
         version: GameConstants.VERSION,
         gameMode: mode,
-        isSyncedWithCloud: false,
       );
 
       // Sauvegarder localement
       await SaveManager.saveGame(saveGame);
-
-      // Synchroniser avec le cloud si demandé
-      if (syncToCloud) {
-        final gamesServices = GamesServicesController();
-        if (await gamesServices.isSignedIn()) {
-          await gamesServices.saveGameToCloud(saveGame);
-        }
-      }
 
       notifyListeners();
     } catch (e) {
@@ -964,37 +828,15 @@ class GameState extends ChangeNotifier {
     }
   }
 
-  // Gestion de la sauvegarde
-  Future<void> _loadSavedGame() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedData = prefs.getString(GameConstants.SAVE_KEY);
-    if (savedData != null) {
-      final gameData = jsonDecode(savedData);
-      _loadGameData(gameData);
-    }
-  }
-  Future<void> loadGame(String name, {String? cloudId}) async {
+  Future<void> loadGame(String name) async {
     try {
-      print('Starting to load game: $name, cloudId: $cloudId');
+      print('Starting to load game: $name');
 
       SaveGame? saveGame;
 
-      // Tentative de chargement depuis le cloud si un cloudId est fourni
-      if (cloudId != null) {
-        final gamesServices = GamesServicesController();
-        saveGame = await gamesServices.loadGameFromCloud(cloudId);
-
-        if (saveGame == null) {
-          throw SaveError('CLOUD_ERROR', 'Erreur lors du chargement depuis le cloud');
-        }
-
-        // Sauvegarder localement la version cloud
-        await SaveManager.saveGame(saveGame);
-      } else {
-        // Chargement local normal
-        saveGame = await SaveManager.loadGame(name);
-        if (saveGame == null) throw SaveError('NOT_FOUND', 'Sauvegarde non trouvée');
-      }
+      // Charger depuis le stockage local
+      saveGame = await SaveManager.loadGame(name);
+      if (saveGame == null) throw SaveError('NOT_FOUND', 'Sauvegarde non trouvée');
 
       _stopAllTimers();
       print('Timers stopped');
@@ -1046,45 +888,6 @@ class GameState extends ChangeNotifier {
       rethrow;
     }
   }
-  Future<void> showCloudSaveSelector() async {
-    try {
-      final gamesServices = GamesServicesController();
-      if (!await gamesServices.isSignedIn()) {
-        await gamesServices.signIn();
-      }
-
-      if (await gamesServices.isSignedIn()) {
-        final selectedSave = await gamesServices.showSaveSelector();
-        if (selectedSave != null && _context != null) {
-          // Sauvegarder d'abord la partie actuelle si elle existe
-          if (_isInitialized && _gameName != null) {
-            await saveGame(_gameName!);
-          }
-
-          // Charger la partie sélectionnée
-          await loadGame(selectedSave.name, cloudId: selectedSave.cloudId);
-
-          // Naviguer vers l'écran principal
-          if (_context != null && _context!.mounted) {
-            Navigator.of(_context!).pushReplacement(
-              MaterialPageRoute(builder: (_) => const MainScreen()),
-            );
-          }
-        }
-      }
-    } catch (e) {
-      print('Erreur lors de l\'affichage du sélecteur cloud: $e');
-      if (_context != null) {
-        ScaffoldMessenger.of(_context!).showSnackBar(
-          SnackBar(
-            content: Text('Erreur: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
 
   void _handleCrisisModeData(Map<String, dynamic> gameData) {
     if (gameData['crisisMode'] != null) {
@@ -1099,32 +902,39 @@ class GameState extends ChangeNotifier {
       }
     }
   }
+
   void updateLeaderboard() async {
-    final gamesServices = GamesServicesController();
-    if (await gamesServices.isSignedIn()) {
-      await gamesServices.updateAllLeaderboards(this);
-    }
+    // No leaderboards in offline version
   }
+
   void showProductionLeaderboard() async {
-    final gamesServices = GamesServicesController();
-    if (await gamesServices.isSignedIn()) {
-      await gamesServices.showProductionLeaderboard();
+    if (_context != null) {
+      ScaffoldMessenger.of(_context!).showSnackBar(
+        const SnackBar(
+          content: Text('Les classements ne sont pas disponibles dans cette version'),
+          backgroundColor: Colors.orange,
+        ),
+      );
     }
   }
 
   void showBankerLeaderboard() async {
-    final gamesServices = GamesServicesController();
-    if (await gamesServices.isSignedIn()) {
-      await gamesServices.showBankerLeaderboard();
+    if (_context != null) {
+      ScaffoldMessenger.of(_context!).showSnackBar(
+        const SnackBar(
+          content: Text('Les classements ne sont pas disponibles dans cette version'),
+          backgroundColor: Colors.orange,
+        ),
+      );
     }
   }
+
   void showLeaderboard() {
-    // Ajouter le paramètre manquant
-    GamesServicesController().showLeaderboard(leaderboardID: GamesServicesController.generalLeaderboardID);
+    // No leaderboards in offline version
   }
 
   void showAchievements() {
-    GamesServicesController().showAchievements();
+    // No achievements in offline version
   }
 
   void _applyUpgradeEffects() {
@@ -1158,9 +968,7 @@ class GameState extends ChangeNotifier {
     _totalPaperclipsProduced = (gameData['totalPaperclipsProduced'] as num?)?.toInt() ?? 0;
   }
 
-
-
-  Future<void> saveGame(String name, {bool syncToCloud = true}) async {
+  Future<void> saveGame(String name) async {
     if (!_isInitialized) {
       throw SaveError('NOT_INITIALIZED', 'Le jeu n\'est pas initialisé');
     }
@@ -1176,30 +984,12 @@ class GameState extends ChangeNotifier {
         gameData: gameData,
         version: GameConstants.VERSION,
         gameMode: _gameMode,
-        isSyncedWithCloud: false,  // Sera mis à jour après la synchronisation
       );
 
       // Sauvegarde locale
       await SaveManager.saveGame(saveData);
       _gameName = name;
       _lastSaveTime = DateTime.now();
-
-      // Synchronisation avec le cloud si demandé et connecté
-      if (syncToCloud) {
-        final gamesServices = GamesServicesController();
-        if (await gamesServices.isSignedIn()) {
-          final success = await gamesServices.saveGameToCloud(saveData);
-          if (success && _context != null) {
-            ScaffoldMessenger.of(_context!).showSnackBar(
-              const SnackBar(
-                content: Text('Partie sauvegardée et synchronisée avec le cloud'),
-                backgroundColor: Colors.green,
-                duration: Duration(seconds: 2),
-              ),
-            );
-          }
-        }
-      }
 
       notifyListeners();
     } catch (e) {

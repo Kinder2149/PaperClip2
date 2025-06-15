@@ -192,8 +192,6 @@ class SaveGame {
   final DateTime lastSaveTime;
   final Map<String, dynamic> gameData;
   final String version;
-  bool isSyncedWithCloud;
-  String? cloudId;
   GameMode gameMode;
 
   SaveGame({
@@ -202,8 +200,6 @@ class SaveGame {
     required this.lastSaveTime,
     required this.gameData,
     required this.version,
-    this.isSyncedWithCloud = false,
-    this.cloudId,
     GameMode? gameMode,
   }) :
         id = id ?? const Uuid().v4(),
@@ -217,8 +213,6 @@ class SaveGame {
       'name': name,
       'timestamp': lastSaveTime.toIso8601String(),
       'version': version,
-      'isSyncedWithCloud': isSyncedWithCloud,
-      'cloudId': cloudId,
       'gameMode': gameMode.index,
     };
 
@@ -271,8 +265,6 @@ class SaveGame {
         lastSaveTime: DateTime.parse(json['timestamp'] as String),
         gameData: gameData,
         version: json['version'] as String? ?? GameConstants.VERSION,
-        isSyncedWithCloud: json['isSyncedWithCloud'] as bool? ?? false,
-        cloudId: json['cloudId'] as String?,
         gameMode: mode,
       );
     } catch (e) {
@@ -509,8 +501,6 @@ class SaveManager {
               version: data['version'] ?? '',
               paperclips: data['gameData']?['playerManager']?['paperclips'] ?? 0,
               money: data['gameData']?['playerManager']?['money'] ?? 0,
-              isSyncedWithCloud: data['isSyncedWithCloud'] ?? false,
-              cloudId: data['cloudId'],
               gameMode: gameMode,
             ));
           } catch (e) {
@@ -572,8 +562,6 @@ class SaveGameInfo {
   final String version;
   final double paperclips;
   final double money;
-  final bool isSyncedWithCloud;
-  final String? cloudId;
   final GameMode gameMode;
 
   SaveGameInfo({
@@ -583,8 +571,6 @@ class SaveGameInfo {
     required this.version,
     required this.paperclips,
     required this.money,
-    this.isSyncedWithCloud = false,
-    this.cloudId,
     required this.gameMode,
   });
 }

@@ -32,16 +32,6 @@ dependencies:
   # Utilitaires
   archive: ^4.0.2
   intl: ^0.19.0
-  games_services: ^4.0.3
-
-  
-  # Firebase
-  firebase_core: ^2.24.2
-  firebase_analytics: ^10.8.0
-  firebase_crashlytics: ^3.4.9
-  firebase_storage: ^11.6.0
-  firebase_remote_config: ^4.3.8
-  cloud_firestore: ^4.14.0
   
   # Configuration
   flutter_dotenv: ^5.1.0
