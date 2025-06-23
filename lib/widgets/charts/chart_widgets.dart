@@ -1,10 +1,10 @@
-// lib/widgets/chart_widgets.dart
+// lib/widgets/charts/chart_widgets.dart
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:provider/provider.dart';
-import '../models/game_state.dart';
-import '../models/market.dart';
-import '../models/game_config.dart';
+import '../../models/game_state.dart';
+import '../../models/market.dart';
+import '../../models/game_config.dart';
 
 class SalesChart extends StatelessWidget {
   final List<SaleRecord> salesHistory;

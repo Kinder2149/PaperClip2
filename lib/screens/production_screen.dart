@@ -3,10 +3,14 @@ import 'package:provider/provider.dart';
 import 'dart:async';
 import '../models/game_state.dart';
 import '../models/game_config.dart';
-import '../widgets/resource_widgets.dart';
-import '../widgets/level_widgets.dart';
+import '../widgets/resources/resource_widgets.dart';
+import '../widgets/indicators/level_widgets.dart';
 import '../services/save_manager.dart';
-import 'package:paperclip2/widgets/resource_widgets.dart'; // Ajustez le chemin selon votre structure
+import '../widgets/buttons/action_button.dart';
+import '../widgets/cards/info_card.dart';
+import '../widgets/dialogs/info_dialog.dart';
+import '../widgets/indicators/stat_indicator.dart';
+import '../widgets/cards/stats_panel.dart';
 
 class ProductionScreen extends StatefulWidget {
   const ProductionScreen({super.key});
@@ -14,6 +18,7 @@ class ProductionScreen extends StatefulWidget {
   @override
   State<ProductionScreen> createState() => _ProductionScreenState();
 }
+
 class _ProductionScreenState extends State<ProductionScreen> {
   Timer? _refreshTimer;
 
@@ -44,116 +49,23 @@ class _ProductionScreenState extends State<ProductionScreen> {
 
   Widget _buildResourceCard(String title, String value, Color color,
       {VoidCallback? onTap}) {
-    return Expanded(
-      child: Card(
-        elevation: 2,
-        color: color,
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Colors.black87,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    color: Colors.black,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  textAlign: TextAlign.center,
-                  overflow: TextOverflow.visible,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionButton({
-    required VoidCallback? onPressed,
-    required String label,
-    required IconData icon,
-    Color? backgroundColor,
-    Color? textColor,
-  }) {
-    return Consumer<GameState>(
-      builder: (context, gameState, child) {
-        final comboMultiplier = gameState.level.currentComboMultiplier;
-
-        return Stack(
-          children: [
-            ElevatedButton.icon(
-              onPressed: onPressed,
-              icon: Icon(icon, size: 20),
-              label: Text(
-                label,
-                style: TextStyle(fontSize: 14, color: textColor),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: backgroundColor ?? Colors.grey.shade50,
-                foregroundColor: textColor ?? Colors.black87,
-                padding: const EdgeInsets.all(16),
-                minimumSize: const Size(double.infinity, 50),
-              ),
-            ),
-            if (comboMultiplier > 1.0)
-              Positioned(
-                right: 8,
-                top: 8,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 4, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.orange,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    'x${comboMultiplier.toStringAsFixed(1)}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        );
-      },
+    // Utilisation du nouveau widget InfoCard
+    return InfoCard(
+      title: title,
+      value: value,
+      backgroundColor: color,
+      onTap: onTap,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      expanded: true,
     );
   }
 
   void _showInfoDialog(BuildContext context, String title, String message) {
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) =>
-          AlertDialog(
-            title: Text(title),
-            content: SingleChildScrollView(
-              child: Text(message),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Fermer'),
-              ),
-            ],
-          ),
+    // Utilisation du nouveau widget InfoDialog
+    InfoDialog.show(
+      context,
+      title: title,
+      message: message,
     );
   }
 
@@ -266,14 +178,14 @@ class _ProductionScreenState extends State<ProductionScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            _buildActionButton(
+            ActionButton.purchase(
               onPressed: gameState.player.money >=
                   gameState.player.calculateAutoclipperCost()
                   ? () => gameState.player.purchaseAutoclipper()
                   : null,
               label: 'Acheter Autoclipper (${gameState.player
                   .calculateAutoclipperCost().toStringAsFixed(1)} €)',
-              icon: Icons.add_circle_outline,
+              showComboMultiplier: true,
             ),
           ],
         ),
@@ -371,90 +283,56 @@ class _ProductionScreenState extends State<ProductionScreen> {
   }
 
   Widget _buildMarketIndicator(String label, String value, IconData icon) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Icon(icon, size: 16),
-          const SizedBox(width: 8),
-          Text(label),
-          const Spacer(),
-          Text(
-            value,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
+    // Utilisation du nouveau widget StatIndicator
+    return StatIndicator(
+      label: label,
+      value: value,
+      icon: icon,
+      layout: StatIndicatorLayout.horizontal,
     );
   }
 
   Widget _buildBonusIndicator(String label, String value, IconData icon) {
-    return Column(
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16),
-            const SizedBox(width: 4),
-            Text(value),
-          ],
-        ),
-        Text(label, style: const TextStyle(fontSize: 12)),
-      ],
+    // Utilisation du nouveau widget StatIndicator
+    return StatIndicator(
+      label: label,
+      value: value,
+      icon: icon,
+      layout: StatIndicatorLayout.vertical,
+      spaceBetween: 4,
     );
   }
 
   Widget _buildMarketInfoCard(BuildContext context, GameState gameState) {
-    return Card(
-      elevation: 2,
-      color: Colors.teal.shade100,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.trending_up),
-                const SizedBox(width: 8),
-                const Text(
-                  'État du Marché',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.info_outline),
-                  onPressed: () => _showMarketInfoDialog(context, gameState),
-                ),
-              ],
-            ),
-            const Divider(),
-            _buildMarketIndicator(
-              'Réputation',
-              gameState.market.reputation.toStringAsFixed(2),
-              Icons.star,
-            ),
-            _buildMarketIndicator(
-              'Demande',
-              '${(gameState.market.calculateDemand(
-                  gameState.player.sellPrice,
-                  gameState.player.getMarketingLevel()) * 100).toStringAsFixed(
-                  0)}%',
-              Icons.people,
-            ),
-            _buildMarketIndicator(
-              'Stock Métal Mondial',
-              gameState.resources.marketMetalStock.toStringAsFixed(0),
-              Icons.inventory_2,
-            ),
-          ],
-        ),
+    // Utilisation du nouveau widget StatsPanel
+    return StatsPanel(
+      title: 'État du Marché',
+      titleIcon: Icons.trending_up,
+      backgroundColor: Colors.teal.shade100,
+      action: IconButton(
+        icon: const Icon(Icons.info_outline),
+        onPressed: () => _showMarketInfoDialog(context, gameState),
+        iconSize: 20,
       ),
+      children: [
+        StatIndicator(
+          label: 'Réputation',
+          value: gameState.market.reputation.toStringAsFixed(2),
+          icon: Icons.star,
+        ),
+        StatIndicator(
+          label: 'Demande',
+          value: '${(gameState.market.calculateDemand(
+              gameState.player.sellPrice,
+              gameState.player.getMarketingLevel()) * 100).toStringAsFixed(0)}%',
+          icon: Icons.people,
+        ),
+        StatIndicator(
+          label: 'Stock Métal Mondial',
+          value: gameState.resources.marketMetalStock.toStringAsFixed(0),
+          icon: Icons.inventory_2,
+        ),
+      ],
     );
   }
 
@@ -464,125 +342,88 @@ class _ProductionScreenState extends State<ProductionScreen> {
     double baseProduction = gameState.player.autoclippers * 60;
     double actualProduction = baseProduction * efficiencyBonus;
 
-    return Card(
-      elevation: 2,
-      color: Colors.blue.shade50,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Statistiques de Production',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
+    // Créer un widget personnalisé pour les statistiques en colonnes
+    Widget statsWrap = Wrap(
+      spacing: 20, // Espace horizontal entre les éléments
+      runSpacing: 10, // Espace vertical entre les lignes
+      children: [
+        // Première colonne - Production/min
+        SizedBox(
+          width: 160,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Production/min:', style: TextStyle(fontSize: 13)),
+              Text(
+                baseProduction.toStringAsFixed(1),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
               ),
-            ),
-            const Divider(),
-            // Utilisation de Wrap au lieu de Row pour éviter l'overflow
-            Wrap(
-              spacing: 20, // Espace horizontal entre les éléments
-              runSpacing: 10, // Espace vertical entre les lignes
-              children: [
-                // Première colonne
-                SizedBox(
-                  width: 160, // Largeur fixe pour la première colonne
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Production/min:',
-                        style: TextStyle(fontSize: 13),
-                      ),
-                      Text(
-                        baseProduction.toStringAsFixed(1),
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // Deuxième colonne
-                SizedBox(
-                  width: 160, // Largeur fixe pour la deuxième colonne
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Production effective:',
-                        style: TextStyle(fontSize: 13),
-                      ),
-                      Text(
-                        actualProduction.toStringAsFixed(1),
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // Troisième colonne
-                SizedBox(
-                  width: 160, // Largeur fixe pour la troisième colonne
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Rendement:',
-                        style: TextStyle(fontSize: 13),
-                      ),
-                      Text(
-                        '${(efficiencyBonus * 100).toStringAsFixed(0)}%',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // Quatrième colonne
-                SizedBox(
-                  width: 160, // Largeur fixe pour la quatrième colonne
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Métal utilisé/min:',
-                        style: TextStyle(fontSize: 13),
-                      ),
-                      Text(
-                        (actualProduction * GameConstants.METAL_PER_PAPERCLIP)
-                            .toStringAsFixed(1),
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            // Information sur les coûts de maintenance
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                'Coût maintenance: ${gameState.maintenanceCosts.toStringAsFixed(
-                    2)} €/min',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.grey[600],
-                ),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
+        // Deuxième colonne - Production effective
+        SizedBox(
+          width: 160,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Production effective:', style: TextStyle(fontSize: 13)),
+              Text(
+                actualProduction.toStringAsFixed(1),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+        // Troisième colonne - Rendement
+        SizedBox(
+          width: 160,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Rendement:', style: TextStyle(fontSize: 13)),
+              Text(
+                '${(efficiencyBonus * 100).toStringAsFixed(0)}%',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+        // Quatrième colonne - Métal utilisé/min
+        SizedBox(
+          width: 160,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Métal utilisé/min:', style: TextStyle(fontSize: 13)),
+              Text(
+                (actualProduction * GameConstants.METAL_PER_PAPERCLIP).toStringAsFixed(1),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+    
+    // Information sur les coûts de maintenance
+    Widget maintenanceInfo = Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Text(
+        'Coût maintenance: ${gameState.maintenanceCosts.toStringAsFixed(2)} €/min',
+        style: TextStyle(fontSize: 13, color: Colors.grey[600]),
       ),
+    );
+
+    // Utilisation du nouveau widget StatsPanel
+    return StatsPanel(
+      title: 'Statistiques de Production',
+      titleIcon: Icons.bar_chart,
+      backgroundColor: Colors.blue.shade50,
+      children: [
+        statsWrap,
+        maintenanceInfo,
+      ],
     );
   }
 
@@ -711,14 +552,14 @@ class _ProductionScreenState extends State<ProductionScreen> {
                         const SizedBox(height: 16),
 
                       if (visibleElements['metalPurchaseButton'] == true) ...[
-                        _buildActionButton(
+                        ActionButton.purchase(
                           onPressed: gameState.player.money >=
                               gameState.market.currentMetalPrice
                               ? () => gameState.buyMetal()
                               : null,
                           label: 'Acheter Métal (${gameState.market
                               .currentMetalPrice.toStringAsFixed(1)} €)',
-                          icon: Icons.shopping_cart,
+                          showComboMultiplier: true,
                         ),
                         const SizedBox(height: 16),
                       ],
@@ -728,12 +569,9 @@ class _ProductionScreenState extends State<ProductionScreen> {
                         const SizedBox(height: 16),
                       ],
 
-                      _buildActionButton(
+                      ActionButton.save(
                         onPressed: () => _saveGame(context, gameState),
                         label: 'Sauvegarder la Partie',
-                        icon: Icons.save,
-                        backgroundColor: Colors.deepPurple,
-                        textColor: Colors.white,
                       ),
 
                       // Statistiques de production déplacées à la fin

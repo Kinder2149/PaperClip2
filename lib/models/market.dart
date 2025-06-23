@@ -9,7 +9,7 @@ import '../dialogs/metal_crisis_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'game_state.dart';
-import 'package:paperclip2/widgets/notification_widgets.dart';
+import 'package:paperclip2/widgets/indicators/notification_widgets.dart';
 
 
 

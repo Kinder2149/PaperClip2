@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import '../models/player_manager.dart';
-import '../widgets/resource_widgets.dart';
+import '../widgets/resources/resource_widgets.dart';
 import 'dart:math' show min;
 import 'package:paperclip2/models/game_config.dart';
 

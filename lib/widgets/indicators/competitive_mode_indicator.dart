@@ -1,9 +1,9 @@
-// Créer un nouveau fichier lib/widgets/competitive_mode_indicator.dart
+// lib/widgets/indicators/competitive_mode_indicator.dart
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../models/game_state.dart';
-import '../models/game_config.dart';
+import '../../models/game_state.dart';
+import '../../models/game_config.dart';
 
 class CompetitiveModeIndicator extends StatelessWidget {
   const CompetitiveModeIndicator({Key? key}) : super(key: key);

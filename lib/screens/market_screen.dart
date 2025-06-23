@@ -3,11 +3,16 @@ import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import '../models/market.dart';
 import '../models/game_config.dart';
-import '../widgets/chart_widgets.dart';
-import '../widgets/resource_widgets.dart';
+import '../widgets/charts/chart_widgets.dart';
+import '../widgets/resources/resource_widgets.dart';
 import 'demand_calculation_screen.dart';
 import '../services/save_manager.dart';
 import '../screens/sales_history_screen.dart';
+import '../widgets/buttons/action_button.dart';
+import '../widgets/cards/info_card.dart';
+import '../widgets/dialogs/info_dialog.dart';
+import '../widgets/indicators/stat_indicator.dart';
+import '../widgets/cards/stats_panel.dart';
 import 'dart:math' show min;
 
 class MarketScreen extends StatelessWidget {
@@ -22,73 +27,47 @@ class MarketScreen extends StatelessWidget {
     required VoidCallback onInfoPressed,
     Widget? trailing,
   }) {
-    return Card(
-      elevation: 2,
-      color: color,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Row(
-          children: [
-            Icon(icon, size: 24, color: Colors.black87),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  if (tooltip.isNotEmpty)
-                    Text(
-                      tooltip,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.black54,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                ],
-              ),
-            ),
-            if (trailing != null) trailing,
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.info_outline, size: 20),
-              onPressed: onInfoPressed,
-              tooltip: tooltip,
-            ),
-          ],
-        ),
+    // Utilisation du widget InfoCard réutilisable
+    return InfoCard(
+      title: title,
+      value: value,
+      icon: icon,
+      backgroundColor: color,
+      description: tooltip,
+      onTap: null, // On préserve le comportement original qui n'a pas de onTap sur la carte entière
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (trailing != null) trailing,
+          IconButton(
+            icon: const Icon(Icons.info_outline, size: 20),
+            onPressed: onInfoPressed,
+            tooltip: tooltip,
+          ),
+        ],
+      ),
+      valueStyle: const TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.bold,
+      ),
+      titleStyle: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+      ),
+      descriptionStyle: const TextStyle(
+        fontSize: 12,
+        color: Colors.black54,
       ),
     );
   }
 
   void _showInfoDialog(BuildContext context, String title, String message) {
-    showDialog(
+    // Utilisation du widget InfoDialog réutilisable
+    InfoDialog.show(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: SingleChildScrollView(
-          child: Text(message),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Fermer'),
-          ),
-        ],
-      ),
+      title: title,
+      message: message,
+      dismissible: true,
     );
   }
 
@@ -252,95 +231,84 @@ class MarketScreen extends StatelessWidget {
     double effectiveProduction = min(demand, autoclipperProduction);
     double profitability = effectiveProduction * gameState.player.sellPrice;
     double qualityBonus = 1.0 + ((gameState.player.upgrades['quality']?.level ?? 0) * 0.10);
-
-    return Card(
-      elevation: 2,
-      color: Colors.teal.shade50,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Résumé du Marché',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const Divider(),
-            Wrap(
-              spacing: 20,
-              runSpacing: 10,
-              children: [
-                _buildMarketStat(
-                  'Production',
-                  '${autoclipperProduction.toStringAsFixed(1)}/min',
-                  Icons.precision_manufacturing,
-                ),
-                _buildMarketStat(
-                  'Demande',
-                  '${demand.toStringAsFixed(1)}/min',
-                  Icons.trending_up,
-                ),
-                _buildMarketStat(
-                  'Ventes',
-                  '${effectiveProduction.toStringAsFixed(1)}/min',
-                  Icons.shopping_cart,
-                ),
-                _buildMarketStat(
-                  'Revenus',
-                  '${profitability.toStringAsFixed(1)} €/min',
-                  Icons.attach_money,
-                ),
-              ],
-            ),
-            if (qualityBonus > 1.0) ...[
-              const Divider(),
-              Text(
-                'Bonus qualité: +${((qualityBonus - 1.0) * 100).toStringAsFixed(0)}%',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.teal,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ],
-        ),
+    
+    // Création des statistiques de marché en utilisant StatIndicator
+    List<Widget> marketStats = [
+      _buildMarketStat(
+        'Production',
+        '${autoclipperProduction.toStringAsFixed(1)}/min',
+        Icons.precision_manufacturing,
       ),
+      _buildMarketStat(
+        'Demande',
+        '${demand.toStringAsFixed(1)}/min',
+        Icons.trending_up,
+      ),
+      _buildMarketStat(
+        'Ventes',
+        '${effectiveProduction.toStringAsFixed(1)}/min',
+        Icons.shopping_cart,
+      ),
+      _buildMarketStat(
+        'Revenus',
+        '${profitability.toStringAsFixed(1)} €/min',
+        Icons.attach_money,
+      ),
+    ];
+    
+    // Bonus de qualité si applicable
+    Widget? qualityBonusWidget;
+    if (qualityBonus > 1.0) {
+      qualityBonusWidget = Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(
+          'Bonus qualité: +${((qualityBonus - 1.0) * 100).toStringAsFixed(0)}%',
+          style: TextStyle(
+            fontSize: 13,
+            color: Colors.teal,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      );
+    }
+
+    // Utilisation du widget StatsPanel réutilisable
+    return StatsPanel(
+      title: 'Résumé du Marché',
+      titleIcon: Icons.analytics,
+      backgroundColor: Colors.teal.shade50,
+      children: [
+        // Wrap pour organiser les statistiques en grille responsive
+        Wrap(
+          spacing: 20,
+          runSpacing: 10,
+          children: marketStats,
+        ),
+        
+        // Affichage du bonus de qualité s'il existe
+        if (qualityBonusWidget != null) ...[const Divider(), qualityBonusWidget],
+      ],
     );
   }
 
   Widget _buildMarketStat(String label, String value, IconData icon) {
+    // Utilisation du widget StatIndicator réutilisable
     return SizedBox(
-      width: 140,
-      child: Row(
-        children: [
-          Icon(icon, size: 16, color: Colors.teal),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+      width: 140, // On conserve la largeur fixe pour garantir l'alignement dans le Wrap
+      child: StatIndicator(
+        label: label,
+        value: value,
+        icon: icon,
+        iconColor: Colors.teal,
+        labelStyle: TextStyle(
+          fontSize: 12,
+          color: Colors.grey[600],
+        ),
+        valueStyle: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.bold,
+        ),
+        layout: StatIndicatorLayout.horizontal,
       ),
     );
   }
@@ -590,52 +558,39 @@ class MarketScreen extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: ElevatedButton.icon(
+                    child: ActionButton(
                       onPressed: () => Navigator.push(
                         context,
                         MaterialPageRoute(builder: (context) => const DemandCalculationScreen()),
                       ),
-                      icon: const Icon(Icons.calculate),
-                      label: const Text('Calculateur'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
+                      icon: Icons.calculate,
+                      label: 'Calculateur',
+                      backgroundColor: Colors.blue,
+                      textColor: Colors.white,
+                      fullWidth: true,
                     ),
                   ),
                   const SizedBox(width: 8),
                   if (visibleElements['marketPrice'] == true)
                     Expanded(
-                      child: ElevatedButton.icon(
+                      child: ActionButton(
                         onPressed: () => Navigator.push(
                           context,
                           MaterialPageRoute(builder: (context) => const SalesHistoryScreen()),
                         ),
-                        icon: const Icon(Icons.history),
-                        label: const Text('Historique'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.purple,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
+                        icon: Icons.history,
+                        label: 'Historique',
+                        backgroundColor: Colors.purple,
+                        textColor: Colors.white,
+                        fullWidth: true,
                       ),
                     ),
                 ],
               ),
               const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () => _saveGame(context, gameState),
-                  icon: const Icon(Icons.save),
-                  label: const Text('Sauvegarder'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepPurple,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                ),
+              ActionButton.save(
+                onPressed: () => _saveGame(context, gameState),
+                fullWidth: true,
               ),
             ],
           ),
@@ -643,26 +598,5 @@ class MarketScreen extends StatelessWidget {
       },
     );
   }
-// Helper pour les boutons d'action
-  Widget _buildActionButton({
-    required VoidCallback onPressed,
-    required IconData icon,
-    required String label,
-    required Color color,
-    bool isFullWidth = false,
-  }) {
-    return SizedBox(
-      width: isFullWidth ? double.infinity : null,
-      child: ElevatedButton.icon(
-        onPressed: onPressed,
-        icon: Icon(icon),
-        label: Text(label),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: color,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 12),
-        ),
-      ),
-    );
-  }
+// Cette méthode a été remplacée par le widget ActionButton réutilisable
 }

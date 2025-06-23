@@ -15,12 +15,12 @@ import '../services/save_manager.dart';
 import '../services/background_music.dart';
 
 // Imports des widgets
-import '../widgets/level_widgets.dart';
-import '../widgets/resource_widgets.dart';
-import '../widgets/notification_widgets.dart';
-import '../widgets/chart_widgets.dart';
-import '../widgets/production_button.dart';
-import '../widgets/competitive_mode_indicator.dart';
+import '../widgets/indicators/level_widgets.dart';
+import '../widgets/resources/resource_widgets.dart';
+import '../widgets/indicators/notification_widgets.dart';
+import '../widgets/charts/chart_widgets.dart';
+import '../widgets/buttons/production_button.dart';
+import '../widgets/indicators/competitive_mode_indicator.dart';
 
 // Imports des écrans
 import 'production_screen.dart';

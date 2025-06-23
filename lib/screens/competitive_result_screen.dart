@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import '../models/game_config.dart';
-import '../widgets/resource_widgets.dart';
+import '../widgets/resources/resource_widgets.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'start_screen.dart';
 import 'main_screen.dart';

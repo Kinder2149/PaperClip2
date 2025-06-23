@@ -1,11 +1,11 @@
-// lib/widgets/notification_widgets.dart
+// lib/widgets/indicators/notification_widgets.dart
 import 'package:flutter/material.dart';
-import '../models/event_system.dart';
-import '../main.dart' show navigatorKey;
+import '../../models/event_system.dart';
+import '../../main.dart' show navigatorKey;
 import 'dart:async';
-import '../models/game_config.dart';
-import '../services/notification_storage_service.dart';
-import '../models/market.dart';
+import '../../models/game_config.dart';
+import '../../services/notification_storage_service.dart';
+import '../../models/market.dart';
 
 class GlobalNotificationOverlay extends StatefulWidget {
   final Widget child;

@@ -24,7 +24,7 @@ import './models/progression_system.dart';
 import './services/save_manager.dart';
 import './services/background_music.dart';
 import './utils/update_manager.dart';
-import './widgets/notification_widgets.dart';
+import './widgets/indicators/notification_widgets.dart';
 
 // Export du navigatorKey
 export 'package:paperclip2/main.dart' show navigatorKey;

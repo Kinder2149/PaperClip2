@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import '../models/game_config.dart';
 import '../screens/competitive_result_screen.dart';
+import '../widgets/buttons/action_button.dart';
 
 class MetalCrisisDialog extends StatefulWidget {
   final VoidCallback? onTransitionComplete;
@@ -176,49 +177,43 @@ class _MetalCrisisDialogState extends State<MetalCrisisDialog> with SingleTicker
                             children: isCompetitiveMode
                                 ? [
                               // Bouton pour voir les résultats en mode compétitif
-                              ElevatedButton(
+                              ActionButton(
                                 onPressed: () {
                                   Navigator.pop(context);
                                   // Calculer le score et afficher l'écran de résultats
                                   gameState.handleCompetitiveGameEnd();
                                 },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.amber,
-                                  foregroundColor: Colors.black,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 30,
-                                    vertical: 15,
-                                  ),
+                                label: 'VOIR MES RÉSULTATS',
+                                icon: Icons.assessment,
+                                backgroundColor: Colors.amber,
+                                textColor: Colors.black,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 30,
+                                  vertical: 15,
                                 ),
-                                child: const Text(
-                                  'VOIR MES RÉSULTATS',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                labelStyle: const TextStyle(
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
                             ]
                                 : [
                               // Bouton pour continuer en mode infini
-                              ElevatedButton(
+                              ActionButton(
                                 onPressed: () {
                                   Navigator.pop(context);
                                   // Appeler le callback de transition si fourni
                                   widget.onTransitionComplete?.call();
                                 },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.white,
-                                  foregroundColor: Colors.deepOrange.shade900,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 30,
-                                    vertical: 15,
-                                  ),
+                                label: 'CONTINUER',
+                                icon: Icons.arrow_forward,
+                                backgroundColor: Colors.white,
+                                textColor: Colors.deepOrange.shade900,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 30,
+                                  vertical: 15,
                                 ),
-                                child: const Text(
-                                  'CONTINUER',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                labelStyle: const TextStyle(
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
                             ],

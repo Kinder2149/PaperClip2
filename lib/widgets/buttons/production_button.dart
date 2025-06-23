@@ -1,11 +1,10 @@
-
 // Dans lib/widgets/production_button.dart
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import '../models/game_state.dart';
-import '../models/game_config.dart';
+import '../../models/game_state.dart';
+import '../../models/game_config.dart';
 
 class ProductionButton extends StatelessWidget {
   const ProductionButton({Key? key}) : super(key: key);
