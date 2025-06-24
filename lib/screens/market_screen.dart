@@ -33,7 +33,7 @@ class MarketScreen extends StatelessWidget {
       value: value,
       icon: icon,
       backgroundColor: color,
-      description: tooltip,
+      tooltip: tooltip,
       onTap: null, // On préserve le comportement original qui n'a pas de onTap sur la carte entière
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
@@ -46,28 +46,20 @@ class MarketScreen extends StatelessWidget {
           ),
         ],
       ),
-      valueStyle: const TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.bold,
-      ),
-      titleStyle: const TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w500,
-      ),
-      descriptionStyle: const TextStyle(
-        fontSize: 12,
-        color: Colors.black54,
-      ),
+      // Personnalisation de la taille de police via les paramètres disponibles de InfoCard
+      valueFontSize: 16,
+      titleFontSize: 14,
     );
   }
 
-  void _showInfoDialog(BuildContext context, String title, String message) {
+  Future<void> _showInfoDialog(BuildContext context, String title, String message) async {
     // Utilisation du widget InfoDialog réutilisable
-    InfoDialog.show(
-      context: context,
+    // La valeur retournée n'est pas utilisée ici car il s'agit seulement d'un dialogue d'information
+    await InfoDialog.show(
+      context,
       title: title,
       message: message,
-      dismissible: true,
+      barrierDismissible: true,
     );
   }
 

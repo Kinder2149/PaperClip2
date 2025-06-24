@@ -9,6 +9,10 @@ import '../widgets/buttons/production_button.dart';
 import '../services/save_manager.dart';
 import '../models/event_system.dart';
 import '../utils/notification_manager.dart';
+import '../widgets/indicators/stat_indicator.dart';
+import '../widgets/cards/info_card.dart';
+import '../widgets/cards/stats_panel.dart';
+import '../widgets/dialogs/info_dialog.dart';
 
 class NewMetalProductionScreen extends StatefulWidget {
   const NewMetalProductionScreen({Key? key}) : super(key: key);
@@ -491,21 +495,13 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
     );
   }
 
-  Widget _buildStatRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label),
-          Text(
-            value,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
+  Widget _buildStatRow(String label, String value, {IconData icon = Icons.info_outline}) {
+    return StatIndicator(
+      label: label,
+      value: value,
+      icon: icon,
+      layout: StatIndicatorLayout.horizontal,
+      iconSize: 16,
     );
   }
 

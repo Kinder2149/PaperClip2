@@ -6,6 +6,9 @@ import '../models/game_state.dart';
 import '../models/game_config.dart';
 import 'package:paperclip2/screens/main_screen.dart';
 import 'package:paperclip2/services/save_manager.dart';
+import '../widgets/cards/info_card.dart';
+import '../widgets/indicators/stat_indicator.dart';
+import '../widgets/dialogs/info_dialog.dart';
 
 class SaveLoadScreen extends StatefulWidget {
   const SaveLoadScreen({Key? key}) : super(key: key);
@@ -248,188 +251,88 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
   Widget _buildSaveCard(SaveGameInfo save, BuildContext context) {
     final bool isCompetitive = save.gameMode == GameMode.COMPETITIVE;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: isCompetitive
-            ? BorderSide(color: Colors.amber.shade700, width: 2)
-            : BorderSide.none,
+    Map<String, String> details = {
+      'Dernière sauvegarde': _formatDateTime(save.timestamp),
+      'Trombones': save.paperclips.toStringAsFixed(0),
+      'Argent': '${save.money.toStringAsFixed(2)}€',
+    };
+
+    List<Widget> actions = [
+      TextButton.icon(
+        onPressed: () => _loadGame(context, save),
+        icon: const Icon(Icons.play_arrow),
+        label: const Text('Charger'),
       ),
-      child: InkWell(
-        onTap: () => _loadGame(context, save),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  // Icône différente selon le type de sauvegarde
-                  Icon(
-                    isCompetitive
-                        ? Icons.emoji_events
-                        : Icons.save,
-                    color: isCompetitive
-                        ? Colors.amber.shade700
-                        : Colors.deepPurple[400],
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      save.name,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  // Menu d'options
-                  PopupMenuButton(
-                    itemBuilder: (context) => [
-                      PopupMenuItem(
-                        value: 'load',
-                        child: Row(
-                          children: const [
-                            Icon(Icons.play_arrow),
-                            SizedBox(width: 8),
-                            Text('Charger'),
-                          ],
-                        ),
-                      ),
-                      PopupMenuItem(
-                        value: 'delete',
-                        child: Row(
-                          children: [
-                            Icon(Icons.delete, color: Colors.red[400]),
-                            const SizedBox(width: 8),
-                            Text('Supprimer', style: TextStyle(color: Colors.red[400])),
-                          ],
-                        ),
-                      ),
-                    ],
-                    onSelected: (value) async {
-                      if (value == 'load') {
-                        _loadGame(context, save);
-                      } else if (value == 'delete') {
-                        _confirmDelete(context, save.name);
-                      }
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _buildInfoRow(
-                'Dernière sauvegarde',
-                _formatDateTime(save.timestamp),
-                Icons.access_time,
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildInfoRow(
-                      'Trombones',
-                      save.paperclips.toStringAsFixed(0),
-                      Icons.shopping_cart,
-                    ),
-                  ),
-                  Expanded(
-                    child: _buildInfoRow(
-                      'Argent',
-                      '${save.money.toStringAsFixed(2)}€',
-                      Icons.euro,
-                    ),
-                  ),
-                ],
-              ),
-              // Affichage du mode de jeu
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: isCompetitive
-                      ? Colors.amber.withOpacity(0.1)
-                      : Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(
-                    color: isCompetitive
-                        ? Colors.amber.shade300
-                        : Colors.blue.shade300,
-                    width: 1,
-                  ),
-                ),
-                child: Text(
-                  isCompetitive ? 'Mode Compétitif' : 'Mode Infini',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isCompetitive
-                        ? Colors.amber.shade800
-                        : Colors.blue.shade800,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
-          ),
+      TextButton.icon(
+        onPressed: () => _confirmDelete(context, save.name),
+        icon: Icon(Icons.delete, color: Colors.red[400]),
+        label: Text('Supprimer', style: TextStyle(color: Colors.red[400])),
+      ),
+    ];
+
+    // Créer une carte avec Padding pour les marges
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: InfoCard(
+        title: save.name,
+        tooltip: isCompetitive ? 'Mode Compétitif' : 'Mode Infini',
+        icon: isCompetitive ? Icons.emoji_events : Icons.save,
+        // Utiliser le contenu personnalisé pour les détails
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: details.entries.map((entry) => Text('${entry.key}: ${entry.value}', style: TextStyle(fontSize: 12))).toList(),
+            ),
+            const SizedBox(width: 12),
+            // Ajouter les actions comme partie du trailing widget
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: actions,
+            ),
+          ],
         ),
+        backgroundColor: Colors.white,
+        value: '${save.paperclips.toStringAsFixed(0)} clips',  // Utiliser une valeur significative
+        iconColor: isCompetitive ? Colors.amber.shade800 : Colors.blue,
       ),
     );
   }
 
   Widget _buildInfoRow(String label, String value, IconData icon) {
-    return Row(
-      children: [
-        Icon(icon, size: 16, color: Colors.grey[600]),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                ),
-              ),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: StatIndicator(
+        label: label,
+        value: value,
+        icon: icon,
+        layout: StatIndicatorLayout.horizontal,
+        labelStyle: TextStyle(color: Colors.grey[700], fontSize: 14.0),
+        valueStyle: TextStyle(fontSize: 14.0, fontWeight: FontWeight.bold),
+        iconColor: Colors.grey[600],
+        iconSize: 16.0,
+        spaceBetween: 8.0,
+      ),
     );
   }
 
   Future<void> _confirmDelete(BuildContext context, String gameName) async {
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Supprimer la partie ?'),
-        content: Text('Voulez-vous vraiment supprimer la partie "$gameName" ?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Annuler'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Supprimer'),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-          ),
-        ],
-      ),
+    final result = await InfoDialog.show(
+      context,
+      title: 'Supprimer la partie ?',
+      message: 'Voulez-vous vraiment supprimer la partie "$gameName" ?',
+      closeButtonLabel: 'CONFIRMER',
+      additionalActions: [TextButton(
+        onPressed: () => Navigator.of(context).pop(false),
+        child: const Text('ANNULER'),
+      )],
+      content: Icon(Icons.delete, color: Colors.red, size: 48),
+      onClose: null, // On supprime le onClose car on va gérer la suppression après la vérification du résultat
     );
-
-    if (result == true && context.mounted) {
+    
+    // Si l'utilisateur a confirmé la suppression
+    if (result) {
       await SaveManager.deleteSave(gameName);
       _refreshSaves();
     }

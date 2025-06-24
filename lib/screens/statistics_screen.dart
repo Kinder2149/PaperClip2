@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import 'package:paperclip2/models/game_state_interfaces.dart';
+import '../widgets/cards/stats_panel.dart';
+import '../widgets/indicators/stat_indicator.dart';
 
 class StatisticsScreen extends StatelessWidget {
   const StatisticsScreen({Key? key}) : super(key: key);
@@ -26,17 +28,29 @@ class StatisticsScreen extends StatelessWidget {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        _buildStatRow(
-                          'Total Produit',
-                          stats['production']?['Total produit'] ?? 0,
+                        StatIndicator(
+                          label: 'Total Produit',
+                          value: _getDisplayValue(stats['production']?['Total produit'] ?? 0),
+                          icon: Icons.add_chart,
+                          layout: StatIndicatorLayout.vertical,
+                          labelStyle: TextStyle(color: Colors.grey[700], fontSize: 14.0),
+                          valueStyle: TextStyle(color: Colors.deepPurple, fontSize: 16.0, fontWeight: FontWeight.bold),
                         ),
-                        _buildStatRow(
-                          'Argent Total',
-                          stats['economie']?['Argent gagné'] ?? 0,
+                        StatIndicator(
+                          label: 'Argent Total',
+                          value: _getDisplayValue(stats['economie']?['Argent gagné'] ?? 0),
+                          icon: Icons.attach_money,
+                          layout: StatIndicatorLayout.vertical,
+                          labelStyle: TextStyle(color: Colors.grey[700], fontSize: 14.0),
+                          valueStyle: TextStyle(color: Colors.deepPurple, fontSize: 16.0, fontWeight: FontWeight.bold),
                         ),
-                        _buildStatRow(
-                          'Niveau',
-                          stats['progression']?['Niveau actuel'] ?? 0,
+                        StatIndicator(
+                          label: 'Niveau',
+                          value: _getDisplayValue(stats['progression']?['Niveau actuel'] ?? 0),
+                          icon: Icons.trending_up,
+                          layout: StatIndicatorLayout.vertical,
+                          labelStyle: TextStyle(color: Colors.grey[700], fontSize: 14.0),
+                          valueStyle: TextStyle(color: Colors.deepPurple, fontSize: 16.0, fontWeight: FontWeight.bold),
                         ),
                       ],
                     ),
@@ -57,36 +71,24 @@ class StatisticsScreen extends StatelessWidget {
   }
 
   Widget _buildStatSection(String title, Map<String, dynamic> stats) {
-    return Card(
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  _getSectionIcon(title),
-                  size: 24,
-                  color: Colors.deepPurple,
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.deepPurple,
-                  ),
-                ),
-              ],
-            ),
-            const Divider(height: 24),
-            ...stats.entries.map((entry) => _buildStatRow(entry.key, entry.value)),
-          ],
-        ),
-      ),
+    List<Widget> statItems = stats.entries.map((entry) => 
+      StatIndicator(
+        label: entry.key,
+        value: _getDisplayValue(entry.value),
+        icon: _getStatIconByKeyword(entry.key), // Icône spécifique selon le type de stat
+        layout: StatIndicatorLayout.horizontal,
+        labelStyle: TextStyle(color: Colors.grey[700], fontSize: 14.0),
+        valueStyle: TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold),
+      )
+    ).toList().cast<Widget>();
+    
+    return StatsPanel(
+      title: title,
+      titleIcon: _getSectionIcon(title),
+      titleStyle: TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold),
+      backgroundColor: Colors.white,
+      padding: const EdgeInsets.all(16),
+      children: statItems,
     );
   }
 
@@ -107,38 +109,45 @@ class StatisticsScreen extends StatelessWidget {
     if (value == null) return '0';
     return value.toString();
   }
-
-  Widget _buildStatRow(String label, dynamic value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[700],
-              ),
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.deepPurple.shade50,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              _getDisplayValue(value),
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.deepPurple,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+  
+  /// Sélectionne une icône appropriée selon le mot-clé dans le label de la statistique
+  IconData _getStatIconByKeyword(String label) {
+    final String lowerLabel = label.toLowerCase();
+    
+    // Production
+    if (lowerLabel.contains('produit') || lowerLabel.contains('production')) {
+      return Icons.precision_manufacturing;
+    }
+    // Argent et économie
+    else if (lowerLabel.contains('argent') || lowerLabel.contains('euro') || 
+             lowerLabel.contains('coût') || lowerLabel.contains('prix') ||
+             lowerLabel.contains('vendu')) {
+      return Icons.euro;
+    }
+    // Temps
+    else if (lowerLabel.contains('temps') || lowerLabel.contains('durée') ||
+             lowerLabel.contains('minute') || lowerLabel.contains('seconde')) {
+      return Icons.timer;
+    }
+    // Niveau et progression
+    else if (lowerLabel.contains('niveau') || lowerLabel.contains('progression') ||
+             lowerLabel.contains('xp') || lowerLabel.contains('expérience')) {
+      return Icons.trending_up;
+    }
+    // Qualité
+    else if (lowerLabel.contains('qualité')) {
+      return Icons.star;
+    }
+    // Efficacité
+    else if (lowerLabel.contains('efficacité') || lowerLabel.contains('rendement')) {
+      return Icons.eco;
+    }
+    // Marketing et ventes
+    else if (lowerLabel.contains('marketing') || lowerLabel.contains('vente') ||
+             lowerLabel.contains('demande') || lowerLabel.contains('client')) {
+      return Icons.storefront;
+    }
+    // Par défaut
+    return Icons.analytics;
   }
 }

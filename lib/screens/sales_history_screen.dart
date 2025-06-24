@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import '../models/market.dart';
+import '../widgets/cards/stats_panel.dart';
+import '../widgets/indicators/stat_indicator.dart';
+import '../widgets/cards/info_card.dart';
 
 class SalesHistoryScreen extends StatelessWidget {
   const SalesHistoryScreen({super.key});
@@ -85,152 +88,76 @@ class SalesHistoryScreen extends StatelessWidget {
   Widget _buildSummaryCard(GameState gameState) {
     double totalRevenue = gameState.market.salesHistory
         .fold(0.0, (sum, sale) => sum + sale.revenue);
+        
+    List<Widget> statItems = [
+      _buildSummaryItem(
+        'Revenus Session',
+        '${totalRevenue.toStringAsFixed(2)} €',
+        Icons.euro,
+        Colors.green,
+      ),
+      _buildSummaryItem(
+        'Prix Actuel',
+        '${gameState.player.sellPrice.toStringAsFixed(2)} €',
+        Icons.price_check,
+        Colors.blue,
+      ),
+      _buildSummaryItem(
+        'Total Vendu',
+        _formatQuantity(gameState.totalPaperclipsProduced),
+        Icons.shopping_cart,
+        Colors.orange,
+      ),
+    ];
 
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.analytics, size: 24, color: Colors.blue[700]),
-                const SizedBox(width: 8),
-                const Text(
-                  'Résumé des Ventes',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            const Divider(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildSummaryItem(
-                  'Revenus Session',
-                  '${totalRevenue.toStringAsFixed(2)} €',
-                  Icons.euro,
-                  Colors.green,
-                ),
-                _buildSummaryItem(
-                  'Prix Actuel',
-                  '${gameState.player.sellPrice.toStringAsFixed(2)} €',
-                  Icons.price_check,
-                  Colors.blue,
-                ),
-                _buildSummaryItem(
-                  'Total Vendu',
-                  _formatQuantity(gameState.totalPaperclipsProduced),
-                  Icons.shopping_cart,
-                  Colors.orange,
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+    return StatsPanel(
+      title: 'Résumé des Ventes',
+      titleIcon: Icons.analytics,
+      titleStyle: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+      backgroundColor: Colors.white,
+      padding: const EdgeInsets.all(16),
+      direction: Axis.horizontal,
+      children: statItems,
     );
   }
 
   Widget _buildSummaryItem(String label, String value, IconData icon, Color color) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, size: 24, color: color),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey[600],
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: color,
-          ),
-        ),
-      ],
+    return StatIndicator(
+      label: label,
+      value: value,
+      icon: icon,
+      layout: StatIndicatorLayout.vertical,
+      iconColor: color,
+      valueStyle: TextStyle(color: color, fontSize: 16.0, fontWeight: FontWeight.bold),
+      labelStyle: TextStyle(color: Colors.grey[600], fontSize: 12.0),
+      iconSize: 24.0,
+      spaceBetween: 8.0,
     );
   }
 
   Widget _buildSaleCard(SaleRecord sale) {
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: Container(
-        decoration: BoxDecoration(
-          border: Border(
-            left: BorderSide(
-              color: Colors.green.shade300,
-              width: 4,
-            ),
-          ),
+    Map<String, String> details = {
+      'Prix unitaire': '${sale.price.toStringAsFixed(2)} €',
+      'Heure': _formatTimestamp(sale.timestamp),
+    };
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: InfoCard(
+        title: '${sale.quantity} unités vendues',
+        value: '${sale.revenue.toStringAsFixed(2)} €',
+        icon: Icons.sell,
+        trailing: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          mainAxisSize: MainAxisSize.min,
+          children: details.entries.map((entry) => Text('${entry.key}: ${entry.value}', style: TextStyle(fontSize: 12))).toList(),
         ),
-        child: ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          leading: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.green.shade50,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(Icons.sell, color: Colors.green),
-          ),
-          title: Row(
-            children: [
-              Text(
-                '${sale.quantity} ',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const Text('unités vendues'),
-            ],
-          ),
-          subtitle: Text(
-            'Prix unitaire: ${sale.price.toStringAsFixed(2)} €',
-            style: TextStyle(color: Colors.grey[600]),
-          ),
-          trailing: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                '${sale.revenue.toStringAsFixed(2)} €',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.green,
-                ),
-              ),
-              Text(
-                _formatTimestamp(sale.timestamp),
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                ),
-              ),
-            ],
-          ),
-        ),
+        iconColor: Colors.green,
+        backgroundColor: Colors.white,
       ),
     );
   }
+
   String _formatQuantity(int quantity) {
     if (quantity >= 1000000) {
       return '${(quantity / 1000000).toStringAsFixed(1)}M';

@@ -342,7 +342,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
     double baseProduction = gameState.player.autoclippers * 60;
     double actualProduction = baseProduction * efficiencyBonus;
 
-    // Créer un widget personnalisé pour les statistiques en colonnes
+    // Utiliser StatIndicator pour les statistiques principales avec un affichage vertical
     Widget statsWrap = Wrap(
       spacing: 20, // Espace horizontal entre les éléments
       runSpacing: 10, // Espace vertical entre les lignes
@@ -350,68 +350,60 @@ class _ProductionScreenState extends State<ProductionScreen> {
         // Première colonne - Production/min
         SizedBox(
           width: 160,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Production/min:', style: TextStyle(fontSize: 13)),
-              Text(
-                baseProduction.toStringAsFixed(1),
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-              ),
-            ],
+          child: StatIndicator(
+            label: 'Production/min',
+            value: baseProduction.toStringAsFixed(1),
+            icon: Icons.speed,
+            layout: StatIndicatorLayout.vertical,
+            iconColor: Colors.blue,
           ),
         ),
         // Deuxième colonne - Production effective
         SizedBox(
           width: 160,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Production effective:', style: TextStyle(fontSize: 13)),
-              Text(
-                actualProduction.toStringAsFixed(1),
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-              ),
-            ],
+          child: StatIndicator(
+            label: 'Production effective',
+            value: actualProduction.toStringAsFixed(1),
+            icon: Icons.precision_manufacturing,
+            layout: StatIndicatorLayout.vertical,
+            iconColor: Colors.green,
           ),
         ),
         // Troisième colonne - Rendement
         SizedBox(
           width: 160,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Rendement:', style: TextStyle(fontSize: 13)),
-              Text(
-                '${(efficiencyBonus * 100).toStringAsFixed(0)}%',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-              ),
-            ],
+          child: StatIndicator(
+            label: 'Rendement',
+            value: '${(efficiencyBonus * 100).toStringAsFixed(0)}%',
+            icon: Icons.eco,
+            layout: StatIndicatorLayout.vertical,
+            iconColor: Colors.green[700],
           ),
         ),
         // Quatrième colonne - Métal utilisé/min
         SizedBox(
           width: 160,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Métal utilisé/min:', style: TextStyle(fontSize: 13)),
-              Text(
-                (actualProduction * GameConstants.METAL_PER_PAPERCLIP).toStringAsFixed(1),
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-              ),
-            ],
+          child: StatIndicator(
+            label: 'Métal utilisé/min',
+            value: (actualProduction * GameConstants.METAL_PER_PAPERCLIP).toStringAsFixed(1),
+            icon: Icons.settings_input_component,
+            layout: StatIndicatorLayout.vertical,
+            iconColor: Colors.orange[700],
           ),
         ),
       ],
     );
-    
-    // Information sur les coûts de maintenance
+
+    // Information sur les coûts de maintenance avec StatIndicator horizontal
     Widget maintenanceInfo = Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Text(
-        'Coût maintenance: ${gameState.maintenanceCosts.toStringAsFixed(2)} €/min',
-        style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+      padding: const EdgeInsets.only(top: 12),
+      child: StatIndicator(
+        label: 'Coût maintenance',
+        value: '${gameState.maintenanceCosts.toStringAsFixed(2)} €/min',
+        icon: Icons.euro,
+        layout: StatIndicatorLayout.horizontal,
+        iconColor: Colors.red[400],
+        valueStyle: TextStyle(color: Colors.red[700], fontWeight: FontWeight.bold),
       ),
     );
 

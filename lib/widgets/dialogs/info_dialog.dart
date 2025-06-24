@@ -37,7 +37,10 @@ class InfoDialog extends StatelessWidget {
   }) : super(key: key);
 
   /// Affiche le dialogue dans le contexte donné
-  static Future<void> show(
+  /// 
+  /// Retourne un Future<bool> qui sera résolu à true si le bouton principal de confirmation est pressé
+  /// ou false si le dialogue est fermé d'une autre manière (comme un bouton d'annulation ou clic extérieur)
+  static Future<bool> show(
     BuildContext context, {
     required String title,
     required String message,
@@ -47,7 +50,7 @@ class InfoDialog extends StatelessWidget {
     List<Widget>? additionalActions,
     bool barrierDismissible = true,
   }) {
-    return showDialog(
+    return showDialog<bool>(
       context: context,
       barrierDismissible: barrierDismissible,
       builder: (context) => InfoDialog(
@@ -59,7 +62,7 @@ class InfoDialog extends StatelessWidget {
         additionalActions: additionalActions,
         barrierDismissible: barrierDismissible,
       ),
-    );
+    ).then((value) => value ?? false);
   }
 
   @override
@@ -72,7 +75,7 @@ class InfoDialog extends StatelessWidget {
       actions: [
         TextButton(
           onPressed: () {
-            Navigator.pop(context);
+            Navigator.pop(context, true); // Retourne true pour indiquer la confirmation
             if (onClose != null) {
               onClose!();
             }
