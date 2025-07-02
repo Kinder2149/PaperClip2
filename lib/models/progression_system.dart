@@ -6,6 +6,7 @@ import 'dart:math';
 import 'game_config.dart';
 import 'event_system.dart';
 import 'dart:math' show pow;
+import 'json_loadable.dart';
 
 /// Système de bonus de progression
 class ProgressionBonus {
@@ -41,8 +42,18 @@ class ProgressionBonus {
 class XPComboSystem {
   int _comboCount = 0;
   Timer? _comboTimer;
+  DateTime _lastComboTime = DateTime.now();
 
   int get comboCount => _comboCount;
+  int get currentCombo => _comboCount;
+  set currentCombo(int value) => _comboCount = value;
+  
+  double _comboMultiplierValue = 1.0;
+  double get comboMultiplier => _comboMultiplierValue;
+  set comboMultiplier(double value) => _comboMultiplierValue = value;
+  
+  Timer? get comboTimer => _comboTimer;
+  DateTime get lastComboTime => _lastComboTime;
 
   void setComboCount(int count) {
     _comboCount = count;
@@ -59,6 +70,7 @@ class XPComboSystem {
 
   void _resetComboTimer() {
     _comboTimer?.cancel();
+    _lastComboTime = DateTime.now();
     _comboTimer = Timer(const Duration(seconds: 5), () {
       _comboCount = 0;
     });
@@ -74,8 +86,20 @@ class DailyXPBonus {
   bool _claimed = false;
   final double _bonusAmount = 10.0;
   Timer? _resetTimer;
+  DateTime? _lastClaimDate;
+  int _streakDays = 0;
 
   bool get claimed => _claimed;
+  bool get hasClaimedToday => _claimed;
+  set hasClaimedToday(bool value) => _claimed = value;
+  
+  DateTime? get lastClaimDate => _lastClaimDate;
+  set lastClaimDate(DateTime? date) => _lastClaimDate = date;
+  
+  int get streakDays => _streakDays;
+  set streakDays(int days) => _streakDays = days;
+  
+  Timer? get resetTimer => _resetTimer;
 
   void setClaimed(bool value) {
     _claimed = value;
@@ -130,6 +154,10 @@ class Mission {
   });
 
   bool get isCompleted => progress >= target;
+  bool _rewardClaimed = false;
+  bool get rewardClaimed => _rewardClaimed;
+  set rewardClaimed(bool value) => _rewardClaimed = value;
+  double get targetAmount => target;
 
   void updateProgress(double amount) {
     progress = (progress + amount).clamp(0, target);
@@ -180,11 +208,12 @@ class Mission {
 }
 
 /// Gestionnaire de missions
-class MissionSystem {
+class MissionSystem implements JsonLoadable {
   List<Mission> dailyMissions = [];
   List<Mission> weeklyMissions = [];
   List<Mission> achievements = [];
   Timer? missionRefreshTimer;
+  DateTime? lastMissionRefreshTime;
   Function(Mission mission)? onMissionCompleted;
   Function()? onMissionSystemRefresh;
 
@@ -209,10 +238,13 @@ class MissionSystem {
 
   void startMissionRefreshTimer() {
     missionRefreshTimer?.cancel();
+    // Enregistrer le moment du dernier rafraîchissement des missions
+    lastMissionRefreshTime = DateTime.now();
     missionRefreshTimer = Timer.periodic(
       const Duration(hours: 24),
           (_) {
         generateDailyMissions();
+        lastMissionRefreshTime = DateTime.now();
         onMissionSystemRefresh?.call();
       },
     );
@@ -234,18 +266,66 @@ class MissionSystem {
     'weeklyMissions': weeklyMissions.map((m) => m.toJson()).toList(),
   };
 
+  @override
   void fromJson(Map<String, dynamic> json) {
-    if (json['dailyMissions'] != null) {
-      dailyMissions = (json['dailyMissions'] as List)
-          .map((missionJson) => Mission.fromJson(missionJson))
-          .toList();
-    }
+    try {
+      if (json['dailyMissions'] != null) {
+        dailyMissions = (json['dailyMissions'] as List)
+            .map((missionJson) => Mission.fromJson(missionJson))
+            .toList();
+      }
 
-    if (json['weeklyMissions'] != null) {
-      weeklyMissions = (json['weeklyMissions'] as List)
-          .map((missionJson) => Mission.fromJson(missionJson))
-          .toList();
+      if (json['weeklyMissions'] != null) {
+        weeklyMissions = (json['weeklyMissions'] as List)
+            .map((missionJson) => Mission.fromJson(missionJson))
+            .toList();
+      }
+      
+      // Charger la date du dernier rafraîchissement des missions
+      if (json['lastMissionRefreshTime'] != null) {
+        lastMissionRefreshTime = DateTime.parse(json['lastMissionRefreshTime'] as String);
+      } else if (json['lastRefresh'] != null) {
+        lastMissionRefreshTime = DateTime.parse(json['lastRefresh'] as String);
+      } else {
+        // Si aucune date n'est disponible, utiliser la date actuelle
+        lastMissionRefreshTime = DateTime.now();
+      }
+    } catch (e, stack) {
+      print('Error loading mission system: $e');
+      print('Stack trace: $stack');
+      _resetToDefaults();
     }
+  }
+  
+  /// Réinitialise les valeurs par défaut
+  void _resetToDefaults() {
+    dailyMissions = [];
+    weeklyMissions = [];
+    achievements = [];
+    // Regénérer les missions par défaut
+    generateDailyMissions();
+    generateWeeklyMissions();
+  }
+
+  /// Renvoie des informations détaillées sur la progression des missions
+  Map<String, dynamic> getDetailedMissionProgress() {
+    return {
+      'daily': dailyMissions.map((mission) => {
+        'id': mission.id,
+        'progress': mission.progress,
+        'target': mission.targetAmount,
+        'isCompleted': mission.isCompleted,
+        'rewardClaimed': mission.rewardClaimed,
+      }).toList(),
+      'weekly': weeklyMissions.map((mission) => {
+        'id': mission.id,
+        'progress': mission.progress,
+        'target': mission.targetAmount,
+        'isCompleted': mission.isCompleted,
+        'rewardClaimed': mission.rewardClaimed,
+      }).toList(),
+      'lastRefresh': lastMissionRefreshTime?.toIso8601String(),
+    };
   }
 
   void dispose() {
@@ -254,7 +334,7 @@ class MissionSystem {
 }
 
 /// Système de niveaux
-class LevelSystem extends ChangeNotifier {
+class LevelSystem with ChangeNotifier implements JsonLoadable {
   double _experience = 0;
   int _level = 1;
   ProgressionPath _currentPath = ProgressionPath.PRODUCTION;
@@ -270,6 +350,11 @@ class LevelSystem extends ChangeNotifier {
   // Getters
   double get experience => _experience;
   int get level => _level;
+  // Alias pour être compatible avec le code de sauvegarde
+  double get currentXP => _experience;
+  int get currentLevel => _level;
+  double get xpToNextLevel => calculateExperienceRequirement(_level + 1);
+  
   ProgressionPath get currentPath => _currentPath;
   double get currentComboMultiplier => comboSystem.getComboMultiplier();
   double get totalXpMultiplier => _xpMultiplier * currentComboMultiplier;
@@ -755,14 +840,37 @@ ${details.tips.map((t) => '• $t').join('\n')}
     'dailyBonusClaimed': dailyBonus.claimed,
   };
 
+  @override
+  void fromJson(Map<String, dynamic> json) {
+    try {
+      _experience = (json['experience'] as num?)?.toDouble() ?? 0;
+      _level = (json['level'] as num?)?.toInt() ?? 1;
+      _currentPath = ProgressionPath.values[json['currentPath'] ?? 0];
+      _xpMultiplier = (json['xpMultiplier'] as num?)?.toDouble() ?? 1.0;
+      comboSystem.setComboCount(json['comboCount'] ?? 0);
+      dailyBonus.setClaimed(json['dailyBonusClaimed'] ?? false);
+      _checkLevelUp();
+    } catch (e, stack) {
+      print('Error loading level system: $e');
+      print('Stack trace: $stack');
+      _resetToDefaults();
+    }
+    notifyListeners();
+  }
+  
+  /// Méthode de compatibilité temporaire
   void loadFromJson(Map<String, dynamic> json) {
-    _experience = (json['experience'] as num?)?.toDouble() ?? 0;
-    _level = (json['level'] as num?)?.toInt() ?? 1;
-    _currentPath = ProgressionPath.values[json['currentPath'] ?? 0];
-    _xpMultiplier = (json['xpMultiplier'] as num?)?.toDouble() ?? 1.0;
-    comboSystem.setComboCount(json['comboCount'] ?? 0);
-    dailyBonus.setClaimed(json['dailyBonusClaimed'] ?? false);
-    _checkLevelUp();
+    fromJson(json);
+  }
+  
+  /// Réinitialise les valeurs par défaut
+  void _resetToDefaults() {
+    _experience = 0;
+    _level = 1;
+    _currentPath = ProgressionPath.values[0];
+    _xpMultiplier = 1.0;
+    comboSystem.setComboCount(0);
+    dailyBonus.setClaimed(false);
   }
 
   @override

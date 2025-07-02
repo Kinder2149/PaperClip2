@@ -6,7 +6,7 @@ import '../models/game_config.dart';
 import '../widgets/charts/chart_widgets.dart';
 import '../widgets/resources/resource_widgets.dart';
 import 'demand_calculation_screen.dart';
-import '../services/save_manager.dart';
+import '../services/save_manager_improved.dart';
 import '../screens/sales_history_screen.dart';
 import '../widgets/buttons/action_button.dart';
 import '../widgets/cards/info_card.dart';
@@ -156,6 +156,7 @@ class MarketScreen extends StatelessWidget {
   Widget _buildProductionCard(BuildContext context, GameState gameState, double autoclipperProduction) {
     List<String> bonuses = [];
 
+    // Calcul des bonus
     double speedBonus = 1.0 + ((gameState.player.upgrades['speed']?.level ?? 0) * 0.20);
     double bulkBonus = 1.0 + ((gameState.player.upgrades['bulk']?.level ?? 0) * 0.35);
     double efficiencyBonus = 1.0 - ((gameState.player.upgrades['efficiency']?.level ?? 0) * 0.15);
@@ -175,6 +176,28 @@ class MarketScreen extends StatelessWidget {
     }
 
     double baseProduction = gameState.player.autoclippers * 60;
+    
+    // Calcul de la demande pour afficher le statut
+    double demand = gameState.market.calculateDemand(
+      gameState.player.sellPrice,
+      gameState.player.getMarketingLevel(),
+    );
+    
+    // Statut de production (excédent ou déficit)
+    double productionDelta = autoclipperProduction - demand;
+    String productionStatus;
+    Color statusColor;
+    
+    if (productionDelta > 0) {
+      productionStatus = "(Excédent: +${productionDelta.toStringAsFixed(1)})";
+      statusColor = Colors.red; // Rouge pour surproduction
+    } else if (productionDelta < 0) {
+      productionStatus = "(Déficit: ${productionDelta.toStringAsFixed(1)})";
+      statusColor = Colors.green; // Vert pour capacité insuffisante = opportunité
+    } else {
+      productionStatus = "(Équilibrée)";
+      statusColor = Colors.black; // Équilibrée
+    }
 
     return _buildMarketCard(
       title: 'Production des Autoclippers',
@@ -188,8 +211,22 @@ class MarketScreen extends StatelessWidget {
         'Détails de la production :\n'
             '- Base (${gameState.player.autoclippers} autoclippers): ${baseProduction.toStringAsFixed(1)}/min\n'
             '${bonuses.isNotEmpty ? '\nBonus actifs:\n${bonuses.join("\n")}\n' : ''}'
-            '\nMétal utilisé par trombone: ${(GameConstants.METAL_PER_PAPERCLIP * efficiencyBonus).toStringAsFixed(2)} unités'
-            '\n(Efficacité: -${((1.0 - efficiencyBonus) * 100).toStringAsFixed(1)}%)',
+            '\nMétal utilisé par trombone: ${(GameConstants.METAL_PER_PAPERCLIP * efficiencyBonus).toStringAsFixed(2)} unités\n'
+            '(Efficacité: -${((1.0 - efficiencyBonus) * 100).toStringAsFixed(1)}%)\n\n'
+            'Comparaison avec la demande du marché:\n'
+            '- Production: ${autoclipperProduction.toStringAsFixed(1)}/min\n'
+            '- Demande: ${demand.toStringAsFixed(1)}/min\n'
+            '- Statut: ${productionStatus}\n\n'
+            "${productionDelta > 0 ? 'ATTENTION: Une surproduction par rapport à la demande implique des trombones non vendus!' : ''}\n"
+            "${productionDelta < 0 ? 'OPPORTUNITÉ: La demande est supérieure à votre production actuelle. Envisagez d\'augmenter votre capacité!' : ''}",
+      ),
+      trailing: Text(
+        productionStatus,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: statusColor,
+        ),
       ),
     );
   }
@@ -441,105 +478,84 @@ class MarketScreen extends StatelessWidget {
                       const SizedBox(height: 12),
 
                       if (visibleElements['marketPrice'] == true) ...[
-                        _buildMarketCard(
-                          title: 'Demande du Marché',
-                          value: '${demand.toStringAsFixed(1)}/min',
-                          icon: Icons.trending_up,
-                          color: Colors.amber.shade100,
-                          tooltip: 'Demande actuelle',
-                          onInfoPressed: () => _showInfoDialog(
-                            context,
-                            'Demande du Marché',
-                            'Demande actuelle: ${demand.toStringAsFixed(1)} unités/min\n'
-                                'Production effective: ${effectiveProduction.toStringAsFixed(1)} unités/min',
-                          ),
+                      // Ajout du contrôle du prix de vente en premier
+                      _buildPriceControlCard(gameState),
+                      const SizedBox(height: 12),
+                      
+                      // Affichage de la rentabilité estimée avec plus de détails
+                      _buildMarketCard(
+                        title: 'Rentabilité Estimée',
+                        value: '${profitability.toStringAsFixed(1)} €/min',
+                        icon: Icons.assessment,
+                        color: autoclipperProduction > demand ? Colors.orange.shade100 : Colors.indigo.shade100, // Orange si surproduction
+                        tooltip: 'Basé sur la production et la demande',
+                        onInfoPressed: () => _showInfoDialog(
+                          context,
+                          'Rentabilité',
+                          'Estimation des revenus par minute:\n\n'
+                              '• Paramètres de base:\n'
+                              '- Prix de vente: ${gameState.player.sellPrice.toStringAsFixed(2)} €\n'
+                              '- Production totale: ${autoclipperProduction.toStringAsFixed(1)} unités/min\n'
+                              '- Demande du marché: ${demand.toStringAsFixed(1)} unités/min\n\n'
+                              '• Production effective: ${effectiveProduction.toStringAsFixed(1)} unités/min\n'
+                              '(= le minimum entre votre production et la demande du marché)\n\n'
+                              '• Calcul des revenus:\n'
+                              '- Production effective × Prix de vente\n'
+                              '- ${effectiveProduction.toStringAsFixed(1)} × ${gameState.player.sellPrice.toStringAsFixed(2)} € = ${profitability.toStringAsFixed(1)} €/min\n\n'
+                              '${autoclipperProduction > demand ? "⚠️ ALERTE: Vous produisez plus que la demande actuelle!\nSeules ${demand.toStringAsFixed(1)} unités sur ${autoclipperProduction.toStringAsFixed(1)} seront vendues." : ""}\n'
+                              '${demand > autoclipperProduction ? "💡 CONSEIL: La demande (${demand.toStringAsFixed(1)}) dépasse votre capacité de production (${autoclipperProduction.toStringAsFixed(1)}).\nVous pourriez augmenter vos revenus en développant votre production." : ""}',
                         ),
-                        const SizedBox(height: 8),
+                        trailing: autoclipperProduction > demand ? 
+                          Icon(Icons.warning_amber_rounded, color: Colors.orange) : 
+                          (demand > autoclipperProduction ? Icon(Icons.lightbulb, color: Colors.green) : null),
+                      ),
+                      const SizedBox(height: 8),
+                      
+                      // Affichage des autres cartes ensuite
+                      _buildMarketCard(
+                        title: 'Demande du Marché',
+                        value: '${demand.toStringAsFixed(1)}/min',
+                        icon: Icons.trending_up,
+                        color: Colors.amber.shade100,
+                        tooltip: 'Demande actuelle',
+                        onInfoPressed: () => _showInfoDialog(
+                          context,
+                          'Demande du Marché',
+                          'Demande actuelle: ${demand.toStringAsFixed(1)} unités/min\n'
+                              'Production effective: ${effectiveProduction.toStringAsFixed(1)} unités/min',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
 
-                        _buildMarketCard(
-                          title: 'Réputation',
-                          value: '${(gameState.marketManager.reputation * 100).toStringAsFixed(1)}%',
-                          icon: Icons.star,
-                          color: Colors.blue.shade100,
-                          tooltip: 'Influence la demande globale',
-                          onInfoPressed: () => _showInfoDialog(
-                            context,
-                            'Réputation',
-                            'La réputation influence directement la demande du marché.\n'
-                                'Une meilleure réputation augmente les ventes potentielles.',
-                          ),
+                      _buildMarketCard(
+                        title: 'Réputation',
+                        value: '${(gameState.marketManager.reputation * 100).toStringAsFixed(1)}%',
+                        icon: Icons.star,
+                        color: Colors.blue.shade100,
+                        tooltip: 'Influence la demande globale',
+                        onInfoPressed: () => _showInfoDialog(
+                          context,
+                          'Réputation',
+                          'La réputation influence directement la demande du marché.\n'
+                              'Une meilleure réputation augmente les ventes potentielles.',
                         ),
-                        const SizedBox(height: 8),
+                      ),
+                      const SizedBox(height: 8),
 
-                        _buildMarketCard(
-                          title: 'Marketing',
-                          value: 'Niveau ${gameState.player.getMarketingLevel()}',
-                          icon: Icons.campaign,
-                          color: Colors.cyan.shade100,
-                          tooltip: 'Augmente la visibilité',
-                          onInfoPressed: () => _showInfoDialog(
-                            context,
-                            'Marketing',
-                            'Le niveau de marketing augmente la demande de base.\n'
-                                'Chaque niveau ajoute +30% à la demande.',
-                          ),
+                      _buildMarketCard(
+                        title: 'Marketing',
+                        value: 'Niveau ${gameState.player.getMarketingLevel()}',
+                        icon: Icons.campaign,
+                        color: Colors.cyan.shade100,
+                        tooltip: 'Augmente la visibilité',
+                        onInfoPressed: () => _showInfoDialog(
+                          context,
+                          'Marketing',
+                          'Le niveau de marketing augmente la demande de base.\n'
+                              'Chaque niveau ajoute +30% à la demande.',
                         ),
-                        const SizedBox(height: 8),
-
-                        _buildMarketCard(
-                          title: 'Rentabilité Estimée',
-                          value: '${profitability.toStringAsFixed(1)} €/min',
-                          icon: Icons.assessment,
-                          color: Colors.indigo.shade100,
-                          tooltip: 'Basé sur la production et la demande',
-                          onInfoPressed: () => _showInfoDialog(
-                            context,
-                            'Rentabilité',
-                            'Estimation des revenus par minute basée sur:\n'
-                                '- Prix de vente: ${gameState.player.sellPrice.toStringAsFixed(2)} €\n'
-                                '- Production: ${autoclipperProduction.toStringAsFixed(1)} unités/min\n'
-                                '- Demande: ${demand.toStringAsFixed(1)} unités/min\n'
-                                '- Production effective: ${effectiveProduction.toStringAsFixed(1)} unités/min\n'
-                                '- Revenus potentiels: ${profitability.toStringAsFixed(1)} €/min',
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-
-                      if (visibleElements['sellButton'] == true) ...[
-                        Card(
-                          elevation: 2,
-                          color: Colors.green.shade100,
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    const Text(
-                                      'Prix de Vente',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    Text(
-                                      '${gameState.player.sellPrice.toStringAsFixed(2)} €',
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                _buildPriceControls(gameState),
-                              ],
-                            ),
-                          ),
-                        ),
+                      ),  
+                      const SizedBox(height: 12),
                       ],
                     ],
                   ),
@@ -580,10 +596,6 @@ class MarketScreen extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
-              ActionButton.save(
-                onPressed: () => _saveGame(context, gameState),
-                fullWidth: true,
-              ),
             ],
           ),
         );

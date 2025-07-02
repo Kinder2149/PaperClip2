@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/services.dart';
 
+// Import de notre nouvelle AppBar
+import '../widgets/appbar/game_appbar.dart';
+
 // Imports des modèles
 import '../models/game_state.dart';
 import '../models/game_config.dart';
@@ -11,7 +14,7 @@ import '../models/event_system.dart';
 import '../models/progression_system.dart';
 
 // Imports des services
-import '../services/save_manager.dart';
+import '../services/save_manager_improved.dart';
 import '../services/background_music.dart';
 
 // Imports des widgets
@@ -27,7 +30,7 @@ import 'production_screen.dart';
 import 'market_screen.dart';
 import 'upgrades_screen.dart';
 import 'event_log_screen.dart';
-import 'save_load_screen.dart';
+import 'save_load_screen_improved.dart';
 import 'start_screen.dart';
 import 'introduction_screen.dart';
 import 'new_metal_production_screen.dart';
@@ -62,6 +65,9 @@ class _MainScreenState extends State<MainScreen> {
     final gameState = context.read<GameState>();
     await Future.delayed(Duration.zero);
     gameState.setContext(context);
+    
+    // Activer la musique par défaut
+    await _playBackgroundMusic();
   }
 
   Future<void> _playBackgroundMusic() async {
@@ -183,7 +189,6 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
-
   void _showLevelInfoDialog(BuildContext context, LevelSystem levelSystem) {
     showDialog(
       context: context,
@@ -221,9 +226,7 @@ class _MainScreenState extends State<MainScreen> {
           ),
     );
   }
-  // Déplacer ces méthodes en dehors du bloc _showSettingsMenu et dans la classe _MainScreenState
 
-// Ajoutez ces méthodes directement dans la classe _MainScreenState
   String _getLastSaveTimeText(GameState gameState) {
     final lastSave = gameState.lastSaveTime;
     if (lastSave == null) return 'Jamais';
@@ -377,43 +380,13 @@ class _MainScreenState extends State<MainScreen> {
 
         final backgroundMusicService = context.watch<BackgroundMusicService>();
 
-        // Construction de l'AppBar commun
-        final appBar = AppBar(
-          title: Text(
-              gameState.isInCrisisMode
-                  ? 'Nouveau Mode de Production'
-                  : _getTitleForIndex(_selectedIndex),
-              style: const TextStyle(color: Colors.white)
+        // Utilisation de notre nouvelle GameAppBar réutilisable
+        final appBar = PreferredSize(
+          preferredSize: const Size.fromHeight(kToolbarHeight),
+          child: GameAppBar(
+            selectedIndex: _selectedIndex,
+            onSettingsPressed: () => _showSettingsMenu(context),
           ),
-          centerTitle: true,
-          backgroundColor: Colors.deepPurple[700],
-          leading: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: _buildLevelIndicator(gameState.level),
-          ),
-          actions: [
-            // Ajouter l'indicateur de mode compétitif si on est en mode compétitif
-            if (gameState.gameMode == GameMode.COMPETITIVE)
-              const Padding(
-                padding: EdgeInsets.only(right: 8.0),
-                child: CompetitiveModeIndicator(),
-              ),
-            _buildNotificationButton(),
-            IconButton(
-              icon: Icon(
-                backgroundMusicService.isPlaying ? Icons.volume_up : Icons
-                    .volume_off,
-                color: Colors.white,
-              ),
-              onPressed: _toggleMusic,
-              tooltip: 'Activer/Désactiver la musique',
-            ),
-            IconButton(
-              icon: const Icon(Icons.settings, color: Colors.white),
-              onPressed: () => _showSettingsMenu(context),
-              tooltip: 'Paramètres',
-            ),
-          ],
         );
 
         // Construction du contenu selon le mode
@@ -793,11 +766,16 @@ class _MainScreenState extends State<MainScreen> {
                             subtitle: Text('${gameState.level.level}'),
                           ),
                           ListTile(
-                            leading: const Icon(
-                                Icons.inventory_2_outlined),
+                            leading: const Icon(Icons.inventory_2_outlined),
                             title: const Text('Trombones produits'),
-                            subtitle: Text(
-                                '${gameState.totalPaperclipsProduced}'),
+                            subtitle: Row(
+                              children: [
+                                Text('${gameState.totalPaperclipsProduced} / ${GameConstants.GLOBAL_PROGRESS_TARGET.toStringAsFixed(0)}'),
+                                const SizedBox(width: 8),
+                                _buildProgressIndicator(context, gameState),
+                              ],
+                            ),
+                            onTap: () => _showProgressDetails(context, gameState),
                           ),
                         ],
                       ),
@@ -849,6 +827,26 @@ class _MainScreenState extends State<MainScreen> {
                                 ),
                               );
                             },
+                          ),
+                          const Divider(height: 1),
+                          ListTile(
+                            leading: const Icon(Icons.home),
+                            title: const Text('Retour au menu principal'),
+                            onTap: () {
+                              Navigator.pop(context);
+                              Navigator.of(context).pushAndRemoveUntil(
+                                MaterialPageRoute(
+                                  builder: (context) => const StartScreen(),
+                                ),
+                                (route) => false,
+                              );
+                            },
+                          ),
+                          const Divider(height: 1),
+                          ListTile(
+                            leading: const Icon(Icons.refresh),
+                            title: const Text('Nouvelle partie'),
+                            onTap: () => _showNewGameConfirmation(context),
                           ),
                         ],
                       ),
@@ -946,7 +944,172 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
+  // Méthode pour afficher la confirmation de nouvelle partie
+  void _showNewGameConfirmation(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning),
+            SizedBox(width: 8),
+            Text('Nouvelle partie'),
+          ],
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Êtes-vous sûr de vouloir démarrer une nouvelle partie ?'),
+            SizedBox(height: 8),
+            Text('La progression de la partie actuelle sera perdue si elle n\'est pas sauvegardée.',
+                 style: TextStyle(fontStyle: FontStyle.italic, color: Colors.red)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context); // Fermer le dialogue
+              Navigator.pop(context); // Fermer les paramètres
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(
+                  builder: (context) => const StartScreen(),
+                ),
+                (route) => false,
+              );
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Nouvelle partie'),
+          ),
+        ],
+      ),
+    );
+  }
+
   // Méthode pour la gestion de la sauvegarde
+  // Construit l'indicateur de progression pour la vue dans les paramètres
+  Widget _buildProgressIndicator(BuildContext context, GameState gameState) {
+    // Calcul du progrès global
+    final double progressValue = _calculateGlobalProgress(gameState);
+    
+    return Container(
+      width: 28,
+      height: 28,
+      decoration: BoxDecoration(
+        color: Theme.of(context).brightness == Brightness.dark
+            ? Colors.blue.shade900
+            : Colors.blue.shade700,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 1,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(
+              value: progressValue,
+              backgroundColor: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.grey[800]
+                  : Colors.grey[300],
+              valueColor: AlwaysStoppedAnimation<Color>(
+                _getProgressColor(progressValue, Theme.of(context).brightness)
+              ),
+              strokeWidth: 2,
+            ),
+          ),
+          Text(
+            '${(progressValue * 100).toInt()}%',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 8,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Calcul de la progression globale du jeu
+  double _calculateGlobalProgress(GameState gameState) {
+    // Version simple: basée sur le nombre de trombones produits par rapport à un objectif
+    double maxPaperclips = GameConstants.GLOBAL_PROGRESS_TARGET;
+    double currentPaperclips = gameState.player.totalPaperclips;
+    
+    // Limiter à 1.0 (100%)
+    return (currentPaperclips / maxPaperclips).clamp(0.0, 1.0);
+  }
+
+  // Couleurs selon le pourcentage de progression
+  Color _getProgressColor(double progress, Brightness brightness) {
+    if (progress < 0.3) {
+      return brightness == Brightness.dark ? Colors.redAccent : Colors.red;
+    } else if (progress < 0.6) {
+      return brightness == Brightness.dark ? Colors.amberAccent : Colors.amber;
+    } else {
+      return brightness == Brightness.dark ? Colors.greenAccent : Colors.green;
+    }
+  }
+
+  // Affichage des détails de progression
+  void _showProgressDetails(BuildContext context, GameState gameState) {
+    final progress = _calculateGlobalProgress(gameState);
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.insights),
+            SizedBox(width: 8),
+            Text('Progression Globale'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Progression: ${(progress * 100).toInt()}%'),
+            const SizedBox(height: 8),
+            Text(
+              'Trombones produits: ${gameState.player.totalPaperclips.toStringAsFixed(0)} / ${GameConstants.GLOBAL_PROGRESS_TARGET.toStringAsFixed(0)}'
+            ),
+            const SizedBox(height: 8),
+            LinearProgressIndicator(
+              value: progress,
+              backgroundColor: Colors.grey[200],
+              valueColor: AlwaysStoppedAnimation<Color>(
+                _getProgressColor(progress, Theme.of(context).brightness)
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Continuez à produire des trombones pour progresser dans le jeu!',
+              style: TextStyle(fontStyle: FontStyle.italic),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _handleSave(BuildContext context, GameState gameState) async {
     try {
       if (gameState.gameName == null) {

@@ -7,7 +7,8 @@ import 'package:flutter/material.dart';
 import '../models/game_state.dart';
 import '../models/event_system.dart';
 import '../models/game_config.dart';
-import 'save_manager.dart';
+import 'save_manager_improved.dart';
+import 'storage_constants.dart';
 
 class AutoSaveService {
   static const Duration AUTO_SAVE_INTERVAL = Duration(minutes: 5);
@@ -35,6 +36,24 @@ class AutoSaveService {
     });
   }
 
+  // Méthode start pour compatibilité avec le code existant
+  Future<void> start() async {
+    await initialize();
+  }
+  
+  // Méthode pour arrêter temporairement l'auto-sauvegarde
+  void stop() {
+    _mainTimer?.cancel();
+    _mainTimer = null;
+    print('Auto-sauvegarde arrêtée temporairement');
+  }
+  
+  // Méthode pour relancer l'auto-sauvegarde après un arrêt
+  void restart() {
+    _setupMainTimer();
+    print('Auto-sauvegarde relancée');
+  }
+
   void _setupMainTimer() {
     _mainTimer?.cancel();
     _mainTimer = Timer.periodic(const Duration(minutes: 5), (_) {
@@ -49,7 +68,7 @@ class AutoSaveService {
     if (!_isInitialized || _gameState.gameName == null) return;
 
     try {
-      final backupName = '${_gameState.gameName!}_backup_${DateTime.now().millisecondsSinceEpoch}';
+      final backupName = '${_gameState.gameName!}${StorageConstants.BACKUP_DELIMITER}${DateTime.now().millisecondsSinceEpoch}';
 
       // Créer un objet SaveGame pour le backup
       final saveData = SaveGame(
@@ -76,7 +95,7 @@ class AutoSaveService {
     try {
       final saves = await SaveManager.listSaves();
       final backups = saves.where((save) =>
-          save.name.contains('_backup_')).toList();
+          save.name.contains(StorageConstants.BACKUP_DELIMITER)).toList();
 
       // Garder seulement les 3 derniers backups
       if (backups.length > 3) {
@@ -150,7 +169,7 @@ class AutoSaveService {
     if (!_gameState.isInitialized || _gameState.gameName == null) return;
 
     try {
-      final backupName = '${_gameState.gameName!}_backup_${DateTime.now().millisecondsSinceEpoch}';
+      final backupName = '${_gameState.gameName!}${StorageConstants.BACKUP_DELIMITER}${DateTime.now().millisecondsSinceEpoch}';
 
       // Créer un objet SaveGame pour le backup
       final saveData = SaveGame(
@@ -213,12 +232,4 @@ class AutoSaveService {
   }
 }
 
-class ValidationResult {
-  final bool isValid;
-  final List<String> errors;
-
-  ValidationResult({
-    required this.isValid,
-    this.errors = const [],
-  });
-}
+// Utilisation de la classe ValidationResult du nouveau système de sauvegarde

@@ -167,6 +167,9 @@ class GameConstants {
   static const String AUTHOR = 'Kinder2149';
   static const String LAST_UPDATE = '25/02/2025';
   static const String APP_NAME = 'PaperClip2';
+  
+  // Objectif global de progression
+  static const double GLOBAL_PROGRESS_TARGET = 10000.0; // Objectif de 10 000 trombones
 
   static const String DEFAULT_GAME_NAME_PREFIX = 'Partie';
   static const String APP_TITLE = 'ClipFactory Empire';
@@ -218,6 +221,7 @@ enum EventType {
   INFO,
   CRISIS_MODE,
   UI_CHANGE,
+  SYSTEM,
 }
 
 enum EventImportance {

@@ -3,8 +3,8 @@ import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import '../models/game_config.dart';
 import '../utils/update_manager.dart';
-import '../services/save_manager.dart';
-import 'save_load_screen.dart';
+import '../services/save_manager_improved.dart';
+import 'save_load_screen_improved.dart';
 import 'introduction_screen.dart';
 import 'package:paperclip2/screens/main_screen.dart';
 import 'package:paperclip2/main.dart';
@@ -41,8 +41,20 @@ class _StartScreenState extends State<StartScreen> {
     try {
       final lastSave = await SaveManager.getLastSave();
       if (lastSave != null) {
-        await context.read<GameState>().loadGame(lastSave.name);
+        // Utiliser un délai pour s'assurer que le context est prêt avant de charger
+        await Future.delayed(const Duration(milliseconds: 200));
+        
+        // Obtenir le GameState avant le chargement
+        final gameState = Provider.of<GameState>(context, listen: false);
+        
+        // Charger la sauvegarde
+        await gameState.loadGame(lastSave.name);
+        
+        // Attendre un court instant pour s'assurer que tout est bien initialisé
+        await Future.delayed(const Duration(milliseconds: 300));
+        
         if (mounted) {
+          // Naviguer vers l'écran principal
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const MainScreen()),
@@ -59,6 +71,7 @@ class _StartScreenState extends State<StartScreen> {
         }
       }
     } catch (e) {
+      print('Erreur dans _continueLastGame: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

@@ -130,25 +130,61 @@ class UpgradesScreen extends StatelessWidget {
       ),
     ];
 
-    // Retourne une colonne avec les deux panneaux de statistiques
-    return Column(
-      children: [
-        StatsPanel(
-          title: 'Production',
-          titleIcon: Icons.precision_manufacturing,
-          children: productionStats,
-          backgroundColor: Colors.white,
-          titleStyle: const TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold),
+    // Retourne une row avec les deux panneaux de statistiques côte à côte
+    return Card(
+      elevation: 1.5,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      child: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                    child: Row(
+                      children: [
+                        Icon(Icons.precision_manufacturing, color: Colors.blue[800], size: 20),
+                        const SizedBox(width: 8),
+                        Text('Production',
+                          style: TextStyle(fontSize: 16, color: Colors.blue[800], fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  ...productionStats,
+                ],
+              ),
+            ),
+            const VerticalDivider(width: 1, thickness: 1),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                    child: Row(
+                      children: [
+                        Icon(Icons.storefront, color: Colors.teal[800], size: 20),
+                        const SizedBox(width: 8),
+                        Text('Marché', 
+                          style: TextStyle(fontSize: 16, color: Colors.teal[800], fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  ...marketStats,
+                ],
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 12),
-        StatsPanel(
-          title: 'Marché',
-          titleIcon: Icons.storefront,
-          children: marketStats,
-          backgroundColor: Colors.white,
-          titleStyle: const TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold),
-        ),
-      ],
+      ),
     );
   }
 
@@ -186,6 +222,48 @@ class UpgradesScreen extends StatelessWidget {
       }
     }
 
+    // Déterminer la catégorie et les couleurs en fonction de l'ID
+    String category;
+    Color backgroundColor;
+    Color iconColor;
+    Color borderColor;
+    Color titleColor;
+
+    switch (id) {
+      case 'efficiency':
+      case 'speed':
+      case 'bulk':
+      case 'automation':
+        category = 'Production';
+        backgroundColor = Colors.blue.shade50;
+        iconColor = Colors.blue.shade700;
+        borderColor = Colors.blue.shade200;
+        titleColor = Colors.blue.shade800;
+        break;
+      case 'marketing':
+      case 'quality':
+        category = 'Marché';
+        backgroundColor = Colors.teal.shade50;
+        iconColor = Colors.teal.shade700;
+        borderColor = Colors.teal.shade200;
+        titleColor = Colors.teal.shade800;
+        break;
+      case 'storage':
+        category = 'Stockage';
+        backgroundColor = Colors.amber.shade50;
+        iconColor = Colors.amber.shade700;
+        borderColor = Colors.amber.shade200;
+        titleColor = Colors.amber.shade800;
+        break;
+      default:
+        category = 'Autre';
+        backgroundColor = Colors.grey.shade50;
+        iconColor = Colors.grey.shade700;
+        borderColor = Colors.grey.shade200;
+        titleColor = Colors.grey.shade800;
+        break;
+    }
+
     // Ajouter un badge si l'amélioration est au niveau maximum ou achetable
     String? badge;
     Color? badgeColor;
@@ -200,38 +278,141 @@ class UpgradesScreen extends StatelessWidget {
       badgeBackgroundColor = Colors.blue[50];
     }
 
-    return InfoCard(
-      title: upgrade.name,
-      value: '${isMaxed ? "MAX" : "${upgrade.getCost().toStringAsFixed(2)} €"}',
-      tooltip: upgrade.description,
-      icon: _getUpgradeIcon(id),
-      // Utiliser trailing pour afficher les détails et actions
-      trailing: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ...upgradeDetails.entries.map((entry) => Text('${entry.key}: ${entry.value}', style: TextStyle(fontSize: 12))).toList(),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: actions,
-          ),
-        ],
+    return Card(
+      elevation: 1.5,
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: borderColor, width: 1),
       ),
-      backgroundColor: Colors.white,
-      onTap: canBuy ? () => gameState.purchaseUpgrade(id) : null,
-      // Une version future pourrait intégrer des indicateurs visuels comme des badges ou barres de progression
+      child: InkWell(
+        onTap: canBuy ? () => gameState.purchaseUpgrade(id) : null,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: backgroundColor,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Icon(_getUpgradeIcon(id), color: iconColor, size: 20),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          upgrade.name,
+                          style: TextStyle(
+                            fontSize: 16, 
+                            fontWeight: FontWeight.bold,
+                            color: titleColor,
+                          ),
+                        ),
+                        Text(
+                          category,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: iconColor,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    isMaxed ? "MAX" : "${upgrade.getCost().toStringAsFixed(2)} €",
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: isMaxed ? Colors.green : Colors.black87,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                upgrade.description,
+                style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+              ),
+              const SizedBox(height: 8),
+              _buildUpgradeImpactPreview(id, upgrade, gameState),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: upgradeDetails.entries.map((entry) => 
+                      Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: Text(
+                          '${entry.key}: ${entry.value}', 
+                          style: TextStyle(fontSize: 12, color: Colors.grey[600])
+                        ),
+                      )
+                    ).toList(),
+                  ),
+                  ...actions,
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
   Widget _buildUpgradeImpactPreview(String id, Upgrade upgrade, GameState gameState) {
+    // Initialiser un map pour stocker les impacts de l'amélioration selon le type
     Map<String, List<String>> impacts = {};
 
-    // Calculer l'impact actuel et futur
+    // Vérifier si l'amélioration est déjà au niveau max
+    if (upgrade.level >= upgrade.maxLevel) return const SizedBox.shrink();
+    
+    // Déterminer la catégorie et les couleurs en fonction de l'ID
+    Color backgroundColor;
+    Color borderColor;
+    Color accentColor;
+
+    switch (id) {
+      case 'efficiency':
+      case 'speed':
+      case 'bulk':
+      case 'automation':
+        backgroundColor = Colors.blue.shade50;
+        borderColor = Colors.blue.shade100;
+        accentColor = Colors.blue.shade700;
+        break;
+      case 'marketing':
+      case 'quality':
+        backgroundColor = Colors.teal.shade50;
+        borderColor = Colors.teal.shade100;
+        accentColor = Colors.teal.shade700;
+        break;
+      case 'storage':
+        backgroundColor = Colors.amber.shade50;
+        borderColor = Colors.amber.shade100;
+        accentColor = Colors.amber.shade700;
+        break;
+      default:
+        backgroundColor = Colors.grey.shade50;
+        borderColor = Colors.grey.shade100;
+        accentColor = Colors.grey.shade700;
+        break;
+    }
+
+    // Déterminer les impacts spécifiques en fonction de l'ID de l'amélioration
     switch (id) {
       case 'speed':
-        double currentSpeed = upgrade.level * 20.0;
-        double nextSpeed = (upgrade.level + 1) * 20.0;
+        double currentSpeed = (upgrade.level * 0.20) * 100;
+        double nextSpeed = ((upgrade.level + 1) * 0.20) * 100;
         impacts['Vitesse de production'] = [
           _formatImpact(currentSpeed),
           _formatImpact(nextSpeed)
@@ -239,27 +420,26 @@ class UpgradesScreen extends StatelessWidget {
         break;
 
       case 'bulk':
-        double currentBulk = upgrade.level * 35.0;
-        double nextBulk = (upgrade.level + 1) * 35.0;
-        impacts['Production par cycle'] = [
+        double currentBulk = (upgrade.level * 0.35) * 100;
+        double nextBulk = ((upgrade.level + 1) * 0.35) * 100;
+        impacts['Production par lot'] = [
           _formatImpact(currentBulk),
           _formatImpact(nextBulk)
         ];
         break;
 
+      case 'quality':
+        double currentQuality = (upgrade.level * 0.10) * 100;
+        double nextQuality = ((upgrade.level + 1) * 0.10) * 100;
+        impacts['Augmentation qualité'] = [
+          _formatImpact(currentQuality),
+          _formatImpact(nextQuality)
+        ];
+        break;
+
       case 'efficiency':
-      // Nouveau calcul avec 11% par niveau et plafond 85%
-        double currentReduction = min(
-            (upgrade.level * GameConstants.EFFICIENCY_UPGRADE_MULTIPLIER * 100),
-            GameConstants.EFFICIENCY_MAX_REDUCTION * 100
-        );
-
-        double nextReduction = min(
-            ((upgrade.level + 1) * GameConstants.EFFICIENCY_UPGRADE_MULTIPLIER * 100),
-            GameConstants.EFFICIENCY_MAX_REDUCTION * 100
-        );
-
-        // Calcul de la consommation de métal avec les réductions
+        double currentReduction = (upgrade.level * 0.15) * 100;
+        double nextReduction = ((upgrade.level + 1) * 0.15) * 100;
         double baseMetalPerClip = GameConstants.METAL_PER_PAPERCLIP;
         double currentMetal = baseMetalPerClip * (1.0 - currentReduction/100);
         double nextMetal = baseMetalPerClip * (1.0 - nextReduction/100);
@@ -315,12 +495,12 @@ class UpgradesScreen extends StatelessWidget {
                     value[0],
                     style: const TextStyle(fontSize: 11, color: Colors.black54),
                   ),
-                  const Icon(Icons.arrow_forward, size: 12, color: Colors.black54),
+                  Icon(Icons.arrow_forward, size: 12, color: accentColor.withOpacity(0.5)),
                   Text(
                     value[1],
                     style: TextStyle(
                       fontSize: 11,
-                      color: Colors.blue.shade700,
+                      color: accentColor,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -333,22 +513,22 @@ class UpgradesScreen extends StatelessWidget {
     });
 
     return Container(
-      margin: const EdgeInsets.only(top: 8),
+      margin: const EdgeInsets.only(top: 4),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: Colors.blue.shade50,
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: Colors.blue.shade100),
+        border: Border.all(color: borderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Impact de l\'amélioration',
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.bold,
-              color: Colors.black87,
+              color: accentColor,
             ),
           ),
           const SizedBox(height: 4),

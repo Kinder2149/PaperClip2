@@ -9,6 +9,7 @@ import 'player_manager.dart';
 import 'progression_system.dart';
 import 'package:flutter/foundation.dart';
 import 'game_config.dart';
+import 'json_loadable.dart';
 
 /// Base mixin pour la gestion des timers
 mixin GameStateBase on ChangeNotifier {
@@ -139,7 +140,7 @@ mixin GameStateLevel on ChangeNotifier {
   void addExperience(double amount);
 }
 
-class StatisticsManager with ChangeNotifier {
+class StatisticsManager with ChangeNotifier implements JsonLoadable {
   // Statistiques de production
   int _totalPaperclipsProduced = 0;
   int _manualPaperclipsProduced = 0;

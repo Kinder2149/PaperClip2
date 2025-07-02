@@ -4,8 +4,9 @@ import 'dart:async';
 import 'game_config.dart';
 import 'event_system.dart';
 import 'player_manager.dart';
+import 'json_loadable.dart';
 
-class ResourceManager extends ChangeNotifier {
+class ResourceManager extends ChangeNotifier implements JsonLoadable {
   // Constantes de ressources
 
   // État des ressources
@@ -99,14 +100,20 @@ class ResourceManager extends ChangeNotifier {
     'baseStorageEfficiency': _baseStorageEfficiency,
   };
 
+  @override
   void fromJson(Map<String, dynamic> json) {
-    _marketMetalStock = (json['marketMetalStock'] as num?)?.toDouble() ??
-        GameConstants.INITIAL_MARKET_METAL;
-    _metalStorageCapacity = (json['metalStorageCapacity'] as num?)?.toDouble() ??
-        GameConstants.INITIAL_STORAGE_CAPACITY;
-    _baseStorageEfficiency = (json['baseStorageEfficiency'] as num?)?.toDouble() ??
-        GameConstants.BASE_EFFICIENCY;
-
+    try {
+      _marketMetalStock = (json['marketMetalStock'] as num?)?.toDouble() ??
+          GameConstants.INITIAL_MARKET_METAL;
+      _metalStorageCapacity = (json['metalStorageCapacity'] as num?)?.toDouble() ??
+          GameConstants.INITIAL_STORAGE_CAPACITY;
+      _baseStorageEfficiency = (json['baseStorageEfficiency'] as num?)?.toDouble() ??
+          GameConstants.BASE_EFFICIENCY;
+    } catch (e, stack) {
+      print('Error loading resource manager: $e');
+      print('Stack trace: $stack');
+      resetResources(); // Utilise la méthode existante pour réinitialiser
+    }
     notifyListeners();
   }
 

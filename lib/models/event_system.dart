@@ -2,7 +2,9 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'game_config.dart';
+import 'game_state.dart'; // Importer GameState
 import 'game_state_interfaces.dart';
+import 'json_loadable.dart';
 import '../main.dart' show navigatorKey;
 import 'package:flutter/foundation.dart';
 import 'package:paperclip2/screens/event_log_screen.dart';
@@ -207,7 +209,7 @@ class GameEvent {
       case EventType.UPGRADE_AVAILABLE:
         return Icons.new_releases;
       case EventType.SPECIAL_ACHIEVEMENT:
-        return Icons.stars;
+        return Icons.emoji_events;
       case EventType.XP_BOOST:
         return Icons.speed;
       case EventType.INFO:
@@ -216,19 +218,21 @@ class GameEvent {
         return Icons.emergency;
       case EventType.UI_CHANGE:
         return Icons.switch_access_shortcut; // ou Icons.swap_horiz
+      case EventType.SYSTEM:
+        return Icons.system_update; // Icône pour les événements système
     }
   }
 }
 
 /// Gestionnaire principal des événements
-class EventManager with  ChangeNotifier {
+class EventManager extends ChangeNotifier implements JsonLoadable {
   static final EventManager _instance = EventManager._internal();
 
-
+  // Référence vers GameState pour accéder au nom de la partie
+  GameState? _gameState;
 
   static EventManager get instance => _instance;
-  final ValueNotifier<NotificationEvent?> notificationStream = ValueNotifier(
-      null);
+  final ValueNotifier<NotificationEvent?> notificationStream = ValueNotifier(null);
   final List<NotificationEvent> _notifications = [];
   final Set<String> _unreadNotificationIds = {};
   final Set<String> _sentResourceNotifications = {};
@@ -239,8 +243,8 @@ class EventManager with  ChangeNotifier {
   static const Duration _minimumInterval = Duration(seconds: 30);
   static const int _maxNotifications = 100;
 
-
-
+  // Getter pour le nom de la partie actuelle
+  String get _currentGameName => _gameState?.gameName ?? 'default';
 
   final List<GameEvent> _events = [];
   final Map<String, DateTime> _lastNotifications = {}; // Ajout de cette ligne
@@ -262,6 +266,11 @@ class EventManager with  ChangeNotifier {
       List.unmodifiable(_notifications);
 
   EventManager._internal();
+  
+  // Méthode pour définir la référence vers GameState
+  void setGameState(GameState gameState) {
+    _gameState = gameState;
+  }
   void addCrisisEvent(String title, String description) {
     addEvent(
       EventType.CRISIS_MODE,
@@ -289,11 +298,11 @@ class EventManager with  ChangeNotifier {
   final ValueNotifier<int> unreadCount = ValueNotifier<int>(0);
 
   Future<void> addNotification(NotificationEvent newNotification) async {
-       // Sauvegarder les notifications importantes
+    // Sauvegarder les notifications importantes avec le nom de la partie
     if (newNotification.priority == NotificationPriority.HIGH ||
         newNotification.priority == NotificationPriority.CRITICAL ||
         newNotification.type == EventType.LEVEL_UP) {
-      await NotificationStorageService.saveImportantNotification(newNotification);
+      await NotificationStorageService.saveImportantNotification(newNotification, _currentGameName);
     }
 
     // Vérifier si une notification similaire a été montrée récemment
@@ -370,16 +379,36 @@ class EventManager with  ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> loadNotificationsForGame(String gameName) async {
+    try {
+      // Vider les notifications existantes
+      _notifications.clear();
+      _unreadNotificationIds.clear();
+      
+      // Charger les nouvelles notifications
+      final notifications = await NotificationStorageService.getNotificationsForGame(gameName);
+      _notifications.addAll(notifications);
+      
+      // Marquer comme non lues
+      for (var notification in notifications) {
+        _unreadNotificationIds.add(notification.id);
+      }
+      
+      unreadCount.value = _unreadNotificationIds.length;
+      notifyListeners();
+      
+      print('Chargé ${notifications.length} notifications pour la partie: $gameName');
+    } catch (e) {
+      print('Erreur lors du chargement des notifications: $e');
+    }
+  }
+  
+  // Pour rétrocompatibilité avec l'ancien système
   Future<void> loadImportantNotifications() async {
-    final importantNotifications = await NotificationStorageService.getImportantNotifications();
-    _notifications.addAll(importantNotifications);
+    final notifications = await NotificationStorageService.getImportantNotifications();
+    _notifications.addAll(notifications);
     notifyListeners();
   }
-
-
-
-
-
 
   void resetResourceNotifications() {
     _sentResourceNotifications.clear();
@@ -562,6 +591,61 @@ ${unlockDetails.tips.map((t) => '• $t').join('\n')}
 
   void clearEvents() {
     _notifications.clear();
+  }
+  
+  @override
+  void fromJson(Map<String, dynamic> json) {
+    try {
+      print('Loading event manager data: $json');
+      _notifications.clear();
+      _unreadNotificationIds.clear();
+      _events.clear();
+      
+      // Charger les notifications
+      final notificationsJson = json['notifications'] as List<dynamic>? ?? [];
+      for (final notificationJson in notificationsJson) {
+        try {
+          final notification = NotificationEvent.fromJson(
+              notificationJson as Map<String, dynamic>);
+          _notifications.add(notification);
+          
+          // Si marqué comme non lu
+          if (notificationJson['unread'] == true) {
+            _unreadNotificationIds.add(notification.id);
+          }
+        } catch (e) {
+          print('Erreur lors du chargement d\'une notification: $e');
+        }
+      }
+      
+      // Charger les événements
+      final eventsJson = json['events'] as List<dynamic>? ?? [];
+      for (final eventJson in eventsJson) {
+        try {
+          final event = GameEvent(
+            type: EventType.values[(eventJson['type'] as num?)?.toInt() ?? 0],
+            title: eventJson['title'] as String? ?? 'Événement',
+            description: eventJson['description'] as String? ?? 'Sans description',
+            importance: EventImportance.values[(eventJson['importance'] as num?)?.toInt() ?? 0],
+            data: eventJson['data'] as Map<String, dynamic>? ?? {},
+          );
+          _events.add(event);
+        } catch (e) {
+          print('Erreur lors du chargement d\'un événement: $e');
+        }
+      }
+      
+      unreadCount.value = _unreadNotificationIds.length;
+      notifyListeners();
+    } catch (e, stack) {
+      print('Error loading event manager: $e');
+      print('Stack trace: $stack');
+      // Réinitialisation des données
+      _notifications.clear();
+      _unreadNotificationIds.clear();
+      _events.clear();
+      unreadCount.value = 0;
+    }
   }
 
   static Duration getPriorityDuration(NotificationPriority priority) {

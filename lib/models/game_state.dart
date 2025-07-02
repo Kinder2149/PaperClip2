@@ -5,6 +5,9 @@ import '../screens/competitive_result_screen.dart';
 import 'dart:async';
 import 'package:flutter/services.dart';
 import 'dart:math';
+import 'package:provider/provider.dart';
+import '../main.dart' show navigatorKey;
+import '../services/background_music.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'game_config.dart';
 import 'event_system.dart';
@@ -18,7 +21,7 @@ import '../utils/notification_manager.dart';
 import '../dialogs/metal_crisis_dialog.dart';
 import '../services/auto_save_service.dart';
 import '../screens/main_screen.dart';
-import '../services/save_manager.dart' show SaveGame, SaveError, SaveGameInfo, SaveManager;
+import '../services/save_manager_improved.dart';
 
 class GameState extends ChangeNotifier {
   late final PlayerManager _playerManager;
@@ -64,13 +67,52 @@ class GameState extends ChangeNotifier {
   }
 
   void _initializeManagers() {
-    if (!_isInitialized) {
-      // Étape 1 : Création des managers
-      _createManagers();
-
-      // Étape 2 : Configuration et démarrage
-      _configureAndStart();
-
+    try {
+      if (!_isInitialized) {
+        if (kDebugMode) {
+          print('GameState: Début de l\'initialisation des managers');
+        }
+        
+        // Étape 1 : Création des managers
+        _createManagers();
+        if (kDebugMode) {
+          print('GameState: Managers créés avec succès');
+        }
+        
+        // Étape 2 : Configuration et démarrage - ATTENTION: peut bloquer
+        try {
+          _configureAndStart();
+          if (kDebugMode) {
+            print('GameState: Configuration et démarrage terminés');
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print('GameState: Erreur lors de la configuration: $e');
+          }
+        }
+        
+        // Donner une référence à EventManager vers cette instance de GameState
+        try {
+          EventManager.instance.setGameState(this);
+          if (kDebugMode) {
+            print('GameState: Référence à EventManager définie');
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print('GameState: Erreur lors de la configuration d\'EventManager: $e');
+          }
+        }
+        
+        _isInitialized = true;
+        if (kDebugMode) {
+          print('GameState: Initialisation terminée avec succès');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('GameState: ERREUR CRITIQUE lors de l\'initialisation: $e');
+      }
+      // Marquer comme initialisé même en cas d'erreur pour éviter les boucles infinies
       _isInitialized = true;
     }
   }
@@ -407,10 +449,10 @@ class GameState extends ChangeNotifier {
       processProduction();
     });
 
-    // Timer du marché - Ajout de cette partie
+    // Timer du marché - Moins fréquent pour réduire les vérifications excessives
     marketTimer = Timer.periodic(
-        const Duration(seconds: 1),
-            (timer) => _processMarket()  // Utilisez _processMarket au lieu de processMarket
+        const Duration(seconds: 3),  // Réduit la fréquence à 3 secondes au lieu de 1
+        (timer) => _processMarket()
     );
 
     // Timer du temps de jeu
@@ -453,10 +495,13 @@ class GameState extends ChangeNotifier {
   }
 
   Map<String, dynamic> prepareGameData() {
+    // Obtenir l'horodatage actuel
+    final DateTime now = DateTime.now();
+    
     // Préparation des données de base
     final Map<String, dynamic> baseData = {
       'version': GameConstants.VERSION,
-      'timestamp': DateTime.now().toIso8601String(),
+      'timestamp': now.toIso8601String(),
       'statistics': _statistics.toJson(),
       'totalTimePlayedInSeconds': _totalTimePlayedInSeconds,
       'totalPaperclipsProduced': _totalPaperclipsProduced,
@@ -470,7 +515,48 @@ class GameState extends ChangeNotifier {
         'showingCrisisView': _showingCrisisView,
       },
       'achievements': {
-        'last_sync': DateTime.now().toIso8601String(),
+        'last_sync': now.toIso8601String(),
+      },
+      // Données de progression avancées
+      'progression': {
+        'currentXP': levelSystem.currentXP,
+        'currentLevel': levelSystem.currentLevel,
+        'xpToNextLevel': levelSystem.xpToNextLevel,
+        'missionProgress': missionSystem?.getDetailedMissionProgress() ?? {},
+        'combos': {
+          'currentCombo': levelSystem.comboSystem?.currentCombo ?? 0,
+          'comboMultiplier': levelSystem.comboSystem?.comboMultiplier ?? 1.0,
+          'comboTimeLeft': levelSystem.comboSystem?.comboTimer != null ?
+              5000 - DateTime.now().difference(levelSystem.comboSystem!.lastComboTime).inMilliseconds : 0,
+        },
+        'dailyBonus': {
+          'claimed': levelSystem.dailyBonus?.hasClaimedToday ?? false,
+          'lastClaimDate': levelSystem.dailyBonus?.lastClaimDate?.toIso8601String(),
+          'streakDays': levelSystem.dailyBonus?.streakDays ?? 0,
+          'timeUntilReset': levelSystem.dailyBonus?.resetTimer != null ? 
+              _calculateTimeUntilMidnight(now).inMilliseconds : 0,
+        },
+      },
+      // État des timers
+      'timers': {
+        'lastSaved': now.toIso8601String(),
+        'missionRefresh': missionSystem?.missionRefreshTimer != null ? {
+          'isActive': true,
+          'lastRefreshTime': missionSystem!.lastMissionRefreshTime?.toIso8601String(),
+          'timeUntilNextRefresh': _calculateTimeUntilNextMissionRefresh(missionSystem!).inMilliseconds,
+        } : { 'isActive': false },
+        'maintenance': playerManager.maintenanceTimer != null ? {
+          'isActive': true,
+          'lastMaintenanceTime': playerManager.lastMaintenanceTime?.toIso8601String(),
+          'interval': GameConstants.MAINTENANCE_INTERVAL.inMilliseconds,
+        } : { 'isActive': false },
+        'marketUpdate': marketManager.isActive ? {
+          'interval': GameConstants.MARKET_UPDATE_INTERVAL.inMilliseconds,
+        } : { 'isActive': false },
+        'metalPriceUpdate': {
+          'lastUpdate': marketManager.lastMetalPriceUpdateTime?.toIso8601String(),
+          'interval': GameConstants.METAL_PRICE_UPDATE_INTERVAL.inMilliseconds,
+        },
       }
     };
 
@@ -505,7 +591,7 @@ class GameState extends ChangeNotifier {
     double bulkBonus = 1.0 + ((playerManager.upgrades['bulk']?.level ?? 0) * 0.35);
 
     // Nouveau calcul d'efficacité avec 11% par niveau et plafond 85%
-    double efficiencyLevel = (playerManager.upgrades['efficiency']?.level ?? 0).toDouble(); // Correction ici
+    double efficiencyLevel = (playerManager.upgrades['efficiency']?.level ?? 0).toDouble(); 
     double reduction = min(
         efficiencyLevel * GameConstants.EFFICIENCY_UPGRADE_MULTIPLIER,
         GameConstants.EFFICIENCY_MAX_REDUCTION
@@ -527,7 +613,7 @@ class GameState extends ChangeNotifier {
     if (actualProduction > 0) {
       // Mise à jour des ressources
       double metalUsed = actualProduction * metalPerClip;
-      double metalSaved = actualProduction * GameConstants.METAL_PER_PAPERCLIP * reduction; // Déplacé ici
+      double metalSaved = actualProduction * GameConstants.METAL_PER_PAPERCLIP * reduction; 
 
       playerManager.updateMetal(playerManager.metal - metalUsed);
       playerManager.updatePaperclips(playerManager.paperclips + actualProduction);
@@ -661,16 +747,15 @@ class GameState extends ChangeNotifier {
 
     print('Achat effectué - Nouveau stock marché: ${marketManager.marketMetalStock}'); // Debug
 
-    if (marketManager.marketMetalStock <= 0) {
-      print('Stock épuisé - Déclenchement mode crise'); // Debug
-      enterCrisisMode();
-    }
+    // Ajout des statistiques avant de vérifier le mode de crise
     _statistics.updateEconomics(
       moneySpent: metalPrice,
       metalBought: amount,
     );
 
+    // Vérification une seule fois pour le mode de crise
     if (marketManager.marketMetalStock <= 0) {
+      print('Stock épuisé - Déclenchement mode crise'); // Debug
       enterCrisisMode();
     }
 
@@ -695,7 +780,7 @@ class GameState extends ChangeNotifier {
       level.addAutoclipperPurchase();
 
       // Ajout statistiques
-      _statistics.updateProgression(autoclippersBought: 1);  // Cette ligne est correcte
+      _statistics.updateProgression(autoclippersBought: 1);  
       _statistics.updateEconomics(moneySpent: cost);
       saveOnImportantEvent();
 
@@ -737,7 +822,7 @@ class GameState extends ChangeNotifier {
         NotificationManager.showGameNotification(_context!, event: notification);
       }
     }
-    player.updateSellPrice(newPrice);  // Utiliser updateSellPrice au lieu de l'affectation directe
+    player.updateSellPrice(newPrice);  
     notifyListeners();
   }
 
@@ -789,103 +874,345 @@ class GameState extends ChangeNotifier {
 
   Future<void> startNewGame(String name, {GameMode mode = GameMode.INFINITE}) async {
     try {
-      print('Starting new game with name: $name, mode: $mode');
       _gameName = name;
       _gameMode = mode;
 
-      // Si mode compétitif, initialiser le timer
-      if (_gameMode == GameMode.COMPETITIVE) {
+      // Réinitialiser l'état de jeu
+      reset();
+
+      // Définir le mode de jeu et le temps de début pour le mode compétitif
+      if (mode == GameMode.COMPETITIVE) {
         _competitiveStartTime = DateTime.now();
+      } else {
+        _competitiveStartTime = null;
       }
 
-      // Réinitialiser l'état si déjà initialisé
-      if (_isInitialized) {
-        reset();
-      }
+      // Charger l'état du son pour cette partie
+      // On utilise le service global déclaré dans main.dart
+      final backgroundMusicService = Provider.of<BackgroundMusicService>(navigatorKey.currentContext!, listen: false);
+      await backgroundMusicService.loadGameMusicState(name);
 
-      // Initialiser les managers
-      _initializeManagers();
+      // Sauvegarder l'état initial
+      await saveGame(name);
 
-      // Préparer les données de sauvegarde
-      final gameData = prepareGameData();
-
-      // Créer un nouvel objet SaveGame
-      final saveGame = SaveGame(
-        name: name,
-        lastSaveTime: DateTime.now(),
-        gameData: gameData,
-        version: GameConstants.VERSION,
-        gameMode: mode,
-      );
-
-      // Sauvegarder localement
-      await SaveManager.saveGame(saveGame);
+      // Démarrer l'autosave
+      _autoSaveService.start();
 
       notifyListeners();
-    } catch (e) {
-      print('Error starting new game: $e');
-      rethrow;
+
+      print('Nouvelle partie créée: $name, mode: $mode');
+
+      // Déclencher un événement pour signaler la création d'une nouvelle partie
+      EventManager.instance.addEvent(
+        EventType.INFO, // Utilisation de INFO au lieu de SYSTEM
+        'Nouvelle partie créée',
+        description: 'Partie: $name | Mode: ${mode.toString().split('.').last}',
+        importance: EventImportance.LOW,
+      );
+
+      return;
+    } catch (e, stackTrace) {
+      print('Erreur lors de la création d\'une nouvelle partie: $e');
+      print(stackTrace);
+      throw SaveError('CREATE_ERROR', 'Impossible de créer une nouvelle partie: $e');
     }
+  }
+
+  /// Réinitialise uniquement les données de jeu sans toucher aux services critiques
+  /// Résout le problème de LateInitializationError avec _autoSaveService
+  void _resetGameDataOnly() {
+    print('Début de la réinitialisation des données de jeu');
+    
+    // IMPORTANT: Ne pas réinitialiser les valeurs des managers
+    // qui seront automatiquement écrasées lors du chargement
+    // Cette approche permet de conserver les structures internes sans les réinitialiser
+    // à des valeurs par défaut qui seraient ensuite écrasées
+    
+    // On réinitialise uniquement les états qui ne seraient pas automatiquement
+    // écrasés par le chargement ou qui doivent être réinitialisés pour
+    // assurer la propreté du chargement
+    _gameMode = GameMode.INFINITE;
+    _isInCrisisMode = false;
+    _showingCrisisView = false;
+    _crisisTransitionComplete = false;
+    
+    // Réinitialiser les attributs principaux du jeu
+    _totalTimePlayedInSeconds = 0;
+    _totalPaperclipsProduced = 0;
+    _lastSaveTime = null;
+    _isInCrisisMode = false;
+    _showingCrisisView = false;
+    _crisisStartTime = null;
+    _crisisTransitionComplete = false;
+    _competitiveStartTime = null;
+    _isInitialized = true;
+    _isPaused = false;
+    
+    // NE PAS toucher à:
+    // - _autoSaveService
+    // - Autres services avec late initializers
+    
+    print('Fin de la réinitialisation des données de jeu');
   }
 
   Future<void> loadGame(String name) async {
     try {
-      print('Starting to load game: $name');
-
-      SaveGame? saveGame;
-
-      // Charger depuis le stockage local
-      saveGame = await SaveManager.loadGame(name);
-      if (saveGame == null) throw SaveError('NOT_FOUND', 'Sauvegarde non trouvée');
-
+      // Arrêter les timers existants
       _stopAllTimers();
-      print('Timers stopped');
-
-      _initializeManagers();
-      print('Managers initialized');
-
-      final gameData = saveGame.gameData;
-      print('Game data loaded: ${gameData.keys}');
-
-      // Charger les statistiques en premier
-      if (gameData['statistics'] != null) {
-        print('Loading statistics: ${gameData['statistics']}');
-        _statistics.fromJson(gameData['statistics']);
+      
+      if (kDebugMode) {
+        print('Chargement de la partie: $name');
+        // Afficher l'état actuel avant le chargement pour débogage
+        final currentState = prepareGameData();
+        print('État actuel avant chargement:');
+        currentState.forEach((key, value) {
+          print('$key: ${value is Map ? "[Object]" : value}');
+        });
       }
 
-      // Charger les autres données
-      levelSystem.loadFromJson(gameData['levelSystem'] ?? {});
-      _playerManager.fromJson(gameData['playerManager'] ?? {});
-      _marketManager.fromJson(gameData['marketManager'] ?? {});
+      final loadedData = await SaveManager.loadGame(name);
 
-      // Charger le mode de jeu
-      _gameMode = gameData['gameMode'] != null
-          ? GameMode.values[gameData['gameMode'] as int]
+      // SOLUTION CORRIGÉE: Nous devons réinitialiser l'état
+      // mais sans toucher aux services qui provoquent des LateInitializationError
+      
+      // 1. Désactiver temporairement l'autosave pour éviter les sauvegardes pendant le chargement
+      print('Arrêt temporaire de l\'auto-sauvegarde avant chargement');
+      _autoSaveService.stop();
+      
+      // 2. Effectuer une réinitialisation partielle de l'état du jeu
+      // sans toucher aux services déjà initialisés
+      _resetGameDataOnly();
+      
+      // Note: Nous n'essayons plus de réassigner _autoSaveService car c'est un champ late
+      
+      // Définir le nom de la partie
+      _gameName = name;
+
+      // Définir le mode de jeu
+      // Récupérer les données du SaveGame
+      final Map<String, dynamic> gameData = loadedData != null ? SaveManager.extractGameData(loadedData) : {};
+      
+      if (kDebugMode) {
+        print('Structure de données chargée:');
+        gameData.forEach((key, value) {
+          print('$key: ${value is Map ? "[Object]" : value}');
+        });
+      }
+      
+      _gameMode = gameData.containsKey('gameMode') 
+          ? GameMode.values[gameData['gameMode'] as int] 
           : GameMode.INFINITE;
 
-      // Charger le temps de départ en mode compétitif
-      if (gameData['competitiveStartTime'] != null) {
-        _competitiveStartTime = DateTime.parse(gameData['competitiveStartTime'] as String);
+      // Gestion des données de compétition
+      if (gameData.containsKey('competitiveStartTime')) {
+        final startTimeStr = gameData['competitiveStartTime'];
+        if (startTimeStr != null) {
+          _competitiveStartTime = DateTime.parse(startTimeStr as String);
+        }
       }
 
-      _applyUpgradeEffects();
+      // Charger les données du joueur (vérifier les deux clés possibles)
+      if (gameData.containsKey('playerManager')) {
+        print('Chargement des données depuis la clé "playerManager"');
+        _playerManager.fromJson(gameData['playerManager'] as Map<String, dynamic>);
+      } else if (gameData.containsKey('player')) {
+        print('Chargement des données depuis la clé "player"');
+        _playerManager.fromJson(gameData['player'] as Map<String, dynamic>);
+      } else {
+        print('ERREUR: Aucune donnée joueur trouvée dans la sauvegarde!');
+      }
+      
+      // Charger les données de ressources (vérifier les différentes clés possibles)
+      if (gameData.containsKey('resourceManager')) {
+        print('Chargement des ressources depuis la clé "resourceManager"');
+        _resourceManager.fromJson(gameData['resourceManager'] as Map<String, dynamic>);
+      } else if (gameData.containsKey('resources')) {
+        print('Chargement des ressources depuis la clé "resources"');
+        _resourceManager.fromJson(gameData['resources'] as Map<String, dynamic>);
+      } else {
+        print('Aucune donnée de ressources trouvée');
+      }
+      
+      // Charger les données du marché (vérifier les différentes clés possibles)
+      if (gameData.containsKey('marketManager')) {
+        print('Chargement du marché depuis la clé "marketManager"');
+        _marketManager.fromJson(gameData['marketManager'] as Map<String, dynamic>);
+      } else if (gameData.containsKey('market')) {
+        print('Chargement du marché depuis la clé "market"');
+        _marketManager.fromJson(gameData['market'] as Map<String, dynamic>);
+      } else {
+        print('Aucune donnée de marché trouvée');
+      }
 
-      // Charger les données globales avec conversion sécurisée
-      _totalTimePlayedInSeconds = (gameData['totalTimePlayedInSeconds'] as num?)?.toInt() ?? 0;
-      _totalPaperclipsProduced = (gameData['totalPaperclipsProduced'] as num?)?.toInt() ?? 0;
+      // Charger les données de niveau (vérifier les différentes clés possibles)
+      if (gameData.containsKey('levelSystem')) {
+        print('Chargement du niveau depuis la clé "levelSystem"');
+        _levelSystem.fromJson(gameData['levelSystem'] as Map<String, dynamic>);
+      } else if (gameData.containsKey('level')) {
+        print('Chargement du niveau depuis la clé "level"');
+        _levelSystem.fromJson(gameData['level'] as Map<String, dynamic>);
+      } else {
+        print('Aucune donnée de niveau trouvée');
+      }
 
-      _handleCrisisModeData(gameData);
+      // Charger les données de missions (vérifier les différentes clés possibles)
+      if (gameData.containsKey('missionSystem')) {
+        print('Chargement des missions depuis la clé "missionSystem"');
+        _missionSystem.fromJson(gameData['missionSystem'] as Map<String, dynamic>);
+      } else if (gameData.containsKey('missions')) {
+        print('Chargement des missions depuis la clé "missions"');
+        _missionSystem.fromJson(gameData['missions'] as Map<String, dynamic>);
+      } else {
+        print('Aucune donnée de missions trouvée');
+      }
 
-      _gameName = name;
-      _lastSaveTime = saveGame.lastSaveTime;
+      // Charger les statistiques (vérifier les différentes clés possibles)
+      if (gameData.containsKey('statistics')) {
+        print('Chargement des statistiques depuis la clé "statistics"');
+        _statistics.fromJson(gameData['statistics'] as Map<String, dynamic>);
+      } else {
+        print('Aucune donnée de statistiques trouvée');
+      }
+      
+      // Charger les informations de progression avancées si disponibles
+      if (gameData.containsKey('progression')) {
+        final progressionData = gameData['progression'] as Map<String, dynamic>;
+        print('Chargement des données de progression avancées');
+        
+        // Restaurer les informations de combo si disponibles
+        if (progressionData.containsKey('combos')) {
+          final comboData = progressionData['combos'] as Map<String, dynamic>;
+          if (_levelSystem.comboSystem != null) {
+            _levelSystem.comboSystem!.currentCombo = (comboData['currentCombo'] as num).toInt();
+            if (comboData.containsKey('comboMultiplier')) {
+              _levelSystem.comboSystem!.comboMultiplier = (comboData['comboMultiplier'] as num).toDouble();
+            }
+            print('Combo restauré: ${_levelSystem.comboSystem!.currentCombo} (x${_levelSystem.comboSystem!.comboMultiplier})');
+          }
+        }
+        
+        // Restaurer les informations de bonus quotidien si disponibles
+        if (progressionData.containsKey('dailyBonus') && _levelSystem.dailyBonus != null) {
+          final bonusData = progressionData['dailyBonus'] as Map<String, dynamic>;
+          _levelSystem.dailyBonus!.hasClaimedToday = bonusData['claimed'] as bool? ?? false;
+          if (bonusData.containsKey('streakDays')) {
+            _levelSystem.dailyBonus!.streakDays = (bonusData['streakDays'] as num).toInt();
+          }
+          if (bonusData.containsKey('lastClaimDate')) {
+            _levelSystem.dailyBonus!.lastClaimDate = 
+                DateTime.tryParse(bonusData['lastClaimDate'] as String);
+          }
+          print('Bonus quotidien restauré: streak=${_levelSystem.dailyBonus!.streakDays}, claimed=${_levelSystem.dailyBonus!.hasClaimedToday}');
+        }
+      }
+      
+      // Charger les compteurs globaux (temps de jeu, total de trombones produits, etc.)
+      if (gameData.containsKey('totalPaperclipsProduced')) {
+        _totalPaperclipsProduced = (gameData['totalPaperclipsProduced'] as num).toInt();
+        print('Total des trombones produits restauré: $_totalPaperclipsProduced');
+      }
+      
+      if (gameData.containsKey('totalTimePlayedInSeconds')) {
+        _totalTimePlayedInSeconds = (gameData['totalTimePlayedInSeconds'] as num).toInt();
+        print('Temps de jeu total restauré: $_totalTimePlayedInSeconds secondes');
+      }
 
-      print('Game loaded successfully');
+      // Vérifier et charger les données de mode crise
+      if (gameData.containsKey('crisisMode')) {
+        _handleCrisisModeData(gameData['crisisMode'] as Map<String, dynamic>);
+      }
+      
+      // Restaurer les informations des timers
+      if (gameData.containsKey('timers')) {
+        print('Restauration de l\'\u00e9tat des timers');
+        final timersData = gameData['timers'] as Map<String, dynamic>;
+        
+        // Récupérer la date de la dernière sauvegarde
+        DateTime? lastSaveTime;
+        if (timersData.containsKey('lastSaved')) {
+          lastSaveTime = DateTime.tryParse(timersData['lastSaved'] as String);
+        }
+        
+        // Restaurer le timer de rafraîchissement des missions
+        if (timersData.containsKey('missionRefresh') && lastSaveTime != null) {
+          final missionData = timersData['missionRefresh'] as Map<String, dynamic>;
+          if (missionData['isActive'] as bool && _missionSystem != null) {
+            // Si le timer était actif, réinitialiser le timer des missions en tenant compte du temps écoulé
+            if (missionData.containsKey('lastRefreshTime')) {
+              _missionSystem!.lastMissionRefreshTime = DateTime.parse(missionData['lastRefreshTime'] as String);
+              print('Dernière mise à jour des missions: ${_missionSystem!.lastMissionRefreshTime}');
+            }
+          }
+        }
+        
+        // Restaurer le timer de maintenance
+        if (timersData.containsKey('maintenance') && lastSaveTime != null) {
+          final maintenanceData = timersData['maintenance'] as Map<String, dynamic>;
+          if (maintenanceData['isActive'] as bool) {
+            // Si le timer était actif, mettre à jour la dernière date de maintenance
+            if (maintenanceData.containsKey('lastMaintenanceTime')) {
+              _playerManager.lastMaintenanceTime = DateTime.parse(maintenanceData['lastMaintenanceTime'] as String);
+              print('Dernière maintenance: ${_playerManager.lastMaintenanceTime}');
+            }
+          }
+        }
+        
+        // Restaurer l'état de mise à jour du prix du métal
+        if (timersData.containsKey('metalPriceUpdate') && lastSaveTime != null) {
+          final metalData = timersData['metalPriceUpdate'] as Map<String, dynamic>;
+          if (metalData.containsKey('lastUpdate')) {
+            _marketManager.lastMetalPriceUpdateTime = DateTime.parse(metalData['lastUpdate'] as String);
+            print('Dernière mise à jour du prix du métal: ${_marketManager.lastMetalPriceUpdateTime}');
+          }
+        }
+      }
+
+      // Charger les notifications pour cette sauvegarde
+      // TODO: Implémenter le chargement des notifications
+      // await _loadNotificationsForGame(name);
+      
+      // Charger l'état du son spécifique à cette partie
+      // On utilise le service global déclaré dans main.dart
+      if (navigatorKey.currentContext != null) {
+        final backgroundMusicService = Provider.of<BackgroundMusicService>(navigatorKey.currentContext!, listen: false);
+        await backgroundMusicService.loadGameMusicState(name);
+      }
+
+      // Démarrer les timers
       _startTimers();
+
+      // Redémarrer l'autosave avec la méthode restart() plutôt que start()
+      print('Redémarrage de l\'auto-sauvegarde après chargement');
+      _autoSaveService.restart();
+
+      // Les événements système et notifications sont gérés automatiquement
+      
+      // Mettre à jour l'état
       notifyListeners();
-    } catch (e, stack) {
-      print('Error loading game: $e');
-      print('Stack trace: $stack');
-      rethrow;
+
+      // Enregistrer un événement de chargement
+      EventManager.instance.addEvent(
+        EventType.INFO, // Utilisation de INFO au lieu de SYSTEM
+        'Partie chargée',
+        description: 'Nom: $name',
+        importance: EventImportance.LOW,
+      );
+
+      if (kDebugMode) {
+        print('Partie chargée: $name');
+        // Afficher l'état après le chargement pour débogage
+        final newState = prepareGameData();
+        print('État après chargement:');
+        newState.forEach((key, value) {
+          print('$key: ${value is Map ? "[Object]" : value}');
+        });
+      }
+
+      return;
+    } catch (e, stackTrace) {
+      print('Erreur lors du chargement de la partie: $e');
+      print(stackTrace);
+      throw SaveError('LOAD_ERROR', 'Impossible de charger la partie: $e');
     }
   }
 
@@ -928,6 +1255,29 @@ class GameState extends ChangeNotifier {
       );
     }
   }
+  
+  /// Calcule le temps restant jusqu'à minuit suivant
+  Duration _calculateTimeUntilMidnight(DateTime now) {
+    final tomorrow = DateTime(now.year, now.month, now.day + 1);
+    return tomorrow.difference(now);
+  }
+  
+  /// Calcule le temps restant jusqu'au prochain rafraîchissement des missions
+  Duration _calculateTimeUntilNextMissionRefresh(MissionSystem missionSystem) {
+    if (missionSystem.lastMissionRefreshTime == null) {
+      return const Duration(hours: 24);
+    }
+    
+    final lastRefresh = missionSystem.lastMissionRefreshTime!;
+    final nextRefresh = lastRefresh.add(const Duration(hours: 24));
+    final now = DateTime.now();
+    
+    if (nextRefresh.isAfter(now)) {
+      return nextRefresh.difference(now);
+    } else {
+      return Duration.zero;
+    }
+  }
 
   void showLeaderboard() {
     // No leaderboards in offline version
@@ -949,13 +1299,13 @@ class GameState extends ChangeNotifier {
 
   void _loadGameData(Map<String, dynamic> gameData) {
     if (gameData['playerManager'] != null) {
-      playerManager.loadFromJson(gameData['playerManager']);
+      playerManager.fromJson(gameData['playerManager']);
     }
     if (gameData['marketManager'] != null) {
       marketManager.fromJson(gameData['marketManager']);
     }
     if (gameData['levelSystem'] != null) {
-      levelSystem.loadFromJson(gameData['levelSystem']);
+      levelSystem.fromJson(gameData['levelSystem']);
     }
     if (gameData['missionSystem'] != null) {
       missionSystem.fromJson(gameData['missionSystem']);

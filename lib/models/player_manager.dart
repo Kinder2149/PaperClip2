@@ -7,6 +7,7 @@ import 'event_system.dart';
 import 'progression_system.dart';
 import 'resource_manager.dart';
 import 'market.dart';
+import 'json_loadable.dart';
 
 /// Représente une amélioration du jeu
 class Upgrade {
@@ -145,12 +146,13 @@ class UpgradeManager {
 }
 
 /// Gestionnaire des ressources du joueur
-class PlayerManager extends ChangeNotifier {
+class PlayerManager extends ChangeNotifier implements JsonLoadable {
   double _paperclips = 0.0;
   double _metal = 100.0;
   double _money = 0.0;
   int _autoclippers = 0;
   double _sellPrice = 0.25;
+  double _totalPaperclipsProduced = 0.0; // Total des trombones produits depuis le début
   double autoclipperPaperclips = 0; // Pour suivre les trombones produits par les autoclippers
   final ResourceManager resourceManager;
   final MarketManager marketManager;
@@ -169,6 +171,7 @@ class PlayerManager extends ChangeNotifier {
   double get money => _money;
   int get autoclippers => _autoclippers;
   double get sellPrice => _sellPrice;
+  double get totalPaperclips => _totalPaperclipsProduced;
   // Getters
   Map<String, Upgrade> get upgrades => _upgrades;
 
@@ -176,6 +179,12 @@ class PlayerManager extends ChangeNotifier {
   Timer? _maintenanceTimer;
   Timer? _autoSaveTimer;
   double _maintenanceCosts = 0.0;
+  DateTime? _lastMaintenanceTime;
+  
+  // Accesseurs pour la maintenance
+  DateTime? get lastMaintenanceTime => _lastMaintenanceTime;
+  set lastMaintenanceTime(DateTime? time) => _lastMaintenanceTime = time;
+  Timer? get maintenanceTimer => _maintenanceTimer;
   PlayerManager({
     required this.levelSystem,
     required this.resourceManager,
@@ -271,31 +280,40 @@ class PlayerManager extends ChangeNotifier {
 
 
   // Dans lib/models/player_manager.dart
+  @override
   void fromJson(Map<String, dynamic> json) {
-    _paperclips = (json['paperclips'] as num?)?.toDouble() ?? 0.0;
-    _money = (json['money'] as num?)?.toDouble() ?? 0.0;
-    _metal = (json['metal'] as num?)?.toDouble() ?? 0.0;
-    _autoclippers = (json['autoclippers'] as num?)?.toInt() ?? 0;
-    _sellPrice = (json['sellPrice'] as num?)?.toDouble() ?? GameConstants.INITIAL_PRICE;
+    try {
+      print('Loading player manager data: $json');
+      _paperclips = (json['paperclips'] as num?)?.toDouble() ?? 0.0;
+      _money = (json['money'] as num?)?.toDouble() ?? 0.0;
+      _metal = (json['metal'] as num?)?.toDouble() ?? 0.0;
+      _autoclippers = (json['autoclippers'] as num?)?.toInt() ?? 0;
+      _sellPrice = (json['sellPrice'] as num?)?.toDouble() ?? GameConstants.INITIAL_PRICE;
+      _totalPaperclipsProduced = (json['totalPaperclipsProduced'] as num?)?.toDouble() ?? _paperclips;
 
-    // Réinitialiser d'abord les upgrades
-    _initializeUpgrades();
+      // Réinitialiser d'abord les upgrades
+      _initializeUpgrades();
 
-    // Charger les upgrades
-    final upgradesData = json['upgrades'] as Map<String, dynamic>? ?? {};
-    upgradesData.forEach((key, value) {
-      if (_upgrades.containsKey(key)) {
-        _upgrades[key]!.level = (value['level'] as num?)?.toInt() ?? 0;
+      // Charger les upgrades
+      final upgradesData = json['upgrades'] as Map<String, dynamic>? ?? {};
+      upgradesData.forEach((key, value) {
+        if (_upgrades.containsKey(key)) {
+          _upgrades[key]!.level = (value['level'] as num?)?.toInt() ?? 0;
 
-        // Mise à jour immédiate des effets des améliorations
-        if (key == 'storage') {
-          double newCapacity = GameConstants.INITIAL_STORAGE_CAPACITY *
-              (1 + (_upgrades[key]!.level * GameConstants.STORAGE_UPGRADE_MULTIPLIER));
-          maxMetalStorage = newCapacity;
-          resourceManager.upgradeStorageCapacity(_upgrades[key]!.level);
+          // Mise à jour immédiate des effets des améliorations
+          if (key == 'storage') {
+            double newCapacity = GameConstants.INITIAL_STORAGE_CAPACITY *
+                (1 + (_upgrades[key]!.level * GameConstants.STORAGE_UPGRADE_MULTIPLIER));
+            maxMetalStorage = newCapacity;
+            resourceManager.upgradeStorageCapacity(_upgrades[key]!.level);
+          }
         }
-      }
-    });
+      });
+    } catch (e, stack) {
+      print('Error loading player manager: $e');
+      print('Stack trace: $stack');
+      resetResources(); // Utilisation de la méthode existante de réinitialisation
+    }
 
     notifyListeners();
   }
@@ -318,10 +336,10 @@ class PlayerManager extends ChangeNotifier {
     'upgrades': upgrades.map((key, value) => MapEntry(key, value.toJson())),
   };
 
-  void loadFromJson(Map<String, dynamic> json) => fromJson(json);
-
-
-
+  // Méthode de compatibilité qui appelle fromJson
+  void loadFromJson(Map<String, dynamic> json) {
+    fromJson(json);
+  }
 
   void resetResources() {
     _metal = GameConstants.INITIAL_METAL;
@@ -491,6 +509,11 @@ class PlayerManager extends ChangeNotifier {
 
   void updatePaperclips(double newAmount) {
     if (_paperclips != newAmount) {
+      // Si c'est une augmentation, on ajoute aussi au total
+      if (newAmount > _paperclips) {
+        _totalPaperclipsProduced += (newAmount - _paperclips);
+      }
+      
       _paperclips = newAmount;
       notifyListeners();
     }

@@ -5,7 +5,7 @@ import '../models/game_state.dart';
 import '../models/game_config.dart';
 import '../widgets/resources/resource_widgets.dart';
 import '../widgets/indicators/level_widgets.dart';
-import '../services/save_manager.dart';
+import '../services/save_manager_improved.dart';
 import '../widgets/buttons/action_button.dart';
 import '../widgets/cards/info_card.dart';
 import '../widgets/dialogs/info_dialog.dart';
@@ -104,8 +104,8 @@ class _ProductionScreenState extends State<ProductionScreen> {
   Widget _buildAutoclippersSection(BuildContext context, GameState gameState) {
     double bulkBonus = (gameState.player.upgrades['bulk']?.level ?? 0) * 20;
     double speedBonus = (gameState.player.upgrades['speed']?.level ?? 0) * 15;
-    double efficiencyBonus = 1.0 -
-        ((gameState.player.upgrades['efficiency']?.level ?? 0) * 0.15);
+    double metalSavingPercent = ((gameState.player.upgrades['efficiency']?.level ?? 0) * 15);
+    double efficiencyBonus = 1.0 - metalSavingPercent;
     double roi = gameState.player.calculateAutoclipperROI();
 
     return Card(
@@ -131,7 +131,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
                         ),
                       ),
                       Text(
-                        'Rentabilité: ${(gameState.player
+                        'Retour sur investissement: ${(gameState.player
                             .calculateAutoclipperCost() /
                             (GameConstants.BASE_AUTOCLIPPER_PRODUCTION *
                                 gameState.player.sellPrice)).toStringAsFixed(
@@ -152,6 +152,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
                         gameState,
                         bulkBonus,
                         speedBonus,
+                        metalSavingPercent,
                       ),
                 ),
               ],
@@ -162,17 +163,17 @@ class _ProductionScreenState extends State<ProductionScreen> {
               children: [
                 _buildBonusIndicator(
                   'Production',
-                  '${bulkBonus.toStringAsFixed(0)}%',
+                  '+${bulkBonus.toStringAsFixed(0)}%',
                   Icons.trending_up,
                 ),
                 _buildBonusIndicator(
                   'Vitesse',
-                  '${speedBonus.toStringAsFixed(0)}%',
+                  '+${speedBonus.toStringAsFixed(0)}%',
                   Icons.speed,
                 ),
                 _buildBonusIndicator(
-                  'Efficacité',
-                  '${(efficiencyBonus * 100).toStringAsFixed(0)}%',
+                  'Économie Métal',
+                  '-${metalSavingPercent.toStringAsFixed(0)}%',
                   Icons.eco,
                 ),
               ],
@@ -196,7 +197,17 @@ class _ProductionScreenState extends State<ProductionScreen> {
   void _showAutoclipperInfoDialog(BuildContext context,
       GameState gameState,
       double bulkBonus,
-      double speedBonus) {
+      double speedBonus,
+      double metalSavingPercent) {
+    // Calculs pour des informations précises
+    double baseProduction = gameState.player.autoclippers * 60; // par minute
+    double speedMultiplier = 1.0 + (speedBonus / 100);
+    double bulkMultiplier = 1.0 + (bulkBonus / 100);
+    double effectiveProduction = baseProduction * speedMultiplier * bulkMultiplier;
+    double baseMetalConsumption = baseProduction * GameConstants.METAL_PER_PAPERCLIP;
+    double effectiveMetalConsumption = effectiveProduction * GameConstants.METAL_PER_PAPERCLIP * (1.0 - metalSavingPercent / 100);
+    double metalSaved = effectiveProduction * GameConstants.METAL_PER_PAPERCLIP * (metalSavingPercent / 100);
+
     showDialog(
       context: context,
       builder: (context) =>
@@ -207,22 +218,60 @@ class _ProductionScreenState extends State<ProductionScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('Production de base: ${gameState.player
-                      .autoclippers} trombone/s'),
-                  Text(
-                      'Bonus de production: +${bulkBonus.toStringAsFixed(0)}%'),
-                  Text('Bonus de vitesse: +${speedBonus.toStringAsFixed(0)}%'),
-                  const Divider(),
-                  Text(
-                      'Production totale: ${gameState.player
-                          .autoclippers} trombones/s\n'
-                          'Consommation métal: ${(GameConstants
-                          .METAL_PER_PAPERCLIP * gameState.player.autoclippers)
-                          .toStringAsFixed(2)}/s'
+                  // Production et améliorations
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        const TextSpan(text: 'Production de base: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                        TextSpan(text: '${baseProduction.toStringAsFixed(1)} trombones/min\n'),
+                        const TextSpan(text: 'Avec améliorations: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                        TextSpan(text: '${effectiveProduction.toStringAsFixed(1)} trombones/min'),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  
+                  // Détail des bonus
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        const TextSpan(text: 'Bonus de production: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                        TextSpan(text: '+${bulkBonus.toStringAsFixed(0)}%\n', style: TextStyle(color: Colors.green)),
+                        const TextSpan(text: 'Bonus de vitesse: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                        TextSpan(text: '+${speedBonus.toStringAsFixed(0)}%', style: TextStyle(color: Colors.blue)),
+                      ],
+                    ),
                   ),
                   const Divider(),
-                  Text('Coûts de maintenance: ${gameState.maintenanceCosts
-                      .toStringAsFixed(1)} € par min'),
+                  
+                  // Consommation de métal
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        const TextSpan(text: 'Consommation de métal: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                        TextSpan(text: '${effectiveMetalConsumption.toStringAsFixed(2)}/min\n'),
+                        const TextSpan(text: 'Économie de métal: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                        TextSpan(
+                          text: '-${metalSavingPercent.toStringAsFixed(0)}% (${metalSaved.toStringAsFixed(2)} unités/min)',
+                          style: TextStyle(color: Colors.green[700]),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(),
+                  
+                  // Coûts de maintenance
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        const TextSpan(text: 'Coûts de maintenance: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                        TextSpan(
+                          text: '${gameState.maintenanceCosts.toStringAsFixed(2)} € par min',
+                          style: TextStyle(color: Colors.red[700]),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -233,6 +282,130 @@ class _ProductionScreenState extends State<ProductionScreen> {
               ),
             ],
           ),
+    );
+  }
+
+  void _showItemInfoDialog(BuildContext context, String title, Map<String, dynamic> item) {
+    String priceStr = item['price'].toStringAsFixed(1);
+    String description = item['description'] ?? "Description non disponible";
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(description),
+              const SizedBox(height: 8),
+              Text(
+                "Prix: $priceStr €",
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showProductionStatsInfoDialog(BuildContext context, GameState gameState, 
+      double baseProduction, double actualProduction, double metalUsage, 
+      double metalSaved, double metalSavingPercent) {
+    
+    // Calculer le pourcentage d'augmentation de la production
+    double productionIncrease = baseProduction > 0 ? 
+        ((actualProduction - baseProduction) / baseProduction * 100) : 0;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Détails des Statistiques de Production'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Production et augmentation
+              Text.rich(
+                TextSpan(
+                  children: [
+                    const TextSpan(
+                      text: 'Production\n',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    const TextSpan(text: 'Base: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                    TextSpan(text: '${baseProduction.toStringAsFixed(1)} trombones/min\n'),
+                    const TextSpan(text: 'Effective: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                    TextSpan(
+                      text: '${actualProduction.toStringAsFixed(1)} trombones/min ',
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    TextSpan(
+                      text: '(+${productionIncrease.toStringAsFixed(0)}%)',
+                      style: TextStyle(color: Colors.green[700], fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(),
+              
+              // Consommation de métal
+              Text.rich(
+                TextSpan(
+                  children: [
+                    const TextSpan(
+                      text: 'Métal\n',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    const TextSpan(text: 'Consommation: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                    TextSpan(text: '${metalUsage.toStringAsFixed(1)} unités/min\n'),
+                    const TextSpan(text: 'Économie: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                    TextSpan(
+                      text: metalSavingPercent > 0 ? 
+                        '${metalSaved.toStringAsFixed(1)} unités/min ' : 
+                        '0 unités/min',
+                    ),
+                    if (metalSavingPercent > 0)
+                      TextSpan(
+                        text: '(-${metalSavingPercent.toStringAsFixed(0)}%)',
+                        style: TextStyle(color: Colors.green[700], fontWeight: FontWeight.bold),
+                      ),
+                  ],
+                ),
+              ),
+              const Divider(),
+              
+              // Explications supplémentaires
+              const Text(
+                'Comment ça marche:',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '• Production de base = Nombre d\'autoclippers × Production unitaire\n'
+                '• Production effective = Production de base × Bonus vitesse × Bonus production\n'
+                '• Économie métal = Réduction de la consommation de métal grâce aux améliorations d\'efficacité\n'
+                '• Métal utilisé = Production effective × Consommation par trombone × Facteur d\'économie',
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -337,64 +510,121 @@ class _ProductionScreenState extends State<ProductionScreen> {
   }
 
   Widget _buildProductionStatsCard(GameState gameState) {
-    double efficiencyBonus = 1.0 -
-        ((gameState.player.upgrades['efficiency']?.level ?? 0) * 0.15);
-    double baseProduction = gameState.player.autoclippers * 60;
-    double actualProduction = baseProduction * efficiencyBonus;
+    // Calcul des bonus et effets des améliorations
+    double efficiencyLevel = (gameState.player.upgrades['efficiency']?.level ?? 0).toDouble();
+    double speedLevel = (gameState.player.upgrades['speed']?.level ?? 0).toDouble();
+    double bulkLevel = (gameState.player.upgrades['bulk']?.level ?? 0).toDouble();
 
-    // Utiliser StatIndicator pour les statistiques principales avec un affichage vertical
+    // Facteurs d'amélioration
+    double metalSavingPercent = efficiencyLevel * 15.0; // Pourcentage d'économie de métal
+    double efficiencyBonus = 1.0 - (metalSavingPercent / 100); // Multiplicateur de consommation de métal
+    double speedBonus = 1.0 + (speedLevel * 0.20); // Augmentation de vitesse
+    double bulkBonus = 1.0 + (bulkLevel * 0.35); // Augmentation de production
+
+    // Calculs de production précis
+    double baseAutoclipperRate = GameConstants.BASE_AUTOCLIPPER_PRODUCTION;
+    double clipperCount = gameState.player.autoclippers.toDouble();
+    double baseProduction = clipperCount * baseAutoclipperRate * 60; // par minute
+    double boostedProduction = baseProduction * speedBonus * bulkBonus; // avec les bonus
+    double actualProduction = boostedProduction; // production effective
+    double metalUsage = actualProduction * GameConstants.METAL_PER_PAPERCLIP * efficiencyBonus; // consommation de métal
+    double metalSaved = actualProduction * GameConstants.METAL_PER_PAPERCLIP * (metalSavingPercent / 100); // métal économisé
+
+    // Statistiques principales avec un affichage vertical
     Widget statsWrap = Wrap(
       spacing: 20, // Espace horizontal entre les éléments
       runSpacing: 10, // Espace vertical entre les lignes
       children: [
-        // Première colonne - Production/min
+        // Production de base
         SizedBox(
           width: 160,
           child: StatIndicator(
-            label: 'Production/min',
-            value: baseProduction.toStringAsFixed(1),
+            label: 'Production de base',
+            value: baseProduction.toStringAsFixed(1) + '/min',
             icon: Icons.speed,
             layout: StatIndicatorLayout.vertical,
             iconColor: Colors.blue,
+            // tooltip: 'Production de base sans bonus des améliorations',
           ),
         ),
-        // Deuxième colonne - Production effective
+        // Production effective
         SizedBox(
           width: 160,
           child: StatIndicator(
             label: 'Production effective',
-            value: actualProduction.toStringAsFixed(1),
+            value: actualProduction.toStringAsFixed(1) + '/min',
             icon: Icons.precision_manufacturing,
             layout: StatIndicatorLayout.vertical,
             iconColor: Colors.green,
+            valueStyle: TextStyle(
+              color: actualProduction > baseProduction ? Colors.green : Colors.black,
+              fontWeight: FontWeight.bold,
+            ),
+            // tooltip: 'Production avec tous les bonus appliqués',
           ),
         ),
-        // Troisième colonne - Rendement
+        // Économie de métal
         SizedBox(
           width: 160,
           child: StatIndicator(
-            label: 'Rendement',
-            value: '${(efficiencyBonus * 100).toStringAsFixed(0)}%',
+            label: 'Économie de métal',
+            value: metalSavingPercent > 0 ? 
+              '-${metalSavingPercent.toStringAsFixed(0)}%' : 
+              '0%',
             icon: Icons.eco,
             layout: StatIndicatorLayout.vertical,
             iconColor: Colors.green[700],
+            valueStyle: TextStyle(
+              color: metalSavingPercent > 0 ? Colors.green[700]! : Colors.black,
+              fontWeight: FontWeight.bold,
+            ),
+            // tooltip: 'Réduction de la consommation de métal par trombone',
           ),
         ),
-        // Quatrième colonne - Métal utilisé/min
+        // Métal utilisé par minute
         SizedBox(
           width: 160,
           child: StatIndicator(
             label: 'Métal utilisé/min',
-            value: (actualProduction * GameConstants.METAL_PER_PAPERCLIP).toStringAsFixed(1),
+            value: metalUsage.toStringAsFixed(1),
             icon: Icons.settings_input_component,
             layout: StatIndicatorLayout.vertical,
             iconColor: Colors.orange[700],
+            // tooltip: 'Quantité de métal consommée par minute pour la production',
           ),
         ),
       ],
     );
 
-    // Information sur les coûts de maintenance avec StatIndicator horizontal
+    // Récapitulatif des bonus appliqués
+    Widget bonusInfo = Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          StatIndicator(
+            label: 'Vitesse',
+            value: '+${((speedBonus - 1.0) * 100).toStringAsFixed(0)}%',
+            icon: Icons.shutter_speed,
+            layout: StatIndicatorLayout.horizontal,
+            iconColor: Colors.blue[400],
+            valueStyle: TextStyle(color: Colors.blue[700], fontWeight: FontWeight.bold),
+            // tooltip: 'Augmentation de la vitesse de production',
+          ),
+          StatIndicator(
+            label: 'Production',
+            value: '+${((bulkBonus - 1.0) * 100).toStringAsFixed(0)}%',
+            icon: Icons.inventory_2,
+            layout: StatIndicatorLayout.horizontal,
+            iconColor: Colors.green[400],
+            valueStyle: TextStyle(color: Colors.green[700], fontWeight: FontWeight.bold),
+            // tooltip: 'Augmentation de la quantité produite',
+          ),
+        ],
+      ),
+    );
+
+    // Information sur les coûts de maintenance
     Widget maintenanceInfo = Padding(
       padding: const EdgeInsets.only(top: 12),
       child: StatIndicator(
@@ -404,16 +634,31 @@ class _ProductionScreenState extends State<ProductionScreen> {
         layout: StatIndicatorLayout.horizontal,
         iconColor: Colors.red[400],
         valueStyle: TextStyle(color: Colors.red[700], fontWeight: FontWeight.bold),
+        // tooltip n'est pas supporté par StatIndicator
+        // tooltip: 'Coût de maintenance des autoclippers et équipements',
       ),
     );
 
-    // Utilisation du nouveau widget StatsPanel
+    // Utilisation du widget StatsPanel pour l'affichage
     return StatsPanel(
       title: 'Statistiques de Production',
       titleIcon: Icons.bar_chart,
       backgroundColor: Colors.blue.shade50,
+      // Le paramètre trailing n'est pas supporté, nous utilisons action à la place
+      action: IconButton(
+        icon: const Icon(Icons.info_outline),
+        onPressed: () => _showProductionStatsInfoDialog(
+          context, 
+          gameState, 
+          baseProduction, 
+          actualProduction, 
+          metalUsage, 
+          metalSaved, 
+          metalSavingPercent),
+      ),
       children: [
         statsWrap,
+        bonusInfo,
         maintenanceInfo,
       ],
     );
