@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:math' show min;
 import '../models/game_state.dart';
-import '../models/player_manager.dart';
-import '../models/game_config.dart';
+import '../constants/game_config.dart'; // Importé depuis constants au lieu de models
 import '../widgets/resources/resource_widgets.dart';
 import '../widgets/cards/stats_panel.dart';
 import '../widgets/indicators/stat_indicator.dart';
 import '../widgets/dialogs/info_dialog.dart';
 import '../widgets/cards/info_card.dart';
+import '../managers/player_manager.dart';
+import '../models/upgrade.dart' as upgrade_model;
 
 class UpgradesScreen extends StatelessWidget {
   const UpgradesScreen({super.key});
@@ -72,7 +73,7 @@ class UpgradesScreen extends StatelessWidget {
                     context,
                     gameState,
                     entry.key,
-                    entry.value,
+                    entry.value as upgrade_model.Upgrade,
                   ),
                 );
               },
@@ -188,7 +189,7 @@ class UpgradesScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildUpgradeCard(BuildContext context, GameState gameState, String id, Upgrade upgrade) {
+  Widget _buildUpgradeCard(BuildContext context, GameState gameState, String id, upgrade_model.Upgrade upgrade) {
     bool canBuy = gameState.player.money >= upgrade.getCost() && upgrade.level < upgrade.maxLevel;
     bool isMaxed = upgrade.level >= upgrade.maxLevel;
 
@@ -214,10 +215,11 @@ class UpgradesScreen extends StatelessWidget {
       );
     } else if (!isMaxed) {
       // Afficher les conditions requises si pas achetable et pas au niveau max
-      upgradeDetails['Niveau requis'] = '${upgrade.requiredLevel}';
+      final requiredLevel = upgrade.requiredLevel ?? 1;
+      upgradeDetails['Niveau requis'] = '$requiredLevel';
       
       // Si le niveau requis est atteint mais pas assez d'argent
-      if (gameState.level.level >= upgrade.requiredLevel!) {
+      if (gameState.level.level >= requiredLevel) {
         upgradeDetails['Argent manquant'] = '${(upgrade.getCost() - gameState.player.money).toStringAsFixed(1)} €';
       }
     }
@@ -369,7 +371,7 @@ class UpgradesScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildUpgradeImpactPreview(String id, Upgrade upgrade, GameState gameState) {
+  Widget _buildUpgradeImpactPreview(String id, upgrade_model.Upgrade upgrade, GameState gameState) {
     // Initialiser un map pour stocker les impacts de l'amélioration selon le type
     Map<String, List<String>> impacts = {};
 

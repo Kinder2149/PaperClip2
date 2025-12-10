@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
-import '../models/market.dart';
-import '../models/game_config.dart';
+import '../managers/market_manager.dart';
+import '../constants/game_config.dart'; // Importé depuis constants au lieu de models
 import '../widgets/charts/chart_widgets.dart';
 import '../widgets/resources/resource_widgets.dart';
 import 'demand_calculation_screen.dart';
-import '../services/save_manager_improved.dart';
+import '../services/save_system/save_manager_adapter.dart';
 import '../screens/sales_history_screen.dart';
 import '../widgets/buttons/action_button.dart';
 import '../widgets/cards/info_card.dart';
@@ -65,37 +65,7 @@ class MarketScreen extends StatelessWidget {
 
   // Dans lib/screens/market_screen.dart
 
-  Future<void> _saveGame(BuildContext context, GameState gameState) async {
-    try {
-      if (gameState.gameName == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Erreur: Aucun nom de partie défini'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-
-      await gameState.saveGame(gameState.gameName!);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Partie sauvegardée avec succès'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
-        ),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Erreur lors de la sauvegarde: $e'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 4),
-        ),
-      );
-    }
-  }
+  // Méthode _saveGame supprimée car non utilisée et remplacée par le widget SaveButton
 
   Widget _buildPriceControls(GameState gameState) {
     return Column(
@@ -120,7 +90,7 @@ class MarketScreen extends StatelessWidget {
               onPressed: () {
                 double newValue = gameState.player.sellPrice - 0.01;
                 if (newValue >= GameConstants.MIN_PRICE) {
-                  gameState.player.updateSellPrice(newValue);
+                  gameState.player.setSellPrice(newValue);
                 }
               },
             ),
@@ -131,7 +101,7 @@ class MarketScreen extends StatelessWidget {
                 max: GameConstants.MAX_PRICE,
                 divisions: 200,
                 label: '${gameState.player.sellPrice.toStringAsFixed(2)} €',
-                onChanged: (value) => gameState.player.updateSellPrice(value),
+                onChanged: (value) => gameState.player.setSellPrice(value),
               ),
             ),
             IconButton(
@@ -139,7 +109,7 @@ class MarketScreen extends StatelessWidget {
               onPressed: () {
                 double newValue = gameState.player.sellPrice + 0.01;
                 if (newValue <= GameConstants.MAX_PRICE) {
-                  gameState.player.updateSellPrice(newValue);
+                  gameState.player.setSellPrice(newValue);
                 }
               },
             ),
@@ -175,7 +145,7 @@ class MarketScreen extends StatelessWidget {
       bonuses.add('Efficacité: -${((1.0 - efficiencyBonus) * 100).toStringAsFixed(1)}%');
     }
 
-    double baseProduction = gameState.player.autoclippers * 60;
+    double baseProduction = gameState.player.autoClipperCount * 60;
     
     // Calcul de la demande pour afficher le statut
     double demand = gameState.market.calculateDemand(
@@ -209,7 +179,7 @@ class MarketScreen extends StatelessWidget {
         context,
         'Production Détaillée',
         'Détails de la production :\n'
-            '- Base (${gameState.player.autoclippers} autoclippers): ${baseProduction.toStringAsFixed(1)}/min\n'
+            '- Base (${gameState.player.autoClipperCount} autoClipperCount): ${baseProduction.toStringAsFixed(1)}/min\n'
             '${bonuses.isNotEmpty ? '\nBonus actifs:\n${bonuses.join("\n")}\n' : ''}'
             '\nMétal utilisé par trombone: ${(GameConstants.METAL_PER_PAPERCLIP * efficiencyBonus).toStringAsFixed(2)} unités\n'
             '(Efficacité: -${((1.0 - efficiencyBonus) * 100).toStringAsFixed(1)}%)\n\n'
@@ -407,7 +377,7 @@ class MarketScreen extends StatelessWidget {
                   onPressed: () {
                     double newValue = gameState.player.sellPrice - 0.01;
                     if (newValue >= GameConstants.MIN_PRICE) {
-                      gameState.player.updateSellPrice(newValue);
+                      gameState.player.setSellPrice(newValue);
                     }
                   },
                 ),
@@ -418,7 +388,7 @@ class MarketScreen extends StatelessWidget {
                     max: GameConstants.MAX_PRICE,
                     divisions: 200,
                     label: '${gameState.player.sellPrice.toStringAsFixed(2)} €',
-                    onChanged: (value) => gameState.player.updateSellPrice(value),
+                    onChanged: (value) => gameState.player.setSellPrice(value),
                   ),
                 ),
                 IconButton(
@@ -426,7 +396,7 @@ class MarketScreen extends StatelessWidget {
                   onPressed: () {
                     double newValue = gameState.player.sellPrice + 0.01;
                     if (newValue <= GameConstants.MAX_PRICE) {
-                      gameState.player.updateSellPrice(newValue);
+                      gameState.player.setSellPrice(newValue);
                     }
                   },
                 ),
@@ -449,8 +419,8 @@ class MarketScreen extends StatelessWidget {
         );
 
         double autoclipperProduction = 0;
-        if (gameState.player.autoclippers > 0) {
-          autoclipperProduction = gameState.player.autoclippers * 60;
+        if (gameState.player.autoClipperCount > 0) {
+          autoclipperProduction = gameState.player.autoClipperCount * 60;
           double speedBonus = 1.0 + ((gameState.player.upgrades['speed']?.level ?? 0) * 0.20);
           double bulkBonus = 1.0 + ((gameState.player.upgrades['bulk']?.level ?? 0) * 0.35);
           autoclipperProduction *= speedBonus * bulkBonus;
@@ -473,7 +443,7 @@ class MarketScreen extends StatelessWidget {
                       // Production et Stocks
                       _buildMetalStatus(context, gameState),
                       const SizedBox(height: 8),
-                      if (gameState.player.autoclippers > 0)
+                      if (gameState.player.autoClipperCount > 0)
                         _buildProductionCard(context, gameState, autoclipperProduction),
                       const SizedBox(height: 12),
 

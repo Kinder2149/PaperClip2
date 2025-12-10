@@ -2,27 +2,31 @@
 
 import 'dart:async';
 import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:logging/logging.dart';
+
 import '../models/game_state.dart';
-import '../models/event_system.dart';
-import '../models/game_config.dart';
-import 'save_manager_improved.dart';
-import 'storage_constants.dart';
+import '../constants/game_config.dart';  // Import des constantes centralisées
+import 'save_game.dart';  // Import du fichier point d'entrée pour le système de sauvegarde
+import '../managers/event_manager.dart';
+import '../constants/storage_constants.dart';  // Chemin corrigé vers les constantes de stockage
+import 'save_system/save_validator.dart';  // Import du nouveau validateur de sauvegarde
 
 class AutoSaveService {
-  static const Duration AUTO_SAVE_INTERVAL = Duration(minutes: 5);
+    // Définition du logger (static pour être partagé entre les instances)
+  static final Logger _logger = Logger('AutoSaveService');
+  
+  // Utilise les constantes centralisées depuis GameConstants
   final GameState _gameState;
   Timer? _mainTimer;
   DateTime? _lastAutoSave;
   bool _isInitialized = false;
-  static const int MAX_STORAGE_SIZE = 50 * 1024 * 1024;
-  static const Duration MAX_SAVE_AGE = Duration(days: 30);
   final Map<String, int> _saveSizes = {};
-  static const int MAX_TOTAL_SAVES = 10;
-  static const Duration CLEANUP_INTERVAL = Duration(hours: 24);
   int _failedSaveAttempts = 0;
-  static const int MAX_FAILED_ATTEMPTS = 3;
 
   AutoSaveService(this._gameState);
 
@@ -56,7 +60,7 @@ class AutoSaveService {
 
   void _setupMainTimer() {
     _mainTimer?.cancel();
-    _mainTimer = Timer.periodic(const Duration(minutes: 5), (_) {
+    _mainTimer = Timer.periodic(GameConstants.AUTO_SAVE_INTERVAL, (_) {
       // Vérifier si l'UI n'est pas occupée avant de sauvegarder
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _performAutoSave();
@@ -81,8 +85,11 @@ class AutoSaveService {
 
       // Créer le backup de manière asynchrone pour ne pas bloquer l'UI
       await Future.microtask(() async {
-        await SaveManager.saveGame(saveData);
+        // Appel via l'adaptateur qui redirige vers le nouveau système de sauvegarde
+      await SaveManagerAdapter.saveGame(saveData);
       });
+      
+      print('Création de backup pour: $backupName');
 
       // Nettoyer les vieux backups de manière asynchrone
       Future.microtask(() => _cleanupOldBackups());
@@ -93,17 +100,18 @@ class AutoSaveService {
 
   Future<void> _cleanupOldBackups() async {
     try {
-      final saves = await SaveManager.listSaves();
+      final saves = await SaveManagerAdapter.listSaves();
       final backups = saves.where((save) =>
-          save.name.contains(StorageConstants.BACKUP_DELIMITER)).toList();
+          save.name.contains(GameConstants.BACKUP_DELIMITER)).toList();
 
       // Garder seulement les 3 derniers backups
-      if (backups.length > 3) {
-        backups.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-        for (var i = 3; i < backups.length; i++) {
-          await SaveManager.deleteSave(backups[i].name);
+      if (backups.length > GameConstants.MAX_BACKUPS) {
+        backups.sort((a, b) => b.timestamp.compareTo(a.timestamp)); // Utilisation de timestamp pour compatibilité avec SaveGameInfo
+        for (var i = GameConstants.MAX_BACKUPS; i < backups.length; i++) {
+          await SaveManagerAdapter.deleteSave(backups[i].name);
         }
       }
+      print('Nettoyage des anciens backups terminé');
     } catch (e) {
       print('Erreur lors du nettoyage des backups: $e');
     }
@@ -118,24 +126,59 @@ class AutoSaveService {
     });
   }
 
+  // Le logger est déjà défini comme static au niveau de la classe
+  
   Future<void> _performAutoSave() async {
-    if (!_gameState.isInitialized || _gameState.gameName == null) return;
+    if (!_gameState.isInitialized || _gameState.gameName == null) {
+      _logger.warning('Tentative de sauvegarde automatique avec un état de jeu non initialisé ou sans nom');
+      return;
+    }
 
     try {
+      _logger.info('Début de la sauvegarde automatique pour: ${_gameState.gameName}');
+      
+      // Préparer les données de jeu
+      final gameData = _gameState.prepareGameData();
+      
+      // Validation préalable des données de jeu avec le nouveau validateur
+      final validationResult = SaveValidator.validate(gameData);
+      
+      if (!validationResult.isValid) {
+        _logger.warning('Problème de validation avant sauvegarde: ${validationResult.errors.join(", ")}');
+        // Continuer quand même, mais avec les données sanitizées
+        validationResult.sanitizedData?.forEach((key, value) {
+          gameData[key] = value;
+        });
+        _logger.info('Données de jeu corrigées pour la sauvegarde automatique');
+      }
+      
       // Créer un objet SaveGame pour la sauvegarde automatique
       final saveData = SaveGame(
+        id: _gameState.gameId ?? DateTime.now().millisecondsSinceEpoch.toString(),
         name: _gameState.gameName!,
         lastSaveTime: DateTime.now(),
-        gameData: _gameState.prepareGameData(),
+        gameData: gameData,
         version: GameConstants.VERSION,
         gameMode: _gameState.gameMode,
       );
 
-      await SaveManager.saveGame(saveData);
+      // Vérifier la taille avant de sauvegarder
+      if (!await _checkSaveSize(saveData.toJson())) {
+        _logger.warning('Sauvegarde automatique trop volumineuse pour: ${_gameState.gameName}');
+        await _handleSaveError('Sauvegarde trop volumineuse');
+        return;
+      }
+
+      // Sauvegarder les données
+      // Appel via l'adaptateur qui redirige vers le nouveau système de sauvegarde
+      await SaveManagerAdapter.saveGame(saveData);
+      
       _failedSaveAttempts = 0;  // Réinitialiser le compteur en cas de succès
       _lastAutoSave = DateTime.now();
+      _logger.info('Sauvegarde automatique effectuée avec succès pour: ${_gameState.gameName}');
+      
     } catch (e) {
-      print('Erreur lors de la sauvegarde automatique: $e');
+      _logger.severe('Erreur lors de la sauvegarde automatique: $e\nStacktrace: ${StackTrace.current}');
       await _handleSaveError(e);
     }
   }
@@ -148,21 +191,22 @@ class AutoSaveService {
       _saveSizes[_gameState.gameName!] = size;
     }
 
-    return size <= MAX_STORAGE_SIZE;
+    return size <= GameConstants.MAX_STORAGE_SIZE;
   }
 
   Future<void> _cleanupStorage() async {
-    final saves = await SaveManager.listSaves();
-    saves.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final saves = await SaveManagerAdapter.listSaves();
+    saves.sort((a, b) => a.lastModified.compareTo(b.lastModified));
 
     final now = DateTime.now();
     for (var save in saves) {
-      if (now.difference(save.timestamp) > MAX_SAVE_AGE &&
-          !save.name.contains('_backup_')) {
-        await SaveManager.deleteSave(save.name);
+      if (now.difference(save.lastModified) > GameConstants.MAX_SAVE_AGE &&
+          !save.name.contains(GameConstants.BACKUP_DELIMITER)) {
+        await SaveManagerAdapter.deleteSave(save.name);
         _saveSizes.remove(save.name);
       }
     }
+    print('Nettoyage du stockage terminé');
   }
 
   Future<void> _performBackup() async {
@@ -180,7 +224,9 @@ class AutoSaveService {
         gameMode: _gameState.gameMode,
       );
 
-      await SaveManager.saveGame(saveData);
+      // Appel via l'adaptateur qui redirige vers le nouveau système de sauvegarde
+      await SaveManagerAdapter.saveGame(saveData);
+      print('Backup effectué pour: $backupName');
       await _cleanupOldBackups();
     } catch (e) {
       print('Erreur lors de la création du backup: $e');
@@ -188,39 +234,81 @@ class AutoSaveService {
   }
 
   Future<void> _performSaveOnExit() async {
-    if (!_gameState.isInitialized || _gameState.gameName == null) return;
+    if (!_gameState.isInitialized || _gameState.gameName == null) {
+      _logger.warning('Tentative de sauvegarde à la sortie avec un état de jeu non initialisé ou sans nom');
+      return;
+    }
 
     try {
+      _logger.info('Début de la sauvegarde à la sortie pour: ${_gameState.gameName}');
+      
+      // Préparer les données de jeu
+      final gameData = _gameState.prepareGameData();
+      
+      // Validation rapide des données de jeu (version allégée pour la sortie rapide)
+      final validationResult = SaveValidator.validate(gameData, quickMode: true);
+      if (!validationResult.isValid) {
+        _logger.warning('Validation rapide échouée lors de la sauvegarde à la sortie');
+        // Créer un backup de sécurité avant de continuer
+        await _performBackup();
+      }
+      
       // Créer un objet SaveGame pour la sauvegarde à la sortie
       final saveData = SaveGame(
         name: _gameState.gameName!,
         lastSaveTime: DateTime.now(),
-        gameData: _gameState.prepareGameData(),
+        gameData: gameData,
         version: GameConstants.VERSION,
         gameMode: _gameState.gameMode,
+        id: _gameState.gameId ?? DateTime.now().millisecondsSinceEpoch.toString(),
       );
 
-      await SaveManager.saveGame(saveData);
+      // Appel via l'adaptateur qui redirige vers le nouveau système de sauvegarde
+      await SaveManagerAdapter.saveGame(saveData);
       _lastAutoSave = DateTime.now();
+      _logger.info('Sauvegarde à la sortie effectuée avec succès pour: ${_gameState.gameName}');
+      
     } catch (e) {
-      print('Erreur lors de la sauvegarde de sortie: $e');
+      _logger.severe('Erreur lors de la sauvegarde de sortie: $e');
+      // Tenter de créer une sauvegarde de secours même en cas d'erreur
+      try {
+        await _performBackup();
+      } catch (_) {
+        _logger.severe('Impossible de créer une sauvegarde de secours à la sortie');
+      }
     }
   }
 
   Future<void> _handleSaveError(dynamic error) async {
     _failedSaveAttempts++;
 
-    if (_failedSaveAttempts >= MAX_FAILED_ATTEMPTS) {
-      await createBackup();
-      _failedSaveAttempts = 0;
+    _logger.warning('Tentative de sauvegarde échouée ($_failedSaveAttempts/${GameConstants.MAX_FAILED_ATTEMPTS}): $error');
 
-      // Changer ERROR pour RESOURCE_DEPLETION ou un autre type existant
-      EventManager.instance.addEvent(
-        EventType.RESOURCE_DEPLETION,  // Au lieu de EventType.ERROR
-        "Problème de sauvegarde",
-        description: "Une sauvegarde de secours a été créée",
-        importance: EventImportance.HIGH,
-      );
+    if (_failedSaveAttempts >= GameConstants.MAX_FAILED_ATTEMPTS) {
+      _logger.severe('Nombre maximum d\'erreurs de sauvegarde atteint, création d\'une sauvegarde de secours');
+      
+      try {
+        await createBackup();
+        _failedSaveAttempts = 0;
+
+        EventManager.instance.addEvent(
+          EventType.RESOURCE_DEPLETION,  // Au lieu de EventType.ERROR
+          "Problème de sauvegarde",
+          description: "Une sauvegarde de secours a été créée automatiquement",
+          importance: EventImportance.HIGH,
+        );
+        
+        _logger.info('Sauvegarde de secours créée avec succès');
+      } catch (backupError) {
+        _logger.severe('Impossible de créer une sauvegarde de secours: $backupError');
+        
+        EventManager.instance.addEvent(
+          EventType.RESOURCE_DEPLETION, // Utilisation de RESOURCE_DEPLETION au lieu de ERROR
+          "Erreur critique de sauvegarde",
+          description: "Impossible de sauvegarder vos données de jeu",
+          importance: EventImportance.CRITICAL,
+        );
+      }
     }
   }
 

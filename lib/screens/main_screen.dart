@@ -9,12 +9,13 @@ import '../widgets/appbar/game_appbar.dart';
 
 // Imports des modèles
 import '../models/game_state.dart';
-import '../models/game_config.dart';
+import '../constants/game_config.dart'; // Importé depuis constants au lieu de models
 import '../models/event_system.dart';
 import '../models/progression_system.dart';
+import '../services/notification_manager.dart';
 
 // Imports des services
-import '../services/save_manager_improved.dart';
+import '../services/save_system/save_manager_adapter.dart';
 import '../services/background_music.dart';
 
 // Imports des widgets
@@ -24,13 +25,14 @@ import '../widgets/indicators/notification_widgets.dart';
 import '../widgets/charts/chart_widgets.dart';
 import '../widgets/buttons/production_button.dart';
 import '../widgets/indicators/competitive_mode_indicator.dart';
+import '../widgets/save_button.dart';
 
 // Imports des écrans
 import 'production_screen.dart';
 import 'market_screen.dart';
 import 'upgrades_screen.dart';
 import 'event_log_screen.dart';
-import 'save_load_screen_improved.dart';
+import 'save_load_screen.dart';
 import 'start_screen.dart';
 import 'introduction_screen.dart';
 import 'new_metal_production_screen.dart';
@@ -150,44 +152,7 @@ class _MainScreenState extends State<MainScreen> {
     ];
   }
 
-  Future<void> _saveGame(BuildContext context) async {
-    final gameState = context.read<GameState>();
-    if (!gameState.isInitialized) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Erreur: Le jeu n\'est pas initialisé'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    try {
-      final gameName = gameState.gameName;
-      if (gameName == null || gameName.isEmpty) {
-        throw SaveError('NO_NAME', 'Aucun nom de partie défini');
-      }
-
-      await gameState.saveGame(gameName);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Partie sauvegardée'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erreur de sauvegarde: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
+  // Méthode _saveGame supprimée car remplacée par SaveButton.saveGame
 
   void _showLevelInfoDialog(BuildContext context, LevelSystem levelSystem) {
     showDialog(
@@ -811,7 +776,12 @@ class _MainScreenState extends State<MainScreen> {
                               'Dernière sauvegarde: ${_getLastSaveTimeText(
                                   gameState)}',
                             ),
-                            onTap: () => _saveGame(context),
+                            onTap: () {
+                              // Fermer le modal pour voir le feedback de sauvegarde
+                              Navigator.pop(context);
+                              // Utiliser le widget SaveButton pour déclencher la sauvegarde
+                              SaveButton.saveGame(context);
+                            },
                           ),
                           const Divider(height: 1),
                           ListTile(
@@ -887,12 +857,10 @@ class _MainScreenState extends State<MainScreen> {
                             subtitle: const Text('Les scores sont stockés localement'),
                             onTap: () async {
                               if (context.mounted) {
-                                ScaffoldMessenger.of(context)
-                                    .showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Application en mode hors ligne - Scores stockés localement'),
-                                    duration: Duration(seconds: 2),
-                                  ),
+                                NotificationManager.instance.showNotification(
+                                  message: 'Application en mode hors ligne - Scores stockés localement',
+                                  level: NotificationLevel.INFO,
+                                  duration: const Duration(seconds: 2),
                                 );
                               }
                             },
@@ -1110,32 +1078,7 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  Future<void> _handleSave(BuildContext context, GameState gameState) async {
-    try {
-      if (gameState.gameName == null) {
-        throw SaveError('NO_NAME', 'Aucun nom de partie défini');
-      }
-      await gameState.saveGame(gameState.gameName!);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Partie sauvegardée'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        Navigator.pop(context);
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erreur de sauvegarde: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
+  // Méthode _handleSave supprimée car remplacée par SaveButton.saveGame
 }
 
 class PlaceholderLockedScreen extends StatelessWidget {

@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
-import '../models/game_config.dart';
+import '../constants/game_config.dart'; // Importé depuis constants au lieu de models
 import '../utils/update_manager.dart';
-import '../services/save_manager_improved.dart';
-import 'save_load_screen_improved.dart';
+import '../services/save_system/save_manager_adapter.dart';
+import '../services/notification_manager.dart'; // Ajout de l'import pour NotificationManager
+import 'save_load_screen.dart';
 import 'introduction_screen.dart';
 import 'package:paperclip2/screens/main_screen.dart';
 import 'package:paperclip2/main.dart';
@@ -27,7 +28,7 @@ class _StartScreenState extends State<StartScreen> {
   }
 
   Future<void> _loadLastSaveInfo() async {
-    final lastSave = await SaveManager.getLastSave();
+    final lastSave = await SaveManagerAdapter.getLastSave();
     if (lastSave != null) {
       setState(() {
         _lastSaveInfo = 'Dernière partie : ${lastSave.name}';
@@ -39,7 +40,7 @@ class _StartScreenState extends State<StartScreen> {
   Future<void> _continueLastGame() async {
     setState(() => _isLoading = true);
     try {
-      final lastSave = await SaveManager.getLastSave();
+      final lastSave = await SaveManagerAdapter.getLastSave();
       if (lastSave != null) {
         // Utiliser un délai pour s'assurer que le context est prêt avant de charger
         await Future.delayed(const Duration(milliseconds: 200));
@@ -62,22 +63,19 @@ class _StartScreenState extends State<StartScreen> {
         }
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Aucune sauvegarde trouvée'),
-              backgroundColor: Colors.orange,
-            ),
+          NotificationManager.instance.showNotification(
+            message: 'Aucune sauvegarde trouvée',
+            level: NotificationLevel.INFO,
+            duration: const Duration(seconds: 1),
           );
         }
       }
     } catch (e) {
       print('Erreur dans _continueLastGame: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erreur lors du chargement de la sauvegarde: $e'),
-            backgroundColor: Colors.red,
-          ),
+        NotificationManager.instance.showNotification(
+          message: 'Erreur lors du chargement de la sauvegarde: $e',
+          level: NotificationLevel.ERROR,
         );
       }
     } finally {
@@ -191,29 +189,31 @@ class _StartScreenState extends State<StartScreen> {
               onPressed: () async {
                 final gameName = controller.text.trim();
                 if (gameName.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('Le nom ne peut pas être vide')),
+                  NotificationManager.instance.showNotification(
+                    message: 'Le nom ne peut pas être vide',
+                    level: NotificationLevel.INFO,
+                    duration: const Duration(seconds: 1),
                   );
                   return;
                 }
 
-                final exists = await SaveManager.saveExists(gameName);
+                final exists = await SaveManagerAdapter.saveExists(gameName);
                 if (exists) {
                   if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Une partie avec ce nom existe déjà'),
-                        backgroundColor: Colors.orange,
-                      ),
+                    NotificationManager.instance.showNotification(
+                      message: 'Une partie avec ce nom existe déjà',
+                      level: NotificationLevel.INFO,
+                      duration: const Duration(seconds: 1),
                     );
                   }
                   return;
                 }
 
                 if (context.mounted) {
+                  // D'abord activer le chargement dans l'état de l'écran de démarrage avant de fermer le dialogue
+                  this.setState(() => _isLoading = true);
+                  // Ensuite fermer le dialogue
                   Navigator.pop(context);
-                  setState(() => _isLoading = true);
                   try {
                     // Utiliser le mode sélectionné lors de la création
                     await context.read<GameState>().startNewGame(gameName, mode: selectedMode);
@@ -238,16 +238,15 @@ class _StartScreenState extends State<StartScreen> {
                     }
                   } catch (e) {
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Erreur lors de la création: $e'),
-                          backgroundColor: Colors.red,
-                        ),
+                      NotificationManager.instance.showNotification(
+                        message: 'Erreur lors de la création: $e',
+                        level: NotificationLevel.ERROR,
                       );
                     }
                   } finally {
                     if (mounted) {
-                      setState(() => _isLoading = false);
+                      // S'assurer que nous modifions l'état de l'écran de démarrage, pas du dialogue
+                      this.setState(() => _isLoading = false);
                     }
                   }
                 }

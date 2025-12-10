@@ -4,7 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
-import '../models/game_config.dart';
+import '../constants/game_config.dart'; // Importé depuis constants au lieu de models
 import '../screens/competitive_result_screen.dart';
 import '../widgets/buttons/action_button.dart';
 
@@ -50,8 +50,11 @@ class _MetalCrisisDialogState extends State<MetalCrisisDialog> with SingleTicker
 
     _controller.forward();
 
-    // Afficher les boutons après l'animation
-    Future.delayed(const Duration(seconds: 3), () {
+    // Afficher les boutons immédiatement pour éviter les problèmes
+    _showButtons = true;
+    
+    // S'assurer que les boutons sont visibles après un court délai au cas où
+    Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted) {
         setState(() {
           _showButtons = true;

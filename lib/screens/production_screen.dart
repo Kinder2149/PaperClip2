@@ -2,15 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 import '../models/game_state.dart';
-import '../models/game_config.dart';
+import '../constants/game_config.dart'; // Importé depuis constants au lieu de models
 import '../widgets/resources/resource_widgets.dart';
 import '../widgets/indicators/level_widgets.dart';
-import '../services/save_manager_improved.dart';
+import '../services/save_system/save_manager_adapter.dart';
 import '../widgets/buttons/action_button.dart';
 import '../widgets/cards/info_card.dart';
 import '../widgets/dialogs/info_dialog.dart';
 import '../widgets/indicators/stat_indicator.dart';
 import '../widgets/cards/stats_panel.dart';
+import '../widgets/save_button.dart';
 
 class ProductionScreen extends StatefulWidget {
   const ProductionScreen({super.key});
@@ -69,37 +70,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
     );
   }
 
-  Future<void> _saveGame(BuildContext context, GameState gameState) async {
-    try {
-      if (gameState.gameName == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Erreur: Aucun nom de partie défini'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-
-      await gameState.saveGame(gameState.gameName!);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Partie sauvegardée avec succès'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
-        ),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Erreur lors de la sauvegarde: $e'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 4),
-        ),
-      );
-    }
-  }
+  // Méthode _saveGame supprimée car maintenant gérée par le widget SaveButton
 
   Widget _buildAutoclippersSection(BuildContext context, GameState gameState) {
     double bulkBonus = (gameState.player.upgrades['bulk']?.level ?? 0) * 20;
@@ -124,7 +95,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Autoclippers: ${gameState.player.autoclippers}',
+                        'Autoclippers: ${gameState.player.autoClipperCount}',
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
@@ -182,7 +153,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
             ActionButton.purchase(
               onPressed: gameState.player.money >=
                   gameState.player.calculateAutoclipperCost()
-                  ? () => gameState.player.purchaseAutoclipper()
+                  ? () => gameState.player.purchaseAutoClipper()
                   : null,
               label: 'Acheter Autoclipper (${gameState.player
                   .calculateAutoclipperCost().toStringAsFixed(1)} €)',
@@ -200,7 +171,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
       double speedBonus,
       double metalSavingPercent) {
     // Calculs pour des informations précises
-    double baseProduction = gameState.player.autoclippers * 60; // par minute
+    double baseProduction = gameState.player.autoClipperCount * 60; // par minute
     double speedMultiplier = 1.0 + (speedBonus / 100);
     double bulkMultiplier = 1.0 + (bulkBonus / 100);
     double effectiveProduction = baseProduction * speedMultiplier * bulkMultiplier;
@@ -391,7 +362,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                '• Production de base = Nombre d\'autoclippers × Production unitaire\n'
+                '• Production de base = Nombre d\'autoClipperCount × Production unitaire\n'
                 '• Production effective = Production de base × Bonus vitesse × Bonus production\n'
                 '• Économie métal = Réduction de la consommation de métal grâce aux améliorations d\'efficacité\n'
                 '• Métal utilisé = Production effective × Consommation par trombone × Facteur d\'économie',
@@ -523,7 +494,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
 
     // Calculs de production précis
     double baseAutoclipperRate = GameConstants.BASE_AUTOCLIPPER_PRODUCTION;
-    double clipperCount = gameState.player.autoclippers.toDouble();
+    double clipperCount = gameState.player.autoClipperCount.toDouble();
     double baseProduction = clipperCount * baseAutoclipperRate * 60; // par minute
     double boostedProduction = baseProduction * speedBonus * bulkBonus; // avec les bonus
     double actualProduction = boostedProduction; // production effective
@@ -635,7 +606,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
         iconColor: Colors.red[400],
         valueStyle: TextStyle(color: Colors.red[700], fontWeight: FontWeight.bold),
         // tooltip n'est pas supporté par StatIndicator
-        // tooltip: 'Coût de maintenance des autoclippers et équipements',
+        // tooltip: 'Coût de maintenance des autoClipperCount et équipements',
       ),
     );
 
@@ -792,7 +763,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
                         ActionButton.purchase(
                           onPressed: gameState.player.money >=
                               gameState.market.currentMetalPrice
-                              ? () => gameState.buyMetal()
+                              ? () => gameState.purchaseMetal()
                               : null,
                           label: 'Acheter Métal (${gameState.market
                               .currentMetalPrice.toStringAsFixed(1)} €)',
@@ -801,18 +772,17 @@ class _ProductionScreenState extends State<ProductionScreen> {
                         const SizedBox(height: 16),
                       ],
 
-                      if (visibleElements['autoclippersSection'] == true) ...[
+                      if (visibleElements['autoClipperCountSection'] == true) ...[
                         _buildAutoclippersSection(context, gameState),
                         const SizedBox(height: 16),
                       ],
 
-                      ActionButton.save(
-                        onPressed: () => _saveGame(context, gameState),
+                      const SaveButton(
                         label: 'Sauvegarder la Partie',
                       ),
 
                       // Statistiques de production déplacées à la fin
-                      if (gameState.player.autoclippers > 0) ...[
+                      if (gameState.player.autoClipperCount > 0) ...[
                         const SizedBox(height: 16),
                         _buildProductionStatsCard(gameState),
                       ],

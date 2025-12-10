@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:math';
-import 'game_config.dart';
+import '../constants/game_config.dart';
 import 'event_system.dart';
 import 'dart:math' show pow;
 import 'json_loadable.dart';
@@ -110,7 +110,7 @@ class DailyXPBonus {
 
   bool claimDailyBonus(LevelSystem levelSystem) {
     if (!_claimed) {
-      levelSystem.gainExperience(_bonusAmount);
+      levelSystem.addExperience(_bonusAmount, ExperienceType.DAILY_BONUS);
       _claimed = true;
       _scheduleReset();
       return true;
@@ -468,6 +468,69 @@ class LevelSystem with ChangeNotifier implements JsonLoadable {
         return "Nouvelle fonctionnalité disponible";
     }
   }
+  
+  // Ajoute de l'expérience au joueur - méthode principale
+  void addExperience(double amount, [ExperienceType type = ExperienceType.GENERAL]) {
+    // Vérifie que le montant est positif
+    if (amount <= 0) return;
+    
+    print('Gaining experience: $amount (type: $type)'); // Log initial amount
+    
+    // Applique les multiplicateurs
+    double baseAmount = amount * totalXpMultiplier;
+    double levelPenalty = _level * 0.02;
+    double adjustedAmount = baseAmount * (1 - levelPenalty);
+    
+    // Bonus pour les bas niveaux
+    if (_level < 35) {
+      adjustedAmount *= 1.1;
+    }
+    
+    // Ajout d'un bonus supplémentaire si l'activité correspond au chemin de progression actuel
+    if (_experienceTypeMatchesPath(type, _currentPath)) {
+      adjustedAmount *= 1.2;  // 20% de bonus pour les activités sur le chemin choisi
+    }
+    
+    print('Adjusted experience: $adjustedAmount'); // Log adjusted amount
+    
+    // Ajout de l'expérience avec un minimum garanti
+    _experience += max(adjustedAmount, 0.2);
+    
+    print('Current experience: $_experience'); // Log current experience
+    print('Experience for next level: ${calculateExperienceRequirement(_level + 1)}'); // Log required experience
+    
+    // Met à jour le combo si applicable
+    if (type != ExperienceType.DAILY_BONUS && type != ExperienceType.COMBO_BONUS) {
+      comboSystem.incrementCombo();
+    }
+    
+    // Vérifie si le joueur peut monter de niveau
+    _checkLevelUp();
+    
+    // Notifie les écouteurs
+    notifyListeners();
+  }
+  
+  // Méthode alias pour la compatibilité avec le code existant
+  void gainExperience(double amount) {
+    addExperience(amount, ExperienceType.PRODUCTION);
+  }
+  
+  // Vérifie si le type d'expérience correspond au chemin de progression
+  bool _experienceTypeMatchesPath(ExperienceType type, ProgressionPath path) {
+    switch (path) {
+      case ProgressionPath.PRODUCTION:
+        return type == ExperienceType.PRODUCTION;
+      case ProgressionPath.MARKETING:
+        return type == ExperienceType.SALE;
+      case ProgressionPath.EFFICIENCY:
+        return type == ExperienceType.GENERAL || type == ExperienceType.DAILY_BONUS;
+      case ProgressionPath.INNOVATION:
+        return type == ExperienceType.UPGRADE || type == ExperienceType.COMBO_BONUS;
+      default:
+        return false;
+    }
+  }
   void _handleLevelUp(int newLevel) {
     final unlocks = _levelUnlocks[newLevel];
     if (unlocks != null) {
@@ -685,27 +748,7 @@ ${details.tips.map((t) => '• $t').join('\n')}
     return double.parse(totalXP.toStringAsFixed(1));
   }
 
-  void gainExperience(double amount) {
-    print('Gaining experience: $amount'); // Log initial amount
-    double baseAmount = amount * totalXpMultiplier;
-    double levelPenalty = _level * 0.02;
-    double adjustedAmount = baseAmount * (1 - levelPenalty);
-
-
-    if (_level < 35) {
-      adjustedAmount *= 1.1;
-    }
-
-    print('Adjusted experience: $adjustedAmount'); // Log adjusted amount
-    _experience += max(adjustedAmount, 0.2);
-
-    print('Current experience: $_experience'); // Log current experience
-    print('Experience for next level: ${calculateExperienceRequirement(_level + 1)}'); // Log required experience
-
-    comboSystem.incrementCombo();
-    _checkLevelUp();
-    notifyListeners();
-  }
+  // La définition de gainExperience a été déplacée en haut de la classe pour éviter les duplications
   void reset() {
     // Réinitialisation des valeurs de base
     _experience = 0;
@@ -723,34 +766,41 @@ ${details.tips.map((t) => '• $t').join('\n')}
 
     // Notification des changements
     notifyListeners();
-  }
-
-
-
-  void addManualProduction() {
     double baseXP = 2.0;
     double bonusXP = ProgressionBonus.getTotalBonus(level);
-    gainExperience(baseXP * bonusXP);
+    addExperience(baseXP * bonusXP, ExperienceType.PRODUCTION);
   }
 
   void addAutomaticProduction(int amount) {
     double baseXP = 0.15 * amount;
     double bonusXP = ProgressionBonus.getTotalBonus(level);
-    gainExperience(baseXP * bonusXP);
+    addExperience(baseXP * bonusXP, ExperienceType.PRODUCTION);
+  }
+
+  /// Ajoute de l'expérience pour la production manuelle de trombones
+  void addManualProduction() {
+    // Production manuelle = 1 trombone, mais avec un bonus XP plus élevé
+    double baseXP = 0.25; // Un peu plus élevé que la production automatique
+    double bonusXP = ProgressionBonus.getTotalBonus(level);
+    // Incrémenter le compteur de combo
+    comboSystem.incrementCombo();
+    // Appliquer le multiplicateur de combo
+    double comboMultiplier = comboSystem.getComboMultiplier();
+    addExperience(baseXP * bonusXP * comboMultiplier, ExperienceType.PRODUCTION);
   }
 
   void addSale(int quantity, double price) {
     double baseXP = 0.4 * quantity * (1 + (price - 0.25) * 2);
     double bonusXP = ProgressionBonus.getTotalBonus(level);
-    gainExperience(baseXP * bonusXP);
+    addExperience(baseXP * bonusXP, ExperienceType.SALE);
   }
 
   void addAutoclipperPurchase() {
-    gainExperience(4);
+    addExperience(4, ExperienceType.UPGRADE);
   }
 
   void addUpgradePurchase(int upgradeLevel) {
-    gainExperience(2.5 * upgradeLevel);
+    addExperience(2.5 * upgradeLevel, ExperienceType.UPGRADE);
   }
 
   void applyXPBoost(double multiplier, Duration duration) {

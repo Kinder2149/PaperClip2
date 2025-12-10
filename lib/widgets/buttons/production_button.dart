@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../models/game_state.dart';
-import '../../models/game_config.dart';
+import '../../constants/game_config.dart'; // Importé depuis constants au lieu de models
 
 class ProductionButton extends StatelessWidget {
   const ProductionButton({Key? key}) : super(key: key);

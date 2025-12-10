@@ -8,7 +8,7 @@ import 'package:flutter/services.dart';
 // Imports des écrans
 import './screens/start_screen.dart';
 import './screens/main_screen.dart';
-import './screens/save_load_screen_improved.dart';
+import './screens/save_load_screen.dart';
 import './screens/production_screen.dart';
 import './screens/market_screen.dart';
 import './screens/upgrades_screen.dart';
@@ -18,10 +18,10 @@ import 'env_config.dart';
 
 // Imports des modèles et services
 import './models/game_state.dart';
-import './models/game_config.dart';
+import './constants/game_config.dart'; // Importé depuis constants au lieu de models
 import './models/event_system.dart';
 import './models/progression_system.dart';
-import './services/save_manager_improved.dart';
+import './services/save_system/save_manager_adapter.dart';
 import './services/save_migration_service.dart';
 import './services/background_music.dart';
 import './services/theme_service.dart';
@@ -71,7 +71,7 @@ void main() async {
 
     // Migration de toutes les sauvegardes vers le nouveau format
     if (kDebugMode) {
-      print('Migrating all saves to format version ${SaveManager.CURRENT_SAVE_FORMAT_VERSION}...');
+      print('Migrating all saves to format version ${SaveManagerAdapter.SAVE_FORMAT_VERSION}...');
     }
     try {
       await SaveMigrationService.migrateAllSaves();

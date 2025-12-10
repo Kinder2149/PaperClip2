@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/material.dart';
-import '../models/game_config.dart';
-import '../models/market.dart';
+import '../constants/game_config.dart'; // Importé depuis constants au lieu de models
+import '../managers/market_manager.dart';
 import '../models/event_system.dart';
 
 class EventLogScreen extends StatefulWidget {

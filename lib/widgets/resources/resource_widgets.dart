@@ -3,18 +3,20 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/game_state.dart';
 import 'dart:math';
-import '../../models/game_config.dart';
+import '../../constants/game_config.dart'; // Importé depuis constants au lieu de models
 
 class MoneyDisplay extends StatelessWidget {
   const MoneyDisplay({super.key});
 
-  static String formatNumber(double number, {bool isInteger = false, bool showExactCount = false}) {
+  static String formatNumber(dynamic number, {bool isInteger = false, bool showExactCount = false}) {
+    // Convertir en double si c'est un int
+    double value = number is int ? number.toDouble() : number;
     // Si showExactCount est true, on affiche le nombre exact sans formatage
     if (showExactCount) {
       if (isInteger) {
-        return number.toStringAsFixed(0);
+        return value.toStringAsFixed(0);
       }
-      return number.toString();
+      return value.toString();
     }
 
     // Liste des suffixes pour les grands nombres
@@ -36,17 +38,17 @@ class MoneyDisplay extends StatelessWidget {
       return result;
     }
 
-    if (number < 1000) {
+    if (value < 1000) {
       // Nombres inférieurs à 1000
       return isInteger
-          ? '${number.toStringAsFixed(0)} €'
-          : '${formatWithThousandSeparator(double.parse(number.toStringAsFixed(2)))} €';
+          ? '${value.toStringAsFixed(0)} €'
+          : '${formatWithThousandSeparator(double.parse(value.toStringAsFixed(2)))} €';
     }
 
     // Pour les grands nombres
-    int index = (log(number) / log(1000)).floor();
+    int index = (log(value) / log(1000)).floor();
     index = min(index, suffixes.length - 1);
-    double simplified = number / pow(1000, index);
+    double simplified = value / pow(1000, index);
 
     // Formatage avec plus de précision
     String formatted;

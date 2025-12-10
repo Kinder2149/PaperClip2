@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
-import '../models/game_config.dart';
+import '../constants/game_config.dart'; // Importé depuis constants au lieu de models
 import '../widgets/resources/resource_widgets.dart';
 import '../widgets/indicators/level_widgets.dart';
 import '../widgets/charts/chart_widgets.dart';
 import '../widgets/buttons/production_button.dart';
-import '../services/save_manager_improved.dart';
+import '../services/save_system/save_manager_adapter.dart';
 import '../models/event_system.dart';
 import '../utils/notification_manager.dart';
 import '../widgets/indicators/stat_indicator.dart';
@@ -47,8 +47,9 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
 
   // Gardons votre onglet Aperçu (Missions Journalières) intact
   Widget _buildResourcesTab(GameState gameState) {
-    bool allMissionsCompleted = gameState.missionSystem.dailyMissions
-        .every((mission) => mission.isCompleted);
+    // Mission system a été supprimé
+    // bool allMissionsCompleted = false;
+    const bool allMissionsCompleted = false;
 
     return SingleChildScrollView(
       child: Padding(
@@ -75,10 +76,12 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
                         if (allMissionsCompleted)
                           ElevatedButton.icon(
                             onPressed: () {
-                              gameState.levelSystem.gainExperience(
-                                  GameConstants.DAILY_BONUS_AMOUNT * 2
+                              gameState.levelSystem.addExperience(
+                                  GameConstants.DAILY_BONUS_AMOUNT * 2,
+                                  ExperienceType.DAILY_BONUS
                               );
-                              gameState.missionSystem.onMissionSystemRefresh?.call();
+                              // Mission system retiré - fonctionnalité partielle non finalisée
+                              // gameState.missionSystem.onMissionSystemRefresh?.call();
                             },
                             icon: const Icon(Icons.stars, color: Colors.amber),
                             label: const Text('Réclamer Bonus'),
@@ -90,57 +93,56 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
                       ],
                     ),
                     const Divider(),
-                    ...gameState.missionSystem.dailyMissions.map((mission) =>
-                        Card(
-                          color: mission.isCompleted ? Colors.green.shade50 : Colors.white,
-                          child: Padding(
-                            padding: const EdgeInsets.all(8.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                ListTile(
-                                  leading: Icon(
-                                    mission.isCompleted ? Icons.check_circle : Icons.pending,
-                                    color: mission.isCompleted ? Colors.green : Colors.orange,
-                                    size: 32,
+                    // Mission system a été supprimé - exemple statique remplaçant la liste dynamique
+                    Card(
+                      color: Colors.grey.shade100,
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            ListTile(
+                              leading: Icon(
+                                Icons.pending, // Mission system removed, using default value
+                                color: Colors.orange, // Mission system removed, using default value
+                                size: 32,
+                              ),
+                              title: Text(
+                                'Mission Exemple', // Mission system removed, using default value
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              subtitle: Text('Description de la mission exemple'), // Mission system removed, using default value
+                              trailing: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    '100 XP', // Mission system removed, using default value
+                                    style: const TextStyle(
+                                      color: Colors.deepPurple,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
-                                  title: Text(
-                                    mission.title,
-                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '50%', // Mission system removed, using default value
+                                    style: TextStyle(
+                                      color: Colors.grey, // Mission system removed, using default value
+                                    ),
                                   ),
-                                  subtitle: Text(mission.description),
-                                  trailing: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        '${mission.experienceReward} XP',
-                                        style: const TextStyle(
-                                          color: Colors.deepPurple,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        '${(mission.progress / mission.target * 100).toInt()}%',
-                                        style: TextStyle(
-                                          color: mission.isCompleted ? Colors.green : Colors.grey,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                LinearProgressIndicator(
-                                  value: mission.progress / mission.target,
-                                  backgroundColor: Colors.grey.shade200,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    mission.isCompleted ? Colors.green : Colors.deepPurple,
-                                  ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
+                            LinearProgressIndicator(
+                              value: 0.5, // Mission system removed, using default value
+                              backgroundColor: Colors.grey.shade200,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.deepPurple, // Mission system removed, using default value
+                              ),
+                            ),
+                          ],
                         ),
-                    ).toList(),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -279,7 +281,7 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
                     icon: Icons.precision_manufacturing,
                     mainValue: formatNumber(gameState.totalPaperclipsProduced.toDouble()),
                     subtitle: 'Production Totale',
-                    secondaryValue: '${gameState.player.autoclippers}',
+                    secondaryValue: '${gameState.player.autoClipperCount}',
                     secondaryLabel: 'Autoclippers',
                     color: Colors.green.shade100,
                     leaderboardId: 'CgkI-ICryvIBEAIQAw', // Ajouter cet ID
@@ -538,7 +540,7 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (gameState.getVisibleScreenElements()['autoclippersSection'] == true)
+                      if (gameState.getVisibleScreenElements()['autoClipperCountSection'] == true)
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                           child: SizedBox(

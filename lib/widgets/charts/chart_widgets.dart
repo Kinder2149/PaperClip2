@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:provider/provider.dart';
 import '../../models/game_state.dart';
-import '../../models/market.dart';
-import '../../models/game_config.dart';
+import '../../managers/market_manager.dart';
+import '../../constants/game_config.dart'; // Importé depuis constants au lieu de models
 
 class SalesChart extends StatelessWidget {
   final List<SaleRecord> salesHistory;
@@ -131,7 +131,7 @@ class StatsOverview extends StatelessWidget {
                 ),
                 _StatRow(
                   label: 'Autoclippers',
-                  value: gameState.playerManager.autoclippers.toString(),
+                  value: gameState.playerManager.autoClipperCount.toString(),
                   icon: Icons.precision_manufacturing,
                 ),
                 _StatRow(

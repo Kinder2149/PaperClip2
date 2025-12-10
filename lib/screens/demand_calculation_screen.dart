@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
-import '../models/market.dart';
+import '../managers/market_manager.dart';
 import '../widgets/charts/chart_widgets.dart';
 
 class DemandCalculationScreen extends StatelessWidget {

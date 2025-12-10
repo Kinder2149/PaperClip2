@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/game_state.dart';
 import '../../models/progression_system.dart';
-import '../../models/game_config.dart';
+import '../../constants/game_config.dart'; // Importé depuis constants au lieu de models
 
 class XPStatusDisplay extends StatelessWidget {
   const XPStatusDisplay({Key? key}) : super(key: key);

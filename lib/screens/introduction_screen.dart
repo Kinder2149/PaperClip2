@@ -2,7 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
-import '../models/game_config.dart';
+import '../constants/game_config.dart'; // Importé depuis constants au lieu de models
 import 'main_screen.dart';
 import 'package:flutter/animation.dart';
 

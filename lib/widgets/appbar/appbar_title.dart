@@ -27,14 +27,8 @@ class AppBarTitle extends StatelessWidget {
           ),
         );
       },
-      child: Text(
-        isInCrisisMode ? 'Nouveau Mode de Production' : _getTitleForIndex(selectedIndex),
-        style: TextStyle(
-          color: Theme.of(context).brightness == Brightness.dark 
-            ? Colors.white 
-            : Colors.white,
-          fontWeight: FontWeight.bold,
-        ),
+      // Aucun titre n'est affiché dans l'AppBar
+      child: Container(
         key: ValueKey<String>(isInCrisisMode ? 'crisis' : selectedIndex.toString()),
       ),
     );

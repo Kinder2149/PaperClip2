@@ -1,6 +1,6 @@
 // lib/widgets/appbar/appbar_actions.dart
 import 'package:flutter/material.dart';
-import '../../models/game_config.dart';
+import '../../constants/game_config.dart'; // Importé depuis constants au lieu de models
 import '../indicators/competitive_mode_indicator.dart';
 import 'sections/notification_action.dart';
 import 'sections/music_control_action.dart';

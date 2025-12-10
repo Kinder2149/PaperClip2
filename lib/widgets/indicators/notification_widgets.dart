@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import '../../models/event_system.dart';
 import '../../main.dart' show navigatorKey;
 import 'dart:async';
-import '../../models/game_config.dart';
+import '../../constants/game_config.dart'; // Importé depuis constants au lieu de models
 import '../../services/notification_storage_service.dart';
-import '../../models/market.dart';
+import '../../managers/market_manager.dart';
 
 class GlobalNotificationOverlay extends StatefulWidget {
   final Widget child;

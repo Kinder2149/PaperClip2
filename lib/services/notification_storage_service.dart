@@ -3,10 +3,34 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import '../models/event_system.dart';
-import '../models/game_config.dart'; // Ajout pour EventType
-import '../utilities/icon_helper.dart'; // Pour utiliser des icônes constantes
+import '../constants/game_config.dart'; // Ajout pour EventType
+import '../utils/icon_helper.dart'; // Pour utiliser des icônes constantes (déplacé depuis utilities)
 
 class NotificationStorageService {
+  // Instance unique pour le pattern singleton
+  static final NotificationStorageService _instance = NotificationStorageService._internal();
+  
+  // Constructeur factory qui retourne l'instance unique
+  factory NotificationStorageService() {
+    return _instance;
+  }
+  
+  // Constructeur privé
+  NotificationStorageService._internal();
+  
+  // Méthode d'instance pour ajouter un message
+  Future<void> addMessage(String message, EventType type, {String gameName = 'default', NotificationPriority priority = NotificationPriority.MEDIUM}) async {
+    final notification = NotificationEvent(
+      title: 'Notification',
+      description: message,
+      icon: Icons.info, // Utilisation d'une icône par défaut
+      priority: priority,
+      type: type,
+    );
+    
+    await saveImportantNotification(notification, gameName);
+  }
+  
   // Clé utilisée pour la rétrocompatibilité
   static const String _baseStorageKey = 'important_notifications';
   

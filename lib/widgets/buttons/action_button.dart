@@ -82,31 +82,6 @@ class ActionButton extends StatelessWidget {
     );
   }
   
-  /// Constructeur pour un bouton de sauvegarde (violet)
-  factory ActionButton.save({
-    required VoidCallback? onPressed,
-    String label = 'Sauvegarder la Partie',
-    IconData icon = Icons.save,
-    bool fullWidth = true,
-    EdgeInsets? padding,
-    double iconSize = 20,
-    double fontSize = 14,
-    TextStyle? labelStyle,
-  }) {
-    return ActionButton(
-      onPressed: onPressed,
-      label: label,
-      icon: icon,
-      backgroundColor: Colors.deepPurple,
-      textColor: Colors.white,
-      fullWidth: fullWidth,
-      padding: padding,
-      iconSize: iconSize,
-      fontSize: fontSize,
-      labelStyle: labelStyle,
-    );
-  }
-  
   /// Constructeur pour un bouton d'achat (vert)
   factory ActionButton.purchase({
     required VoidCallback? onPressed,
@@ -213,25 +188,6 @@ extension ActionButtonExtensions on ActionButton {
       textColor: Colors.white,
       fullWidth: fullWidth,
       showComboMultiplier: showComboMultiplier,
-      padding: padding,
-    );
-  }
-
-  /// Crée un bouton d'action pour sauvegarder
-  static ActionButton save({
-    required VoidCallback onPressed,
-    String label = 'Sauvegarder',
-    IconData icon = Icons.save,
-    bool fullWidth = true,
-    EdgeInsets? padding,
-  }) {
-    return ActionButton(
-      onPressed: onPressed,
-      label: label,
-      icon: icon,
-      backgroundColor: Colors.deepPurple,
-      textColor: Colors.white,
-      fullWidth: fullWidth,
       padding: padding,
     );
   }

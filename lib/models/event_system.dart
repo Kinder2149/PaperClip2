@@ -1,7 +1,7 @@
 // lib/models/event_system.dart
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'game_config.dart';
+import '../constants/game_config.dart';
 import 'game_state.dart'; // Importer GameState
 import 'game_state_interfaces.dart';
 import 'json_loadable.dart';
@@ -591,6 +591,15 @@ ${unlockDetails.tips.map((t) => '• $t').join('\n')}
 
   void clearEvents() {
     _notifications.clear();
+  }
+  
+  /// Efface tous les événements et notifications
+  void clearAllEvents() {
+    _events.clear();
+    _notifications.clear();
+    _unreadNotificationIds.clear();
+    unreadCount.value = 0;
+    notifyListeners();
   }
   
   @override
