@@ -5,7 +5,6 @@ import '../constants/game_config.dart';
 import 'game_state.dart'; // Importer GameState
 import 'game_state_interfaces.dart';
 import 'json_loadable.dart';
-import '../main.dart' show navigatorKey;
 import 'package:flutter/foundation.dart';
 import 'package:paperclip2/screens/event_log_screen.dart';
 import 'progression_system.dart';

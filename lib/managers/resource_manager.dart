@@ -69,23 +69,40 @@ class ResourceManager extends ChangeNotifier implements JsonLoadable {
   void setStatisticsManager(StatisticsManager statisticsManager) {
     _statistics = statisticsManager;
   }
+
+  bool canPurchaseMetal([double? customPrice]) {
+    final double metalPrice = _marketManager.marketMetalPrice;
+    final double amount = GameConstants.METAL_PACK_AMOUNT;
+    final double price = customPrice ?? (amount * metalPrice);
+
+    if (_playerManager.money < price) {
+      return false;
+    }
+
+    if (_playerManager.metal + amount > _playerManager.maxMetalStorage) {
+      return false;
+    }
+
+    if (_marketManager.marketMetalStock < amount) {
+      return false;
+    }
+
+    return true;
+  }
   
   /// Acheter du métal (anciennement buyWire)
   bool purchaseMetal([double? customPrice]) {
-    double metalPrice = _marketManager.marketMetalPrice;
-    double amount = GameConstants.METAL_PACK_AMOUNT;
-    double price = customPrice ?? (amount * metalPrice);
-    
-    if (_playerManager.money < price) {
-      return false; // Pas assez d'argent
+    final double metalPrice = _marketManager.marketMetalPrice;
+    final double amount = GameConstants.METAL_PACK_AMOUNT;
+    final double price = customPrice ?? (amount * metalPrice);
+
+    if (!canPurchaseMetal(customPrice)) {
+      return false;
     }
-    
-    if (_playerManager.metal + amount > _playerManager.maxMetalStorage) {
-      return false; // Stockage insuffisant
-    }
-    
+
     _playerManager.updateMoney(_playerManager.money - price);
     _playerManager.updateMetal(_playerManager.metal + amount);
+    _marketManager.updateMarketStock(_marketManager.marketMetalStock - amount);
 
     // Mise à jour centralisée des statistiques si disponible
     if (_statistics != null) {
@@ -191,13 +208,10 @@ class ResourceManager extends ChangeNotifier implements JsonLoadable {
     'Hors contrat ResourceManager (réduction ciblée): la consommation de métal pour production est gérée par ProductionManager/PlayerManager. Conservé pour compatibilité.'
   )
   bool consumeMetal(double amount) {
-    if (amount <= 0) return false;
-    
-    double currentMetal = _playerManager.metal;
-    if (currentMetal < amount) return false;
-    
-    _playerManager.updateMetal(currentMetal - amount);
-    return true;
+    throw UnsupportedError(
+      'ResourceManager.consumeMetal() est hors contrat. '
+      'Utiliser ProductionManager/PlayerManager pour la consommation liée à la production.',
+    );
   }
   
   /// Calcul la quantité de trombones pouvant être produits avec le métal disponible
@@ -205,8 +219,10 @@ class ResourceManager extends ChangeNotifier implements JsonLoadable {
     'Hors contrat ResourceManager (réduction ciblée): la production relève de ProductionManager. Ne pas utiliser. (Retour par défaut)'
   )
   int calculatePossibleClips() {
-    // Retour par défaut : conservé pour compatibilité.
-    return 0;
+    throw UnsupportedError(
+      'ResourceManager.calculatePossibleClips() est hors contrat. '
+      'Utiliser ProductionManager pour toute logique de production.',
+    );
   }
   
   /// Calculer la consommation de métal pour un nombre de trombones
@@ -214,8 +230,10 @@ class ResourceManager extends ChangeNotifier implements JsonLoadable {
     'Hors contrat ResourceManager (réduction ciblée): la consommation relève de ProductionManager. Ne pas utiliser. (Retour par défaut)'
   )
   double calculateMetalConsumption(int clipCount) {
-    // Retour par défaut : conservé pour compatibilité.
-    return 0.0;
+    throw UnsupportedError(
+      'ResourceManager.calculateMetalConsumption() est hors contrat. '
+      'Utiliser ProductionManager pour toute logique de consommation en production.',
+    );
   }
   
   // Méthode calculateWireConsumption supprimée - migration wire vers metal complète

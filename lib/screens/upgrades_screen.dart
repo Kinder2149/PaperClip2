@@ -10,6 +10,7 @@ import '../widgets/dialogs/info_dialog.dart';
 import '../widgets/cards/info_card.dart';
 import '../managers/player_manager.dart';
 import '../models/upgrade.dart' as upgrade_model;
+import '../services/upgrades/upgrade_effects_calculator.dart';
 
 class UpgradesScreen extends StatelessWidget {
   const UpgradesScreen({super.key});
@@ -242,7 +243,6 @@ class UpgradesScreen extends StatelessWidget {
         borderColor = Colors.blue.shade200;
         titleColor = Colors.blue.shade800;
         break;
-      case 'marketing':
       case 'quality':
         category = 'Marché';
         backgroundColor = Colors.teal.shade50;
@@ -392,7 +392,6 @@ class UpgradesScreen extends StatelessWidget {
         borderColor = Colors.blue.shade100;
         accentColor = Colors.blue.shade700;
         break;
-      case 'marketing':
       case 'quality':
         backgroundColor = Colors.teal.shade50;
         borderColor = Colors.teal.shade100;
@@ -440,8 +439,8 @@ class UpgradesScreen extends StatelessWidget {
         break;
 
       case 'efficiency':
-        double currentReduction = (upgrade.level * 0.15) * 100;
-        double nextReduction = ((upgrade.level + 1) * 0.15) * 100;
+        double currentReduction = UpgradeEffectsCalculator.efficiencyReduction(level: upgrade.level) * 100;
+        double nextReduction = UpgradeEffectsCalculator.efficiencyReduction(level: upgrade.level + 1) * 100;
         double baseMetalPerClip = GameConstants.METAL_PER_PAPERCLIP;
         double currentMetal = baseMetalPerClip * (1.0 - currentReduction/100);
         double nextMetal = baseMetalPerClip * (1.0 - nextReduction/100);
@@ -459,19 +458,12 @@ class UpgradesScreen extends StatelessWidget {
 
       case 'storage':
         double currentStorage = gameState.player.maxMetalStorage.toDouble();
-        double nextStorage = currentStorage + 100.0;
+        double nextStorage = UpgradeEffectsCalculator.metalStorageCapacity(
+          storageLevel: upgrade.level + 1,
+        );
         impacts['Capacité de stockage'] = [
           '${currentStorage.toStringAsFixed(0)}',
           '${nextStorage.toStringAsFixed(0)}'
-        ];
-        break;
-
-      case 'marketing':
-        double currentMarketing = upgrade.level * 30.0;
-        double nextMarketing = (upgrade.level + 1) * 30.0;
-        impacts['Bonus de demande'] = [
-          _formatImpact(currentMarketing),
-          _formatImpact(nextMarketing)
         ];
         break;
     }
@@ -558,20 +550,18 @@ class UpgradesScreen extends StatelessWidget {
     switch (upgradeId) {
       case 'efficiency':
         return Icons.eco;
-      case 'marketing':
-        return Icons.campaign;
       case 'bulk':
         return Icons.inventory;
       case 'speed':
         return Icons.speed;
       case 'storage':
-        return Icons.warehouse;
+        return Icons.storage;
+      case 'quality':
+        return Icons.star;
       case 'automation':
         return Icons.precision_manufacturing;
-      case 'quality':
-        return Icons.grade;
       default:
-        return Icons.extension;
+        return Icons.upgrade;
     }
   }
 }

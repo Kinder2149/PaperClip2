@@ -76,6 +76,7 @@ void main() {
       player.updateMetal(0.0);
       player.updateMaxMetalStorage(100000.0);
 
+      final priceBefore = market.marketMetalPrice;
       final moneyBefore = player.money;
       final metalBefore = player.metal;
       final spentBefore = stats.totalMoneySpent;
@@ -87,11 +88,11 @@ void main() {
       expect(player.metal, closeTo(metalBefore + GameConstants.METAL_PACK_AMOUNT, 0.0001));
       expect(
         player.money,
-        closeTo(moneyBefore - (GameConstants.METAL_PACK_AMOUNT * market.marketMetalPrice), 0.0001),
+        closeTo(moneyBefore - (GameConstants.METAL_PACK_AMOUNT * priceBefore), 0.0001),
       );
       expect(
         stats.totalMoneySpent,
-        closeTo(spentBefore + (GameConstants.METAL_PACK_AMOUNT * market.marketMetalPrice), 0.0001),
+        closeTo(spentBefore + (GameConstants.METAL_PACK_AMOUNT * priceBefore), 0.0001),
       );
       expect(stats.totalMetalPurchased, closeTo(purchasedBefore + GameConstants.METAL_PACK_AMOUNT, 0.0001));
     });

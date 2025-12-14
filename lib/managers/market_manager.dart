@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import '../widgets/indicators/notification_widgets.dart';
+import '../services/upgrades/upgrade_effects_calculator.dart';
 
 class MarketDynamics {
   double marketVolatility = 1.0;
@@ -275,6 +276,7 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
     required double playerPaperclips,
     required double sellPrice,
     required int marketingLevel,
+    required int qualityLevel,
     required void Function(double paperclipsDelta) updatePaperclips,
     required void Function(double moneyDelta) updateMoney,
     bool updateMarketState = true,
@@ -318,8 +320,8 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
       }
 
       if (potentialSales > 0) {
-        double qualityBonus = 1.0 + (sellPrice * 0.10);
-        double salePrice = sellPrice * qualityBonus;
+        final qualityBonus = UpgradeEffectsCalculator.qualityMultiplier(level: qualityLevel);
+        final salePrice = sellPrice * qualityBonus;
         final revenue = potentialSales * salePrice;
 
         // Logs détaillés de la transaction

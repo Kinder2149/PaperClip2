@@ -1,10 +1,20 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:paperclip2/constants/game_config.dart';
+import 'package:paperclip2/models/save_game.dart';
+import 'package:paperclip2/services/persistence/local_game_persistence.dart';
 import 'package:paperclip2/services/save_migration_service.dart';
+import 'package:paperclip2/services/save_system/save_manager_adapter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('SaveMigrationService', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      SaveManagerAdapter.resetForTesting();
+    });
+
     test('migrateData 1.0 -> 1.5 ajoute id/timestamp et convertit wire->metal', () async {
       final old = <String, dynamic>{
         'version': '1.0',
@@ -57,6 +67,108 @@ void main() {
         () => SaveMigrationService.migrateData(old, '0.9', '2.0'),
         throwsA(isA<UnsupportedError>()),
       );
+    });
+
+    test('compactAllSaves retire les champs legacy du gameData et du snapshot metadata', () async {
+      await SaveManagerAdapter.ensureInitialized();
+
+      const slotId = 'compact_test_slot';
+      const saveId = 'compact_test_id';
+
+      final snapshotKey = LocalGamePersistenceService.snapshotKey;
+      final gameData = <String, dynamic>{
+        'statistics': <String, dynamic>{
+          'totalGameTimeSec': 100,
+          'totalPaperclipsProduced': 200,
+        },
+        'totalTimePlayedInSeconds': 123,
+        'totalPaperclipsProduced': 456,
+        snapshotKey: <String, dynamic>{
+          'metadata': <String, dynamic>{
+            'gameId': slotId,
+            'totalTimePlayedInSeconds': 999,
+            'totalPaperclipsProduced': 888,
+          },
+          'core': <String, dynamic>{},
+        },
+      };
+
+      await SaveManagerAdapter.saveGame(
+        SaveGame(
+          id: saveId,
+          name: slotId,
+          lastSaveTime: DateTime.now(),
+          gameData: gameData,
+          version: '2.0',
+          gameMode: GameMode.INFINITE,
+        ),
+      );
+
+      final before = await SaveManagerAdapter.loadGame(slotId);
+      expect(before, isNotNull);
+      expect(before!.gameData.containsKey('totalTimePlayedInSeconds'), isTrue);
+      expect(before.gameData.containsKey('totalPaperclipsProduced'), isTrue);
+
+      await SaveMigrationService.compactAllSaves();
+
+      final after = await SaveManagerAdapter.loadGame(slotId);
+      expect(after, isNotNull);
+      expect(after!.gameData.containsKey('totalTimePlayedInSeconds'), isFalse);
+      expect(after.gameData.containsKey('totalPaperclipsProduced'), isFalse);
+
+      final rawSnapshot = after.gameData[snapshotKey];
+      expect(rawSnapshot, isA<Map>());
+      final snap = Map<String, dynamic>.from(rawSnapshot as Map);
+      final meta = Map<String, dynamic>.from(snap['metadata'] as Map);
+      expect(meta.containsKey('totalTimePlayedInSeconds'), isFalse);
+      expect(meta.containsKey('totalPaperclipsProduced'), isFalse);
+    });
+
+    test('compactAllSaves est idempotente (flag): ne recompresse pas une 2e fois', () async {
+      await SaveManagerAdapter.ensureInitialized();
+
+      const slotId = 'compact_flag_slot';
+      const saveId = 'compact_flag_id';
+
+      // 1) première sauvegarde avec legacy
+      await SaveManagerAdapter.saveGame(
+        SaveGame(
+          id: saveId,
+          name: slotId,
+          lastSaveTime: DateTime.now(),
+          gameData: <String, dynamic>{
+            'totalTimePlayedInSeconds': 1,
+            'totalPaperclipsProduced': 2,
+          },
+          version: '2.0',
+          gameMode: GameMode.INFINITE,
+        ),
+      );
+
+      await SaveMigrationService.compactAllSaves();
+
+      // 2) On réintroduit volontairement les clés legacy
+      await SaveManagerAdapter.saveGame(
+        SaveGame(
+          id: saveId,
+          name: slotId,
+          lastSaveTime: DateTime.now(),
+          gameData: <String, dynamic>{
+            'totalTimePlayedInSeconds': 111,
+            'totalPaperclipsProduced': 222,
+          },
+          version: '2.0',
+          gameMode: GameMode.INFINITE,
+        ),
+      );
+
+      // 3) La compaction ne doit plus s'appliquer
+      await SaveMigrationService.compactAllSaves();
+
+      final loaded = await SaveManagerAdapter.loadGame(slotId);
+      expect(loaded, isNotNull);
+      expect(loaded!.gameData['totalTimePlayedInSeconds'], 111);
+      expect(loaded.gameData['totalPaperclipsProduced'], 222);
     });
   });
 }

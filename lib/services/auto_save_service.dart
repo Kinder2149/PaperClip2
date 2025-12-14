@@ -15,6 +15,7 @@ import 'save_game.dart';  // Import du fichier point d'entrée pour le système 
 import '../managers/event_manager.dart';
 import '../constants/storage_constants.dart';  // Chemin corrigé vers les constantes de stockage
 import 'save_system/save_validator.dart';  // Import du nouveau validateur de sauvegarde
+import '../services/persistence/game_persistence_orchestrator.dart';
 
 class AutoSaveService {
     // Définition du logger (static pour être partagé entre les instances)
@@ -35,7 +36,6 @@ class AutoSaveService {
 
     await Future.microtask(() {
       _setupMainTimer();
-      _setupAppLifecycleSave();
       _isInitialized = true;
     });
   }
@@ -83,11 +83,11 @@ class AutoSaveService {
         gameMode: _gameState.gameMode,
       );
 
-      // Créer le backup de manière asynchrone pour ne pas bloquer l'UI
-      await Future.microtask(() async {
-        // Appel via l'adaptateur qui redirige vers le nouveau système de sauvegarde
-      await SaveManagerAdapter.saveGame(saveData);
-      });
+      await GamePersistenceOrchestrator.instance.requestBackup(
+        _gameState,
+        backupName: backupName,
+        reason: 'autosave_service_create_backup',
+      );
       
       print('Création de backup pour: $backupName');
 
@@ -118,12 +118,7 @@ class AutoSaveService {
   }
 
   void _setupAppLifecycleSave() {
-    SystemChannels.lifecycle.setMessageHandler((String? state) async {
-      if (state == 'paused' || state == 'inactive') {
-        await _performSaveOnExit();
-      }
-      return null;
-    });
+    // Mission 2: le lifecycle est orchestré hors AutoSaveService (AppLifecycleHandler).
   }
 
   // Le logger est déjà défini comme static au niveau de la classe
@@ -169,9 +164,10 @@ class AutoSaveService {
         return;
       }
 
-      // Sauvegarder les données
-      // Appel via l'adaptateur qui redirige vers le nouveau système de sauvegarde
-      await SaveManagerAdapter.saveGame(saveData);
+      await GamePersistenceOrchestrator.instance.requestAutoSave(
+        _gameState,
+        reason: 'autosave_timer',
+      );
       
       _failedSaveAttempts = 0;  // Réinitialiser le compteur en cas de succès
       _lastAutoSave = DateTime.now();
@@ -224,8 +220,11 @@ class AutoSaveService {
         gameMode: _gameState.gameMode,
       );
 
-      // Appel via l'adaptateur qui redirige vers le nouveau système de sauvegarde
-      await SaveManagerAdapter.saveGame(saveData);
+      await GamePersistenceOrchestrator.instance.requestBackup(
+        _gameState,
+        backupName: backupName,
+        reason: 'autosave_service_perform_backup',
+      );
       print('Backup effectué pour: $backupName');
       await _cleanupOldBackups();
     } catch (e) {
@@ -263,8 +262,10 @@ class AutoSaveService {
         id: _gameState.gameId ?? DateTime.now().millisecondsSinceEpoch.toString(),
       );
 
-      // Appel via l'adaptateur qui redirige vers le nouveau système de sauvegarde
-      await SaveManagerAdapter.saveGame(saveData);
+      await GamePersistenceOrchestrator.instance.requestLifecycleSave(
+        _gameState,
+        reason: 'autosave_service_save_on_exit',
+      );
       _lastAutoSave = DateTime.now();
       _logger.info('Sauvegarde à la sortie effectuée avec succès pour: ${_gameState.gameName}');
       

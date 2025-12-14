@@ -26,11 +26,15 @@ class MarketManagerMock extends ChangeNotifier {
     required double playerPaperclips,
     required double sellPrice,
     required int marketingLevel,
+    required int qualityLevel,
     required void Function(double paperclipsDelta) updatePaperclips,
     required void Function(double moneyDelta) updateMoney,
     bool updateMarketState = true,
     bool requireAutoSellEnabled = true,
   }) {
+    // Paramètres conservés pour compatibilité avec MarketManager.
+    // ignore: unused_local_variable
+    final _ = qualityLevel;
     // Mock simplifié: vend 1 unité si possible
     if (playerPaperclips <= 0) {
       return MarketSaleResult.none;

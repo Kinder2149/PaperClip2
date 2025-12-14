@@ -180,9 +180,6 @@ class _SaveButtonState extends State<SaveButton> {
 
   @override
   Widget build(BuildContext context) {
-    // Initialiser le contexte pour NotificationManager si ce n'est pas déjà fait
-    NotificationManager.instance.setContext(context);
-    
     // Si le gameState n'est pas disponible ou initialisé, ne pas afficher le bouton
     final gameState = context.watch<GameState>();
     if (!gameState.isInitialized || gameState.gameName == null) {

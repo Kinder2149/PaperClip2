@@ -928,25 +928,16 @@ class LocalSaveGameManager implements SaveGameManager {
     required String saveId,
   }) async {
     await _ensureInitialized();
-    
-    // Arrêter l'auto-sauvegarde existante si présente
+
     await disableAutoSave();
-    
-    _logger.info('Activation de l\'auto-sauvegarde pour $saveId avec intervalle ${interval.inSeconds}s');
-    
-    // Vérifier que la sauvegarde existe
-    if (!await saveExists(saveId)) {
-      _logger.warning('Impossible d\'activer l\'auto-sauvegarde: sauvegarde $saveId non trouvée');
-      return;
-    }
-    
-    // Désactiver comme sauvegarde active
+
+    _logger.warning(
+      "LocalSaveGameManager.enableAutoSave() est désactivé (Option A). "
+      "L'auto-save périodique est exclusivement géré par AutoSaveService. "
+      "Appel ignoré pour saveId=\"$saveId\", interval=${interval.inSeconds}s.",
+    );
+
     _activeSaveId = saveId;
-    
-    // Démarrer le timer
-    _autoSaveTimer = Timer.periodic(interval, (timer) async {
-      await _performAutoSave();
-    });
   }
 
   @override

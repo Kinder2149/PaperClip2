@@ -5,10 +5,10 @@ import '../constants/game_config.dart'; // Importé depuis constants au lieu de 
 import '../utils/update_manager.dart';
 import '../services/save_system/save_manager_adapter.dart';
 import '../services/notification_manager.dart'; // Ajout de l'import pour NotificationManager
+import '../services/navigation_service.dart';
 import 'save_load_screen.dart';
 import 'introduction_screen.dart';
 import 'package:paperclip2/screens/main_screen.dart';
-import 'package:paperclip2/main.dart';
 
 class StartScreen extends StatefulWidget {
   const StartScreen({super.key});
@@ -50,6 +50,9 @@ class _StartScreenState extends State<StartScreen> {
         
         // Charger la sauvegarde
         await gameState.loadGame(lastSave.name);
+
+        // Mission 2: démarrage autosave orchestré hors GameState
+        gameState.autoSaveService.start();
         
         // Attendre un court instant pour s'assurer que tout est bien initialisé
         await Future.delayed(const Duration(milliseconds: 300));
@@ -224,10 +227,9 @@ class _StartScreenState extends State<StartScreen> {
                         showSkipButton: true,
                         isCompetitiveMode: selectedMode == GameMode.COMPETITIVE,
                         onStart: () {
-                          // Utilise le navigatorKey global plutôt que le context
-                          navigatorKey.currentState?.pushReplacement(
-                            MaterialPageRoute(builder: (_) => const MainScreen()),
-                          );
+                          context.read<NavigationService>().pushReplacement(
+                                MaterialPageRoute(builder: (_) => const MainScreen()),
+                              );
                         },
                       );
 

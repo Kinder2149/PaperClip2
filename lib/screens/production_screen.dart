@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:async';
 import '../models/game_state.dart';
 import '../constants/game_config.dart'; // Importé depuis constants au lieu de models
 import '../widgets/resources/resource_widgets.dart';
@@ -12,6 +11,7 @@ import '../widgets/dialogs/info_dialog.dart';
 import '../widgets/indicators/stat_indicator.dart';
 import '../widgets/cards/stats_panel.dart';
 import '../widgets/save_button.dart';
+import '../services/upgrades/upgrade_effects_calculator.dart';
 
 class ProductionScreen extends StatefulWidget {
   const ProductionScreen({super.key});
@@ -21,23 +21,11 @@ class ProductionScreen extends StatefulWidget {
 }
 
 class _ProductionScreenState extends State<ProductionScreen> {
-  Timer? _refreshTimer;
+  // L'écran est mis à jour via l'architecture réactive (Provider/ChangeNotifier)
+  // au travers de `Consumer<GameState>` et des `notifyListeners()`.
 
-  @override
-  void initState() {
-    super.initState();
-    // Rafraîchir l'interface toutes les 100ms
-    _refreshTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
-      if (mounted) {
-        setState(() {});
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _refreshTimer?.cancel();
-    super.dispose();
+  bool _canPurchaseMetal(GameState gameState) {
+    return gameState.resourceManager.canPurchaseMetal();
   }
 
   String formatNumber(double number, bool isMetal) {
@@ -73,10 +61,17 @@ class _ProductionScreenState extends State<ProductionScreen> {
   // Méthode _saveGame supprimée car maintenant gérée par le widget SaveButton
 
   Widget _buildAutoclippersSection(BuildContext context, GameState gameState) {
-    double bulkBonus = (gameState.player.upgrades['bulk']?.level ?? 0) * 20;
-    double speedBonus = (gameState.player.upgrades['speed']?.level ?? 0) * 15;
-    double metalSavingPercent = ((gameState.player.upgrades['efficiency']?.level ?? 0) * 15);
-    double efficiencyBonus = 1.0 - metalSavingPercent;
+    final bulkLevel = gameState.player.upgrades['bulk']?.level ?? 0;
+    final speedLevel = gameState.player.upgrades['speed']?.level ?? 0;
+    final efficiencyLevel = gameState.player.upgrades['efficiency']?.level ?? 0;
+
+    final bulkMultiplier = UpgradeEffectsCalculator.bulkMultiplier(level: bulkLevel);
+    final speedMultiplier = UpgradeEffectsCalculator.speedMultiplier(level: speedLevel);
+    final reduction = UpgradeEffectsCalculator.efficiencyReduction(level: efficiencyLevel);
+
+    final bulkBonus = (bulkMultiplier - 1.0) * 100;
+    final speedBonus = (speedMultiplier - 1.0) * 100;
+    final metalSavingPercent = reduction * 100;
     double roi = gameState.player.calculateAutoclipperROI();
 
     final autoclipperCost = gameState.productionManager.calculateAutoclipperCost();
@@ -481,15 +476,14 @@ class _ProductionScreenState extends State<ProductionScreen> {
 
   Widget _buildProductionStatsCard(GameState gameState) {
     // Calcul des bonus et effets des améliorations
-    double efficiencyLevel = (gameState.player.upgrades['efficiency']?.level ?? 0).toDouble();
-    double speedLevel = (gameState.player.upgrades['speed']?.level ?? 0).toDouble();
-    double bulkLevel = (gameState.player.upgrades['bulk']?.level ?? 0).toDouble();
+    final efficiencyLevel = (gameState.player.upgrades['efficiency']?.level ?? 0);
+    final speedLevel = (gameState.player.upgrades['speed']?.level ?? 0);
+    final bulkLevel = (gameState.player.upgrades['bulk']?.level ?? 0);
 
-    // Facteurs d'amélioration
-    double metalSavingPercent = efficiencyLevel * 15.0; // Pourcentage d'économie de métal
-    double efficiencyBonus = 1.0 - (metalSavingPercent / 100); // Multiplicateur de consommation de métal
-    double speedBonus = 1.0 + (speedLevel * 0.20); // Augmentation de vitesse
-    double bulkBonus = 1.0 + (bulkLevel * 0.35); // Augmentation de production
+    final metalSavingPercent = UpgradeEffectsCalculator.efficiencyReduction(level: efficiencyLevel) * 100;
+    final efficiencyBonus = 1.0 - (metalSavingPercent / 100);
+    final speedBonus = UpgradeEffectsCalculator.speedMultiplier(level: speedLevel);
+    final bulkBonus = UpgradeEffectsCalculator.bulkMultiplier(level: bulkLevel);
 
     // Calculs de production précis
     double baseAutoclipperRate = GameConstants.BASE_AUTOCLIPPER_PRODUCTION;
@@ -771,7 +765,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
 
                       if (visibleElements['metalPurchaseButton'] == true) ...[
                         ActionButton.purchase(
-                          onPressed: gameState.canBuyMetal()
+                          onPressed: _canPurchaseMetal(gameState)
                               ? () => gameState.purchaseMetal()
                               : null,
                           label: 'Acheter Métal (${gameState.market

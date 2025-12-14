@@ -8,6 +8,7 @@ import 'package:logging/logging.dart';
 import 'package:paperclip2/constants/game_config.dart';
 import 'package:paperclip2/models/save_game.dart';
 import 'package:paperclip2/models/save_metadata.dart';
+import 'package:paperclip2/services/persistence/local_game_persistence.dart';
 import 'package:paperclip2/services/save_system/save_manager_adapter.dart';
 import 'package:paperclip2/services/save_system/save_validator.dart';
 import 'package:path_provider/path_provider.dart';
@@ -20,12 +21,16 @@ class MigrationResult {
   final int failureCount;
   final List<String> successNames;
   final Map<String, String> failures;
+  final int scannedCount;
+  final Duration duration;
   
   const MigrationResult({
     required this.successCount,
     required this.failureCount,
     required this.successNames,
     required this.failures,
+    this.scannedCount = 0,
+    this.duration = Duration.zero,
   });
   
   @override
@@ -43,6 +48,11 @@ class SaveMigrationService {
   // Versions du format de sauvegarde
   static const String CURRENT_SAVE_FORMAT_VERSION = '2.0';
   static const List<String> SUPPORTED_VERSIONS = ['1.0', '1.5', '2.0'];
+
+  static const String _legacyPreMigrationBackupSuffix = '_backup_pre_migration';
+  static const String _legacyPreMigrationBackupTimestampedMarker = '_backup_pre_migration_';
+
+  static const String _compactionFlagKey = 'save_compaction_v1_done';
   
   /// Journal des migrations effectuées (pour debugging)
   static final List<String> _migrationLogs = [];
@@ -72,11 +82,248 @@ class SaveMigrationService {
     if (kDebugMode) {
       print("[SaveMigrationService] $message");
     }
-    
+
     // Limiter le nombre de logs conservés en mémoire
     if (_migrationLogs.length > 100) {
       _migrationLogs.removeRange(0, 50);
     }
+  }
+
+  static String _stablePreMigrationBackupKey(String legacySaveKey) {
+    return '$legacySaveKey$_legacyPreMigrationBackupSuffix';
+  }
+
+  static Future<void> _cleanupLegacyTimestampedBackups(SharedPreferences prefs) async {
+    try {
+      final allKeys = prefs.getKeys();
+      final keysToDelete = allKeys.where((key) =>
+          key.startsWith(OLD_SAVE_PREFIX) &&
+          key.contains(_legacyPreMigrationBackupTimestampedMarker));
+
+      for (final key in keysToDelete) {
+        await prefs.remove(key);
+      }
+    } catch (e) {
+      _log('Nettoyage des backups legacy timestampés ignoré: $e');
+    }
+  }
+
+  /// Migration lazy: migre au maximum [maxToMigrate] sauvegardes legacy (ancien système)
+  /// vers le nouveau format, puis s'arrête.
+  ///
+  /// Objectif: éviter de bloquer le boot; la migration se fait à l'ouverture de l'écran de sauvegardes.
+  ///
+  /// - Les backups pré-migration sont idempotents: une seule copie stable par sauvegarde.
+  /// - Les anciens backups timestampés (historique d'anciennes exécutions) sont purgés.
+  static Future<MigrationResult> migrateLegacySavesIfNeeded({
+    int maxToMigrate = 5,
+    void Function(int migrated, int total)? onProgress,
+  }) async {
+    final sw = Stopwatch()..start();
+
+    final List<String> successNames = [];
+    final Map<String, String> failures = {};
+
+    int scanned = 0;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      await _cleanupLegacyTimestampedBackups(prefs);
+      await SaveManagerAdapter.ensureInitialized();
+
+      final allKeys = prefs.getKeys();
+      final legacySaveKeys = allKeys
+          .where((key) =>
+              key.startsWith(OLD_SAVE_PREFIX) &&
+              !key.contains(GameConstants.BACKUP_DELIMITER) &&
+              !key.endsWith(_legacyPreMigrationBackupSuffix) &&
+              !key.contains(_legacyPreMigrationBackupTimestampedMarker))
+          .toList();
+
+      // Rien à faire.
+      if (legacySaveKeys.isEmpty) {
+        sw.stop();
+        return MigrationResult(
+          successCount: 0,
+          failureCount: 0,
+          successNames: const [],
+          failures: const {},
+          scannedCount: 0,
+          duration: sw.elapsed,
+        );
+      }
+
+      final total = legacySaveKeys.length;
+      final limit = maxToMigrate < 0 ? total : maxToMigrate;
+
+      for (final saveKey in legacySaveKeys) {
+        if (successNames.length + failures.length >= limit) {
+          break;
+        }
+
+        scanned++;
+        final saveName = saveKey.substring(OLD_SAVE_PREFIX.length);
+        final savedData = prefs.getString(saveKey);
+        if (savedData == null) {
+          continue;
+        }
+
+        try {
+          // Backup stable (idempotent) avant toute tentative.
+          final stableBackupKey = _stablePreMigrationBackupKey(saveKey);
+          if (!prefs.containsKey(stableBackupKey)) {
+            await prefs.setString(stableBackupKey, savedData);
+          }
+
+          Map<String, dynamic> data;
+          final decoded = jsonDecode(savedData);
+          if (decoded is! Map<String, dynamic>) {
+            throw FormatException('Format de données invalide, Map<String, dynamic> attendu');
+          }
+          data = decoded;
+
+          String version = '1.0';
+          if (data.containsKey('version') && data['version'] is String) {
+            version = data['version'] as String;
+          }
+
+          if (version == CURRENT_SAVE_FORMAT_VERSION) {
+            // Déjà compatible: on peut retirer la clé legacy.
+            // (elle a déjà un backup stable si nécessaire)
+            await prefs.remove(saveKey);
+            await prefs.remove(stableBackupKey);
+            successNames.add(saveName);
+            onProgress?.call(successNames.length, total);
+            continue;
+          }
+
+          if (!_migrationPaths.containsKey(version)) {
+            throw UnsupportedError('Version non supportée pour la migration: $version');
+          }
+
+          final migratedData = await migrateData(data, version, CURRENT_SAVE_FORMAT_VERSION);
+          final validationResult = SaveValidator.validate(migratedData);
+          if (!validationResult.isValid) {
+            throw FormatException(
+                'Les données migrées ne passent pas la validation d\'intégrité: ${validationResult.errors.join(", ")}');
+          }
+
+          final String uuid = data['id'] as String? ?? const Uuid().v4();
+          final saveGame = _createSaveGameFromMigratedData(migratedData, saveName, uuid);
+          await SaveManagerAdapter.instance.saveGame(saveGame);
+
+          await prefs.remove(saveKey);
+          await prefs.remove(stableBackupKey);
+
+          successNames.add(saveName);
+          onProgress?.call(successNames.length, total);
+        } catch (e) {
+          failures[saveName] = e.toString();
+          onProgress?.call(successNames.length, total);
+        }
+      }
+
+      sw.stop();
+      return MigrationResult(
+        successCount: successNames.length,
+        failureCount: failures.length,
+        successNames: successNames,
+        failures: failures,
+        scannedCount: scanned,
+        duration: sw.elapsed,
+      );
+    } catch (e) {
+      sw.stop();
+      failures['GENERAL'] = e.toString();
+      return MigrationResult(
+        successCount: successNames.length,
+        failureCount: failures.length,
+        successNames: successNames,
+        failures: failures,
+        scannedCount: scanned,
+        duration: sw.elapsed,
+      );
+    }
+  }
+
+  static Future<void> compactAllSaves({bool includeBackups = true}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final alreadyDone = prefs.getBool(_compactionFlagKey) ?? false;
+    if (alreadyDone) {
+      return;
+    }
+
+    await SaveManagerAdapter.ensureInitialized();
+
+    final metadatas = await SaveManagerAdapter.instance.listSaves();
+    for (final meta in metadatas) {
+      if (!includeBackups && meta.name.contains(GameConstants.BACKUP_DELIMITER)) {
+        continue;
+      }
+
+      try {
+        final loaded = await SaveManagerAdapter.instance.loadSave(meta.id);
+        if (loaded == null) {
+          continue;
+        }
+
+        final updatedGameData = Map<String, dynamic>.from(loaded.gameData);
+
+        updatedGameData.remove('totalTimePlayedInSeconds');
+        updatedGameData.remove('totalPaperclipsProduced');
+
+        final snapshotKey = LocalGamePersistenceService.snapshotKey;
+        if (updatedGameData.containsKey(snapshotKey)) {
+          final rawSnapshot = updatedGameData[snapshotKey];
+
+          if (rawSnapshot is Map) {
+            final snapMap = Map<String, dynamic>.from(rawSnapshot as Map);
+            final metaMapRaw = snapMap['metadata'];
+            if (metaMapRaw is Map) {
+              final snapMeta = Map<String, dynamic>.from(metaMapRaw as Map);
+              snapMeta.remove('totalTimePlayedInSeconds');
+              snapMeta.remove('totalPaperclipsProduced');
+              snapMap['metadata'] = snapMeta;
+            }
+            updatedGameData[snapshotKey] = snapMap;
+          } else if (rawSnapshot is String) {
+            try {
+              final decoded = jsonDecode(rawSnapshot);
+              if (decoded is Map<String, dynamic>) {
+                final snapMap = Map<String, dynamic>.from(decoded);
+                final metaMapRaw = snapMap['metadata'];
+                if (metaMapRaw is Map) {
+                  final snapMeta = Map<String, dynamic>.from(metaMapRaw as Map);
+                  snapMeta.remove('totalTimePlayedInSeconds');
+                  snapMeta.remove('totalPaperclipsProduced');
+                  snapMap['metadata'] = snapMeta;
+                }
+                updatedGameData[snapshotKey] = jsonEncode(snapMap);
+              }
+            } catch (_) {
+              // Ignorer si le snapshot n'est pas un JSON valide.
+            }
+          }
+        }
+
+        final updated = SaveGame(
+          id: meta.id,
+          name: meta.name,
+          lastSaveTime: DateTime.now(),
+          gameData: updatedGameData,
+          version: meta.version,
+          gameMode: meta.gameMode,
+          isRestored: meta.isRestored,
+        );
+
+        await SaveManagerAdapter.saveGame(updated);
+      } catch (e) {
+        _log('Compaction ignorée pour ${meta.name} (${meta.id}): $e');
+      }
+    }
+
+    await prefs.setBool(_compactionFlagKey, true);
   }
   
   /// Migre toutes les sauvegardes existantes vers le nouveau format
@@ -203,6 +450,7 @@ class SaveMigrationService {
         failureCount: failures.length,
         successNames: successNames,
         failures: failures,
+        scannedCount: savesToMigrate.length,
       );
     } catch (e) {
       _log('ERREUR CRITIQUE lors de la migration: $e');
@@ -211,6 +459,7 @@ class SaveMigrationService {
         failureCount: failures.length + 1, // +1 pour l'erreur générale
         successNames: successNames,
         failures: {...failures, 'GENERAL': e.toString()},
+        duration: Duration.zero,
       );
     }
   }

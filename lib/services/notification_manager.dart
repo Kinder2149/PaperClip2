@@ -9,16 +9,18 @@ class NotificationManager with ChangeNotifier {
   NotificationManager._internal();
   
   // Référence au contexte global pour afficher les SnackBars
-  BuildContext? _context;
+  GlobalKey<ScaffoldMessengerState>? _scaffoldMessengerKey;
   
   // Liste des notifications en attente
   final List<GameNotification> _pendingNotifications = [];
   
   // Définir le contexte
   void setContext(BuildContext context) {
-    _context = context;
-    
-    // Traiter les notifications en attente
+    // Conservé pour compatibilité (ne plus utiliser).
+  }
+
+  void setScaffoldMessengerKey(GlobalKey<ScaffoldMessengerState> key) {
+    _scaffoldMessengerKey = key;
     _processPendingNotifications();
   }
   
@@ -39,7 +41,7 @@ class NotificationManager with ChangeNotifier {
     );
     
     // Si le contexte n'est pas disponible, mettre en attente
-    if (_context == null) {
+    if (_scaffoldMessengerKey?.currentState == null) {
       _pendingNotifications.add(notification);
       if (kDebugMode) {
         print('Notification en attente: $message');
@@ -53,7 +55,7 @@ class NotificationManager with ChangeNotifier {
   
   // Traiter les notifications en attente
   void _processPendingNotifications() {
-    if (_context == null || _pendingNotifications.isEmpty) return;
+    if (_scaffoldMessengerKey?.currentState == null || _pendingNotifications.isEmpty) return;
     
     // Afficher les notifications en attente
     for (var notification in List.from(_pendingNotifications)) {
@@ -64,9 +66,8 @@ class NotificationManager with ChangeNotifier {
   
   // Afficher une SnackBar
   void _showSnackBar(GameNotification notification) {
-    if (_context == null) return;
-    
-    final scaffoldMessenger = ScaffoldMessenger.of(_context!);
+    final scaffoldMessenger = _scaffoldMessengerKey?.currentState;
+    if (scaffoldMessenger == null) return;
     
     // Définir la couleur en fonction du niveau
     Color backgroundColor;
@@ -110,10 +111,7 @@ class NotificationManager with ChangeNotifier {
   void clearAll() {
     _pendingNotifications.clear();
     
-    if (_context != null) {
-      // Fermer toutes les notifications actuellement affichées
-      ScaffoldMessenger.of(_context!).clearSnackBars();
-    }
+    _scaffoldMessengerKey?.currentState?.clearSnackBars();
     
     if (kDebugMode) {
       print('Toutes les notifications ont été effacées');

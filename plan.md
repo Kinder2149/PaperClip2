@@ -46,6 +46,154 @@ Ce document suit l'avancement des phases de refactor définies après l'audit.
 
 ## Phase 2 — Dégraisser GameState (core + session)
 
+### Mission 1 — Extraction complète de la logique UI / runtime Flutter hors de GameState (ChangeNotifier conservé)
+
+- Objectif : Rendre `GameState` indépendant de l'UI et du runtime Flutter applicatif (BuildContext, widgets, navigation, Provider musique, SystemChannels.lifecycle).
+- Décision d’architecture (non négociable) : `GameState` reste un `ChangeNotifier` (dépendance à `flutter/foundation` assumée).
+
+- Fichiers ajoutés :
+  - `lib/services/ui/game_ui_port.dart` (port UI sans Flutter)
+  - `lib/services/audio/game_audio_port.dart` (port audio sans Flutter)
+  - `lib/services/ui/flutter_game_ui_facade.dart` (implémentation Flutter du port UI)
+  - `lib/services/audio/flutter_game_audio_facade.dart` (implémentation Flutter du port audio)
+  - `lib/services/lifecycle/app_lifecycle_handler.dart` (lifecycle Flutter hors GameState)
+
+- Fichiers modifiés :
+  - `lib/models/game_state.dart`
+  - `lib/main.dart`
+  - `lib/screens/main_screen.dart`
+
+- Logique déplacée hors de `GameState` :
+  - Navigation compétitive (`handleCompetitiveGameEnd`) : déléguée à `GameUiPort.showCompetitiveResult`.
+  - Snackbars/notifications UI (prix excessif, unlock, leaderboard indisponible) : déléguées à `GameUiPort`.
+  - Provider musique (chargement d'état musique par partie) : délégué à `GameAudioPort`.
+  - Lifecycle (`SystemChannels.lifecycle`) : déplacé dans `AppLifecycleHandler`.
+  - Initialisation du contexte global de notifications : `MainScreen` utilise `NotificationManager.instance.setContext(context)` (et non plus `gameState.setContext`).
+
+- Nettoyage effectué :
+  - Suppression de toute importation `material`, `provider`, `services`, écrans/dialogs depuis `GameState`.
+  - Suppression de toute référence à `BuildContext`, `Navigator`, `ScaffoldMessenger`, `SnackBar`, `Icons`, `SystemChannels`, `Provider` dans `GameState`.
+
+- Risques / points d'attention :
+  - `EventManager` (modèle) dépend encore de `material.dart` : `GameState` ne doit pas y faire référence.
+  - Les facades (`FlutterGameUiFacade`, `FlutterGameAudioFacade`, `AppLifecycleHandler`) doivent être initialisées tôt (dans `main.dart`) pour éviter les notifications manquées.
+  - Les écrans/widgets qui appelaient des méthodes UI directes sur `GameState` doivent désormais passer par les facades/services UI.
+
+### Mission 2 — Clarification et assainissement de la persistance (pipeline unifié)
+
+- Objectif : Unifier le pipeline load/save et retirer l'orchestration de persistance avancée de `GameState`.
+
+- Rôles cibles (Mission 2) :
+  - **GamePersistenceOrchestrator** : orchestrateur unique du **load** et du **save** (y compris stop/restart autosave autour du load).
+  - **GameState** : consommateur/appliqueur de données chargées (JSON/snapshot) + sérialisation (`prepareGameData`, `toSnapshot`, `applySnapshot`).
+  - **AutoSaveService** : déclencheur périodique/backup qui appelle le pipeline unifié (ne parle plus directement à `SaveManagerAdapter.saveGame`).
+
+- Fichiers modifiés :
+  - `lib/models/game_state.dart`
+  - `lib/services/persistence/game_persistence_orchestrator.dart`
+  - `lib/services/auto_save_service.dart`
+  - `lib/screens/start_screen.dart`
+  - `lib/screens/save_load_screen.dart`
+
+- Pipeline load (nouveau) :
+  1) UI appelle `gameState.loadGame(name)`
+  2) `GameState.loadGame` délègue à `GamePersistenceOrchestrator.loadGame(state, name)`
+  3) Orchestrator :
+     - `state.autoSaveService.stop()`
+     - `SaveManagerAdapter.loadGame` + `extractGameData`
+     - `state.applyLoadedGameDataWithoutSnapshot(name, gameData)` (application métier)
+     - `_applySnapshotIfPresent` → `state.applySnapshot(...)` si présent
+     - `await state.finishLoadGameAfterSnapshot(name, gameData)` (post-load métier)
+     - `state.autoSaveService.restart()`
+  4) UI démarre explicitement `gameState.autoSaveService.start()` après un chargement réussi (StartScreen/SaveLoadScreen).
+
+- Pipeline save (nouveau) :
+  - Save manuel/événementiel : `GameState.saveGame` / `saveOnImportantEvent` délèguent à `GamePersistenceOrchestrator`.
+  - Autosave/backup : `AutoSaveService` appelle `GamePersistenceOrchestrator.saveGame(...)`.
+
+- Nettoyage effectué :
+  - `GameState` ne stop/restart plus l'autosave pendant le load.
+  - `GameState` ne fait plus de save initial ni de démarrage autosave dans `startNewGame`.
+
+- Risques / points d'attention :
+  - Il existe des validations et du formatage dans `AutoSaveService` (ex: `SaveValidator`) qui ne sont pas encore totalement mutualisés avec `GamePersistenceOrchestrator`.
+  - Les appels UI doivent démarrer l'autosave explicitement après load/new game.
+
+### Mission 3 — Unification des règles économie / ressources (achat métal)
+
+- Objectif : garantir une seule source de vérité pour les règles d'achat de métal (argent, capacité, stock marché, coût total).
+
+- Décision (Option A validée) : le stock métal du marché est un invariant gameplay :
+  - l'achat échoue si `marketMetalStock < METAL_PACK_AMOUNT`
+  - l'achat consomme le stock du marché
+
+- Source de vérité : `ResourceManager`
+  - Nouvelle API : `ResourceManager.canPurchaseMetal([customPrice])`
+  - `ResourceManager.purchaseMetal` appelle `canPurchaseMetal` et décrémente `marketMetalStock`.
+
+- Fichiers modifiés :
+  - `lib/managers/resource_manager.dart`
+  - `lib/models/game_state.dart`
+  - `lib/screens/production_screen.dart`
+
+- Nettoyage effectué :
+  - Suppression de la logique `_canBuyMetal` dans `GameState`.
+  - `GameState.canBuyMetal()` délègue désormais à `ResourceManager.canPurchaseMetal()`.
+  - L'UI n'interroge plus `GameState.canBuyMetal()` : `ProductionScreen` utilise `resourceManager.canPurchaseMetal()`.
+
+- Risques / points d'attention :
+  - Vérifier que `MarketManager.marketMetalStock` est cohérent avec le gameplay (la consommation du stock peut impacter l'économie et les écrans).
+  - Éviter les chemins legacy (`purchaseSpecificMetalAmount`) qui manipulent le stock différemment.
+
+### Mission 4 — Extraction des règles de progression et design gameplay
+
+- Objectif : sortir toute règle de design progression enfouie dans `GameState` (milestones, boosts, gating, side-effects d'unlock).
+
+- Fichier ajouté :
+  - `lib/services/progression/progression_rules_service.dart`
+
+- Fichiers modifiés :
+  - `lib/models/game_state.dart`
+
+- Règles déplacées vers `ProgressionRulesService` :
+  - **Gating** des éléments visibles (ancien `GameState.getVisibleScreenElements`) → `ProgressionRulesService.getVisibleScreenElements(level)`.
+  - **Milestone** (tous les 5 niveaux) → XP boost `x2` pendant 5 minutes (ancien `checkMilestones/activateXPBoost`) → `ProgressionRulesService.handleLevelUp`.
+  - **Side-effect** d'unlock `AUTOCLIPPERS` : bonus argent `+BASE_AUTOCLIPPER_COST` → `ProgressionRulesService.handleLevelUp`.
+  - **Triggers XP** :
+    - vente (`tickMarket`) → `ProgressionRulesService.onSale(...)`
+    - achat upgrade (`purchaseUpgrade`) → `ProgressionRulesService.onUpgradePurchase(...)`
+
+- Branchement :
+  - `LevelSystem.onLevelUp` est branché dans `GameState._createManagers()` vers `ProgressionRulesService.handleLevelUp(...)`.
+  - Les notifications de déblocage restent envoyées via `_uiPort` (port UI), mais la règle “quoi notifier” est portée par le service.
+
+- Schéma (macro) :
+  - **Actions gameplay** (Market/Upgrades/Production) → **GameState façade** → `ProgressionRulesService` → `LevelSystem`
+  - `LevelSystem` déclenche `onLevelUp(level, newFeatures)` → `ProgressionRulesService.handleLevelUp(...)` → (bonus + notifications + saveOnImportantEvent)
+
+### Mission 5 — Nettoyage, cohérence globale et validation finale
+
+- Objectif : Finaliser la refonte de `GameState` en supprimant les méthodes legacy/doublons/code mort, en unifiant les chemins `reset` / `load`, et en validant la cohérence globale (stats, reset, mode compétitif) sans casser la compatibilité.
+
+- Changements clés (récapitulatif) :
+  - `GameState.reset()` : unifié via `_resetGameDataOnly()` pour remettre à zéro de manière cohérente :
+    - `PlayerManager`, `MarketManager`, `ResourceManager`, `ProductionManager`, `LevelSystem`, `StatisticsManager`.
+    - états internes liés au mode crise + compteurs legacy (temps/production) + flags runtime.
+  - `GameState.loadGame(String name)` : ajouté comme façade (utilisé par l’UI) et délègue à `GamePersistenceOrchestrator`.
+  - `StatisticsManager.reset()` : ajouté pour garantir un reset complet des métriques et éviter les demi-états.
+  - Nettoyage : suppression de code mort / méthodes privées non utilisées dans `GameState` (notamment autour du calcul de refresh missions).
+  - Null-safety : alignement des usages de `MissionSystem` avec son statut `late final` (suppression des checks `!= null` et `!`).
+
+- Correctifs nécessaires pendant la validation :
+  - `SaveValidator` : tolérance aux valeurs `int`/`String` pour des champs typés `double` (ex: `money`, `sellPrice`) afin d’éviter des exceptions de cast pendant `validate()`.
+  - Tests : correction de `ResourceManager.purchaseMetal` (test) car `marketMetalPrice` peut être recalculé après mise à jour du stock (attendu basé sur le prix avant achat).
+
+- Validation finale :
+  - `flutter test` : OK (suite complète).
+  - `flutter analyze` : exécute correctement mais remonte un volume important de lints historiques (warnings/infos). Aucun traitement massif de lints n’a été entrepris dans cette mission (scope limité à la refonte/validation).
+
+- Statut : complété.
+
 ### Étape P2-PR1 — Introduction de GameCoreState et GameSessionController (squelettes)
 - Objectif : Poser les briques `GameCoreState` (modèle pur) et `GameSessionController` (contrôleur de session) sans modifier le comportement de `GameState`.
 - Branche suggérée : `refactor/p2-corestate-session-skeleton`

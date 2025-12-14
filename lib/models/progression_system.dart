@@ -63,7 +63,7 @@ class XPComboSystem {
   }
 
   void incrementCombo() {
-    _comboCount = _comboCount.clamp(0, 5);
+    _comboCount = (_comboCount + 1).clamp(0, GameConstants.MAX_COMBO_COUNT);
     _resetComboTimer();
   }
 
@@ -352,7 +352,11 @@ class LevelSystem with ChangeNotifier implements JsonLoadable {
   Map<ProgressionPath, double> _pathProgress = {};
   Map<String, bool> _unlockedMilestones = {};
 
+  int? _pendingPathChoiceLevel;
+  List<PathOption>? _pendingPathOptions;
+
   Function(int level, List<UnlockableFeature> newFeatures)? onLevelUp;
+  Function(int level, List<PathOption> options)? onPathChoiceRequired;
 
   // Getters
   double get experience => _experience;
@@ -363,6 +367,11 @@ class LevelSystem with ChangeNotifier implements JsonLoadable {
   double get xpToNextLevel => calculateExperienceRequirement(_level + 1);
   
   ProgressionPath get currentPath => _currentPath;
+  bool get isPathChoicePending => _pendingPathChoiceLevel != null;
+  int? get pendingPathChoiceLevel => _pendingPathChoiceLevel;
+  List<PathOption> get pendingPathOptions => List.unmodifiable(_pendingPathOptions ?? const <PathOption>[]);
+
+  double getPathProgress(ProgressionPath path) => _pathProgress[path] ?? 0.0;
   double get currentComboMultiplier => comboSystem.getComboMultiplier();
   double get totalXpMultiplier => _xpMultiplier * currentComboMultiplier;
   bool get isDailyBonusAvailable => !dailyBonus.claimed;
@@ -397,31 +406,22 @@ class LevelSystem with ChangeNotifier implements JsonLoadable {
         initialExperienceRequirement: 260
     ),
     5: LevelUnlock(
-        description: "Système d'améliorations débloqué",
-        unlockedFeatures: ['upgrades'],
+        description: "Interface du marché débloquée",
+        unlockedFeatures: ['market_screen'],
         pathOptions: [
           PathOption(ProgressionPath.EFFICIENCY, 0.4),
           PathOption(ProgressionPath.INNOVATION, 0.3)
         ],
         initialExperienceRequirement: 366
     ),
-    8: LevelUnlock(
-        description: "Interface du marché débloquée",
-        unlockedFeatures: ['market_screen'],
+    7: LevelUnlock(
+        description: "Système d'améliorations débloqué",
+        unlockedFeatures: ['upgrades'],
         pathOptions: [
           PathOption(ProgressionPath.MARKETING, 0.5),
           PathOption(ProgressionPath.EFFICIENCY, 0.3)
         ],
-        initialExperienceRequirement: 580
-    ),
-    10: LevelUnlock(
-        description: "Accès aux ventes sur le marché",
-        unlockedFeatures: ['market_sales'],
-        pathOptions: [
-          PathOption(ProgressionPath.MARKETING, 0.6),
-          PathOption(ProgressionPath.INNOVATION, 0.4)
-        ],
-        initialExperienceRequirement: 666
+        initialExperienceRequirement: 520
     ),
     15: LevelUnlock(
         description: "Optimisation de la production",
@@ -485,8 +485,8 @@ class LevelSystem with ChangeNotifier implements JsonLoadable {
     
     // Applique les multiplicateurs
     double baseAmount = amount * totalXpMultiplier;
-    double levelPenalty = _level * 0.02;
-    double adjustedAmount = baseAmount * (1 - levelPenalty);
+    final double levelScale = 1.0 + ((_level - 1) * 0.04);
+    double adjustedAmount = baseAmount / levelScale;
     
     // Bonus pour les bas niveaux
     if (_level < 35) {
@@ -494,14 +494,17 @@ class LevelSystem with ChangeNotifier implements JsonLoadable {
     }
     
     // Ajout d'un bonus supplémentaire si l'activité correspond au chemin de progression actuel
-    if (_experienceTypeMatchesPath(type, _currentPath)) {
-      adjustedAmount *= 1.2;  // 20% de bonus pour les activités sur le chemin choisi
-    }
+    adjustedAmount *= _currentPathBonusMultiplier(type);
+
+    // Tracking de progression par chemin (en XP ajustée).
+    final path = _mapExperienceTypeToPath(type);
+    _pathProgress[path] = (_pathProgress[path] ?? 0.0) + adjustedAmount;
+    _checkPathMilestones(path);
     
     print('Adjusted experience: $adjustedAmount'); // Log adjusted amount
     
     // Ajout de l'expérience avec un minimum garanti
-    _experience += max(adjustedAmount, 0.2);
+    _experience += max(adjustedAmount, 0.05);
     
     print('Current experience: $_experience'); // Log current experience
     print('Experience for next level: ${calculateExperienceRequirement(_level + 1)}'); // Log required experience
@@ -537,6 +540,66 @@ class LevelSystem with ChangeNotifier implements JsonLoadable {
       default:
         return false;
     }
+  }
+
+  ProgressionPath _mapExperienceTypeToPath(ExperienceType type) {
+    switch (type) {
+      case ExperienceType.PRODUCTION:
+        return ProgressionPath.PRODUCTION;
+      case ExperienceType.SALE:
+        return ProgressionPath.MARKETING;
+      case ExperienceType.UPGRADE:
+      case ExperienceType.COMBO_BONUS:
+        return ProgressionPath.INNOVATION;
+      case ExperienceType.GENERAL:
+      case ExperienceType.DAILY_BONUS:
+      default:
+        return ProgressionPath.EFFICIENCY;
+    }
+  }
+
+  int _countUnlockedMilestonesForPath(ProgressionPath path) {
+    final prefix = '${path.index}_';
+    return _unlockedMilestones.keys.where((k) => k.startsWith(prefix)).length;
+  }
+
+  void _checkPathMilestones(ProgressionPath path) {
+    const thresholds = <double>[250.0, 1000.0, 3000.0];
+    final progress = _pathProgress[path] ?? 0.0;
+
+    for (var i = 0; i < thresholds.length; i++) {
+      final key = '${path.index}_$i';
+      if (progress >= thresholds[i] && _unlockedMilestones[key] != true) {
+        _unlockedMilestones[key] = true;
+        EventManager.instance.addEvent(
+          EventType.INFO,
+          'Milestone de progression atteint !',
+          description: 'Chemin ${path.name}: palier ${i + 1} débloqué',
+          importance: EventImportance.MEDIUM,
+          additionalData: {
+            'path': path.index,
+            'tier': i + 1,
+          },
+        );
+      }
+    }
+  }
+
+  double _currentPathBonusMultiplier(ExperienceType type) {
+    if (!_experienceTypeMatchesPath(type, _currentPath)) {
+      return 1.0;
+    }
+
+    // Bonus de base du chemin + bonus par milestone débloqué sur ce chemin.
+    final milestoneBonus = 0.05 * _countUnlockedMilestonesForPath(_currentPath);
+    return 1.2 + milestoneBonus;
+  }
+
+  void chooseProgressionPath(ProgressionPath path) {
+    _currentPath = path;
+    _pendingPathChoiceLevel = null;
+    _pendingPathOptions = null;
+    notifyListeners();
   }
   void _handleLevelUp(int newLevel) {
     final unlocks = _levelUnlocks[newLevel];
@@ -843,6 +906,14 @@ ${details.tips.map((t) => '• $t').join('\n')}
       _handleLevelUp(_level);
       _triggerLevelUpEvent(_level, newFeatures);
 
+      final unlock = _levelUnlocks[_level];
+      final options = unlock?.pathOptions;
+      if (options != null && options.isNotEmpty) {
+        _pendingPathChoiceLevel = _level;
+        _pendingPathOptions = List<PathOption>.from(options);
+        onPathChoiceRequired?.call(_level, List<PathOption>.from(options));
+      }
+
       if (onLevelUp != null) {
         onLevelUp!(_level, newFeatures);
       }
@@ -895,6 +966,17 @@ ${details.tips.map((t) => '• $t').join('\n')}
     'xpMultiplier': _xpMultiplier,
     'comboCount': comboSystem.comboCount,
     'dailyBonusClaimed': dailyBonus.claimed,
+    'pathProgress': _pathProgress.map(
+      (key, value) => MapEntry(key.index.toString(), value),
+    ),
+    'unlockedMilestones': _unlockedMilestones,
+    'pendingPathChoiceLevel': _pendingPathChoiceLevel,
+    'pendingPathOptions': (_pendingPathOptions ?? const <PathOption>[])
+        .map((o) => {
+              'path': o.path.index,
+              'probability': o.probability,
+            })
+        .toList(),
   };
 
   @override
@@ -906,6 +988,48 @@ ${details.tips.map((t) => '• $t').join('\n')}
       _xpMultiplier = (json['xpMultiplier'] as num?)?.toDouble() ?? 1.0;
       comboSystem.setComboCount(json['comboCount'] ?? 0);
       dailyBonus.setClaimed(json['dailyBonusClaimed'] ?? false);
+
+      _pathProgress = {};
+      final rawPathProgress = json['pathProgress'];
+      if (rawPathProgress is Map) {
+        for (final entry in rawPathProgress.entries) {
+          final key = int.tryParse(entry.key.toString());
+          if (key == null || key < 0 || key >= ProgressionPath.values.length) {
+            continue;
+          }
+          final value = (entry.value as num?)?.toDouble() ?? 0.0;
+          _pathProgress[ProgressionPath.values[key]] = value;
+        }
+      }
+
+      _unlockedMilestones = {};
+      final rawMilestones = json['unlockedMilestones'];
+      if (rawMilestones is Map) {
+        rawMilestones.forEach((k, v) {
+          _unlockedMilestones[k.toString()] = v == true;
+        });
+      }
+
+      _pendingPathChoiceLevel = (json['pendingPathChoiceLevel'] as num?)?.toInt();
+      _pendingPathOptions = null;
+      final rawPendingOptions = json['pendingPathOptions'];
+      if (rawPendingOptions is List) {
+        final options = <PathOption>[];
+        for (final item in rawPendingOptions) {
+          if (item is Map) {
+            final pathIndex = (item['path'] as num?)?.toInt();
+            if (pathIndex == null || pathIndex < 0 || pathIndex >= ProgressionPath.values.length) {
+              continue;
+            }
+            final probability = (item['probability'] as num?)?.toDouble() ?? 0.0;
+            options.add(PathOption(ProgressionPath.values[pathIndex], probability));
+          }
+        }
+        if (options.isNotEmpty) {
+          _pendingPathOptions = options;
+        }
+      }
+
       _checkLevelUp();
     } catch (e, stack) {
       print('Error loading level system: $e');
@@ -928,6 +1052,10 @@ ${details.tips.map((t) => '• $t').join('\n')}
     _xpMultiplier = 1.0;
     comboSystem.setComboCount(0);
     dailyBonus.setClaimed(false);
+    _pathProgress = {};
+    _unlockedMilestones = {};
+    _pendingPathChoiceLevel = null;
+    _pendingPathOptions = null;
   }
 
   @override
@@ -947,13 +1075,16 @@ class GameFeatureUnlocker {
   final Map<UnlockableFeature, int> _featureLevelRequirements = {
     // Phase d'Introduction (1-5)
     UnlockableFeature.MANUAL_PRODUCTION: 1,    // Production de base
-    UnlockableFeature.METAL_PURCHASE: 2,       // Déplacé du niveau 1 au 2
-    UnlockableFeature.AUTOCLIPPERS: 3,         // Reste au niveau 3
-    UnlockableFeature.UPGRADES: 5,             // Reste au niveau 5
+    UnlockableFeature.METAL_PURCHASE: 2,       // Achat de métal au niveau 2
+    UnlockableFeature.AUTOCLIPPERS: 3,         // Autoclippers au niveau 3
+    // Les ventes sont actives dès le niveau 1 (désactivables via l'UI).
+    UnlockableFeature.MARKET_SALES: 1,
+    // L'accès à l'onglet Marché (analyses) est un déblocage UX au niveau 5.
+    UnlockableFeature.MARKET_SCREEN: 5,
+    // Les améliorations sont débloquées au niveau 7.
+    UnlockableFeature.UPGRADES: 7,
 
     // Phase de Développement (6-15)
-    UnlockableFeature.MARKET_SCREEN: 8,        // Déplacé du niveau 7 au 8
-    UnlockableFeature.MARKET_SALES: 10,        // Déplacé du niveau 9 au 10
   };
   List<UnlockableFeature> getNewlyUnlockedFeatures(int previousLevel, int newLevel) {
     return _featureLevelRequirements.entries

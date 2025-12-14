@@ -26,6 +26,7 @@ import '../widgets/charts/chart_widgets.dart';
 import '../widgets/buttons/production_button.dart';
 import '../widgets/indicators/competitive_mode_indicator.dart';
 import '../widgets/save_button.dart';
+import '../services/upgrades/upgrade_effects_calculator.dart';
 
 // Imports des écrans
 import 'production_screen.dart';
@@ -48,6 +49,7 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
   late final List<Widget> _screens;
+  BackgroundMusicService? _backgroundMusicService;
 
   @override
   void initState() {
@@ -63,10 +65,15 @@ class _MainScreenState extends State<MainScreen> {
     _playBackgroundMusic();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _backgroundMusicService ??= context.read<BackgroundMusicService>();
+  }
+
   Future<void> _initializeGame() async {
     final gameState = context.read<GameState>();
     await Future.delayed(Duration.zero);
-    gameState.setContext(context);
     
     // Activer la musique par défaut
     await _playBackgroundMusic();
@@ -90,8 +97,7 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   void dispose() {
-    final backgroundMusicService = context.read<BackgroundMusicService>();
-    backgroundMusicService.dispose();
+    _backgroundMusicService?.dispose();
     super.dispose();
   }
 
@@ -429,8 +435,11 @@ class _MainScreenState extends State<MainScreen> {
 
         // Interface normale
         final visibleScreens = gameState.getVisibleScreenElements();
-        final canProduce = gameState.player.metal >=
-            GameConstants.METAL_PER_PAPERCLIP;
+        final efficiencyLevel = gameState.player.upgrades['efficiency']?.level ?? 0;
+        final metalPerPaperclip = UpgradeEffectsCalculator.metalPerPaperclip(
+          efficiencyLevel: efficiencyLevel,
+        );
+        final canProduce = gameState.player.metal >= metalPerPaperclip;
 
         return Scaffold(
           appBar: appBar,
@@ -524,8 +533,7 @@ class _MainScreenState extends State<MainScreen> {
                                         ),
                                       ),
                                       Text(
-                                        '${GameConstants
-                                            .METAL_PER_PAPERCLIP} métal',
+                                        '${metalPerPaperclip.toStringAsFixed(2)} métal',
                                         style: TextStyle(
                                           color: canProduce
                                               ? Colors.white.withOpacity(0.8)

@@ -6,6 +6,7 @@ import '../constants/game_config.dart'; // Mis à jour pour utiliser le dossier 
 import '../models/json_loadable.dart';
 import '../models/game_state_interfaces.dart';
 import '../models/upgrade.dart';
+import '../services/upgrades/upgrade_effects_calculator.dart';
 
 /// Manager pour les ressources et états du joueur
 class PlayerManager extends ChangeNotifier implements JsonLoadable {
@@ -102,6 +103,7 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
       description: 'Améliore l\'efficacité de production',
       baseCost: GameConstants.EFFICIENCY_UPGRADE_BASE,
       maxLevel: GameConstants.MAX_EFFICIENCY_LEVEL,
+      requiredLevel: GameConstants.UPGRADES_UNLOCK_LEVEL,
     ),
     'speed': Upgrade(
       id: 'speed',
@@ -109,6 +111,7 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
       description: 'Augmente la vitesse de production',
       baseCost: 25.0,
       maxLevel: 10,
+      requiredLevel: GameConstants.UPGRADES_UNLOCK_LEVEL,
     ),
     'bulk': Upgrade(
       id: 'bulk',
@@ -116,6 +119,7 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
       description: 'Augmente la quantité produite par opération',
       baseCost: 40.0,
       maxLevel: GameConstants.MAX_BULK_LEVEL,
+      requiredLevel: GameConstants.UPGRADES_UNLOCK_LEVEL,
     ),
     'storage': Upgrade(
       id: 'storage',
@@ -123,6 +127,7 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
       description: 'Augmente la capacité de stockage de métal',
       baseCost: 30.0,
       maxLevel: GameConstants.MAX_STORAGE_LEVEL,
+      requiredLevel: GameConstants.UPGRADES_UNLOCK_LEVEL,
     ),
     'quality': Upgrade(
       id: 'quality',
@@ -130,6 +135,7 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
       description: 'Améliore la qualité des trombones produits',
       baseCost: 50.0,
       maxLevel: 8,
+      requiredLevel: GameConstants.UPGRADES_UNLOCK_LEVEL,
     ),
     'automation': Upgrade(
       id: 'automation',
@@ -137,6 +143,7 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
       description: 'Réduit le coût des autoclippers',
       baseCost: 75.0,
       maxLevel: 5,
+      requiredLevel: GameConstants.UPGRADES_UNLOCK_LEVEL,
     ),
   };
   
@@ -218,10 +225,13 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
   
   /// Acheter un autoclip (machine automatique de fabrication)
   bool purchaseAutoClipper() {
-    if (canAfford(_autoClipperCost)) {
+    final cost = calculateAutoclipperCost();
+    if (canAfford(cost)) {
       _autoClipperCount++;
-      _money -= _autoClipperCost;
-      // Augmenter le coût pour l'achat suivant
+      _money -= cost;
+      if (_money < 0) _money = 0;
+      // Conserver un mirroring pour compatibilité (UI/saves legacy),
+      // la source de vérité est désormais le calcul dynamique.
       _autoClipperCost = calculateAutoclipperCost();
       notifyListeners();
       return true;
@@ -238,7 +248,10 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
   
   /// Calcule le coût d'achat d'un autoclipper
   double calculateAutoclipperCost() {
-    return _autoClipperCost;
+    return UpgradeEffectsCalculator.autoclipperCost(
+      autoclippersOwned: _autoClipperCount,
+      automationLevel: _upgrades['automation']?.level ?? 0,
+    );
   }
   
   /// Calcule le retour sur investissement (ROI) d'un autoclipper
@@ -270,6 +283,7 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
     if (canAfford(_megaClipperCost)) {
       _megaClipperCount++;
       _money -= _megaClipperCost;
+      if (_money < 0) _money = 0;
       // Augmenter le coût pour le prochain achat
       _megaClipperCost *= 1.1;
       notifyListeners();
@@ -289,6 +303,7 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
     if (canAfford(cost)) {
       _marketingLevel++;
       _money -= cost;
+      if (_money < 0) _money = 0;
       notifyListeners();
       return true;
     }
@@ -350,6 +365,7 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
   bool canAffordUpgrade(String upgradeId) {
     final upgrade = _upgrades[upgradeId];
     if (upgrade == null) return false;
+    if (upgrade.isMaxLevel) return false;
     return canAfford(upgrade.getCost());
   }
   
@@ -357,11 +373,14 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
   bool purchaseUpgrade(String upgradeId) {
     final upgrade = _upgrades[upgradeId];
     if (upgrade == null) return false;
+
+    if (upgrade.isMaxLevel) return false;
     
     double cost = upgrade.getCost();
     if (!canAfford(cost)) return false;
     
     _money -= cost;
+    if (_money < 0) _money = 0;
     upgrade.level++;
 
     // Compatibilité : certains anciens champs persistent encore dans les saves.

@@ -49,6 +49,15 @@ enum ValidationSeverity {
 
 /// Validateur avancé pour les données de sauvegarde avec support multi-versions.
 class SaveValidator {
+  static const bool _isRunningInFlutterTest = bool.fromEnvironment('FLUTTER_TEST');
+
+  static double? _tryParseToDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
+  }
+
   /// Règles de validation pour la version actuelle (2.0) du format de sauvegarde.
   static const Map<String, Map<String, dynamic>> _validationRulesV2 = {
     'playerManager': {
@@ -98,7 +107,7 @@ class SaveValidator {
       final String sourceVersion = data['version'] as String? ?? '1.0';
       final String validationVersion = targetVersion ?? sourceVersion;
       
-      if (kDebugMode) {
+      if (kDebugMode && !_isRunningInFlutterTest) {
         print('Validation de données en version $sourceVersion (cible: $validationVersion)');
       }
       
@@ -168,7 +177,7 @@ class SaveValidator {
       );
     } catch (e) {
       errors.add('Erreur inattendue lors de la validation: $e');
-      if (kDebugMode) {
+      if (kDebugMode && !_isRunningInFlutterTest) {
         print('Erreur lors de la validation des données: $e');
       }
       return ValidationResult(
@@ -353,7 +362,7 @@ class SaveValidator {
         
         // Si le champ est manquant et qu'il a une valeur par défaut définie
         if (!sectionData.containsKey(fieldName) && rule.containsKey('defaultValue')) {
-          if (kDebugMode) {
+          if (kDebugMode && !_isRunningInFlutterTest) {
             print('Ajout du champ manquant $sectionName.$fieldName avec valeur par défaut ${rule['defaultValue']}');
           }
           sectionData[fieldName] = rule['defaultValue'];
@@ -477,9 +486,9 @@ class SaveValidator {
     try {
       if (data.containsKey('playerManager')) {
         final playerManager = data['playerManager'] as Map<String, dynamic>;
-        final double paperclips = playerManager['paperclips'] as double? ?? 0.0;
-        final double money = playerManager['money'] as double? ?? 0.0;
-        final double sellPrice = playerManager['sellPrice'] as double? ?? 0.05;
+        final double paperclips = _tryParseToDouble(playerManager['paperclips']) ?? 0.0;
+        final double money = _tryParseToDouble(playerManager['money']) ?? 0.0;
+        final double sellPrice = _tryParseToDouble(playerManager['sellPrice']) ?? 0.05;
         
         // Vérification simpliste : l'argent ne devrait pas dépasser un seuil basé sur les clips
         final double maxMoney = paperclips * sellPrice * 2.0; // Un facteur arbitraire pour la flexibilité
@@ -489,7 +498,7 @@ class SaveValidator {
         }
       }
     } catch (e) {
-      if (kDebugMode) {
+      if (kDebugMode && !_isRunningInFlutterTest) {
         print('Erreur lors de la vérification de cohérence: $e');
       }
       // Ne pas bloquer pour cette vérification

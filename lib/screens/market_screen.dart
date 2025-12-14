@@ -14,6 +14,7 @@ import '../widgets/dialogs/info_dialog.dart';
 import '../widgets/indicators/stat_indicator.dart';
 import '../widgets/cards/stats_panel.dart';
 import 'dart:math' show min;
+import '../services/upgrades/upgrade_effects_calculator.dart';
 
 class MarketScreen extends StatelessWidget {
   const MarketScreen({super.key});
@@ -127,13 +128,13 @@ class MarketScreen extends StatelessWidget {
     List<String> bonuses = [];
 
     // Calcul des bonus
-    double speedBonus = 1.0 + ((gameState.player.upgrades['speed']?.level ?? 0) * 0.20);
-    double bulkBonus = 1.0 + ((gameState.player.upgrades['bulk']?.level ?? 0) * 0.35);
-    double efficiencyBonus = 1.0 - ((gameState.player.upgrades['efficiency']?.level ?? 0) * 0.15);
+    final speedLevel = gameState.player.upgrades['speed']?.level ?? 0;
+    final bulkLevel = gameState.player.upgrades['bulk']?.level ?? 0;
+    final efficiencyLevel = gameState.player.upgrades['efficiency']?.level ?? 0;
 
-    int speedLevel = gameState.player.upgrades['speed']?.level ?? 0;
-    int bulkLevel = gameState.player.upgrades['bulk']?.level ?? 0;
-    int efficiencyLevel = gameState.player.upgrades['efficiency']?.level ?? 0;
+    final speedBonus = UpgradeEffectsCalculator.speedMultiplier(level: speedLevel);
+    final bulkBonus = UpgradeEffectsCalculator.bulkMultiplier(level: bulkLevel);
+    final efficiencyBonus = 1.0 - UpgradeEffectsCalculator.efficiencyReduction(level: efficiencyLevel);
 
     if (speedLevel > 0) {
       bonuses.add(_formatBonusText('Vitesse', speedBonus));
@@ -202,8 +203,10 @@ class MarketScreen extends StatelessWidget {
   }
 
   Widget _buildMetalStatus(BuildContext context, GameState gameState) {
-    double metalPerClip = GameConstants.METAL_PER_PAPERCLIP *
-        (1.0 - ((gameState.player.upgrades['efficiency']?.level ?? 0) * 0.15));
+    final efficiencyLevel = gameState.player.upgrades['efficiency']?.level ?? 0;
+    final metalPerClip = UpgradeEffectsCalculator.metalPerPaperclip(
+      efficiencyLevel: efficiencyLevel,
+    );
 
     double currentMetalForClips = gameState.player.metal / metalPerClip;
 
@@ -229,7 +232,8 @@ class MarketScreen extends StatelessWidget {
   Widget _buildMarketSummaryCard(GameState gameState, double demand, double autoclipperProduction) {
     double effectiveProduction = min(demand, autoclipperProduction);
     double profitability = effectiveProduction * gameState.player.sellPrice;
-    double qualityBonus = 1.0 + ((gameState.player.upgrades['quality']?.level ?? 0) * 0.10);
+    final qualityLevel = gameState.player.upgrades['quality']?.level ?? 0;
+    final qualityBonus = UpgradeEffectsCalculator.qualityMultiplier(level: qualityLevel);
     
     // Création des statistiques de marché en utilisant StatIndicator
     List<Widget> marketStats = [
@@ -312,7 +316,8 @@ class MarketScreen extends StatelessWidget {
     );
   }
   Widget _buildPriceControlCard(GameState gameState) {
-    double qualityBonus = 1.0 + ((gameState.player.upgrades['quality']?.level ?? 0) * 0.10);
+    final qualityLevel = gameState.player.upgrades['quality']?.level ?? 0;
+    final qualityBonus = UpgradeEffectsCalculator.qualityMultiplier(level: qualityLevel);
     double effectivePrice = gameState.player.sellPrice * qualityBonus;
 
     return Card(
@@ -421,8 +426,10 @@ class MarketScreen extends StatelessWidget {
         double autoclipperProduction = 0;
         if (gameState.player.autoClipperCount > 0) {
           autoclipperProduction = gameState.player.autoClipperCount * 60;
-          double speedBonus = 1.0 + ((gameState.player.upgrades['speed']?.level ?? 0) * 0.20);
-          double bulkBonus = 1.0 + ((gameState.player.upgrades['bulk']?.level ?? 0) * 0.35);
+          final speedLevel = gameState.player.upgrades['speed']?.level ?? 0;
+          final bulkLevel = gameState.player.upgrades['bulk']?.level ?? 0;
+          final speedBonus = UpgradeEffectsCalculator.speedMultiplier(level: speedLevel);
+          final bulkBonus = UpgradeEffectsCalculator.bulkMultiplier(level: bulkLevel);
           autoclipperProduction *= speedBonus * bulkBonus;
         }
 
@@ -522,7 +529,7 @@ class MarketScreen extends StatelessWidget {
                           context,
                           'Marketing',
                           'Le niveau de marketing augmente la demande de base.\n'
-                              'Chaque niveau ajoute +30% à la demande.',
+                              'Chaque niveau ajoute +${(GameConstants.MARKETING_BOOST_PER_LEVEL * 100).toStringAsFixed(0)}% à la demande.',
                         ),
                       ),  
                       const SizedBox(height: 12),

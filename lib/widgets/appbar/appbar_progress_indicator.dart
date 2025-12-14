@@ -69,7 +69,7 @@ class AppBarProgressIndicator extends StatelessWidget {
   double _calculateGlobalProgress(GameState gameState) {
     // Version simple: basée sur le nombre de trombones produits par rapport à un objectif
     double maxPaperclips = GameConstants.GLOBAL_PROGRESS_TARGET;
-    double currentPaperclips = gameState.player.totalPaperclips;
+    double currentPaperclips = gameState.totalPaperclipsProduced.toDouble();
     
     // Limiter à 1.0 (100%)
     return (currentPaperclips / maxPaperclips).clamp(0.0, 1.0);
@@ -107,7 +107,7 @@ class AppBarProgressIndicator extends StatelessWidget {
             Text('Progression: ${(progress * 100).toInt()}%'),
             const SizedBox(height: 8),
             Text(
-              'Trombones produits: ${gameState.player.totalPaperclips.toStringAsFixed(0)} / ${GameConstants.GLOBAL_PROGRESS_TARGET.toStringAsFixed(0)}'
+              'Trombones produits: ${gameState.totalPaperclipsProduced} / ${GameConstants.GLOBAL_PROGRESS_TARGET.toStringAsFixed(0)}'
             ),
             const SizedBox(height: 8),
             LinearProgressIndicator(

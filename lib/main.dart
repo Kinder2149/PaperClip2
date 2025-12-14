@@ -22,15 +22,17 @@ import './constants/game_config.dart'; // Importé depuis constants au lieu de m
 import './models/event_system.dart';
 import './models/progression_system.dart';
 import './services/save_system/save_manager_adapter.dart';
-import './services/save_migration_service.dart';
 import './services/background_music.dart';
+import './services/audio/flutter_game_audio_facade.dart';
 import './services/theme_service.dart';
 import './utils/update_manager.dart';
 import './widgets/indicators/notification_widgets.dart';
 import './controllers/game_session_controller.dart';
-
-// Export du navigatorKey
-export 'package:paperclip2/main.dart' show navigatorKey;
+import './services/ui/flutter_game_ui_facade.dart';
+import './services/lifecycle/app_lifecycle_handler.dart';
+import './services/persistence/game_persistence_orchestrator.dart';
+import './services/navigation_service.dart';
+import './services/notification_manager.dart';
 
 // Services globaux
 final gameState = GameState();
@@ -39,6 +41,53 @@ final backgroundMusicService = BackgroundMusicService();
 final themeService = ThemeService();
 final eventManager = EventManager.instance;
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
+final navigationService = NavigationService(navigatorKey);
+final _gameUiFacade = FlutterGameUiFacade(navigationService);
+late final FlutterGameAudioFacade _gameAudioFacade;
+final _appLifecycleHandler = AppLifecycleHandler();
+
+Future<void> _bootstrapApp() async {
+  // Chargement des variables d'environnement
+  if (kDebugMode) {
+    print('Loading environment variables...');
+  }
+  try {
+    await EnvConfig.load();
+  } catch (e) {
+    if (kDebugMode) {
+      print('Warning: could not load all environment variables: $e');
+    }
+  }
+
+  // Gestion simple des erreurs
+  FlutterError.onError = (FlutterErrorDetails details) {
+    if (kDebugMode) {
+      print('Flutter Error: ${details.exception}');
+      if (details.stack != null) {
+        print(details.stack);
+      }
+    }
+  };
+
+  // Boot: vérifier la dernière sauvegarde et restaurer depuis backup si nécessaire.
+  await GamePersistenceOrchestrator.instance
+      .checkAndRestoreLastSaveFromBackupIfNeeded();
+
+  NotificationManager.instance.setScaffoldMessengerKey(scaffoldMessengerKey);
+
+  // Brancher les ports UI/audio sur GameState (GameState reste indépendant de l'UI)
+  gameState.setUiPort(_gameUiFacade);
+  _gameAudioFacade = FlutterGameAudioFacade(backgroundMusicService);
+  gameState.setAudioPort(_gameAudioFacade);
+
+  // Brancher le lifecycle Flutter (save + backup) hors de GameState
+  _appLifecycleHandler.register(gameState);
+
+  // Initialiser le service de thème
+  await themeService.initialize();
+}
 
 void main() async {
   try {
@@ -52,48 +101,7 @@ void main() async {
       print('Orientation set to portrait');
     }
 
-    // Chargement des variables d'environnement
-    if (kDebugMode) {
-      print('Loading environment variables...');
-    }
-    try {
-      await EnvConfig.load();
-    } catch (e) {
-      if (kDebugMode) {
-        print('Warning: could not load all environment variables: $e');
-      }
-    }
-
-    // Gestion simple des erreurs
-    FlutterError.onError = (FlutterErrorDetails details) {
-      if (kDebugMode) {
-        print('Flutter Error: ${details.exception}');
-      }
-    };
-
-    // Migration de toutes les sauvegardes vers le nouveau format
-    if (kDebugMode) {
-      print('Migrating all saves to format version ${SaveManagerAdapter.SAVE_FORMAT_VERSION}...');
-    }
-    try {
-      await SaveMigrationService.migrateAllSaves();
-      if (kDebugMode) {
-        print('Save migration completed successfully');
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print('Error during save migration: $e');
-      }
-    }
-    
-    // Vérifier et restaurer les sauvegardes
-    await gameState.checkAndRestoreFromBackup();
-
-    // Démarrer la session de jeu (timers pilotés par GameSessionController)
-    gameSessionController.startSession();
-
-    // Initialiser le service de thème
-    await themeService.initialize();
+    await _bootstrapApp();
 
     // Lancer l'application
     runApp(
@@ -101,6 +109,7 @@ void main() async {
         providers: [
           ChangeNotifierProvider.value(value: gameState),
           ChangeNotifierProvider.value(value: gameSessionController),
+          Provider<NavigationService>.value(value: navigationService),
           Provider<BackgroundMusicService>.value(value: backgroundMusicService),
           ChangeNotifierProvider.value(value: themeService),
           ChangeNotifierProvider.value(value: EventManager.instance),
@@ -153,6 +162,7 @@ class MyApp extends StatelessWidget {
     
     return MaterialApp(
       navigatorKey: navigatorKey,
+      scaffoldMessengerKey: scaffoldMessengerKey,
       title: 'PaperClip Game',
       theme: themeServiceProvider.getLightTheme(),
       darkTheme: themeServiceProvider.getDarkTheme(),
@@ -174,11 +184,7 @@ class _LoadingScreenState extends State<LoadingScreen> {
   @override
   void initState() {
     super.initState();
-    // Utiliser un court délai puis lancer la navigation directement
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (kDebugMode) {
-        print('Tentative de navigation après délai...');
-      }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       _goToStartScreen();
     });
   }

@@ -1,6 +1,7 @@
 // lib/models/upgrade.dart
 import 'dart:math';
 import '../constants/game_config.dart'; // Importé depuis constants au lieu de models
+import '../services/upgrades/upgrade_effects_calculator.dart';
 
 class Upgrade {
   final String id;
@@ -30,17 +31,17 @@ class Upgrade {
   double getEffectValue() {
     switch (id) {
       case 'efficiency':
-        return level * GameConstants.EFFICIENCY_UPGRADE_MULTIPLIER;
+        return UpgradeEffectsCalculator.efficiencyReduction(level: level);
       case 'speed':
-        return level * GameConstants.SPEED_BONUS_PER_LEVEL;
+        return UpgradeEffectsCalculator.speedMultiplier(level: level);
       case 'bulk':
-        return level * GameConstants.BULK_BONUS_PER_LEVEL;
+        return UpgradeEffectsCalculator.bulkMultiplier(level: level);
       case 'storage':
-        return level * GameConstants.STORAGE_UPGRADE_MULTIPLIER;
+        return UpgradeEffectsCalculator.metalStorageCapacity(storageLevel: level);
       case 'quality':
-        return level * GameConstants.QUALITY_UPGRADE_BASE;
+        return UpgradeEffectsCalculator.qualityMultiplier(level: level);
       case 'automation':
-        return level * GameConstants.AUTOMATION_DISCOUNT_BASE;
+        return UpgradeEffectsCalculator.autoclipperDiscount(level: level);
       default:
         return 0.0;
     }
@@ -49,17 +50,23 @@ class Upgrade {
   String getEffectDescription() {
     switch (id) {
       case 'efficiency':
-        return "+${(GameConstants.EFFICIENCY_UPGRADE_MULTIPLIER * 100).toStringAsFixed(0)}% d'efficacité par niveau";
+        final reduction = UpgradeEffectsCalculator.efficiencyReduction(level: level);
+        return "-${(reduction * 100).toStringAsFixed(0)}% métal par trombone";
       case 'speed':
-        return "+${(GameConstants.SPEED_BONUS_PER_LEVEL * 100).toStringAsFixed(0)}% de vitesse par niveau";
+        final mult = UpgradeEffectsCalculator.speedMultiplier(level: level);
+        return "Vitesse: x${mult.toStringAsFixed(2)}";
       case 'bulk':
-        return "+${(GameConstants.BULK_BONUS_PER_LEVEL * 100).toStringAsFixed(0)}% de quantité par niveau";
+        final mult = UpgradeEffectsCalculator.bulkMultiplier(level: level);
+        return "Production: x${mult.toStringAsFixed(2)}";
       case 'storage':
-        return "+${(GameConstants.STORAGE_UPGRADE_MULTIPLIER * 100).toStringAsFixed(0)}% de capacité de stockage par niveau";
+        final capacity = UpgradeEffectsCalculator.metalStorageCapacity(storageLevel: level);
+        return "Capacité métal: ${capacity.toStringAsFixed(0)}";
       case 'quality':
-        return "+${(GameConstants.QUALITY_UPGRADE_BASE * 100).toStringAsFixed(0)}% de qualité par niveau";
+        final mult = UpgradeEffectsCalculator.qualityMultiplier(level: level);
+        return "Qualité: x${mult.toStringAsFixed(2)}";
       case 'automation':
-        return "-${(GameConstants.AUTOMATION_DISCOUNT_BASE * 100).toStringAsFixed(0)}% sur le coût des autoclippers par niveau";
+        final discount = UpgradeEffectsCalculator.autoclipperDiscount(level: level);
+        return "-${(discount * 100).toStringAsFixed(0)}% coût autoclippers";
       default:
         return "Aucun effet";
     }

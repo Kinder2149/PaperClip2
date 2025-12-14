@@ -8,6 +8,7 @@ import '../models/statistics_manager.dart';
 import '../models/json_loadable.dart';
 import '../models/event_system.dart';
 import '../models/level_system.dart'; // Import pour LevelSystem
+import '../services/upgrades/upgrade_effects_calculator.dart';
 
 /// Gestionnaire responsable de toute la logique de production de trombones
 /// (production manuelle, automatique, gestion des autoclippeuses, etc.)
@@ -18,6 +19,7 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
   final LevelSystem _levelSystem;
   // MissionSystem (Option A — mise en pause): non intégré au runtime.
   double _maintenanceCosts = 0.0;
+  double _autoProductionRemainder = 0.0;
   bool _isPaused = false;
   DateTime? _lastUpdateTime;
 
@@ -42,29 +44,39 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
     _lastUpdateTime = DateTime.now();
   }
 
+  double _metalPerPaperclip() {
+    final efficiencyLevel = player.upgrades['efficiency']?.level ?? 0;
+    return UpgradeEffectsCalculator.metalPerPaperclip(
+      efficiencyLevel: efficiencyLevel,
+    );
+  }
+
   /// Traite la production automatique de trombones via les autoclippeuses
-  void processProduction() {
+  void processProduction({double elapsedSeconds = 1.0}) {
     if (_isPaused) {
       if (kDebugMode) print('[ProductionManager] processProduction: Ignoré - La production est en pause');
       return;
     }
+
+    final elapsed = elapsedSeconds.isFinite && elapsedSeconds > 0
+        ? elapsedSeconds
+        : 1.0;
 
     if (kDebugMode) {
       print('===== CYCLE DE PRODUCTION AUTOMATIQUE =====');
       print('[ProductionManager] État initial: ${player.paperclips.toStringAsFixed(1)} trombones, ${player.metal.toStringAsFixed(1)} métal, ${player.autoclippers} autoclippeuses');
     }
 
-    // Calcul des bonus
-    double speedBonus = GameConstants.BASE_EFFICIENCY + ((player.upgrades['speed']?.level ?? 0) * GameConstants.SPEED_BONUS_PER_LEVEL);
-    double bulkBonus = GameConstants.BASE_EFFICIENCY + ((player.upgrades['bulk']?.level ?? 0) * GameConstants.BULK_BONUS_PER_LEVEL);
+    // Calcul des bonus (source unique)
+    final int speedLevel = player.upgrades['speed']?.level ?? 0;
+    final int bulkLevel = player.upgrades['bulk']?.level ?? 0;
+    final int efficiencyLevel = player.upgrades['efficiency']?.level ?? 0;
 
-    // Nouveau calcul d'efficacité avec 11% par niveau et plafond 85%
-    double efficiencyLevel = (player.upgrades['efficiency']?.level ?? 0).toDouble(); 
-    double reduction = min(
-        efficiencyLevel * GameConstants.EFFICIENCY_UPGRADE_MULTIPLIER,
-        GameConstants.EFFICIENCY_MAX_REDUCTION
-    );
-    double efficiencyBonus = GameConstants.BASE_EFFICIENCY - reduction;
+    final double speedBonus = UpgradeEffectsCalculator.speedMultiplier(level: speedLevel);
+    final double bulkBonus = UpgradeEffectsCalculator.bulkMultiplier(level: bulkLevel);
+
+    final double reduction = UpgradeEffectsCalculator.efficiencyReduction(level: efficiencyLevel);
+    final double efficiencyBonus = 1.0 - reduction;
 
     if (kDebugMode) {
       print('[ProductionManager] Bonus: vitesse: x${speedBonus.toStringAsFixed(2)}, masse: x${bulkBonus.toStringAsFixed(2)}, efficacité: x${efficiencyBonus.toStringAsFixed(2)} (réduction: ${(reduction * 100).toStringAsFixed(1)}%)');
@@ -72,57 +84,66 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
 
     // Si joueur a des autoclippeuses
     if (player.autoclippers > 0) {
-      // Production automatique basée sur le nombre d'autoclippeuses
-      double baseProduction = player.autoclippers * GameConstants.BASE_AUTOCLIPPER_PRODUCTION;
-      baseProduction *= speedBonus; // Application du bonus de vitesse
-      baseProduction *= bulkBonus;  // Application du bonus de production en masse
-      
-      // Calculer la consommation de métal (avec efficacité)
-      double metalPerPaperclip = GameConstants.METAL_PER_PAPERCLIP * efficiencyBonus;
-      double metalNeeded = baseProduction * metalPerPaperclip;
-      
+      // Production automatique: calcul en delta-temps, mais production en unités entières.
+      // GameConstants.BASE_AUTOCLIPPER_PRODUCTION est interprété comme une production "par seconde".
+      double productionRatePerSecond =
+          player.autoclippers * GameConstants.BASE_AUTOCLIPPER_PRODUCTION;
+      productionRatePerSecond *= speedBonus;
+      productionRatePerSecond *= bulkBonus;
+
+      final metalPerPaperclip = _metalPerPaperclip();
+
+      final desiredUnitsDouble = (productionRatePerSecond * elapsed) +
+          _autoProductionRemainder;
+      final desiredUnits = desiredUnitsDouble.floor();
+      _autoProductionRemainder = desiredUnitsDouble - desiredUnits;
+
       if (kDebugMode) {
-        print('[ProductionManager] Production potentielle: ${baseProduction.toStringAsFixed(1)} trombones, nécessite ${metalNeeded.toStringAsFixed(1)} métal');
+        final desiredMetal = desiredUnits * metalPerPaperclip;
+        print(
+          '[ProductionManager] Production (elapsed=${elapsed.toStringAsFixed(2)}s): '
+          '${desiredUnits} trombones demandés, nécessite ${desiredMetal.toStringAsFixed(2)} métal',
+        );
       }
-      
-      // Vérifier si le joueur a assez de métal
-      double availableMetal = player.metal;
-      double actualProduction = baseProduction;
-      
-      // Ajuster la production si pas assez de métal
-      if (availableMetal < metalNeeded) {
-        actualProduction = availableMetal / metalPerPaperclip;
-        if (kDebugMode) {
-          print('[ProductionManager] Métal insuffisant! Production ajustée à ${actualProduction.toStringAsFixed(1)} trombones');
-        }
+
+      final availableMetal = player.metal;
+      final maxUnitsByMetal = metalPerPaperclip > 0
+          ? (availableMetal / metalPerPaperclip).floor()
+          : 0;
+
+      final actualUnits = min(desiredUnits, maxUnitsByMetal);
+
+      // Si on ne peut pas produire le volume demandé à cause du métal,
+      // on remet les unités non produites dans le remainder.
+      if (actualUnits < desiredUnits) {
+        _autoProductionRemainder += (desiredUnits - actualUnits);
       }
-      
-      // Si on peut produire quelque chose
-      if (actualProduction > 0) {
-        double metalUsed = actualProduction * metalPerPaperclip;
-        double metalSaved = actualProduction * GameConstants.METAL_PER_PAPERCLIP - metalUsed;
-        
+
+      if (actualUnits > 0) {
+        final metalUsed = actualUnits * metalPerPaperclip;
+
         player.updateMetal(player.metal - metalUsed);
-        player.updatePaperclips(player.paperclips + actualProduction);
+        player.updatePaperclips(player.paperclips + actualUnits);
 
         if (kDebugMode) {
-          print('[ProductionManager] Production réalisée: ${actualProduction.toStringAsFixed(1)} trombones, ${metalUsed.toStringAsFixed(1)} métal utilisé, ${metalSaved.toStringAsFixed(1)} métal économisé');
-          print('[ProductionManager] État après production: ${player.paperclips.toStringAsFixed(1)} trombones, ${player.metal.toStringAsFixed(1)} métal');
+          print(
+            '[ProductionManager] Production réalisée: +$actualUnits trombones, '
+            '-${metalUsed.toStringAsFixed(2)} métal',
+          );
+          print(
+            '[ProductionManager] État après production: '
+            '${player.paperclips.toStringAsFixed(1)} trombones, '
+            '${player.metal.toStringAsFixed(1)} métal',
+          );
         }
 
-        // Mise à jour des statistiques
         _statistics.updateProduction(
-          paperclipsProduced: actualProduction.floor().toInt(), // Conversion en int
+          paperclipsProduced: actualUnits,
           metalUsed: metalUsed,
-          isAuto: true // Production automatique
+          isAuto: true,
         );
 
-        // Expérience pour la production automatique
-        level.addAutomaticProduction(actualProduction.floor());
-        
-        // MissionSystem (Option A — mise en pause): pas de progression de missions.
-        
-        // Vérifier les jalons pour mises à jour du leaderboard, etc.
+        level.addAutomaticProduction(actualUnits);
         _checkMilestones();
       } else {
         if (kDebugMode) print('[ProductionManager] Pas de production possible - manque de métal');
@@ -140,12 +161,13 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
 
   /// Production manuelle d'un trombone
   void producePaperclip() {
-    if (player.consumeMetal(GameConstants.METAL_PER_PAPERCLIP)) {
+    final metalPerPaperclip = _metalPerPaperclip();
+    if (player.consumeMetal(metalPerPaperclip)) {
       player.updatePaperclips(player.paperclips + 1);
       level.addManualProduction();
       _statistics.updateProduction(
         paperclipsProduced: 1,
-        metalUsed: GameConstants.METAL_PER_PAPERCLIP,
+        metalUsed: metalPerPaperclip,
         isAuto: false // Production manuelle
       );
       // Mettre à jour le leaderboard tous les 100 trombones produits
@@ -163,10 +185,7 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
   double _calculateManualProduction(double elapsed) {
     if (player.metal < GameConstants.METAL_PER_PAPERCLIP) return 0;
 
-    double metalUsed = GameConstants.METAL_PER_PAPERCLIP;
-    double efficiencyBonus = GameConstants.BASE_EFFICIENCY + (player.upgrades['efficiency']?.level ?? 0) * GameConstants.EFFICIENCY_UPGRADE_MULTIPLIER;
-    metalUsed /= efficiencyBonus;
-
+    final metalUsed = _metalPerPaperclip();
     player.updateMetal(player.metal - metalUsed);
     return 1.0 * elapsed;
   }
@@ -200,11 +219,10 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
 
   /// Calcule le coût d'achat d'une autoclippeuse supplémentaire
   double calculateAutoclipperCost() {
-    double baseCost = GameConstants.BASE_AUTOCLIPPER_COST;
-    double discount = (player.upgrades['automation']?.level ?? 0) * 0.10; // 10% de réduction par niveau d'automation
-    double costMultiplier = player.autoclippers * 0.1; // 10% d'augmentation par autoclippeuse
-    double finalCost = baseCost * (1.0 + costMultiplier) * (1.0 - discount);
-    return max(finalCost, GameConstants.BASE_AUTOCLIPPER_COST * 0.5); // Prix minimum
+    return UpgradeEffectsCalculator.autoclipperCost(
+      autoclippersOwned: player.autoclippers,
+      automationLevel: player.upgrades['automation']?.level ?? 0,
+    );
   }
 
   /// Vérifie si le joueur peut acheter une autoclippeuse
@@ -253,6 +271,7 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
   /// Réinitialise les valeurs de production
   void reset() {
     _maintenanceCosts = 0.0;
+    _autoProductionRemainder = 0.0;
     _isPaused = false;
     _lastUpdateTime = DateTime.now();
     notifyListeners();

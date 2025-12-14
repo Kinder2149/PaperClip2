@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:paperclip2/managers/market_manager.dart';
 import 'package:paperclip2/managers/player_manager.dart';
 import 'package:paperclip2/models/statistics_manager.dart';
+import 'package:paperclip2/services/upgrades/upgrade_effects_calculator.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -18,6 +19,7 @@ void main() {
         playerPaperclips: 100,
         sellPrice: 0.2,
         marketingLevel: 0,
+        qualityLevel: 0,
         updatePaperclips: (_) {},
         updateMoney: (_) {},
         updateMarketState: false,
@@ -42,11 +44,13 @@ void main() {
 
       const playerPaperclips = 100.0;
       const sellPrice = 0.20;
+      const qualityLevel = 0;
 
       final result = market.processSales(
         playerPaperclips: playerPaperclips,
         sellPrice: sellPrice,
         marketingLevel: 0,
+        qualityLevel: qualityLevel,
         updatePaperclips: (delta) => paperclipsDelta += delta,
         updateMoney: (delta) => moneyDelta += delta,
         updateMarketState: false,
@@ -55,8 +59,8 @@ void main() {
       // Doit vendre quelque chose si playerPaperclips > 0
       expect(result.quantity, greaterThan(0));
 
-      // Le manager applique un bonus qualité : salePrice = sellPrice * (1 + sellPrice*0.10)
-      final expectedUnitPrice = sellPrice * (1.0 + (sellPrice * 0.10));
+      final expectedUnitPrice = sellPrice *
+          UpgradeEffectsCalculator.qualityMultiplier(level: qualityLevel);
       expect(result.unitPrice, closeTo(expectedUnitPrice, 0.0001));
 
       expect(paperclipsDelta, closeTo(-result.quantity.toDouble(), 0.0001));
@@ -78,6 +82,7 @@ void main() {
         playerPaperclips: 0,
         sellPrice: 0.2,
         marketingLevel: 0,
+        qualityLevel: 0,
         updatePaperclips: (_) {},
         updateMoney: (delta) => moneyDelta += delta,
         updateMarketState: false,

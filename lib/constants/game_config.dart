@@ -51,7 +51,7 @@ class GameConstants {
   //======================================================================
   static const double SATURATION_DECAY_RATE = 0.01;     // Taux de décroissance naturelle de la saturation du marché
   static const double BASE_DEMAND = 10.0;              // Demande de base pour les trombones
-  static const double MAX_PRICE_THRESHOLD = 25.0;      // Prix maximum au-delà duquel la demande commence à chuter drastiquement
+  static const double MAX_PRICE_THRESHOLD = 0.50;      // Prix maximum (en euros) au-delà duquel la demande commence à chuter drastiquement
   static const double MARKETING_BOOST_PER_LEVEL = 0.15; // Boost de demande par niveau de marketing
   static const int MAX_SALES_HISTORY = 10;             // Nombre maximal d'entrées dans l'historique des ventes
   static const double SATURATION_IMPACT_PER_SALE = 0.005; // Impact d'une vente sur la saturation du marché
@@ -112,7 +112,7 @@ class GameConstants {
   static const double AUTOCLIPPER_COST_MULTIPLIER = 1.15; // Multiplicateur de coût pour les autoclippers
   static const double STORAGE_UPGRADE_MULTIPLIER = 0.5; // Multiplicateur pour l'amélioration de stockage
   static const double QUALITY_UPGRADE_BASE = 0.1; // Amélioration de base de la qualité
-  static const double AUTOMATION_DISCOUNT_BASE = 0.05; // Réduction de base pour l'automatisation
+  static const double AUTOMATION_DISCOUNT_BASE = 0.1; // Réduction de base pour l'automatisation
   static const double STORAGE_MULTIPLIER = 1.2; // Multiplicateur pour l'amélioration de stockage
   static const double BASE_AUTOCLIPPER_PRODUCTION = 0.1; // Production de base des autoclippers
   static const int MAX_EFFICIENCY_LEVEL = 10; // Niveau maximal d'efficacité

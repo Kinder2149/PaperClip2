@@ -1,11 +1,20 @@
 import 'package:flutter/foundation.dart';
 
+import 'package:paperclip2/gameplay/events/game_event.dart';
+
 class StatisticsManager with ChangeNotifier {
   // Statistiques de production
   int _totalPaperclipsProduced = 0;
   double _totalMetalUsed = 0.0;
   int _manualPaperclipsProduced = 0;
   int _autoPaperclipsProduced = 0;
+
+  // Statistiques de progression
+  int _totalUpgradesBought = 0;
+  int _totalLevelsGained = 0;
+  int _totalMissionsCompleted = 0;
+  int _totalAchievementsUnlocked = 0;
+  int _totalAutoclippersBought = 0;
   
   // Statistiques économiques
   double _totalMoneyEarned = 0.0;
@@ -31,6 +40,12 @@ class StatisticsManager with ChangeNotifier {
   double get totalMetalUsed => _totalMetalUsed;
   int get manualPaperclipsProduced => _manualPaperclipsProduced;
   int get autoPaperclipsProduced => _autoPaperclipsProduced;
+
+  int get totalUpgradesBought => _totalUpgradesBought;
+  int get totalLevelsGained => _totalLevelsGained;
+  int get totalMissionsCompleted => _totalMissionsCompleted;
+  int get totalAchievementsUnlocked => _totalAchievementsUnlocked;
+  int get totalAutoclippersBought => _totalAutoclippersBought;
   
   double get totalMoneyEarned => _totalMoneyEarned;
   double get totalMoneySpent => _totalMoneySpent;
@@ -46,6 +61,37 @@ class StatisticsManager with ChangeNotifier {
   DateTime get gameStartTime => _gameStartTime;
   int get totalGameTimeSec => _totalGameTimeSec;
   int get totalPlayTimeSeconds => _totalGameTimeSec; // Alias pour compatibilité
+
+  void reset() {
+    _totalPaperclipsProduced = 0;
+    _totalMetalUsed = 0.0;
+    _manualPaperclipsProduced = 0;
+    _autoPaperclipsProduced = 0;
+
+    _totalUpgradesBought = 0;
+    _totalLevelsGained = 0;
+    _totalMissionsCompleted = 0;
+    _totalAchievementsUnlocked = 0;
+    _totalAutoclippersBought = 0;
+
+    _totalMoneyEarned = 0.0;
+    _totalMoneySpent = 0.0;
+    _peakMoneyPerMinute = 0.0;
+    _currentMoneyPerMinute = 0.0;
+    _lastMinuteEarnings = 0.0;
+    _lastEarningsUpdate = DateTime.now();
+
+    _totalMetalPurchased = 0.0;
+    _totalIronMined = 0.0;
+    _totalCoalMined = 0.0;
+    _totalElectricityProduced = 0.0;
+    _totalSteelProduced = 0.0;
+
+    _gameStartTime = DateTime.now();
+    _totalGameTimeSec = 0;
+
+    notifyListeners();
+  }
   
   // Méthodes de mise à jour
   /// Méthode principale de mise à jour de la production.
@@ -151,6 +197,11 @@ class StatisticsManager with ChangeNotifier {
     _totalGameTimeSec = seconds;
     notifyListeners();
   }
+
+  void setTotalPaperclipsProduced(int value) {
+    _totalPaperclipsProduced = value;
+    notifyListeners();
+  }
   
   void setGameStartTime(DateTime startTime) {
     _gameStartTime = startTime;
@@ -164,6 +215,12 @@ class StatisticsManager with ChangeNotifier {
       _totalMetalUsed = json['totalMetalUsed']?.toDouble() ?? _totalMetalUsed;
       _manualPaperclipsProduced = json['manualPaperclipsProduced'] ?? _manualPaperclipsProduced;
       _autoPaperclipsProduced = json['autoPaperclipsProduced'] ?? _autoPaperclipsProduced;
+
+      _totalUpgradesBought = (json['totalUpgradesBought'] as num?)?.toInt() ?? _totalUpgradesBought;
+      _totalLevelsGained = (json['totalLevelsGained'] as num?)?.toInt() ?? _totalLevelsGained;
+      _totalMissionsCompleted = (json['totalMissionsCompleted'] as num?)?.toInt() ?? _totalMissionsCompleted;
+      _totalAchievementsUnlocked = (json['totalAchievementsUnlocked'] as num?)?.toInt() ?? _totalAchievementsUnlocked;
+      _totalAutoclippersBought = (json['totalAutoclippersBought'] as num?)?.toInt() ?? _totalAutoclippersBought;
       
       _totalMoneyEarned = json['totalMoneyEarned']?.toDouble() ?? _totalMoneyEarned;
       _totalMoneySpent = json['totalMoneySpent']?.toDouble() ?? _totalMoneySpent;
@@ -202,6 +259,12 @@ class StatisticsManager with ChangeNotifier {
       'totalMetalUsed': _totalMetalUsed,
       'manualPaperclipsProduced': _manualPaperclipsProduced,
       'autoPaperclipsProduced': _autoPaperclipsProduced,
+
+      'totalUpgradesBought': _totalUpgradesBought,
+      'totalLevelsGained': _totalLevelsGained,
+      'totalMissionsCompleted': _totalMissionsCompleted,
+      'totalAchievementsUnlocked': _totalAchievementsUnlocked,
+      'totalAutoclippersBought': _totalAutoclippersBought,
       
       'totalMoneyEarned': _totalMoneyEarned,
       'totalMoneySpent': _totalMoneySpent,
@@ -228,6 +291,13 @@ class StatisticsManager with ChangeNotifier {
         'manualPaperclipsProduced': _manualPaperclipsProduced,
         'autoPaperclipsProduced': _autoPaperclipsProduced,
         'efficiency': _totalPaperclipsProduced > 0 ? _totalMetalUsed / _totalPaperclipsProduced : 0,
+      },
+      'progression': {
+        'totalUpgradesBought': _totalUpgradesBought,
+        'totalLevelsGained': _totalLevelsGained,
+        'totalMissionsCompleted': _totalMissionsCompleted,
+        'totalAchievementsUnlocked': _totalAchievementsUnlocked,
+        'totalAutoclippersBought': _totalAutoclippersBought,
       },
       'economy': {
         'totalMoneyEarned': _totalMoneyEarned,
@@ -283,11 +353,33 @@ class StatisticsManager with ChangeNotifier {
     // Compatibilité : nombre d'autoclippers achetés (actuellement ignoré)
     int autoclippersBought = 0,
   }) {
-    // Cette méthode pourrait enregistrer des statistiques de progression
-    // qui pourraient être utilisées pour des récompenses ou des réalisations
-    
-    // Pour l'instant, on notifie simplement les écouteurs
+    _totalUpgradesBought += upgradesBought;
+    _totalLevelsGained += levelGained;
+    _totalMissionsCompleted += missionCompleted;
+    _totalAchievementsUnlocked += achievementsUnlocked;
+    _totalAutoclippersBought += autoclippersBought;
     notifyListeners();
+  }
+
+  void onGameEvent(GameEvent event) {
+    switch (event.type) {
+      case GameEventType.upgradePurchased:
+        final upgradesBought = (event.data['upgradesBought'] as num?)?.toInt() ?? 0;
+        final moneySpent = (event.data['moneySpent'] as num?)?.toDouble() ?? 0.0;
+        if (upgradesBought > 0) {
+          updateProgression(upgradesBought: upgradesBought);
+        }
+        if (moneySpent > 0) {
+          updateEconomics(moneySpent: moneySpent);
+        }
+        return;
+      case GameEventType.saleProcessed:
+      case GameEventType.productionTick:
+      case GameEventType.marketTick:
+      case GameEventType.autoclipperPurchased:
+      case GameEventType.progressionPathChosen:
+        return;
+    }
   }
   
   // Alias de compatibilité: certaines anciennes méthodes appelaient fromJson()

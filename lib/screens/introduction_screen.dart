@@ -36,8 +36,18 @@ class _IntroductionScreenState extends State<IntroductionScreen> with TickerProv
   void _handleNavigation() {
     if (!mounted) return;
 
-    // Vérifier que le callback existe avant de l'appeler
-    widget.onStart();
+    try {
+      widget.onStart();
+    } catch (e, stack) {
+      debugPrint('IntroductionScreen._handleNavigation: onStart a échoué: $e');
+      debugPrint('$stack');
+
+      if (!mounted) return;
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const MainScreen()),
+      );
+    }
   }
 
   @override

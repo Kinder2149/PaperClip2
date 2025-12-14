@@ -12,6 +12,40 @@ import 'package:paperclip2/services/persistence/game_persistence_service.dart';
 import 'package:paperclip2/services/persistence/game_snapshot.dart';
 import 'package:paperclip2/services/persistence/local_game_persistence.dart';
 import 'package:paperclip2/services/save_game.dart';
+import 'package:paperclip2/services/save_system/save_validator.dart';
+
+enum SaveTrigger {
+  autosave,
+  importantEvent,
+  manual,
+  lifecycle,
+  backup,
+}
+
+enum SavePriority {
+  low,
+  normal,
+  high,
+  critical,
+}
+
+class SaveRequest {
+  final SaveTrigger trigger;
+  final SavePriority priority;
+  final String slotId;
+  final bool isBackup;
+  final DateTime requestedAt;
+  final String? reason;
+
+  const SaveRequest({
+    required this.trigger,
+    required this.priority,
+    required this.slotId,
+    required this.isBackup,
+    required this.requestedAt,
+    this.reason,
+  });
+}
 
 const bool _isDebug = !bool.fromEnvironment('dart.vm.product');
 
@@ -22,6 +56,301 @@ class GamePersistenceOrchestrator {
   static final GamePersistenceOrchestrator instance = GamePersistenceOrchestrator._();
 
   final GamePersistenceService _persistence = const LocalGamePersistenceService();
+
+  static const Duration _backupCooldown = Duration(minutes: 10);
+  static const Duration _importantEventCoalesceWindow = Duration(seconds: 2);
+
+  final List<SaveRequest> _queue = <SaveRequest>[];
+  bool _isPumping = false;
+  DateTime? _lastBackupAt;
+  DateTime? _lastImportantEventEnqueuedAt;
+
+  /// Boot: vérifie la dernière sauvegarde (si elle existe) et tente une restauration
+  /// depuis le backup le plus récent si la sauvegarde semble invalide.
+  ///
+  /// Note: cette méthode n'applique rien dans le GameState; elle ne fait qu'assurer
+  /// que la sauvegarde principale est saine avant d'entrer dans l'UI.
+  Future<void> checkAndRestoreLastSaveFromBackupIfNeeded() async {
+    try {
+      final lastSave = await SaveManagerAdapter.getLastSave();
+      if (lastSave == null) {
+        return;
+      }
+      final baseName = lastSave.name;
+
+      ValidationResult validation;
+      try {
+        final validatedPayload = <String, dynamic>{
+          'version': SaveManagerAdapter.SAVE_FORMAT_VERSION,
+          'timestamp': DateTime.now().toIso8601String(),
+          'gameData': lastSave.gameData,
+        };
+        validation = SaveValidator.quickValidate(validatedPayload);
+      } catch (e) {
+        validation = ValidationResult(
+          isValid: false,
+          errors: ['Erreur lors de la validation rapide: $e'],
+          severity: ValidationSeverity.critical,
+        );
+      }
+
+      if (validation.severity != ValidationSeverity.critical) {
+        return;
+      }
+
+      if (_isDebug) {
+        print(
+          'GamePersistenceOrchestrator.checkAndRestoreLastSaveFromBackupIfNeeded: '
+          'Sauvegarde "$baseName" invalide (${validation.errors.length} erreurs). '
+          'Tentative de restauration depuis un backup...',
+        );
+      }
+
+      final saves = await SaveManagerAdapter.instance.listSaves();
+      final backups = saves
+          .where((save) => save.name.startsWith('$baseName${GameConstants.BACKUP_DELIMITER}'))
+          .toList();
+
+      if (backups.isEmpty) {
+        if (_isDebug) {
+          print(
+            'GamePersistenceOrchestrator.checkAndRestoreLastSaveFromBackupIfNeeded: '
+            'Aucun backup trouvé pour "$baseName"',
+          );
+        }
+        return;
+      }
+
+      backups.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      final latestBackupName = backups.first.name;
+
+      try {
+        final backupSave = await SaveManagerAdapter.loadGame(latestBackupName);
+
+        final restoredSave = SaveGame(
+          name: baseName,
+          lastSaveTime: DateTime.now(),
+          gameData: backupSave.gameData,
+          version: backupSave.version,
+          gameMode: backupSave.gameMode,
+          isRestored: true,
+        );
+
+        final ok = await SaveManagerAdapter.saveGame(restoredSave);
+        if (_isDebug) {
+          print(
+            'GamePersistenceOrchestrator.checkAndRestoreLastSaveFromBackupIfNeeded: '
+            'Restauration depuis "$latestBackupName" → "$baseName": ${ok ? 'OK' : 'ECHEC'}',
+          );
+        }
+      } catch (e) {
+        if (_isDebug) {
+          print(
+            'GamePersistenceOrchestrator.checkAndRestoreLastSaveFromBackupIfNeeded: '
+            'Echec restauration depuis "$latestBackupName": $e',
+          );
+        }
+      }
+    } catch (e) {
+      if (_isDebug) {
+        print(
+          'GamePersistenceOrchestrator.checkAndRestoreLastSaveFromBackupIfNeeded: erreur: $e',
+        );
+      }
+    }
+  }
+
+  Future<void> requestAutoSave(GameState state, {String? reason}) async {
+    if (!state.isInitialized || state.gameName == null) return;
+    await _enqueue(
+      state,
+      SaveRequest(
+        trigger: SaveTrigger.autosave,
+        priority: SavePriority.low,
+        slotId: state.gameName!,
+        isBackup: false,
+        requestedAt: DateTime.now(),
+        reason: reason,
+      ),
+    );
+  }
+
+  Future<void> requestImportantSave(GameState state, {String? reason}) async {
+    if (!state.isInitialized || state.gameName == null) return;
+
+    final now = DateTime.now();
+    _lastImportantEventEnqueuedAt ??= now;
+
+    await _enqueue(
+      state,
+      SaveRequest(
+        trigger: SaveTrigger.importantEvent,
+        priority: SavePriority.normal,
+        slotId: state.gameName!,
+        isBackup: false,
+        requestedAt: now,
+        reason: reason,
+      ),
+    );
+  }
+
+  Future<void> requestManualSave(
+    GameState state, {
+    String? slotId,
+    String? reason,
+  }) async {
+    if (!state.isInitialized) return;
+    final targetSlotId = slotId ?? state.gameName;
+    if (targetSlotId == null) return;
+    await _enqueue(
+      state,
+      SaveRequest(
+        trigger: SaveTrigger.manual,
+        priority: SavePriority.high,
+        slotId: targetSlotId,
+        isBackup: false,
+        requestedAt: DateTime.now(),
+        reason: reason,
+      ),
+    );
+  }
+
+  Future<void> requestLifecycleSave(GameState state, {String? reason}) async {
+    if (!state.isInitialized || state.gameName == null) return;
+
+    final now = DateTime.now();
+
+    await _enqueue(
+      state,
+      SaveRequest(
+        trigger: SaveTrigger.lifecycle,
+        priority: SavePriority.critical,
+        slotId: state.gameName!,
+        isBackup: false,
+        requestedAt: now,
+        reason: reason,
+      ),
+    );
+
+    final lastBackup = _lastBackupAt;
+    final shouldBackup = lastBackup == null || now.difference(lastBackup) >= _backupCooldown;
+    if (shouldBackup) {
+      final backupName =
+          '${state.gameName!}${GameConstants.BACKUP_DELIMITER}${now.millisecondsSinceEpoch}';
+      _lastBackupAt = now;
+      await _enqueue(
+        state,
+        SaveRequest(
+          trigger: SaveTrigger.backup,
+          priority: SavePriority.high,
+          slotId: backupName,
+          isBackup: true,
+          requestedAt: now,
+          reason: 'lifecycle_backup',
+        ),
+      );
+    }
+  }
+
+  Future<void> requestBackup(
+    GameState state, {
+    required String backupName,
+    String? reason,
+    bool bypassCooldown = false,
+  }) async {
+    if (!state.isInitialized || state.gameName == null) return;
+
+    final now = DateTime.now();
+    final lastBackup = _lastBackupAt;
+    if (!bypassCooldown && lastBackup != null && now.difference(lastBackup) < _backupCooldown) {
+      return;
+    }
+    _lastBackupAt = now;
+
+    await _enqueue(
+      state,
+      SaveRequest(
+        trigger: SaveTrigger.backup,
+        priority: SavePriority.high,
+        slotId: backupName,
+        isBackup: true,
+        requestedAt: now,
+        reason: reason,
+      ),
+    );
+  }
+
+  Future<void> _enqueue(GameState state, SaveRequest request) async {
+    // Coalescing autosave: 1 seule autosave en attente par slot.
+    if (request.trigger == SaveTrigger.autosave) {
+      _queue.removeWhere((r) => r.trigger == SaveTrigger.autosave && r.slotId == request.slotId);
+    }
+
+    // Coalescing important events: 1 seule en attente par slot.
+    if (request.trigger == SaveTrigger.importantEvent) {
+      _queue.removeWhere(
+        (r) => r.trigger == SaveTrigger.importantEvent && r.slotId == request.slotId,
+      );
+    }
+
+    _queue.add(request);
+
+    if (_isDebug) {
+      print(
+        'GamePersistenceOrchestrator.enqueue: trigger=${request.trigger}, '
+        'priority=${request.priority}, slot=${request.slotId}, backup=${request.isBackup}, '
+        'queue=${_queue.length}',
+      );
+    }
+
+    await _pump(state);
+  }
+
+  SaveRequest _pickNext() {
+    // Priorité puis ancienneté.
+    _queue.sort((a, b) {
+      final p = b.priority.index.compareTo(a.priority.index);
+      if (p != 0) return p;
+      return a.requestedAt.compareTo(b.requestedAt);
+    });
+    return _queue.removeAt(0);
+  }
+
+  Future<void> _pump(GameState state) async {
+    if (_isPumping) return;
+    _isPumping = true;
+    try {
+      while (_queue.isNotEmpty) {
+        final next = _pickNext();
+        try {
+          if (_isDebug) {
+            print(
+              'GamePersistenceOrchestrator.pump: start trigger=${next.trigger}, '
+              'slot=${next.slotId}, backup=${next.isBackup}',
+            );
+          }
+          await saveGame(state, next.slotId);
+          state.markLastSaveTime(DateTime.now());
+        } catch (e) {
+          if (_isDebug) {
+            print('GamePersistenceOrchestrator.pump: erreur: $e');
+          }
+          if (next.trigger == SaveTrigger.lifecycle) {
+            try {
+              final now = DateTime.now();
+              final backupName =
+                  '${state.gameName!}${GameConstants.BACKUP_DELIMITER}${now.millisecondsSinceEpoch}';
+              await saveGame(state, backupName);
+            } catch (_) {
+              // Best-effort seulement.
+            }
+          }
+        }
+      }
+    } finally {
+      _isPumping = false;
+    }
+  }
 
   /// Sauvegarde complète de l'état de jeu courant sous le nom [name].
   Future<void> saveGame(GameState state, String name) async {
@@ -61,16 +390,7 @@ class GamePersistenceOrchestrator {
 
   /// Sauvegarde automatique déclenchée lors d'événements importants.
   Future<void> saveOnImportantEvent(GameState state) async {
-    if (!state.isInitialized || state.gameName == null) return;
-
-    try {
-      await saveGame(state, state.gameName!);
-      state.markLastSaveTime(DateTime.now());
-    } catch (e) {
-      if (_isDebug) {
-        print('GamePersistenceOrchestrator.saveOnImportantEvent: erreur: $e');
-      }
-    }
+    await requestImportantSave(state, reason: 'legacy_saveOnImportantEvent');
   }
 
   /// Chargement complet d'une partie existante.
@@ -79,6 +399,9 @@ class GamePersistenceOrchestrator {
       if (_isDebug) {
         print('GamePersistenceOrchestrator.loadGame: Chargement de la partie: $name');
       }
+
+      // Mission 2: l'orchestration autosave est gérée ici (hors GameState).
+      state.autoSaveService.stop();
 
       final loadedSave = await SaveManagerAdapter.loadGame(name);
 
@@ -89,7 +412,10 @@ class GamePersistenceOrchestrator {
 
       await _applySnapshotIfPresent(state, name, gameData);
 
-      state.finishLoadGameAfterSnapshot(name, gameData);
+      await state.finishLoadGameAfterSnapshot(name, gameData);
+
+      // Mission 2: démarrer l'autosave après un chargement complet.
+      await state.autoSaveService.start();
     } catch (e) {
       if (_isDebug) {
         print('GamePersistenceOrchestrator.loadGame: ERREUR: $e');

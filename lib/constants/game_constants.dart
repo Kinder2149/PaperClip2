@@ -1,7 +1,7 @@
 // lib/models/game_constants.dart
 
 /// Constantes globales utilisées dans tout le jeu
-class GameConstants {
+class LegacyGameConstants {
   // Version du jeu
   static const String VERSION = '1.0.0';
   
@@ -47,7 +47,7 @@ class GameConstants {
 }
 
 /// Types d'expérience pour la progression
-enum ExperienceType {
+enum LegacyExperienceType {
   PRODUCTION,
   SALES,
   MANAGEMENT,
@@ -56,14 +56,14 @@ enum ExperienceType {
 }
 
 /// Chemins de progression disponibles
-enum ProgressionPath {
+enum LegacyProgressionPath {
   PRODUCTION,
   ECONOMY,
   RESEARCH
 }
 
 /// Niveaux de difficulté
-enum DifficultyLevel {
+enum LegacyDifficultyLevel {
   EASY,
   NORMAL,
   HARD
@@ -72,7 +72,7 @@ enum DifficultyLevel {
 // Note: Types de missions (MissionType) désormais définis dans game_config.dart
 
 /// Fonctionnalités débloquables du jeu
-enum UnlockableFeature {
+enum LegacyUnlockableFeature {
   MANUAL_PRODUCTION,
   METAL_PURCHASE,
   AUTOCLIPPERS,

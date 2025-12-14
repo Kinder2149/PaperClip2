@@ -6,34 +6,60 @@ Le dossier `services` contient les services qui interagissent avec des systèmes
 
 ## Composants Principaux
 
-- **api_client.dart** : Client API centralisé pour toutes les interactions avec le backend FastAPI. Gère les requêtes HTTP, l'authentification et le traitement des réponses.
+- **auto_save_service.dart** : Service responsable de la sauvegarde automatique périodique de l'état du jeu (timer) et du déclenchement des sauvegardes.
+- **persistence/game_persistence_orchestrator.dart** : Orchestrateur de persistance (save/load/backup + snapshot). Centralise la logique hors de `GameState`.
+- **save_system/save_manager_adapter.dart** : Façade/adapter utilisée par le code legacy pour accéder au nouveau système de sauvegarde.
+- **save_system/local_save_game_manager.dart** : Stockage local (SharedPreferences), métadonnées, opérations primitives (save/load/list/delete).
+- **save_migration_service.dart** : Migration des sauvegardes legacy vers le format actuel (inclut une stratégie lazy/progressive).
+- **ui/game_ui_port.dart** + **ui/flutter_game_ui_facade.dart** : Port UI (interface) + implémentation Flutter (notifications, navigation, etc.).
+- **audio/game_audio_port.dart** + **audio/flutter_game_audio_facade.dart** : Port audio (interface) + implémentation Flutter.
+- **lifecycle/app_lifecycle_handler.dart** : Branche le cycle de vie Flutter et déclenche des sauvegardes/backup via l’orchestrateur.
+- **notification_manager.dart** + **notification_storage_service.dart** : Notifications in-app et persistance associée.
+- **navigation_service.dart** : Service de navigation (wrapper autour du `Navigator`).
+- **theme_service.dart** : Gestion du thème clair/sombre.
+- **progression/progression_rules_service.dart** : Règles de progression (service transverse).
+- **upgrades/upgrade_effects_calculator.dart** : Calcul des effets d’améliorations.
 
-- **auth_service.dart** : Gère l'authentification utilisateur, y compris la connexion par fournisseurs externes (Google, Apple) et la persistance des sessions. Remplace l'ancien service Firebase Authentication.
+## Persistance & auto-save (doctrine)
 
-- **auto_save_service.dart** : Service responsable de la sauvegarde automatique périodique de l'état du jeu.
+### Principes
 
+- **Auto-save périodique (Timer)** : exclusivement géré par `AutoSaveService`.
+- **Orchestration de persistance** (save/load/snapshot) : centralisée dans `GamePersistenceOrchestrator`.
+- **SaveSystem** (`LocalSaveGameManager`) : responsable uniquement du stockage local (IO) et des opérations primitives (save/load/list/delete). Il ne doit pas porter de logique d'auto-save périodique.
 
+### Schéma (flux)
 
-- **notification_service.dart** et **notification_storage_service.dart** : Gèrent les notifications in-app et leur persistance.
+`UI / GameState` → `GamePersistenceOrchestrator` → `SaveManagerAdapter` → `LocalSaveGameManager` (+ snapshots via `GamePersistenceService`)
 
-- **social_service.dart** : Gère les fonctionnalités sociales comme les amis, les classements et les succès. Interface avec les APIs sociales du backend.
+## Ports (UI / Audio)
 
-- **storage_service.dart** : Service pour le stockage et la récupération de fichiers. Remplace Firebase Storage.
+Objectif : découpler la logique métier (`GameState`, managers) de Flutter.
 
-## Migration Backend
+- **UI**
+  - **Port** : `ui/game_ui_port.dart`
+  - **Impl Flutter** : `ui/flutter_game_ui_facade.dart`
+- **Audio**
+  - **Port** : `audio/game_audio_port.dart`
+  - **Impl Flutter** : `audio/flutter_game_audio_facade.dart`
 
-Ces services ont été refactorisés pour utiliser un backend FastAPI personnalisé au lieu de Firebase. Les points importants de cette migration sont :
+`main.dart` branche les implémentations Flutter sur `GameState` au boot.
 
-- Utilisation de tokens JWT au lieu de tokens Firebase
-- Gestion locale de la persistance des sessions
-- Implémentation d'une stratégie de rafraîchissement silencieux des tokens via Google OAuth
-- Uniformisation des appels API via le client API central
+## Événements & notifications (EventManager)
 
-## Cohérence avec le Backend
+### Point d'entrée canonique
 
-Les services ont été conçus pour correspondre aux endpoints FastAPI suivants :
-- `/auth/` : Authentification et gestion des utilisateurs
-- `/api/storage/` : Stockage et récupération de fichiers
-- `/api/social/` : Fonctionnalités sociales
-- `/api/analytics/` : Analytique et reporting
-- `/api/config/` : Configuration à distance
+- **Canonique** : `models/event_system.dart` (classe `EventManager`, `NotificationEvent`, `GameEvent`).
+- **Ré-exports** :
+  - `managers/event_manager.dart` ré-exporte le canonique.
+  - `services/event_manager.dart` est gelé et ré-exporte également le canonique afin d'éviter toute double implémentation.
+ - **notification_storage_service.dart** : Persistance des messages/notifications in-app.
+ - **notification_manager.dart** : Affichage des notifications (UI).
+
+## Migration des sauvegardes (legacy)
+
+La migration des anciennes sauvegardes (clés legacy en `SharedPreferences`) est gérée par `save_migration_service.dart`.
+
+- Stratégie recommandée : **migration lazy/progressive** déclenchée lors de l’accès à l’écran des sauvegardes.
+- Objectif : éviter de bloquer le boot.
+- La migration crée des backups pré-migration **idempotents** (une seule copie stable) et purge les backups legacy timestampés.

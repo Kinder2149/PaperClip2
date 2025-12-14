@@ -11,120 +11,69 @@ import 'package:paperclip2/models/game_state.dart';
 class GameSessionController with ChangeNotifier {
   final GameState gameState;
 
-  Timer? _productionTimer;
-  DateTime? _lastProductionTime;
-  Timer? _playTimeTimer;
-  Timer? _marketTimer;
+  Timer? _gameLoopTimer;
+  DateTime? _lastTickTime;
+
+  bool _isRunning = false;
+
+  bool get isRunning => _isRunning;
 
   GameSessionController(this.gameState);
 
   /// Démarre la session de jeu (timers, etc.).
   /// Implémentation détaillée à venir dans des PR ultérieures.
   void startSession() {
-    startProductionTimer();
-    _startPlayTimeTimer();
-    _startMarketTimer();
+    if (_isRunning) {
+      return;
+    }
+    _isRunning = true;
+    startGameLoop();
+    // Maintenance (Q1): aucune boucle de maintenance n'est pilotée ici pour le moment.
   }
 
-  /// Démarre le timer de production qui appelle périodiquement
-  /// la logique de production automatique.
-  void startProductionTimer() {
-    _productionTimer?.cancel();
+  void startGameLoop() {
+    _gameLoopTimer?.cancel();
 
-    _lastProductionTime = DateTime.now();
-    _productionTimer = Timer.periodic(
+    _lastTickTime = DateTime.now();
+    _gameLoopTimer = Timer.periodic(
       const Duration(seconds: 1),
-      (timer) => _handleProductionTick(),
+      (_) => _handleGameTick(),
     );
 
     if (kDebugMode) {
-      print('GameSessionController: Timer de production démarré');
+      print('GameSessionController: Boucle de jeu démarrée');
     }
   }
 
-  void _startPlayTimeTimer() {
-    _playTimeTimer?.cancel();
-
-    _playTimeTimer = Timer.periodic(
-      const Duration(seconds: 1),
-      (_) {
-        if (!gameState.isInitialized || gameState.isPaused) return;
-        gameState.incrementGameTime(1);
-      },
-    );
-
-    if (kDebugMode) {
-      print('GameSessionController: Timer de temps de jeu démarré');
-    }
-  }
-
-  void _startMarketTimer() {
-    _marketTimer?.cancel();
-
-    _marketTimer = Timer.periodic(
-      const Duration(seconds: 1),
-      (_) {
-        if (!gameState.isInitialized || gameState.isPaused) return;
-        if (!gameState.autoSellEnabled) return;
-        gameState.tickMarket();
-      },
-    );
-
-    if (kDebugMode) {
-      print('GameSessionController: Timer de marché démarré');
-    }
-  }
-
-  /// Tick de production : reproduit la logique actuelle de
-  /// GameState.processProduction, mais pilotée par le contrôleur.
-  void _handleProductionTick() {
+  void _handleGameTick() {
     if (!gameState.isInitialized || gameState.isPaused) return;
 
     try {
       final now = DateTime.now();
-      final elapsed = _lastProductionTime != null
-          ? now.difference(_lastProductionTime!).inMilliseconds / 1000
+      final elapsedSeconds = _lastTickTime != null
+          ? now.difference(_lastTickTime!).inMilliseconds / 1000
           : 1.0;
-      _lastProductionTime = now;
+      _lastTickTime = now;
 
       if (kDebugMode) {
         print(
-          'GameSessionController: cycle de production (elapsed: '
-          '${elapsed.toStringAsFixed(2)}s)',
+          'GameSessionController: tick unifié (elapsed: '
+          '${elapsedSeconds.toStringAsFixed(2)}s)',
         );
       }
 
-      final paperclipsBefore = gameState.playerManager.paperclips;
-      final metalBefore = gameState.playerManager.metal;
-
-      gameState.productionManager.processProduction();
-
-      final paperclipsAfter = gameState.playerManager.paperclips;
-      final metalAfter = gameState.playerManager.metal;
-      final paperclipsProduced = paperclipsAfter - paperclipsBefore;
-      final metalUsed = metalBefore - metalAfter;
-
-      if (paperclipsProduced > 0 && kDebugMode) {
-        print(
-          'GameSessionController: Production: '
-          '+${paperclipsProduced.toStringAsFixed(1)} trombones, '
-          '-${metalUsed.toStringAsFixed(1)} métal',
-        );
-      }
-
-      // Notifier les écouteurs de GameState pour mettre à jour l'UI.
-      gameState.notifyListeners();
+      gameState.tick(elapsedSeconds: elapsedSeconds);
     } catch (e) {
       if (kDebugMode) {
-        print('GameSessionController: Erreur lors du tick de production: $e');
+        print('GameSessionController: Erreur lors du tick unifié: $e');
       }
     }
   }
 
   /// Méthode exposée pour les tests afin de simuler un tick
-  /// de production sans dépendre d'un Timer réel.
+  /// de jeu sans dépendre d'un Timer réel.
   @visibleForTesting
-  void runProductionTickForTest() => _handleProductionTick();
+  void runProductionTickForTest() => _handleGameTick();
 
   /// Met en pause la session de jeu.
   void pauseSession() {
@@ -138,12 +87,9 @@ class GameSessionController with ChangeNotifier {
 
   /// Arrête proprement la session (timers, ressources).
   void stopSession() {
-    _productionTimer?.cancel();
-    _productionTimer = null;
-    _playTimeTimer?.cancel();
-    _playTimeTimer = null;
-    _marketTimer?.cancel();
-    _marketTimer = null;
+    _gameLoopTimer?.cancel();
+    _gameLoopTimer = null;
+    _isRunning = false;
   }
 
   @override

@@ -5,9 +5,11 @@ import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/game_state.dart';
+import '../controllers/game_session_controller.dart';
 import '../constants/game_config.dart';
 import '../screens/main_screen.dart';
 import '../services/save_system/save_manager_adapter.dart';
+import '../services/save_migration_service.dart';
 import '../widgets/cards/info_card.dart';
 import '../widgets/indicators/stat_indicator.dart';
 import '../widgets/dialogs/info_dialog.dart';
@@ -32,6 +34,9 @@ class SaveLoadScreen extends StatefulWidget {
 class _SaveLoadScreenState extends State<SaveLoadScreen> {
   List<SaveGameInfo> _saves = [];
   bool _loading = true;
+  bool _isMigrating = false;
+  int _migrationMigrated = 0;
+  int _migrationTotal = 0;
   final _nameController = TextEditingController();
 
   @override
@@ -46,6 +51,41 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
     try {
       if (kDebugMode) {
         print('SaveLoadScreen._loadSaves: Chargement des sauvegardes...');
+      }
+
+      // Migration lazy: exécuter une migration progressive uniquement au moment où
+      // l'utilisateur accède à l'écran des sauvegardes.
+      final migrationSw = Stopwatch()..start();
+      setState(() {
+        _isMigrating = true;
+        _migrationMigrated = 0;
+        _migrationTotal = 0;
+      });
+
+      final migrationResult = await SaveMigrationService.migrateLegacySavesIfNeeded(
+        maxToMigrate: 10,
+        onProgress: (migrated, total) {
+          if (!mounted) return;
+          setState(() {
+            _migrationMigrated = migrated;
+            _migrationTotal = total;
+          });
+        },
+      );
+      migrationSw.stop();
+
+      if (kDebugMode) {
+        print(
+          'SaveLoadScreen._loadSaves: Migration lazy terminée '
+          '(scannées=${migrationResult.scannedCount}, ok=${migrationResult.successCount}, '
+          'fail=${migrationResult.failureCount}, durée=${migrationSw.elapsed})',
+        );
+      }
+
+      if (mounted) {
+        setState(() {
+          _isMigrating = false;
+        });
       }
       
       // S'assurer que SaveManagerAdapter est correctement initialisé
@@ -105,7 +145,10 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
       }
       
       if (mounted) {
-        setState(() => _loading = false);
+        setState(() {
+          _loading = false;
+          _isMigrating = false;
+        });
         _showError('Erreur lors du chargement des sauvegardes: $e');
       }
     }
@@ -148,7 +191,11 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
       }
 
       final gameState = context.read<GameState>();
+      final gameSessionController = context.read<GameSessionController>();
       await gameState.loadGame(name); // Utiliser loadGame directement
+
+      // Option A: démarrer la boucle de jeu uniquement quand une partie est active.
+      gameSessionController.startSession();
 
       if (mounted) {
         // Notification de chargement réussi
@@ -274,7 +321,23 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
         ],
       ),
       body: _loading
-          ? Center(child: CircularProgressIndicator())
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 12.0),
+                  if (_isMigrating)
+                    Text(
+                      _migrationTotal > 0
+                          ? 'Migration des sauvegardes… $_migrationMigrated/$_migrationTotal'
+                          : 'Migration des sauvegardes…',
+                    )
+                  else
+                    const Text('Chargement…'),
+                ],
+              ),
+            )
           : _saves.isEmpty
               ? Center(child: Text('Aucune sauvegarde disponible'))
               : ListView.builder(

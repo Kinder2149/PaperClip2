@@ -16,7 +16,7 @@ void main() {
       player.updateMetal(20.0);
 
       // Acheter au moins un autoclipper pour avoir une production automatique
-      player.purchaseAutoClipper();
+      gameState.buyAutoclipper();
 
       final controller = GameSessionController(gameState);
 
