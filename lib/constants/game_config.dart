@@ -22,7 +22,7 @@ class GameConstants {
   static const String INTRO_TITLE_1 = "INITIALISATION";
   static const String INTRO_TITLE_2 = "PRODUCTION";
   static const String INTRO_TITLE_3 = "OPTIMISATION";
-  static const String INTRO_AUDIO_PATH = "assets/audio/intro.mp3";
+  static const String INTRO_AUDIO_PATH = "assets/audio/screenmusic.wav";
 
   //======================================================================
   // SECTION: SAUVEGARDE ET STOCKAGE

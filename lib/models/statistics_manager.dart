@@ -146,6 +146,11 @@ class StatisticsManager with ChangeNotifier {
     _totalGameTimeSec += additionalSeconds;
     notifyListeners();
   }
+
+  void setTotalGameTimeSec(int seconds) {
+    _totalGameTimeSec = seconds;
+    notifyListeners();
+  }
   
   void setGameStartTime(DateTime startTime) {
     _gameStartTime = startTime;

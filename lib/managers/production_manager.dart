@@ -4,8 +4,7 @@ import 'dart:math';
 import '../constants/game_config.dart' show GameConstants, EventType, EventImportance; // Import des constantes et enums requis
 import 'player_manager.dart';
 import '../models/statistics_manager.dart';
-// Système de missions désactivé
-// import '../models/progression_system.dart'; // Import MissionType, MissionSystem
+// MissionSystem (Option A — mise en pause): aucun événement de gameplay n'est branché ici.
 import '../models/json_loadable.dart';
 import '../models/event_system.dart';
 import '../models/level_system.dart'; // Import pour LevelSystem
@@ -17,14 +16,13 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
   final PlayerManager _playerManager;
   final StatisticsManager _statistics; // Utilise maintenant la version de models/statistics_manager.dart
   final LevelSystem _levelSystem;
-  // Le système de missions a été retiré car il n'est pas finalisé la production
-  int _totalPaperclipsProduced = 0;
+  // MissionSystem (Option A — mise en pause): non intégré au runtime.
   double _maintenanceCosts = 0.0;
   bool _isPaused = false;
   DateTime? _lastUpdateTime;
 
   // Getters publics
-  int get totalPaperclipsProduced => _totalPaperclipsProduced;
+  int get totalPaperclipsProduced => _statistics.totalPaperclipsProduced;
   double get maintenanceCosts => _maintenanceCosts;
   bool get isPaused => _isPaused;
   
@@ -106,7 +104,6 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
         
         player.updateMetal(player.metal - metalUsed);
         player.updatePaperclips(player.paperclips + actualProduction);
-        _totalPaperclipsProduced += actualProduction.floor();
 
         if (kDebugMode) {
           print('[ProductionManager] Production réalisée: ${actualProduction.toStringAsFixed(1)} trombones, ${metalUsed.toStringAsFixed(1)} métal utilisé, ${metalSaved.toStringAsFixed(1)} métal économisé');
@@ -123,9 +120,7 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
         // Expérience pour la production automatique
         level.addAutomaticProduction(actualProduction.floor());
         
-        // Mise à jour des missions (fonctionnalité retirée)
-        // Le système de mission a été supprimé du projet
-        // Code supprimé: mise à jour des missions avec la production actuelle
+        // MissionSystem (Option A — mise en pause): pas de progression de missions.
         
         // Vérifier les jalons pour mises à jour du leaderboard, etc.
         _checkMilestones();
@@ -147,21 +142,18 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
   void producePaperclip() {
     if (player.consumeMetal(GameConstants.METAL_PER_PAPERCLIP)) {
       player.updatePaperclips(player.paperclips + 1);
-      _totalPaperclipsProduced++;
-
-      // Mettre à jour le leaderboard tous les 100 trombones
-      if (_totalPaperclipsProduced % 100 == 0) {
-        _updateLeaderboard();
-      }
-
       level.addManualProduction();
       _statistics.updateProduction(
         paperclipsProduced: 1,
         metalUsed: GameConstants.METAL_PER_PAPERCLIP,
         isAuto: false // Production manuelle
       );
+      // Mettre à jour le leaderboard tous les 100 trombones produits
+      if (_statistics.totalPaperclipsProduced % 100 == 0) {
+        _updateLeaderboard();
+      }
       
-      // Système de missions désactivé - fonctionnalité non finalisée
+      // MissionSystem (Option A — mise en pause): pas de progression de missions.
       
       notifyListeners();
     }
@@ -179,20 +171,31 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
     return 1.0 * elapsed;
   }
 
-  /// Acheter une autoclippeuse
-  void buyAutoclipper() {
-    double cost = calculateAutoclipperCost();
-    if (player.money >= cost) {
-      player.updateMoney(player.money - cost);
-      player.updateAutoclippers(player.autoclippers + 1);
-      level.addAutoclipperPurchase();
-
-      // Ajout statistiques
-      _statistics.updateProgression(upgradesBought: 1);  // Paramètre corrigé
-      _statistics.updateEconomics(moneySpent: cost);
-      
-      notifyListeners();
+  /// Méthode officielle pour l'achat d'une autoclippeuse
+  /// Retourne true si l'achat a été effectué, false sinon.
+  bool buyAutoclipperOfficial() {
+    if (!canBuyAutoclipper()) {
+      return false;
     }
+
+    final double cost = calculateAutoclipperCost();
+
+    player.updateMoney(player.money - cost);
+    player.updateAutoclippers(player.autoclippers + 1);
+    level.addAutoclipperPurchase();
+
+    // Mise à jour centralisée des statistiques
+    _statistics.updateProgression(autoclippersBought: 1);
+    _statistics.updateEconomics(moneySpent: cost);
+
+    notifyListeners();
+    return true;
+  }
+
+  /// Méthode de compatibilité : conserve l'ancienne signature
+  /// et délègue vers la méthode officielle.
+  void buyAutoclipper() {
+    buyAutoclipperOfficial();
   }
 
   /// Calcule le coût d'achat d'une autoclippeuse supplémentaire
@@ -216,6 +219,7 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
     _maintenanceCosts = player.autoclippers * GameConstants.STORAGE_MAINTENANCE_RATE;
 
     if (player.money >= _maintenanceCosts) {
+      // Coût de maintenance actuellement non enregistré dans les statistiques économiques.
       player.updateMoney(player.money - _maintenanceCosts);
     } else {
       player.updateAutoclippers((player.autoclippers * 0.9).floor());
@@ -238,18 +242,16 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
 
   /// Vérifie si des jalons de production ont été atteints
   void _checkMilestones() {
-    // Implémentation future pour vérifier des jalons importants
-    // de production (ex: premiers 1000 trombones, etc.)
+    // Non implémenté dans la version actuelle (placeholder pour jalons futurs).
   }
 
   /// Met à jour les classements (pour version en ligne)
   void _updateLeaderboard() {
-    // Fonctionnalité désactivée dans la version offline
+    // Non implémenté / désactivé dans la version offline actuelle.
   }
 
   /// Réinitialise les valeurs de production
   void reset() {
-    _totalPaperclipsProduced = 0;
     _maintenanceCosts = 0.0;
     _isPaused = false;
     _lastUpdateTime = DateTime.now();
@@ -259,7 +261,6 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
   @override
   Map<String, dynamic> toJson() {
     return {
-      'totalPaperclipsProduced': _totalPaperclipsProduced,
       'maintenanceCosts': _maintenanceCosts,
       'isPaused': _isPaused,
       'lastUpdateTime': _lastUpdateTime?.toIso8601String(),
@@ -268,7 +269,6 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
 
   @override
   void fromJson(Map<String, dynamic> json) {
-    _totalPaperclipsProduced = (json['totalPaperclipsProduced'] as num?)?.toInt() ?? 0;
     _maintenanceCosts = (json['maintenanceCosts'] as num?)?.toDouble() ?? 0.0;
     _isPaused = json['isPaused'] as bool? ?? false;
     _lastUpdateTime = json['lastUpdateTime'] != null 

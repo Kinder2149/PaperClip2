@@ -27,12 +27,14 @@ import './services/background_music.dart';
 import './services/theme_service.dart';
 import './utils/update_manager.dart';
 import './widgets/indicators/notification_widgets.dart';
+import './controllers/game_session_controller.dart';
 
 // Export du navigatorKey
 export 'package:paperclip2/main.dart' show navigatorKey;
 
 // Services globaux
 final gameState = GameState();
+final gameSessionController = GameSessionController(gameState);
 final backgroundMusicService = BackgroundMusicService();
 final themeService = ThemeService();
 final eventManager = EventManager.instance;
@@ -87,6 +89,9 @@ void main() async {
     // Vérifier et restaurer les sauvegardes
     await gameState.checkAndRestoreFromBackup();
 
+    // Démarrer la session de jeu (timers pilotés par GameSessionController)
+    gameSessionController.startSession();
+
     // Initialiser le service de thème
     await themeService.initialize();
 
@@ -95,6 +100,7 @@ void main() async {
       MultiProvider(
         providers: [
           ChangeNotifierProvider.value(value: gameState),
+          ChangeNotifierProvider.value(value: gameSessionController),
           Provider<BackgroundMusicService>.value(value: backgroundMusicService),
           ChangeNotifierProvider.value(value: themeService),
           ChangeNotifierProvider.value(value: EventManager.instance),

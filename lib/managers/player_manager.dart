@@ -363,6 +363,16 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
     
     _money -= cost;
     upgrade.level++;
+
+    // Compatibilité : certains anciens champs persistent encore dans les saves.
+    // La source de vérité reste `_upgrades[...].level`, mais on garde un mirroring
+    // minimal pour éviter les divergences en cas de chargement legacy.
+    if (upgradeId == 'storage') {
+      _storageUpgradeLevel = upgrade.level;
+    } else if (upgradeId == 'efficiency') {
+      _efficiencyUpgradeLevel = upgrade.level;
+    }
+
     notifyListeners();
     return true;
   }
@@ -466,6 +476,27 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
             _upgrades[key]!.level = (value['level'] as num?)?.toInt() ?? 0;
           }
         });
+
+        // Maintenir les champs legacy alignés sur la source de vérité.
+        final storage = _upgrades['storage'];
+        if (storage != null) {
+          _storageUpgradeLevel = storage.level;
+        }
+        final efficiency = _upgrades['efficiency'];
+        if (efficiency != null) {
+          _efficiencyUpgradeLevel = efficiency.level;
+        }
+      } else {
+        // Fallback legacy : anciennes sauvegardes peuvent ne pas contenir `upgrades`.
+        // On projette alors les niveaux legacy vers la map d'upgrades.
+        final storage = _upgrades['storage'];
+        if (storage != null) {
+          storage.level = _storageUpgradeLevel;
+        }
+        final efficiency = _upgrades['efficiency'];
+        if (efficiency != null) {
+          efficiency.level = _efficiencyUpgradeLevel;
+        }
       }
       
       notifyListeners();

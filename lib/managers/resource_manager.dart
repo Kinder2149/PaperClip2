@@ -5,11 +5,13 @@ import '../constants/game_config.dart' show GameConstants; // Import explicite d
 import '../models/json_loadable.dart';
 import 'player_manager.dart';
 import 'market_manager.dart';
+import '../models/statistics_manager.dart';
 
 /// Manager responsable de la gestion des ressources et des actions liées à ces ressources
 class ResourceManager extends ChangeNotifier implements JsonLoadable {
   late PlayerManager _playerManager;
   late MarketManager _marketManager;
+  StatisticsManager? _statistics;
   
   // États des ressources
   double _metalToClipRatio = GameConstants.METAL_PER_PAPERCLIP; // Métal nécessaire par trombone
@@ -62,28 +64,10 @@ class ResourceManager extends ChangeNotifier implements JsonLoadable {
   void setMarketManager(MarketManager marketManager) {
     _marketManager = marketManager;
   }
-  
-  /// Fabrique un trombone manuellement
-  bool producePaperclip() {
-    if (_playerManager.metal >= _metalToClipRatio) {
-      double newPaperclips = _playerManager.paperclips + 1;
-      
-      // Vérification de l'espace de stockage
-      if (newPaperclips > _maxPaperclipStorage) {
-        return false; // Stockage plein
-      }
-      
-      // Mise à jour des ressources
-      _playerManager.updateMetal(_playerManager.metal - _metalToClipRatio);
-      _playerManager.updatePaperclips(newPaperclips);
-      return true;
-    }
-    return false;
-  }
-  
-  /// Méthode de rétrocompatibilité qui redirige vers producePaperclip
-  bool makePaperclip() {
-    return producePaperclip();
+
+  /// Configure le StatisticsManager associé pour la centralisation des métriques
+  void setStatisticsManager(StatisticsManager statisticsManager) {
+    _statistics = statisticsManager;
   }
   
   /// Acheter du métal (anciennement buyWire)
@@ -102,6 +86,12 @@ class ResourceManager extends ChangeNotifier implements JsonLoadable {
     
     _playerManager.updateMoney(_playerManager.money - price);
     _playerManager.updateMetal(_playerManager.metal + amount);
+
+    // Mise à jour centralisée des statistiques si disponible
+    if (_statistics != null) {
+      _statistics!.updateEconomics(moneySpent: price);
+      _statistics!.updateResources(metalPurchased: amount);
+    }
     
     return true;
   }
@@ -112,31 +102,35 @@ class ResourceManager extends ChangeNotifier implements JsonLoadable {
   }
   
   /// Mise à jour du ratio métal/trombone en fonction du niveau d'efficacité
+  @Deprecated(
+    'Hors contrat ResourceManager (réduction ciblée): la production et ses ratios relèvent de ProductionManager/PlayerManager. Ne pas utiliser. (No-op)'
+  )
   void updateMetalToClipRatio() {
-    _metalToClipRatio = GameConstants.METAL_PER_PAPERCLIP * (1 - (_playerManager.efficiencyUpgradeLevel * 0.05));
-    if (_metalToClipRatio < 0.01) {
-      _metalToClipRatio = 0.01; // Minimum de métal requis par trombone
-    }
-    notifyListeners();
+    // No-op : hors contrat. Conservé pour compatibilité.
   }
   
   /// Mise à jour de l'efficacité du métal pour la production
+  @Deprecated(
+    'Hors contrat ResourceManager (réduction ciblée): la production et son efficacité relèvent de ProductionManager/PlayerManager. Ne pas utiliser. (No-op)'
+  )
   void updateMetalEfficiency(double efficiency) {
-    _metalEfficiency = efficiency;
-    notifyListeners();
+    // No-op : hors contrat. Conservé pour compatibilité.
   }
   
   /// Mise à jour de la capacité de stockage de trombones
+  @Deprecated(
+    'Hors contrat ResourceManager (réduction ciblée): la capacité de stockage effective est gérée par PlayerManager. Ne pas utiliser. (No-op)'
+  )
   void updatePaperclipStorageCapacity() {
-    int storageLevel = _playerManager.storageUpgradeLevel;
-    _maxPaperclipStorage = GameConstants.INITIAL_STORAGE_CAPACITY * pow(GameConstants.STORAGE_MULTIPLIER, storageLevel);
-    notifyListeners();
+    // No-op : hors contrat. Conservé pour compatibilité.
   }
   
   /// Alias de compatibilité: ancien nom utilisé par GameState
+  @Deprecated(
+    'Hors contrat ResourceManager (réduction ciblée): la capacité de stockage effective est gérée par PlayerManager. Conservé uniquement pour compatibilité. (No-op)'
+  )
   void upgradeStorageCapacity(int storageLevel) {
-    // Le niveau est déjà stocké dans PlayerManager, on se contente de recalculer
-    updatePaperclipStorageCapacity();
+    // No-op : hors contrat. Conservé pour compatibilité.
   }
   
   /// Réinitialisation des ressources
@@ -151,6 +145,9 @@ class ResourceManager extends ChangeNotifier implements JsonLoadable {
   }
   
   /// Achat d'une quantité spécifique de métal depuis le marché
+  @Deprecated(
+    'Legacy (réduction ciblée): préférer purchaseMetal() comme point d’entrée. Conservé pour compatibilité.'
+  )
   bool purchaseSpecificMetalAmount(double amount, PlayerManager playerManager, MarketManager marketManager) {
     if (amount <= 0) return false;
     
@@ -179,11 +176,20 @@ class ResourceManager extends ChangeNotifier implements JsonLoadable {
     _playerManager.updateMetal(currentMetal + amount);
     _playerManager.updateMoney(_playerManager.money - cost);
     _marketManager.updateMarketStock(_marketManager.marketMetalStock - amount);
+
+    // Mise à jour centralisée des statistiques si disponible
+    if (_statistics != null) {
+      _statistics!.updateEconomics(moneySpent: cost);
+      _statistics!.updateResources(metalPurchased: amount);
+    }
     
     return true;
   }
   
   /// Consommation du métal pour produire des trombones
+  @Deprecated(
+    'Hors contrat ResourceManager (réduction ciblée): la consommation de métal pour production est gérée par ProductionManager/PlayerManager. Conservé pour compatibilité.'
+  )
   bool consumeMetal(double amount) {
     if (amount <= 0) return false;
     
@@ -195,50 +201,24 @@ class ResourceManager extends ChangeNotifier implements JsonLoadable {
   }
   
   /// Calcul la quantité de trombones pouvant être produits avec le métal disponible
+  @Deprecated(
+    'Hors contrat ResourceManager (réduction ciblée): la production relève de ProductionManager. Ne pas utiliser. (Retour par défaut)'
+  )
   int calculatePossibleClips() {
-    // Si pas de métal, impossible de fabriquer
-    if (_playerManager.metal <= 0) return 0;
-    
-    // Calculer combien de trombones peuvent être fabriqués avec le métal disponible
-    int possibleFromMetal = (_playerManager.metal / _metalEfficiency).floor();
-    
-    return possibleFromMetal;
+    // Retour par défaut : conservé pour compatibilité.
+    return 0;
   }
   
   /// Calculer la consommation de métal pour un nombre de trombones
+  @Deprecated(
+    'Hors contrat ResourceManager (réduction ciblée): la consommation relève de ProductionManager. Ne pas utiliser. (Retour par défaut)'
+  )
   double calculateMetalConsumption(int clipCount) {
-    return clipCount * _metalEfficiency;
+    // Retour par défaut : conservé pour compatibilité.
+    return 0.0;
   }
   
   // Méthode calculateWireConsumption supprimée - migration wire vers metal complète
-  
-  /// Produire des trombones en consommant le métal
-  bool produceClips(int clipCount) {
-    if (clipCount <= 0) return false;
-    
-    // Vérifier si on peut produire autant de trombones
-    int possibleClips = calculatePossibleClips();
-    if (clipCount > possibleClips) {
-      clipCount = possibleClips;
-      if (clipCount <= 0) return false;
-    }
-    
-    // Consommer le métal
-    double metalNeeded = clipCount * _metalEfficiency;
-    
-    _playerManager.updateMetal(_playerManager.metal - metalNeeded);
-    
-    // Mettre à jour les trombones du joueur
-    _playerManager.updatePaperclips(_playerManager.paperclips + clipCount);
-    
-    notifyListeners();
-    return true;
-  }
-  
-  /// Méthode de rétrocompatibilité qui redirige vers produceClips
-  bool addClips(int clipCount) {
-    return produceClips(clipCount);
-  }
   
   /// Sérialisation en JSON
   @override

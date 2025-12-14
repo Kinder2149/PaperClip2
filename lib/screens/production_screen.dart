@@ -79,6 +79,9 @@ class _ProductionScreenState extends State<ProductionScreen> {
     double efficiencyBonus = 1.0 - metalSavingPercent;
     double roi = gameState.player.calculateAutoclipperROI();
 
+    final autoclipperCost = gameState.productionManager.calculateAutoclipperCost();
+    final canBuyAutoclipper = gameState.productionManager.canBuyAutoclipper();
+
     return Card(
       elevation: 2,
       color: Colors.orange.shade100,
@@ -151,12 +154,8 @@ class _ProductionScreenState extends State<ProductionScreen> {
             ),
             const SizedBox(height: 12),
             ActionButton.purchase(
-              onPressed: gameState.player.money >=
-                  gameState.player.calculateAutoclipperCost()
-                  ? () => gameState.player.purchaseAutoClipper()
-                  : null,
-              label: 'Acheter Autoclipper (${gameState.player
-                  .calculateAutoclipperCost().toStringAsFixed(1)} €)',
+              onPressed: canBuyAutoclipper ? () => gameState.buyAutoclipper() : null,
+              label: 'Acheter Autoclipper (${autoclipperCost.toStringAsFixed(1)} €)',
               showComboMultiplier: true,
             ),
           ],
@@ -651,6 +650,17 @@ class _ProductionScreenState extends State<ProductionScreen> {
                     children: [
                       const XPStatusDisplay(),
                       const MoneyDisplay(),
+                      const SizedBox(height: 8),
+
+                      SwitchListTile(
+                        title: const Text('Vente automatique'),
+                        subtitle: const Text('Vendre automatiquement selon la demande du marché'),
+                        value: gameState.autoSellEnabled,
+                        onChanged: (value) {
+                          gameState.setAutoSellEnabled(value);
+                        },
+                      ),
+
                       const SizedBox(height: 16),
 
                       // Ressources existantes
@@ -761,8 +771,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
 
                       if (visibleElements['metalPurchaseButton'] == true) ...[
                         ActionButton.purchase(
-                          onPressed: gameState.player.money >=
-                              gameState.market.currentMetalPrice
+                          onPressed: gameState.canBuyMetal()
                               ? () => gameState.purchaseMetal()
                               : null,
                           label: 'Acheter Métal (${gameState.market

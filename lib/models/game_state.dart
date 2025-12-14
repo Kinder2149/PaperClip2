@@ -9,8 +9,7 @@ import '../main.dart' show navigatorKey;
 import '../services/background_music.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/persistence/game_snapshot.dart';
-import '../services/persistence/game_persistence_service.dart';
-import '../services/persistence/local_game_persistence.dart';
+import '../services/persistence/game_persistence_orchestrator.dart';
 import '../constants/game_config.dart';
 import 'event_system.dart';
 import '../managers/player_manager.dart';
@@ -32,14 +31,14 @@ import '../screens/main_screen.dart';
 import '../services/save_game.dart';
 
 class GameState extends ChangeNotifier {
-  // Services de persistance modernes
-  final GamePersistenceService _persistence = const LocalGamePersistenceService();
-
   // Managers coeur de jeu
   late final PlayerManager _playerManager;
   late final MarketManager _marketManager;
   late final ResourceManager _resourceManager;
   late final LevelSystem _levelSystem;
+  // MissionSystem (Option A — mise en pause):
+  // - conservé pour compatibilité/persistance (JSON) et future feature
+  // - non initialisé au runtime (pas de timer, pas de callbacks, pas d'événements gameplay)
   late final MissionSystem _missionSystem;
   late final StatisticsManager _statistics;
   late final ProductionManager _productionManager;
@@ -61,16 +60,16 @@ class GameState extends ChangeNotifier {
   String? _gameName;
   BuildContext? _context;
 
-  // Timers principaux
-  Timer? _playTimeTimer;
-  Timer? marketTimer;
-
   // Suivi interne du temps de jeu et des compteurs globaux
   DateTime _lastUpdateTime = DateTime.now();
   DateTime? _lastSaveTime;
   bool _isPaused = false;
   int _totalTimePlayedInSeconds = 0;
   int _totalPaperclipsProduced = 0;
+
+  void markLastSaveTime(DateTime value) {
+    _lastSaveTime = value;
+  }
 
   // Getters complémentaires utilisés par l'UI
   DateTime? get lastSaveTime => _lastSaveTime;
@@ -111,6 +110,15 @@ class GameState extends ChangeNotifier {
   String? get gameId => _gameName;
   double get autocliperCost => _playerManager.autoClipperCost;
 
+  bool get autoSellEnabled => _marketManager.autoSellEnabled;
+
+  void setAutoSellEnabled(bool value) {
+    _marketManager.autoSellEnabled = value;
+    notifyListeners();
+  }
+
+  bool canBuyMetal() => _canBuyMetal();
+
   // Alias de compatibilité pour les écrans qui appellent gameState.purchaseMetal()
   bool purchaseMetal() {
     return _resourceManager.purchaseMetal();
@@ -136,18 +144,6 @@ class GameState extends ChangeNotifier {
         _createManagers();
         if (kDebugMode) {
           print('GameState: Managers créés avec succès');
-        }
-        
-        // Étape 2 : Configuration et démarrage - ATTENTION: peut bloquer
-        try {
-          _configureAndStart();
-          if (kDebugMode) {
-            print('GameState: Configuration et démarrage terminés');
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            print('GameState: Erreur lors de la configuration: $e');
-          }
         }
         
         // Donner une référence à EventManager vers cette instance de GameState
@@ -182,6 +178,9 @@ class GameState extends ChangeNotifier {
       _resourceManager = ResourceManager();
       _marketManager = MarketManager();
       _levelSystem = LevelSystem();
+      // MissionSystem (Option A — mise en pause):
+      // - conservé pour compatibilité/persistance (JSON) et future feature
+      // - non initialisé au runtime (pas de timer, pas de callbacks, pas d'événements gameplay)
       _missionSystem = MissionSystem();
       _autoSaveService = AutoSaveService(this);
 
@@ -204,24 +203,54 @@ class GameState extends ChangeNotifier {
     }
   }
 
-  // Configuration minimale: relier quelques callbacks et démarrer les timers si besoin
-  void _configureAndStart() {
-    // Dans cette version simplifiée, on se contente de démarrer les timers de base
-    _startTimers();
+  /// Tick métier pour le temps de jeu.
+  ///
+  /// Appelé par GameSessionController; aucun Timer n'est géré ici.
+  void incrementGameTime(int seconds) {
+    _statistics.updateGameTime(seconds);
+
+    // Compatibilité legacy (UI/persistance): miroir du compteur officiel.
+    _totalTimePlayedInSeconds = _statistics.totalGameTimeSec;
   }
 
-  // Démarrage très simplifié des timers: on incrémente uniquement le temps de jeu
-  void _startTimers() {
-    _stopAllTimers();
-    _playTimeTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      _totalTimePlayedInSeconds++;
-    });
-  }
+  /// Tick métier pour le marché.
+  ///
+  /// Appelé par GameSessionController; aucun Timer n'est géré ici.
+  void tickMarket() {
+    if (!_isInitialized || _isPaused) return;
+    try {
+      if (kDebugMode) {
+        print('GameState: tick de marché, updateMarketState() + processSales()');
+      }
 
-  // Arrêt de tous les timers contrôlés par GameState
-  void _stopAllTimers() {
-    _playTimeTimer?.cancel();
-    marketTimer?.cancel();
+      // 1) Mise à jour de l'état du marché (tendances/saturation/prix métal)
+      _marketManager.updateMarketState();
+
+      // 2) Vente (chemin officiel unique)
+      final sale = _marketManager.processSales(
+        playerPaperclips: _playerManager.paperclips,
+        sellPrice: _playerManager.sellPrice,
+        marketingLevel: _playerManager.getMarketingLevel(),
+        updatePaperclips: (delta) {
+          _playerManager.updatePaperclips(_playerManager.paperclips + delta);
+        },
+        updateMoney: (delta) {
+          _playerManager.updateMoney(_playerManager.money + delta);
+        },
+        updateMarketState: false,
+        requireAutoSellEnabled: true,
+      );
+
+      // 3) XP de vente
+      if (sale.quantity > 0) {
+        _levelSystem.addSale(sale.quantity, sale.unitPrice);
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('GameState: erreur lors du tick de marché: $e');
+      }
+    }
+    notifyListeners();
   }
 
   // Prépare une structure de données minimale pour la persistance legacy
@@ -230,6 +259,7 @@ class GameState extends ChangeNotifier {
       'playerManager': _playerManager.toJson(),
       'marketManager': _marketManager.toJson(),
       'levelSystem': _levelSystem.toJson(),
+      // MissionSystem (Option A — mise en pause): persistance conservée volontairement.
       'missionSystem': _missionSystem.toJson(),
       'statistics': _statistics.toJson(),
       'totalTimePlayedInSeconds': _totalTimePlayedInSeconds,
@@ -242,9 +272,9 @@ class GameState extends ChangeNotifier {
 
   // Réinitialisation simple de l'état de jeu
   void reset() {
-    _stopAllTimers();
     _totalTimePlayedInSeconds = 0;
     _totalPaperclipsProduced = 0;
+    _statistics.setTotalGameTimeSec(0);
     _lastSaveTime = null;
     _isPaused = false;
   }
@@ -338,37 +368,23 @@ class GameState extends ChangeNotifier {
   }
 
   void buyAutoclipper() {
-    double cost = autocliperCost;
-    if (player.money >= cost) {
-      player.updateMoney(player.money - cost);
-      player.updateAutoclippers(player.autoclippers + 1);
-      level.addAutoclipperPurchase();
-
-      // Ajout statistiques
-      _statistics.updateProgression(autoclippersBought: 1);  
-      _statistics.updateEconomics(moneySpent: cost);
+    final success = _productionManager.buyAutoclipperOfficial();
+    if (success) {
       saveOnImportantEvent();
-
       notifyListeners();
     }
   }
 
   void producePaperclip() {
-    if (player.consumeMetal(GameConstants.METAL_PER_PAPERCLIP)) {
-      player.updatePaperclips(player.paperclips + 1);
-      _totalPaperclipsProduced++;
+    // Flux officiel : délègue à ProductionManager.
+    // La mise à jour des stats/XP/leaderboard est centralisée côté ProductionManager.
+    final before = _statistics.totalPaperclipsProduced;
+    _productionManager.producePaperclip();
 
-      // Mettre à jour le leaderboard tous les 100 trombones
-      if (_totalPaperclipsProduced % 100 == 0) {
-        updateLeaderboard();
-      }
-
-      level.addManualProduction();
-      _statistics.updateProduction(
-        isManual: true,
-        amount: 1,
-        metalUsed: GameConstants.METAL_PER_PAPERCLIP,
-      );
+    // Compatibilité temporaire : conserver le compteur GameState en miroir des statistiques.
+    final after = _statistics.totalPaperclipsProduced;
+    if (after != before) {
+      _totalPaperclipsProduced = after;
       notifyListeners();
     }
   }
@@ -507,6 +523,7 @@ class GameState extends ChangeNotifier {
     // Réinitialiser les attributs principaux du jeu
     _totalTimePlayedInSeconds = 0;
     _totalPaperclipsProduced = 0;
+    _statistics.setTotalGameTimeSec(0);
     _lastSaveTime = null;
     _isInCrisisMode = false;
     _showingCrisisView = false;
@@ -525,293 +542,169 @@ class GameState extends ChangeNotifier {
 
   Future<void> loadGame(String name) async {
     try {
-      // Arrêter les timers existants
-      _stopAllTimers();
-      
-      if (kDebugMode) {
-        print('Chargement de la partie: $name');
-        // Afficher l'état actuel avant le chargement pour débogage
-        final currentState = prepareGameData();
-        print('État actuel avant chargement:');
-        currentState.forEach((key, value) {
-          print('$key: ${value is Map ? "[Object]" : value}');
-        });
-      }
-
-      // Utiliser l'adaptateur de sauvegarde qui connaît le format interne
-      // et renvoie un SaveGame avec gameData déjà décodé
-      final loadedSave = await SaveManagerAdapter.loadGame(name);
-
-      // SOLUTION CORRIGÉE: Nous devons réinitialiser l'état
-      // mais sans toucher aux services qui provoquent des LateInitializationError
-      
-      // 1. Désactiver temporairement l'autosave pour éviter les sauvegardes pendant le chargement
-      print('Arrêt temporaire de l\'auto-sauvegarde avant chargement');
-      _autoSaveService.stop();
-      
-      // 2. Effectuer une réinitialisation partielle de l'état du jeu
-      // sans toucher aux services déjà initialisés
-      _resetGameDataOnly();
-      
-      // Note: Nous n'essayons plus de réassigner _autoSaveService car c'est un champ late
-      
-      // Définir le nom de la partie
-      _gameName = name;
-
-      // Définir le mode de jeu
-      // Récupérer les données du SaveGame à l'aide de l'adaptateur
-      final Map<String, dynamic> gameData =
-          SaveManagerAdapter.extractGameData(loadedSave);
-      
-      if (kDebugMode) {
-        print('Structure de données chargée:');
-        gameData.forEach((key, value) {
-          print('$key: ${value is Map ? "[Object]" : value}');
-        });
-      }
-      
-      _gameMode = gameData.containsKey('gameMode') 
-          ? GameMode.values[gameData['gameMode'] as int] 
-          : GameMode.INFINITE;
-
-      // Gestion des données de compétition
-      if (gameData.containsKey('competitiveStartTime')) {
-        final startTimeStr = gameData['competitiveStartTime'];
-        if (startTimeStr != null) {
-          _competitiveStartTime = DateTime.parse(startTimeStr as String);
-        }
-      }
-
-      // Charger les données du joueur (vérifier les deux clés possibles)
-      if (gameData.containsKey('playerManager')) {
-        print('Chargement des données depuis la clé "playerManager"');
-        _playerManager.fromJson(gameData['playerManager'] as Map<String, dynamic>);
-      } else if (gameData.containsKey('player')) {
-        print('Chargement des données depuis la clé "player"');
-        _playerManager.fromJson(gameData['player'] as Map<String, dynamic>);
-      } else {
-        print('ERREUR: Aucune donnée joueur trouvée dans la sauvegarde!');
-      }
-      
-      // Charger les données de ressources (vérifier les différentes clés possibles)
-      if (gameData.containsKey('resourceManager')) {
-        print('Chargement des ressources depuis la clé "resourceManager"');
-        _resourceManager.fromJson(gameData['resourceManager'] as Map<String, dynamic>);
-      } else if (gameData.containsKey('resources')) {
-        print('Chargement des ressources depuis la clé "resources"');
-        _resourceManager.fromJson(gameData['resources'] as Map<String, dynamic>);
-      } else {
-        print('Aucune donnée de ressources trouvée');
-      }
-      
-      // Charger les données du marché (vérifier les différentes clés possibles)
-      if (gameData.containsKey('marketManager')) {
-        print('Chargement du marché depuis la clé "marketManager"');
-        _marketManager.fromJson(gameData['marketManager'] as Map<String, dynamic>);
-      } else if (gameData.containsKey('market')) {
-        print('Chargement du marché depuis la clé "market"');
-        _marketManager.fromJson(gameData['market'] as Map<String, dynamic>);
-      } else {
-        print('Aucune donnée de marché trouvée');
-      }
-
-      // Charger les données de niveau (vérifier les différentes clés possibles)
-      if (gameData.containsKey('levelSystem')) {
-        print('Chargement du niveau depuis la clé "levelSystem"');
-        _levelSystem.fromJson(gameData['levelSystem'] as Map<String, dynamic>);
-      } else if (gameData.containsKey('level')) {
-        print('Chargement du niveau depuis la clé "level"');
-        _levelSystem.fromJson(gameData['level'] as Map<String, dynamic>);
-      } else {
-        print('Aucune donnée de niveau trouvée');
-      }
-
-      // Charger les données de missions (vérifier les différentes clés possibles)
-      if (gameData.containsKey('missionSystem')) {
-        print('Chargement des missions depuis la clé "missionSystem"');
-        _missionSystem.fromJson(gameData['missionSystem'] as Map<String, dynamic>);
-      } else if (gameData.containsKey('missions')) {
-        print('Chargement des missions depuis la clé "missions"');
-        _missionSystem.fromJson(gameData['missions'] as Map<String, dynamic>);
-      } else {
-        print('Aucune donnée de missions trouvée');
-      }
-
-      // Charger les statistiques (vérifier les différentes clés possibles)
-      if (gameData.containsKey('statistics')) {
-        print('Chargement des statistiques depuis la clé "statistics"');
-        _statistics.fromJson(gameData['statistics'] as Map<String, dynamic>);
-      } else {
-        print('Aucune donnée de statistiques trouvée');
-      }
-
-      // Si un GameSnapshot est présent dans la sauvegarde, l'appliquer en priorité
-      try {
-        final snapshotKey = LocalGamePersistenceService.snapshotKey;
-        if (gameData.containsKey(snapshotKey)) {
-          final rawSnapshot = gameData[snapshotKey];
-          GameSnapshot? snapshot;
-
-          if (rawSnapshot is Map) {
-            snapshot = GameSnapshot.fromJson(Map<String, dynamic>.from(rawSnapshot as Map));
-          } else if (rawSnapshot is String) {
-            snapshot = GameSnapshot.fromJsonString(rawSnapshot as String);
-          }
-
-          if (snapshot != null) {
-            final migrated = await _persistence.migrateSnapshot(snapshot);
-            applySnapshot(migrated);
-            if (kDebugMode) {
-              print('GameSnapshot appliqué avec succès pour la sauvegarde: $name');
-            }
-          }
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          print('Erreur lors du chargement du GameSnapshot: $e');
-        }
-      }
-
-      // Charger les informations de progression avancées si disponibles
-      if (gameData.containsKey('progression')) {
-        final progressionData = gameData['progression'] as Map<String, dynamic>;
-        print('Chargement des données de progression avancées');
-        
-        // Restaurer les informations de combo si disponibles
-        if (progressionData.containsKey('combos')) {
-          final comboData = progressionData['combos'] as Map<String, dynamic>;
-          if (_levelSystem.comboSystem != null) {
-            _levelSystem.comboSystem!.currentCombo = (comboData['currentCombo'] as num).toInt();
-            if (comboData.containsKey('comboMultiplier')) {
-              _levelSystem.comboSystem!.comboMultiplier = (comboData['comboMultiplier'] as num).toDouble();
-            }
-            print('Combo restauré: ${_levelSystem.comboSystem!.currentCombo} (x${_levelSystem.comboSystem!.comboMultiplier})');
-          }
-        }
-        
-        // Restaurer les informations de bonus quotidien si disponibles
-        if (progressionData.containsKey('dailyBonus') && _levelSystem.dailyBonus != null) {
-          final bonusData = progressionData['dailyBonus'] as Map<String, dynamic>;
-          _levelSystem.dailyBonus!.hasClaimedToday = bonusData['claimed'] as bool? ?? false;
-          if (bonusData.containsKey('streakDays')) {
-            _levelSystem.dailyBonus!.streakDays = (bonusData['streakDays'] as num).toInt();
-          }
-          if (bonusData.containsKey('lastClaimDate')) {
-            _levelSystem.dailyBonus!.lastClaimDate = 
-                DateTime.tryParse(bonusData['lastClaimDate'] as String);
-          }
-          print('Bonus quotidien restauré: streak=${_levelSystem.dailyBonus!.streakDays}, claimed=${_levelSystem.dailyBonus!.hasClaimedToday}');
-        }
-      }
-      
-      // Charger les compteurs globaux (temps de jeu, total de trombones produits, etc.)
-      if (gameData.containsKey('totalPaperclipsProduced')) {
-        _totalPaperclipsProduced = (gameData['totalPaperclipsProduced'] as num).toInt();
-        print('Total des trombones produits restauré: $_totalPaperclipsProduced');
-      }
-      
-      if (gameData.containsKey('totalTimePlayedInSeconds')) {
-        _totalTimePlayedInSeconds = (gameData['totalTimePlayedInSeconds'] as num).toInt();
-        print('Temps de jeu total restauré: $_totalTimePlayedInSeconds secondes');
-      }
-
-      // Vérifier et charger les données de mode crise
-      if (gameData.containsKey('crisisMode')) {
-        _handleCrisisModeData(gameData['crisisMode'] as Map<String, dynamic>);
-      }
-      
-      // Restaurer les informations des timers
-      if (gameData.containsKey('timers')) {
-        print('Restauration de l\'état des timers');
-        final timersData = gameData['timers'] as Map<String, dynamic>;
-        
-        // Récupérer la date de la dernière sauvegarde
-        DateTime? lastSaveTime;
-        if (timersData.containsKey('lastSaved')) {
-          lastSaveTime = DateTime.tryParse(timersData['lastSaved'] as String);
-        }
-        
-        // Restaurer le timer de rafraîchissement des missions
-        if (timersData.containsKey('missionRefresh') && lastSaveTime != null) {
-          final missionData = timersData['missionRefresh'] as Map<String, dynamic>;
-          if (missionData['isActive'] as bool && _missionSystem != null) {
-            // Si le timer était actif, réinitialiser le timer des missions en tenant compte du temps écoulé
-            if (missionData.containsKey('lastRefreshTime')) {
-              _missionSystem!.lastMissionRefreshTime = DateTime.parse(missionData['lastRefreshTime'] as String);
-              print('Dernière mise à jour des missions: ${_missionSystem!.lastMissionRefreshTime}');
-            }
-          }
-        }
-        
-        // Restaurer le timer de maintenance
-        if (timersData.containsKey('maintenance') && lastSaveTime != null) {
-          final maintenanceData = timersData['maintenance'] as Map<String, dynamic>;
-          if (maintenanceData['isActive'] as bool) {
-            // Si le timer était actif, mettre à jour la dernière date de maintenance
-            if (maintenanceData.containsKey('lastMaintenanceTime')) {
-              _playerManager.lastMaintenanceTime = DateTime.parse(maintenanceData['lastMaintenanceTime'] as String);
-              print('Dernière maintenance: ${_playerManager.lastMaintenanceTime}');
-            }
-          }
-        }
-        
-        // Restaurer l'état de mise à jour du prix du métal
-        if (timersData.containsKey('metalPriceUpdate') && lastSaveTime != null) {
-          final metalData = timersData['metalPriceUpdate'] as Map<String, dynamic>;
-          if (metalData.containsKey('lastUpdate')) {
-            _marketManager.lastMetalPriceUpdateTime = DateTime.parse(metalData['lastUpdate'] as String);
-            print('Dernière mise à jour du prix du métal: ${_marketManager.lastMetalPriceUpdateTime}');
-          }
-        }
-      }
-
-      // Charger les notifications pour cette sauvegarde
-      // TODO: Implémenter le chargement des notifications
-      // await _loadNotificationsForGame(name);
-      
-      // Charger l'état du son spécifique à cette partie
-      // On utilise le service global déclaré dans main.dart
-      if (navigatorKey.currentContext != null) {
-        final backgroundMusicService = Provider.of<BackgroundMusicService>(navigatorKey.currentContext!, listen: false);
-        await backgroundMusicService.loadGameMusicState(name);
-      }
-
-      // Démarrer les timers
-      _startTimers();
-
-      // Redémarrer l'autosave avec la méthode restart() plutôt que start()
-      print('Redémarrage de l\'auto-sauvegarde après chargement');
-      _autoSaveService.restart();
-
-      // Les événements système et notifications sont gérés automatiquement
-      
-      // Mettre à jour l'état
-      notifyListeners();
-
-      // Enregistrer un événement de chargement
-      EventManager.instance.addEvent(
-        EventType.INFO, // Utilisation de INFO au lieu de SYSTEM
-        'Partie chargée',
-        description: 'Nom: $name',
-        importance: EventImportance.LOW,
-      );
-
-      if (kDebugMode) {
-        print('Partie chargée: $name');
-        // Afficher l'état après le chargement pour débogage
-        final newState = prepareGameData();
-        print('État après chargement:');
-        newState.forEach((key, value) {
-          print('$key: ${value is Map ? "[Object]" : value}');
-        });
-      }
-
+      await GamePersistenceOrchestrator.instance.loadGame(this, name);
       return;
     } catch (e, stackTrace) {
       print('Erreur lors du chargement de la partie: $e');
       print(stackTrace);
       throw SaveError('LOAD_ERROR', 'Impossible de charger la partie: $e');
     }
+  }
+
+  void applyLoadedGameDataWithoutSnapshot(String name, Map<String, dynamic> gameData) {
+    print('Arrêt temporaire de l\'auto-sauvegarde avant chargement');
+    _autoSaveService.stop();
+
+    _resetGameDataOnly();
+
+    _gameName = name;
+
+    _gameMode = gameData.containsKey('gameMode')
+        ? GameMode.values[gameData['gameMode'] as int]
+        : GameMode.INFINITE;
+
+    if (gameData.containsKey('competitiveStartTime')) {
+      final startTimeStr = gameData['competitiveStartTime'];
+      if (startTimeStr != null) {
+        _competitiveStartTime = DateTime.parse(startTimeStr as String);
+      }
+    }
+
+    if (gameData.containsKey('playerManager')) {
+      _playerManager.fromJson(gameData['playerManager'] as Map<String, dynamic>);
+    } else if (gameData.containsKey('player')) {
+      _playerManager.fromJson(gameData['player'] as Map<String, dynamic>);
+    }
+
+    if (gameData.containsKey('resourceManager')) {
+      _resourceManager.fromJson(gameData['resourceManager'] as Map<String, dynamic>);
+    } else if (gameData.containsKey('resources')) {
+      _resourceManager.fromJson(gameData['resources'] as Map<String, dynamic>);
+    }
+
+    if (gameData.containsKey('marketManager')) {
+      _marketManager.fromJson(gameData['marketManager'] as Map<String, dynamic>);
+    } else if (gameData.containsKey('market')) {
+      _marketManager.fromJson(gameData['market'] as Map<String, dynamic>);
+    }
+
+    if (gameData.containsKey('levelSystem')) {
+      _levelSystem.fromJson(gameData['levelSystem'] as Map<String, dynamic>);
+    } else if (gameData.containsKey('level')) {
+      _levelSystem.fromJson(gameData['level'] as Map<String, dynamic>);
+    }
+
+    if (gameData.containsKey('missionSystem')) {
+      _missionSystem.fromJson(gameData['missionSystem'] as Map<String, dynamic>);
+    } else if (gameData.containsKey('missions')) {
+      _missionSystem.fromJson(gameData['missions'] as Map<String, dynamic>);
+    }
+
+    if (gameData.containsKey('statistics')) {
+      _statistics.fromJson(gameData['statistics'] as Map<String, dynamic>);
+    }
+  }
+
+  Future<void> finishLoadGameAfterSnapshot(String name, Map<String, dynamic> gameData) async {
+    if (gameData.containsKey('progression')) {
+      final progressionData = gameData['progression'] as Map<String, dynamic>;
+      if (progressionData.containsKey('combos')) {
+        final comboData = progressionData['combos'] as Map<String, dynamic>;
+        if (_levelSystem.comboSystem != null) {
+          _levelSystem.comboSystem!.currentCombo =
+              (comboData['currentCombo'] as num).toInt();
+          if (comboData.containsKey('comboMultiplier')) {
+            _levelSystem.comboSystem!.comboMultiplier =
+                (comboData['comboMultiplier'] as num).toDouble();
+          }
+        }
+      }
+      if (progressionData.containsKey('dailyBonus') && _levelSystem.dailyBonus != null) {
+        final bonusData = progressionData['dailyBonus'] as Map<String, dynamic>;
+        _levelSystem.dailyBonus!.hasClaimedToday = bonusData['claimed'] as bool? ?? false;
+        if (bonusData.containsKey('streakDays')) {
+          _levelSystem.dailyBonus!.streakDays = (bonusData['streakDays'] as num).toInt();
+        }
+        if (bonusData.containsKey('lastClaimDate')) {
+          _levelSystem.dailyBonus!.lastClaimDate =
+              DateTime.tryParse(bonusData['lastClaimDate'] as String);
+        }
+      }
+    }
+
+    if (gameData.containsKey('totalPaperclipsProduced')) {
+      _totalPaperclipsProduced = (gameData['totalPaperclipsProduced'] as num).toInt();
+    }
+
+    if (gameData.containsKey('totalTimePlayedInSeconds')) {
+      final loadedTime = (gameData['totalTimePlayedInSeconds'] as num?)?.toInt();
+      if (loadedTime != null) {
+        _totalTimePlayedInSeconds = loadedTime;
+        _statistics.setTotalGameTimeSec(loadedTime);
+      } else {
+        _totalTimePlayedInSeconds = _statistics.totalGameTimeSec;
+      }
+    }
+
+    if (gameData.containsKey('crisisMode')) {
+      _handleCrisisModeData(gameData['crisisMode'] as Map<String, dynamic>);
+    }
+
+    if (gameData.containsKey('timers')) {
+      final timersData = gameData['timers'] as Map<String, dynamic>;
+      DateTime? lastSaveTime;
+      if (timersData.containsKey('lastSaved')) {
+        lastSaveTime = DateTime.tryParse(timersData['lastSaved'] as String);
+      }
+
+      if (timersData.containsKey('missionRefresh') && lastSaveTime != null) {
+        final missionData = timersData['missionRefresh'] as Map<String, dynamic>;
+        if (missionData['isActive'] as bool && _missionSystem != null) {
+          if (missionData.containsKey('lastRefreshTime')) {
+            _missionSystem!.lastMissionRefreshTime =
+                DateTime.parse(missionData['lastRefreshTime'] as String);
+          }
+        }
+      }
+
+      if (timersData.containsKey('maintenance') && lastSaveTime != null) {
+        final maintenanceData = timersData['maintenance'] as Map<String, dynamic>;
+        if (maintenanceData['isActive'] as bool) {
+          if (maintenanceData.containsKey('lastMaintenanceTime')) {
+            _playerManager.lastMaintenanceTime =
+                DateTime.parse(maintenanceData['lastMaintenanceTime'] as String);
+          }
+        }
+      }
+
+      if (timersData.containsKey('metalPriceUpdate') && lastSaveTime != null) {
+        final metalData = timersData['metalPriceUpdate'] as Map<String, dynamic>;
+        if (metalData.containsKey('lastUpdate')) {
+          _marketManager.lastMetalPriceUpdateTime =
+              DateTime.parse(metalData['lastUpdate'] as String);
+        }
+      }
+    }
+
+    _applyUpgradeEffects();
+
+    if (navigatorKey.currentContext != null) {
+      final backgroundMusicService = Provider.of<BackgroundMusicService>(
+          navigatorKey.currentContext!,
+          listen: false);
+      await backgroundMusicService.loadGameMusicState(name);
+    }
+
+    _autoSaveService.restart();
+
+    notifyListeners();
+
+    EventManager.instance.addEvent(
+      EventType.INFO,
+      'Partie chargée',
+      description: 'Nom: $name',
+      importance: EventImportance.LOW,
+    );
   }
 
   void _handleCrisisModeData(Map<String, dynamic> gameData) {
@@ -991,39 +884,20 @@ class GameState extends ChangeNotifier {
       _statistics.fromJson(gameData['statistics']);
     }
 
-    _totalTimePlayedInSeconds =
-        (gameData['totalTimePlayedInSeconds'] as num?)?.toInt() ?? 0;
+    final loadedTime = (gameData['totalTimePlayedInSeconds'] as num?)?.toInt();
+    if (loadedTime != null) {
+      _totalTimePlayedInSeconds = loadedTime;
+      _statistics.setTotalGameTimeSec(loadedTime);
+    } else {
+      _totalTimePlayedInSeconds = _statistics.totalGameTimeSec;
+    }
     _totalPaperclipsProduced =
         (gameData['totalPaperclipsProduced'] as num?)?.toInt() ?? 0;
   }
 
   Future<void> saveGame(String name) async {
-    if (!_isInitialized) {
-      throw SaveError('NOT_INITIALIZED', 'Le jeu n\'est pas initialisé');
-    }
-
     try {
-      final gameData = prepareGameData();
-
-      final saveData = SaveGame(
-        name: name,
-        lastSaveTime: DateTime.now(),
-        gameData: gameData,
-        version: GameConstants.VERSION,
-        gameMode: _gameMode,
-      );
-
-      await SaveManagerAdapter.saveGame(saveData);
-
-      try {
-        final snapshot = toSnapshot();
-        await _persistence.saveSnapshot(snapshot, slotId: name);
-      } catch (e) {
-        if (kDebugMode) {
-          print('Erreur lors de la sauvegarde du GameSnapshot: $e');
-        }
-      }
-
+      await GamePersistenceOrchestrator.instance.saveGame(this, name);
       _gameName = name;
       _lastSaveTime = DateTime.now();
       notifyListeners();
@@ -1033,11 +907,8 @@ class GameState extends ChangeNotifier {
   }
 
   Future<void> saveOnImportantEvent() async {
-    if (!_isInitialized || _gameName == null) return;
-
     try {
-      await saveGame(_gameName!);
-      _lastSaveTime = DateTime.now();
+      await GamePersistenceOrchestrator.instance.saveOnImportantEvent(this);
     } catch (e) {
       print('Erreur lors de la sauvegarde événementielle: $e');
     }
@@ -1089,6 +960,7 @@ class GameState extends ChangeNotifier {
     final bool success = _playerManager.purchaseUpgrade(upgradeId);
 
     if (success) {
+      _applyUpgradeEffects();
       _levelSystem.addUpgradePurchase(upgrade.level);
       _statistics.updateProgression(upgradesBought: 1);
       _statistics.updateEconomics(moneySpent: cost);
@@ -1099,30 +971,7 @@ class GameState extends ChangeNotifier {
   }
 
   Future<void> checkAndRestoreFromBackup() async {
-    if (!_isInitialized || _gameName == null) return;
-
-    try {
-      final saves = await SaveManagerAdapter.instance.listSaves();
-      final backups = saves
-          .where((save) => save.name.startsWith('${_gameName!}_backup_'))
-          .toList();
-
-      if (backups.isEmpty) return;
-
-      backups.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-
-      for (final backup in backups) {
-        try {
-          await loadGame(backup.name);
-          print('Restauration réussie depuis le backup: ${backup.name}');
-          return;
-        } catch (e) {
-          print('Échec de la restauration depuis ${backup.name}: $e');
-        }
-      }
-    } catch (e) {
-      print('Erreur lors de la vérification des backups: $e');
-    }
+    await GamePersistenceOrchestrator.instance.checkAndRestoreFromBackup(this);
   }
 
   void _setupLifecycleListeners() {
@@ -1181,7 +1030,6 @@ class GameState extends ChangeNotifier {
 
   @override
   void dispose() {
-    _stopAllTimers();
     _autoSaveService.dispose();
     _playerManager.dispose();
     _productionManager.dispose();

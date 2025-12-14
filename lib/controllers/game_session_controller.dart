@@ -13,15 +13,17 @@ class GameSessionController with ChangeNotifier {
 
   Timer? _productionTimer;
   DateTime? _lastProductionTime;
+  Timer? _playTimeTimer;
+  Timer? _marketTimer;
 
   GameSessionController(this.gameState);
 
   /// Démarre la session de jeu (timers, etc.).
   /// Implémentation détaillée à venir dans des PR ultérieures.
   void startSession() {
-    // Pour l'instant, on démarre uniquement le timer de production
-    // de manière expérimentale.
     startProductionTimer();
+    _startPlayTimeTimer();
+    _startMarketTimer();
   }
 
   /// Démarre le timer de production qui appelle périodiquement
@@ -37,6 +39,39 @@ class GameSessionController with ChangeNotifier {
 
     if (kDebugMode) {
       print('GameSessionController: Timer de production démarré');
+    }
+  }
+
+  void _startPlayTimeTimer() {
+    _playTimeTimer?.cancel();
+
+    _playTimeTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) {
+        if (!gameState.isInitialized || gameState.isPaused) return;
+        gameState.incrementGameTime(1);
+      },
+    );
+
+    if (kDebugMode) {
+      print('GameSessionController: Timer de temps de jeu démarré');
+    }
+  }
+
+  void _startMarketTimer() {
+    _marketTimer?.cancel();
+
+    _marketTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) {
+        if (!gameState.isInitialized || gameState.isPaused) return;
+        if (!gameState.autoSellEnabled) return;
+        gameState.tickMarket();
+      },
+    );
+
+    if (kDebugMode) {
+      print('GameSessionController: Timer de marché démarré');
     }
   }
 
@@ -105,6 +140,10 @@ class GameSessionController with ChangeNotifier {
   void stopSession() {
     _productionTimer?.cancel();
     _productionTimer = null;
+    _playTimeTimer?.cancel();
+    _playTimeTimer = null;
+    _marketTimer?.cancel();
+    _marketTimer = null;
   }
 
   @override

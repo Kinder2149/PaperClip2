@@ -50,7 +50,7 @@ class _IntroductionScreenState extends State<IntroductionScreen> with TickerProv
   Future<void> _initializeAudio() async {
     _audioPlayer = AudioPlayer();
     try {
-      await _audioPlayer.setAsset('assets/audio/intro.mp3');
+      await _audioPlayer.setAsset(GameConstants.INTRO_AUDIO_PATH);
       await _audioPlayer.setLoopMode(LoopMode.one);
       await _audioPlayer.play();
     } catch (e) {

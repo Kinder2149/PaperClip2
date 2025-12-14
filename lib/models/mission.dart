@@ -1,4 +1,9 @@
 // lib/models/mission.dart
+// NOTE: Implémentation alternative (dormante) du MissionSystem.
+//
+// Statut (Option A — mise en pause): ce fichier n'est pas référencé par le flux principal.
+// La version canonique conservée comme "future feature" est dans `lib/models/progression_system.dart`
+// et la boucle de jeu ne branche aucun événement vers les missions.
 import 'package:flutter/foundation.dart';
 import 'json_loadable.dart';
 import '../constants/game_config.dart'; // Import de l'énumération MissionType

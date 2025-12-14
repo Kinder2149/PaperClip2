@@ -45,10 +45,13 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
     return number.toStringAsFixed(0);
   }
 
-  // Gardons votre onglet Aperçu (Missions Journalières) intact
+  // Onglet Missions (PLACEHOLDER UX)
+  //
+  // MissionSystem est officiellement en pause (Option A).
+  // Cet onglet affiche un contenu statique volontairement, afin d'éviter toute
+  // confusion avec un système de missions non branché au runtime.
   Widget _buildResourcesTab(GameState gameState) {
-    // Mission system a été supprimé
-    // bool allMissionsCompleted = false;
+    // Le système de missions est en pause : aucune mission n'est calculée ici.
     const bool allMissionsCompleted = false;
 
     return SingleChildScrollView(
@@ -80,8 +83,7 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
                                   GameConstants.DAILY_BONUS_AMOUNT * 2,
                                   ExperienceType.DAILY_BONUS
                               );
-                              // Mission system retiré - fonctionnalité partielle non finalisée
-                              // gameState.missionSystem.onMissionSystemRefresh?.call();
+                              // MissionSystem (Option A — mise en pause): aucun refresh mission.
                             },
                             icon: const Icon(Icons.stars, color: Colors.amber),
                             label: const Text('Réclamer Bonus'),
@@ -93,7 +95,7 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
                       ],
                     ),
                     const Divider(),
-                    // Mission system a été supprimé - exemple statique remplaçant la liste dynamique
+                    // Contenu statique : placeholder tant que MissionSystem est en pause.
                     Card(
                       color: Colors.grey.shade100,
                       child: Padding(
@@ -103,20 +105,20 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
                           children: [
                             ListTile(
                               leading: Icon(
-                                Icons.pending, // Mission system removed, using default value
-                                color: Colors.orange, // Mission system removed, using default value
+                                Icons.pending,
+                                color: Colors.orange,
                                 size: 32,
                               ),
                               title: Text(
-                                'Mission Exemple', // Mission system removed, using default value
+                                'Mission Exemple',
                                 style: const TextStyle(fontWeight: FontWeight.bold),
                               ),
-                              subtitle: Text('Description de la mission exemple'), // Mission system removed, using default value
+                              subtitle: Text('Description de la mission exemple'),
                               trailing: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Text(
-                                    '100 XP', // Mission system removed, using default value
+                                    '100 XP',
                                     style: const TextStyle(
                                       color: Colors.deepPurple,
                                       fontWeight: FontWeight.bold,
@@ -124,19 +126,19 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    '50%', // Mission system removed, using default value
+                                    '50%',
                                     style: TextStyle(
-                                      color: Colors.grey, // Mission system removed, using default value
+                                      color: Colors.grey,
                                     ),
                                   ),
                                 ],
                               ),
                             ),
                             LinearProgressIndicator(
-                              value: 0.5, // Mission system removed, using default value
+                              value: 0.5,
                               backgroundColor: Colors.grey.shade200,
                               valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.deepPurple, // Mission system removed, using default value
+                                Colors.deepPurple,
                               ),
                             ),
                           ],
@@ -546,12 +548,12 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
                           child: SizedBox(
                             width: double.infinity,
                             child: ElevatedButton.icon(
-                              onPressed: gameState.player.money >= gameState.autocliperCost
+                              onPressed: gameState.productionManager.canBuyAutoclipper()
                                   ? () => gameState.buyAutoclipper()
                                   : null,
                               icon: const Icon(Icons.precision_manufacturing),
                               label: Text(
-                                'Acheter Autoclipper (${gameState.autocliperCost.toStringAsFixed(2)} €)',
+                                'Acheter Autoclipper (${gameState.productionManager.calculateAutoclipperCost().toStringAsFixed(2)} €)',
                               ),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.deepPurple,

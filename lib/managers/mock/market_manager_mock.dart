@@ -1,5 +1,6 @@
 // lib/managers/mock/market_manager_mock.dart
 import 'package:flutter/foundation.dart';
+import '../market_manager.dart';
 
 /// Mock implementation of MarketManager to avoid NoSuchMethodError
 class MarketManagerMock extends ChangeNotifier {
@@ -16,8 +17,33 @@ class MarketManagerMock extends ChangeNotifier {
   void simulate() {
     // Simulation vide
   }
-  
-  // Ajout de la méthode pour vendre des trombones
+
+  void updateMarketState() {
+    // Pas de logique de marché dans le mock
+  }
+
+  MarketSaleResult processSales({
+    required double playerPaperclips,
+    required double sellPrice,
+    required int marketingLevel,
+    required void Function(double paperclipsDelta) updatePaperclips,
+    required void Function(double moneyDelta) updateMoney,
+    bool updateMarketState = true,
+    bool requireAutoSellEnabled = true,
+  }) {
+    // Mock simplifié: vend 1 unité si possible
+    if (playerPaperclips <= 0) {
+      return MarketSaleResult.none;
+    }
+
+    const quantity = 1;
+    final revenue = sellPrice;
+    updatePaperclips(-quantity.toDouble());
+    updateMoney(revenue);
+    return MarketSaleResult(quantity: quantity, unitPrice: sellPrice, revenue: revenue);
+  }
+
+  @Deprecated('Utiliser processSales(...) (Option B2).')
   double sellPaperclips({
     required double amount,
     required double sellPrice,
@@ -26,21 +52,8 @@ class MarketManagerMock extends ChangeNotifier {
     required dynamic statistics,
   }) {
     if (amount <= 0) return 0.0;
-
-    double qualityBonus = 1.0 + (sellPrice * 0.10);
-    double salePrice = sellPrice * qualityBonus;
-    double revenue = amount * salePrice;
-
     updatePaperclips(-amount);
-    updateMoney(revenue);
-    
-    // Mise à jour des statistiques
-    if (statistics != null) {
-      statistics.updateEconomics(
-        moneyEarned: revenue,
-      );
-    }
-    
-    return revenue;
+    updateMoney(amount * sellPrice);
+    return amount * sellPrice;
   }
 }

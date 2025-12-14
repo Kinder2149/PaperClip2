@@ -1,7 +1,6 @@
 // ignore_for_file: depend_on_referenced_packages
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/mockito.dart';
-import 'package:mockito/annotations.dart';
 import 'package:paperclip2/constants/game_config.dart';
 // Import SaveGame uniquement depuis services/save_game.dart pour éviter le conflit
 import 'package:paperclip2/models/save_metadata.dart';
@@ -9,24 +8,148 @@ import 'package:paperclip2/services/save_game.dart';
 import 'package:paperclip2/services/save_system/local_save_game_manager.dart';
 import 'package:paperclip2/services/save_system/save_manager_adapter.dart';
 
-// Génération des mocks pour LocalSaveGameManager
-@GenerateMocks([LocalSaveGameManager])
-import 'save_manager_adapter_test.mocks.dart';
+class TestLocalSaveGameManager extends Fake implements LocalSaveGameManager {
+  Future<void> Function()? onReloadMetadataCache;
+  Future<List<SaveMetadata>> Function()? onListSaves;
+  Future<SaveGame?> Function(String saveId)? onLoadSave;
+
+  String? _activeSaveId;
+
+  @override
+  Future<void> reloadMetadataCache() async {
+    if (onReloadMetadataCache != null) {
+      await onReloadMetadataCache!();
+    }
+  }
+
+  @override
+  Future<List<SaveMetadata>> listSaves() async {
+    if (onListSaves != null) {
+      return onListSaves!();
+    }
+    return <SaveMetadata>[];
+  }
+
+  @override
+  Future<SaveGame?> loadSave(String saveId) async {
+    if (onLoadSave != null) {
+      return onLoadSave!(saveId);
+    }
+    return null;
+  }
+
+  @override
+  String? get activeSaveId => _activeSaveId;
+
+  @override
+  set activeSaveId(String? id) {
+    _activeSaveId = id;
+  }
+
+  @override
+  Future<bool> saveGame(SaveGame save) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<bool> deleteSave(String saveId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<bool> exportSave(String saveId, String path) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<SaveGame?> importSave(dynamic sourceData, {String? newName, bool overwriteIfExists = false}) {
+    throw UnimplementedError();
+  }
+
+  @override
+  String compressData(String data) => data;
+
+  @override
+  String decompressData(String compressed) => compressed;
+
+  @override
+  Future<SaveMetadata?> getSaveMetadata(String saveId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<bool> updateSaveMetadata(String saveId, SaveMetadata metadata) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<bool> saveExists(String name) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<Map<String, dynamic>> cleanupOrphanedSaves() {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<Map<String, dynamic>> forceCleanupOrphanedSaves() {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<SaveGame> createNewSave({
+    String? name,
+    GameMode gameMode = GameMode.INFINITE,
+    Map<String, dynamic>? initialData,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> enableAutoSave({
+    required Duration interval,
+    required String saveId,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> disableAutoSave() {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<SaveGame?> duplicateSave(String sourceId, {String? newName}) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<bool> quickValidate(String saveId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  void dispose() {
+    // no-op
+  }
+}
 
 void main() {
   group('SaveManagerAdapter Tests', () {
-    late MockLocalSaveGameManager mockManager;
+    late TestLocalSaveGameManager testManager;
     
     setUp(() {
-      mockManager = MockLocalSaveGameManager();
+      testManager = TestLocalSaveGameManager();
       // Remplacer l'instance de LocalSaveGameManager dans SaveManagerAdapter
-      SaveManagerAdapter.instance = mockManager;
+      SaveManagerAdapter.setSaveManagerForTesting(testManager);
     });
     
     tearDown(() {
       // Nettoyage après les tests
       // Note: Dans une application réelle, il faudrait réinitialiser l'instance
       // mais ici pour les tests, ce n'est pas critique
+      SaveManagerAdapter.resetForTesting();
     });
     
     test('listSaves convertit correctement SaveMetadata en SaveGameInfo', () async {
@@ -53,8 +176,8 @@ void main() {
         isRestored: true,
       );
       
-      // Configurer le mock pour retourner nos métadonnées de test
-      when(mockManager.listSaves()).thenAnswer((_) => Future.value([metadata1, metadata2]));
+      // Configurer le stub pour retourner nos métadonnées de test
+      testManager.onListSaves = () async => [metadata1, metadata2];
       
       // Configurer le mock pour la première sauvegarde
       final saveGame1 = SaveGame(
@@ -72,7 +195,10 @@ void main() {
           }
         },
       );
-      when(mockManager.loadSave('save1')).thenAnswer((_) => Future.value(saveGame1));
+      testManager.onLoadSave = (saveId) async {
+        if (saveId == 'save1') return saveGame1;
+        return null;
+      };
       
       // Configurer le mock pour la deuxième sauvegarde
       final saveGame2 = SaveGame(
@@ -90,7 +216,12 @@ void main() {
           }
         },
       );
-      when(mockManager.loadSave('save2')).thenAnswer((_) => Future.value(saveGame2));
+      final previousOnLoadSave = testManager.onLoadSave;
+      testManager.onLoadSave = (saveId) async {
+        if (saveId == 'save2') return saveGame2;
+        if (previousOnLoadSave != null) return previousOnLoadSave(saveId);
+        return null;
+      };
       
       // Appeler la méthode à tester
       final saves = await SaveManagerAdapter.listSaves();
@@ -136,11 +267,13 @@ void main() {
         isRestored: false,
       );
       
-      // Configurer le mock pour retourner notre métadonnée
-      when(mockManager.listSaves()).thenAnswer((_) => Future.value([metadata]));
+      // Configurer le stub pour retourner notre métadonnée
+      testManager.onListSaves = () async => [metadata];
       
       // Simuler une erreur lors du chargement de la sauvegarde
-      when(mockManager.loadSave('error-save')).thenThrow(Exception('Test error'));
+      testManager.onLoadSave = (_) async {
+        throw Exception('Test error');
+      };
       
       // Appeler la méthode à tester
       final saves = await SaveManagerAdapter.listSaves();
@@ -168,8 +301,8 @@ void main() {
         isRestored: false,
       );
       
-      // Configurer le mock
-      when(mockManager.listSaves()).thenAnswer((_) => Future.value([backupMetadata]));
+      // Configurer le stub
+      testManager.onListSaves = () async => [backupMetadata];
       
       // Ne pas configurer loadSave car les backups ne chargent pas les données du jeu
       

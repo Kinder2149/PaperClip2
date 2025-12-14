@@ -38,6 +38,16 @@ class SaveManagerAdapter {
     }
     return _instance._saveManager!;
   }
+
+  static void setSaveManagerForTesting(LocalSaveGameManager manager) {
+    _instance._saveManager = manager;
+    _instance._isInitialized = true;
+  }
+
+  static void resetForTesting() {
+    _instance._saveManager = null;
+    _instance._isInitialized = false;
+  }
   
   /// Vérifie que le saveManager est initialisé avant de l'utiliser
   static Future<void> ensureInitialized() async {

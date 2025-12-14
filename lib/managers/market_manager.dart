@@ -95,6 +95,24 @@ class CachedValue {
   bool get isValid => DateTime.now().isBefore(expiryTime);
 }
 
+class MarketSaleResult {
+  final int quantity;
+  final double unitPrice;
+  final double revenue;
+
+  const MarketSaleResult({
+    required this.quantity,
+    required this.unitPrice,
+    required this.revenue,
+  });
+
+  static const MarketSaleResult none = MarketSaleResult(
+    quantity: 0,
+    unitPrice: 0.0,
+    revenue: 0.0,
+  );
+}
+
 class MarketManager extends ChangeNotifier implements JsonLoadable {
   // Références aux autres managers
   PlayerManager? _playerManager;
@@ -138,6 +156,18 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
   double _metalTrend = 0;
   List<double> _salesHistory = [];
   List<double> _priceHistory = [];
+  bool _autoSellEnabled = true;
+
+  bool get autoSellEnabled => _autoSellEnabled;
+
+  set autoSellEnabled(bool value) {
+    if (_autoSellEnabled == value) return;
+    _autoSellEnabled = value;
+    if (kDebugMode) {
+      print('[MarketManager] autoSellEnabled mis à jour: $_autoSellEnabled');
+    }
+    notifyListeners();
+  }
   List<double> _demandHistory = [];
   DateTime _lastUpdate = DateTime.now();
   // Nous n'utilisons plus de timer périodique
@@ -241,16 +271,25 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
     }
   }
 
-  double processSales({
+  MarketSaleResult processSales({
     required double playerPaperclips,
     required double sellPrice,
     required int marketingLevel,
-    required Function(double) updatePaperclips,
-    required Function(double) updateMoney,
+    required void Function(double paperclipsDelta) updatePaperclips,
+    required void Function(double moneyDelta) updateMoney,
+    bool updateMarketState = true,
+    bool requireAutoSellEnabled = true,
   }) {
     if (_isPaused) {
       if (kDebugMode) print('[MarketManager] processSales: Ignoré - Le marché est en pause');
-      return 0.0;
+      return MarketSaleResult.none;
+    }
+
+    if (requireAutoSellEnabled && !_autoSellEnabled) {
+      if (kDebugMode) {
+        print('[MarketManager] processSales: Ignoré - Vente automatique désactivée');
+      }
+      return MarketSaleResult.none;
     }
 
     // Logs détaillés sur les conditions initiales
@@ -260,10 +299,11 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
       print('[MarketManager] État marché: saturation: ${_currentMarketSaturation.toStringAsFixed(2)}, prix métal: ${_marketMetalPrice.toStringAsFixed(2)}');
     }
 
-    updateMarket();
+    if (updateMarketState) {
+      _updateMarketState();
+    }
 
     double demand = calculateDemand(sellPrice, marketingLevel);
-    double revenue = 0.0;
 
     // Log de la demande calculée
     if (kDebugMode) {
@@ -271,7 +311,7 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
     }
 
     if (playerPaperclips > 0) {
-      int potentialSales = min(demand.floor(), playerPaperclips.floor());
+      int potentialSales = min(max(1, demand.round()), playerPaperclips.floor());
 
       if (kDebugMode) {
         print('[MarketManager] Ventes potentielles: $potentialSales unités');
@@ -280,7 +320,7 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
       if (potentialSales > 0) {
         double qualityBonus = 1.0 + (sellPrice * 0.10);
         double salePrice = sellPrice * qualityBonus;
-        revenue = potentialSales * salePrice;
+        final revenue = potentialSales * salePrice;
 
         // Logs détaillés de la transaction
         if (kDebugMode) {
@@ -289,7 +329,7 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
           print('[MarketManager] Transaction: -$potentialSales trombones, +${revenue.toStringAsFixed(2)} argent');
         }
 
-        updatePaperclips(playerPaperclips - potentialSales);
+        updatePaperclips(-potentialSales.toDouble());
         updateMoney(revenue);
         recordSale(potentialSales, salePrice);
 
@@ -302,6 +342,12 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
           print('[MarketManager] Statistiques mises à jour: ${_totalSalesCount} ventes totales, ${_totalSales.toStringAsFixed(2)} revenus cumulés');
           print('===== FIN PROCESSUS DE VENTE =====');
         }
+
+        return MarketSaleResult(
+          quantity: potentialSales,
+          unitPrice: salePrice,
+          revenue: revenue,
+        );
       } else {
         if (kDebugMode) print('[MarketManager] Aucune vente possible - demande insuffisante');
       }
@@ -309,9 +355,10 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
       if (kDebugMode) print('[MarketManager] Aucune vente possible - pas de stock de trombones');
     }
 
-    return revenue;
+    return MarketSaleResult.none;
   }
 
+  @Deprecated('Utiliser processSales(...) comme chemin officiel de vente (Option B2).')
   double sellPaperclips({
     required double amount,
     required double sellPrice,
@@ -351,24 +398,15 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
     return revenue;
   }
 
-  // La méthode updateMarket est maintenant appelée suite à des changements
-  // dans les conditions du marché plutôt que périodiquement
-  void updateMarket() {
-    if (_isPaused) {
-      if (kDebugMode) print('[MarketManager] updateMarket: Le marché est en pause, pas de mise à jour');
-      return;
-    }
-    
-    if (kDebugMode) print('[MarketManager] Début updateMarket() - ${DateTime.now()}');
-    
+  void _updateMarketState() {
     // Mise à jour des tendances du marché
-    DateTime now = DateTime.now();
+    final now = DateTime.now();
     _lastMetalPriceUpdateTime = now;
     _lastUpdate = now;
-    
+
     // Mise à jour des dynamiques du marché
     dynamics.updateMarketConditions();
-    
+
     // Mise à jour de la saturation du marché
     if (_currentMarketSaturation > GameConstants.MIN_MARKET_SATURATION) {
       _currentMarketSaturation -= GameConstants.SATURATION_DECAY_RATE;
@@ -376,85 +414,35 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
         _currentMarketSaturation = GameConstants.MIN_MARKET_SATURATION;
       }
     }
-    
+
     // Mise à jour du prix du métal en fonction du stock
     updateMetalPrice();
-    
-    try {
+  }
+
+  /// Met à jour l'état du marché (tendances, saturation, prix métal), sans exécuter de vente.
+  void updateMarketState() {
+    if (_isPaused) {
       if (kDebugMode) {
-        print('[MarketManager] Vérification des managers:');
-        print('[MarketManager] - _playerManager est ${_playerManager != null ? "défini" : "NULL"}');
-        print('[MarketManager] - _statisticsManager est ${_statisticsManager != null ? "défini" : "NULL"}');
+        print('[MarketManager] updateMarketState: Le marché est en pause, pas de mise à jour');
       }
-      
-      if (_playerManager != null && _statisticsManager != null) {
-        if (kDebugMode) {
-          print('[MarketManager] - _playerManager.paperclips = ${_playerManager?.paperclips}');
-          print('[MarketManager] - _playerManager.sellPrice = ${_playerManager?.sellPrice}');
-          print('[MarketManager] - _playerManager.marketingLevel = ${_playerManager?.getMarketingLevel()}');
-        }
-        
-        if (_playerManager != null && _playerManager?.paperclips != null && _playerManager!.paperclips > 0) {
-          double demand = calculateDemand(_playerManager!.sellPrice, _playerManager!.getMarketingLevel());
-          int potentialSales = min(demand.floor(), _playerManager!.paperclips.floor());
-          
-          if (kDebugMode) {
-            print('[MarketManager] Calcul demande et ventes:');
-            print('[MarketManager] - Demande calculée: $demand');
-            print('[MarketManager] - Ventes potentielles: $potentialSales');
-            print('[MarketManager] - Saturation actuelle: $_currentMarketSaturation');
-          }
-          
-          if (potentialSales > 0) {
-            if (kDebugMode) print('[MarketManager] Conditions OK pour vente, appel processSales()...');
-            
-            try {
-              // Utiliser directement processSales maintenant que nous avons une seule implémentation de StatisticsManager
-              // pour éviter l'erreur de type
-              double demand = calculateDemand(_playerManager!.sellPrice, _playerManager!.getMarketingLevel());
-              int potentialSales = min(demand.floor(), _playerManager!.paperclips.floor());
-              
-              if (kDebugMode) {
-                print('[MarketManager] Vente directe de $potentialSales trombones au prix de ${_playerManager!.sellPrice}');
-              }
-              
-              // Utiliser un callback pour les statistiques au lieu de passer l'objet
-              double revenue = sellPaperclips(
-                amount: potentialSales.toDouble(),
-                sellPrice: _playerManager!.sellPrice,
-                updatePaperclips: (double delta) {
-                  if (kDebugMode) print('[MarketManager] Mise à jour paperclips: ${_playerManager!.paperclips} -> ${_playerManager!.paperclips + delta}');
-                  _playerManager!.updatePaperclips(_playerManager!.paperclips + delta);
-                },
-                updateMoney: (double amount) {
-                  if (kDebugMode) print('[MarketManager] Mise à jour argent: ${_playerManager!.money} -> ${_playerManager!.money + amount}');
-                  _playerManager!.updateMoney(_playerManager!.money + amount);
-                },
-                // Le paramètre 'statistics' a été supprimé car il n'existe pas dans la méthode
-              );
-              
-              if (kDebugMode) {
-                print('[MarketManager] Vente réussie! Revenus: $revenue');
-              }
-            } catch (e) {
-              if (kDebugMode) print('[MarketManager] Erreur lors de la vente directe: $e');
-            }
-          } else {
-            if (kDebugMode) print('[MarketManager] Pas de ventes potentielles > 0, pas de vente automatique');
-          }
-        } else {
-          if (kDebugMode) print('[MarketManager] Pas de stock de paperclips disponible pour la vente');
-        }
-      } else {
-        if (kDebugMode) print('[MarketManager] Un ou plusieurs managers sont null, impossible de procéder à la vente automatique');
-      }
-    } catch (e) {
-      if (kDebugMode) print('[MarketManager] Erreur lors de la vente automatique: $e');
+      return;
     }
-    
-    // Notification des écouteurs sur les changements du marché
+
+    if (kDebugMode) {
+      print('[MarketManager] Début updateMarketState() - ${DateTime.now()}');
+    }
+
+    _updateMarketState();
     notifyListeners();
-    if (kDebugMode) print('[MarketManager] Fin updateMarket()');
+
+    if (kDebugMode) {
+      print('[MarketManager] Fin updateMarketState()');
+    }
+  }
+
+  @Deprecated('Utiliser updateMarketState() + processSales(...) (Option B2).')
+  void updateMarket() {
+    updateMarketState();
   }
 
   double calculateDemand(double price, int marketingLevel) {

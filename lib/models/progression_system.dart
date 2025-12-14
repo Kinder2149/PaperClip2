@@ -2,10 +2,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'dart:math';
+import 'dart:math' show pow, max;
 import '../constants/game_config.dart';
 import 'event_system.dart';
-import 'dart:math' show pow;
 import 'json_loadable.dart';
 
 /// Système de bonus de progression
@@ -134,7 +133,15 @@ class DailyXPBonus {
   }
 }
 
-/// Système de missions
+/// Système de missions (OFFICIELLEMENT EN PAUSE — Option A)
+///
+/// Contexte : ce système existe dans le codebase mais n'est pas actif au runtime.
+/// - `MissionSystem.initialize()` n'est pas appelé.
+/// - Aucun callback n'est branché.
+/// - Aucun flux gameplay n'envoie d'événements vers `updateMissions`.
+/// - Le timer de refresh n'est donc pas démarré.
+///
+/// Objectif : conserver cette implémentation comme "future feature" sans l'intégrer.
 class Mission {
   final String id;
   final String title;
