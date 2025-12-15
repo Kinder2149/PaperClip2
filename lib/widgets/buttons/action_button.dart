@@ -134,11 +134,10 @@ class ActionButton extends StatelessWidget {
       return fullWidth ? SizedBox(width: double.infinity, child: button) : button;
     }
 
-    // Sinon on l'enveloppe dans un Consumer pour accéder au GameState
-    return Consumer<GameState>(
-      builder: (context, gameState, _) {
-        final comboMultiplier = gameState.level.currentComboMultiplier;
-
+    // Sinon on l'enveloppe dans un Selector ciblé sur le multiplicateur
+    return Selector<GameState, double>(
+      selector: (context, gameState) => gameState.level.currentComboMultiplier,
+      builder: (context, comboMultiplier, _) {
         return Stack(
           children: [
             fullWidth ? SizedBox(width: double.infinity, child: button) : button,

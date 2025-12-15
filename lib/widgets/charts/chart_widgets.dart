@@ -4,15 +4,98 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:provider/provider.dart';
 import '../../models/game_state.dart';
 import '../../managers/market_manager.dart';
-import '../../constants/game_config.dart'; // Importé depuis constants au lieu de models
+import '../../services/format/game_format.dart';
 
-class SalesChart extends StatelessWidget {
+class _StatsOverviewView {
+  final int totalPaperclipsProduced;
+  final String totalTimePlayed;
+  final int autoClipperCount;
+  final String sellPrice;
+
+  const _StatsOverviewView({
+    required this.totalPaperclipsProduced,
+    required this.totalTimePlayed,
+    required this.autoClipperCount,
+    required this.sellPrice,
+  });
+
+  @override
+  bool operator ==(Object other) {
+    return other is _StatsOverviewView &&
+        other.totalPaperclipsProduced == totalPaperclipsProduced &&
+        other.totalTimePlayed == totalTimePlayed &&
+        other.autoClipperCount == autoClipperCount &&
+        other.sellPrice == sellPrice;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        totalPaperclipsProduced,
+        totalTimePlayed,
+        autoClipperCount,
+        sellPrice,
+      );
+}
+
+class SalesChartOptimized extends StatefulWidget {
   final List<SaleRecord> salesHistory;
 
-  const SalesChart({super.key, required this.salesHistory});
+  const SalesChartOptimized({super.key, required this.salesHistory});
+
+  @override
+  State<SalesChartOptimized> createState() => _SalesChartOptimizedState();
+}
+
+class _SalesChartOptimizedState extends State<SalesChartOptimized> {
+  List<FlSpot> _revenueSpots = const [];
+  List<FlSpot> _quantitySpots = const [];
+  double _maxX = 0;
+  int _lastSaleTimestampMs = 0;
+  int _lastLen = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _recomputeIfNeeded(widget.salesHistory);
+  }
+
+  @override
+  void didUpdateWidget(covariant SalesChartOptimized oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _recomputeIfNeeded(widget.salesHistory);
+  }
+
+  void _recomputeIfNeeded(List<SaleRecord> salesHistory) {
+    final len = salesHistory.length;
+    final lastTimestampMs = len == 0
+        ? 0
+        : salesHistory.last.timestamp.millisecondsSinceEpoch;
+
+    if (len == _lastLen && lastTimestampMs == _lastSaleTimestampMs) {
+      return;
+    }
+
+    _lastLen = len;
+    _lastSaleTimestampMs = lastTimestampMs;
+
+    _revenueSpots = List<FlSpot>.generate(
+      len,
+      (index) => FlSpot(index.toDouble(), salesHistory[index].revenue),
+      growable: false,
+    );
+    _quantitySpots = List<FlSpot>.generate(
+      len,
+      (index) =>
+          FlSpot(index.toDouble(), salesHistory[index].quantity.toDouble()),
+      growable: false,
+    );
+    _maxX = len <= 1 ? 0 : (len - 1).toDouble();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final salesHistory = widget.salesHistory;
+
     if (salesHistory.isEmpty) {
       return const Center(
         child: Text('Pas encore de ventes'),
@@ -71,9 +154,7 @@ class SalesChart extends StatelessWidget {
               lineBarsData: [
                 // Ligne des revenus
                 LineChartBarData(
-                  spots: List.generate(salesHistory.length, (index) {
-                    return FlSpot(index.toDouble(), salesHistory[index].revenue);
-                  }),
+                  spots: _revenueSpots,
                   isCurved: true,
                   color: Colors.green,
                   barWidth: 2,
@@ -81,9 +162,7 @@ class SalesChart extends StatelessWidget {
                 ),
                 // Ligne des quantités
                 LineChartBarData(
-                  spots: List.generate(salesHistory.length, (index) {
-                    return FlSpot(index.toDouble(), salesHistory[index].quantity.toDouble());
-                  }),
+                  spots: _quantitySpots,
                   isCurved: true,
                   color: Colors.blue,
                   barWidth: 2,
@@ -91,7 +170,7 @@ class SalesChart extends StatelessWidget {
                 ),
               ],
               minX: 0,
-              maxX: (salesHistory.length - 1).toDouble(),
+              maxX: _maxX,
               minY: 0,
             ),
           ),
@@ -102,12 +181,18 @@ class SalesChart extends StatelessWidget {
 }
 
 class StatsOverview extends StatelessWidget {
-  const StatsOverview({Key? key}) : super(key: key);
+  const StatsOverview({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<GameState>(
-      builder: (context, gameState, child) {
+    return Selector<GameState, _StatsOverviewView>(
+      selector: (context, gameState) => _StatsOverviewView(
+        totalPaperclipsProduced: gameState.totalPaperclipsProduced,
+        totalTimePlayed: GameFormat.durationHms(gameState.totalTimePlayed),
+        autoClipperCount: gameState.playerManager.autoClipperCount,
+        sellPrice: GameFormat.money(gameState.playerManager.sellPrice, decimals: 2),
+      ),
+      builder: (context, view, child) {
         return Card(
           child: Padding(
             padding: const EdgeInsets.all(16.0),
@@ -121,22 +206,22 @@ class StatsOverview extends StatelessWidget {
                 const SizedBox(height: 16),
                 _StatRow(
                   label: 'Trombones produits',
-                  value: gameState.totalPaperclipsProduced.toString(),
+                  value: GameFormat.intWithSeparators(view.totalPaperclipsProduced),
                   icon: Icons.link,
                 ),
                 _StatRow(
                   label: 'Temps de jeu',
-                  value: _formatPlayTime(gameState.totalTimePlayed),
+                  value: view.totalTimePlayed,
                   icon: Icons.timer,
                 ),
                 _StatRow(
                   label: 'Autoclippers',
-                  value: gameState.playerManager.autoClipperCount.toString(),
+                  value: GameFormat.intWithSeparators(view.autoClipperCount),
                   icon: Icons.precision_manufacturing,
                 ),
                 _StatRow(
                   label: 'Prix de vente',
-                  value: '${gameState.playerManager.sellPrice.toStringAsFixed(2)} €',
+                  value: view.sellPrice,
                   icon: Icons.euro,
                 ),
               ],
@@ -145,13 +230,6 @@ class StatsOverview extends StatelessWidget {
         );
       },
     );
-  }
-
-  String _formatPlayTime(int seconds) {
-    final hours = seconds ~/ 3600;
-    final minutes = (seconds % 3600) ~/ 60;
-    final remainingSeconds = seconds % 60;
-    return '$hours:${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
   }
 }
 

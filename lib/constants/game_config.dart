@@ -65,7 +65,7 @@ class GameConstants {
   //======================================================================
   // SECTION: CONSTANTES DE BASE ET RESSOURCES
   //======================================================================
-  static const double INITIAL_METAL = 100.0;
+  static const double INITIAL_METAL = 500.0;
   static const double INITIAL_MONEY = 0.0;
   static const double INITIAL_PRICE = 0.25;
   static const double METAL_PER_PAPERCLIP = 0.1;
@@ -153,8 +153,7 @@ class GameConstants {
   static const Duration PRODUCTION_INTERVAL = Duration(seconds: 1);
   static const Duration METAL_PRICE_UPDATE_INTERVAL = Duration(seconds: 6);
   static const Duration EVENT_MAX_AGE = Duration(days: 1);
-
-
+  static const Duration OFFLINE_MAX_DURATION = Duration(hours: 8);
   static const Duration GAME_LOOP_INTERVAL = Duration(milliseconds: 100);
   static const double TICKS_PER_SECOND = 10.0; // 1000ms / 100ms
   static const double BASE_PRODUCTION_PER_SECOND = 1.0; // 1 trombone par seconde

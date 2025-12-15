@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:paperclip2/models/game_state.dart';
+import 'package:paperclip2/constants/game_config.dart';
 
 /// Contrôleur de session de jeu.
 ///
@@ -36,7 +37,7 @@ class GameSessionController with ChangeNotifier {
 
     _lastTickTime = DateTime.now();
     _gameLoopTimer = Timer.periodic(
-      const Duration(seconds: 1),
+      GameConstants.PRODUCTION_INTERVAL,
       (_) => _handleGameTick(),
     );
 
@@ -54,13 +55,6 @@ class GameSessionController with ChangeNotifier {
           ? now.difference(_lastTickTime!).inMilliseconds / 1000
           : 1.0;
       _lastTickTime = now;
-
-      if (kDebugMode) {
-        print(
-          'GameSessionController: tick unifié (elapsed: '
-          '${elapsedSeconds.toStringAsFixed(2)}s)',
-        );
-      }
 
       gameState.tick(elapsedSeconds: elapsedSeconds);
     } catch (e) {

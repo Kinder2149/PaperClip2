@@ -108,7 +108,7 @@ class AutoSaveService {
       if (backups.length > GameConstants.MAX_BACKUPS) {
         backups.sort((a, b) => b.timestamp.compareTo(a.timestamp)); // Utilisation de timestamp pour compatibilité avec SaveGameInfo
         for (var i = GameConstants.MAX_BACKUPS; i < backups.length; i++) {
-          await SaveManagerAdapter.deleteSave(backups[i].name);
+          await SaveManagerAdapter.deleteSaveByName(backups[i].name);
         }
       }
       print('Nettoyage des anciens backups terminé');
@@ -198,7 +198,7 @@ class AutoSaveService {
     for (var save in saves) {
       if (now.difference(save.lastModified) > GameConstants.MAX_SAVE_AGE &&
           !save.name.contains(GameConstants.BACKUP_DELIMITER)) {
-        await SaveManagerAdapter.deleteSave(save.name);
+        await SaveManagerAdapter.deleteSaveByName(save.name);
         _saveSizes.remove(save.name);
       }
     }

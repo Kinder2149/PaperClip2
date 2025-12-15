@@ -258,7 +258,8 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
   double calculateAutoclipperROI() {
     if (_autoClipperCount == 0) return 0.0;
     double cost = calculateAutoclipperCost();
-    double productionPerMinute = _autoClipperCount * 60; // production par minute
+    double productionPerMinute =
+        _autoClipperCount * (GameConstants.BASE_AUTOCLIPPER_PRODUCTION * 60.0);
     double sellPrice = _sellPrice;
     
     // Si le prix de vente est trop bas, le ROI sera négatif

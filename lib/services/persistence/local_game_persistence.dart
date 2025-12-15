@@ -14,6 +14,8 @@ class LocalGamePersistenceService implements GamePersistenceService {
   /// Clé utilisée dans le gameData pour stocker le snapshot sérialisé.
   static const String snapshotKey = 'gameSnapshot';
 
+  static const int _latestSupportedSchemaVersion = 1;
+
   const LocalGamePersistenceService();
 
   @override
@@ -78,8 +80,50 @@ class LocalGamePersistenceService implements GamePersistenceService {
 
   @override
   Future<GameSnapshot> migrateSnapshot(GameSnapshot snapshot) async {
-    // La logique de migration détaillée (SAVE_FORMAT_VERSION, SaveMigrationService, etc.)
-    // sera implémentée dans une PR dédiée. Pour l'instant, on retourne le snapshot tel quel.
-    return snapshot;
+    final migratedMetadata = Map<String, dynamic>.from(snapshot.metadata);
+    final migratedCore = Map<String, dynamic>.from(snapshot.core);
+
+    // v1 minimal: metadata.schemaVersion + lastActiveAt
+    final schemaVersionRaw = migratedMetadata['schemaVersion'];
+    final schemaVersion = (schemaVersionRaw is num) ? schemaVersionRaw.toInt() : 0;
+
+    // Si on rencontre un snapshot plus récent que ce que l'app sait gérer,
+    // on échoue explicitement pour forcer un fallback legacy (ou une restauration backup).
+    if (schemaVersion > _latestSupportedSchemaVersion) {
+      throw FormatException(
+        'GameSnapshot.schemaVersion=$schemaVersion non supporté (max=$_latestSupportedSchemaVersion)',
+      );
+    }
+
+    if (schemaVersion < 1) {
+      migratedMetadata['schemaVersion'] = 1;
+    }
+
+    if (migratedMetadata['lastActiveAt'] == null) {
+      migratedMetadata['lastActiveAt'] =
+          (migratedMetadata['savedAt'] as String?) ?? DateTime.now().toIso8601String();
+    }
+
+    if (migratedMetadata['lastOfflineAppliedAt'] == null) {
+      migratedMetadata['lastOfflineAppliedAt'] = migratedMetadata['lastActiveAt'];
+    }
+
+    // Normaliser les champs de temps au format ISO si possible.
+    final lastActiveAtRaw = migratedMetadata['lastActiveAt'];
+    if (lastActiveAtRaw is! String || DateTime.tryParse(lastActiveAtRaw) == null) {
+      migratedMetadata['lastActiveAt'] = DateTime.now().toIso8601String();
+    }
+    final lastOfflineAppliedAtRaw = migratedMetadata['lastOfflineAppliedAt'];
+    if (lastOfflineAppliedAtRaw is! String || DateTime.tryParse(lastOfflineAppliedAtRaw) == null) {
+      migratedMetadata['lastOfflineAppliedAt'] = migratedMetadata['lastActiveAt'];
+    }
+
+    return GameSnapshot(
+      metadata: migratedMetadata,
+      core: migratedCore,
+      market: snapshot.market,
+      production: snapshot.production,
+      stats: snapshot.stats,
+    );
   }
 }

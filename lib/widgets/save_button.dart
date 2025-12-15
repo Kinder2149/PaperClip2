@@ -127,6 +127,26 @@ class SaveButton extends StatefulWidget {
   State<SaveButton> createState() => _SaveButtonState();
 }
 
+class _SaveButtonView {
+  final bool isInitialized;
+  final String? gameName;
+
+  const _SaveButtonView({
+    required this.isInitialized,
+    required this.gameName,
+  });
+
+  @override
+  bool operator ==(Object other) {
+    return other is _SaveButtonView &&
+        other.isInitialized == isInitialized &&
+        other.gameName == gameName;
+  }
+
+  @override
+  int get hashCode => Object.hash(isInitialized, gameName);
+}
+
 class _SaveButtonState extends State<SaveButton> {
   bool _isSaving = false;
 
@@ -180,69 +200,77 @@ class _SaveButtonState extends State<SaveButton> {
 
   @override
   Widget build(BuildContext context) {
-    // Si le gameState n'est pas disponible ou initialisé, ne pas afficher le bouton
-    final gameState = context.watch<GameState>();
-    if (!gameState.isInitialized || gameState.gameName == null) {
-      return const SizedBox.shrink();
-    }
+    return Selector<GameState, _SaveButtonView>(
+      selector: (context, gameState) => _SaveButtonView(
+        isInitialized: gameState.isInitialized,
+        gameName: gameState.gameName,
+      ),
+      builder: (context, view, child) {
+        // Si le gameState n'est pas disponible ou initialisé, ne pas afficher le bouton
+        if (!view.isInitialized || view.gameName == null) {
+          return const SizedBox.shrink();
+        }
 
-    // Choix du type de bouton selon les propriétés
-    if (widget.isFloatingActionButton) {
-      return FloatingActionButton(
-        onPressed: _isSaving ? null : () => _saveGame(context),
-        tooltip: 'Sauvegarder',
-        backgroundColor: _isSaving ? Colors.grey : Theme.of(context).primaryColor,
-        child: _isSaving 
-          ? const CircularProgressIndicator(color: Colors.white)
-          : Icon(widget.icon),
-      );
-    } else if (widget.isIconOnly) {
-      return IconButton(
-        onPressed: _isSaving ? null : () => _saveGame(context),
-        icon: _isSaving 
-          ? const SizedBox(
-              width: 20, 
-              height: 20, 
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : Icon(widget.icon),
-        tooltip: 'Sauvegarder',
-      );
-    } else if (widget.showLabelBelow) {
-      return InkWell(
-        onTap: _isSaving ? null : () => _saveGame(context),
-        child: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _isSaving 
+        // Choix du type de bouton selon les propriétés
+        if (widget.isFloatingActionButton) {
+          return FloatingActionButton(
+            onPressed: _isSaving ? null : () => _saveGame(context),
+            tooltip: 'Sauvegarder',
+            backgroundColor:
+                _isSaving ? Colors.grey : Theme.of(context).primaryColor,
+            child: _isSaving
+                ? const CircularProgressIndicator(color: Colors.white)
+                : Icon(widget.icon),
+          );
+        } else if (widget.isIconOnly) {
+          return IconButton(
+            onPressed: _isSaving ? null : () => _saveGame(context),
+            icon: _isSaving
                 ? const SizedBox(
-                    width: 24, 
-                    height: 24, 
+                    width: 20,
+                    height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : Icon(widget.icon),
-              const SizedBox(height: 4),
-              Text(widget.label ?? 'Sauvegarder'),
-            ],
-          ),
-        ),
-      );
-    } else {
-      // Bouton standard ElevatedButton
-      return ElevatedButton.icon(
-        onPressed: _isSaving ? null : () => _saveGame(context),
-        style: widget.buttonStyle,
-        icon: _isSaving 
-          ? const SizedBox(
-              width: 20, 
-              height: 20, 
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : Icon(widget.icon),
-        label: Text(widget.label ?? 'Sauvegarder'),
-      );
-    }
+            tooltip: 'Sauvegarder',
+          );
+        } else if (widget.showLabelBelow) {
+          return InkWell(
+            onTap: _isSaving ? null : () => _saveGame(context),
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _isSaving
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(widget.icon),
+                  const SizedBox(height: 4),
+                  Text(widget.label ?? 'Sauvegarder'),
+                ],
+              ),
+            ),
+          );
+        } else {
+          // Bouton standard ElevatedButton
+          return ElevatedButton.icon(
+            onPressed: _isSaving ? null : () => _saveGame(context),
+            style: widget.buttonStyle,
+            icon: _isSaving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(widget.icon),
+            label: Text(widget.label ?? 'Sauvegarder'),
+          );
+        }
+      },
+    );
   }
 }

@@ -9,13 +9,15 @@ class AppBarProgressIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<GameState>(
-      builder: (context, gameState, _) {
-        // Calcul du progrès global (à adapter selon vos métriques de progression)
-        final double progressValue = _calculateGlobalProgress(gameState);
-        
+    return Selector<GameState, int>(
+      selector: (context, gameState) => gameState.totalPaperclipsProduced,
+      builder: (context, totalPaperclipsProduced, _) {
+        final double progressValue =
+            (totalPaperclipsProduced.toDouble() / GameConstants.GLOBAL_PROGRESS_TARGET)
+                .clamp(0.0, 1.0);
+
         return GestureDetector(
-          onTap: () => _showProgressDetails(context, gameState),
+          onTap: () => _showProgressDetails(context, context.read<GameState>()),
           child: Container(
             width: 45,
             height: 40,
@@ -40,11 +42,13 @@ class AppBarProgressIndicator extends StatelessWidget {
                   height: 32,
                   child: CircularProgressIndicator(
                     value: progressValue,
-                    backgroundColor: Theme.of(context).brightness == Brightness.dark
-                        ? Colors.grey[800]
-                        : Colors.grey[300],
+                    backgroundColor:
+                        Theme.of(context).brightness == Brightness.dark
+                            ? Colors.grey[800]
+                            : Colors.grey[300],
                     valueColor: AlwaysStoppedAnimation<Color>(
-                      _getProgressColor(progressValue, Theme.of(context).brightness)
+                      _getProgressColor(
+                          progressValue, Theme.of(context).brightness),
                     ),
                     strokeWidth: 3,
                   ),

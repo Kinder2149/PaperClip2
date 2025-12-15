@@ -43,16 +43,23 @@ class GameEngine {
 
     production.processProduction(elapsedSeconds: elapsedSeconds);
 
+    // Le marché doit continuer à évoluer (tendances/saturation/prix métal),
+    // même si la vente automatique est désactivée.
+    market.updateMarketState();
+
     if (autoSellEnabled) {
-      tickMarket();
+      _processAutoSales();
     }
   }
 
   void tickMarket() {
-    // 1) Mise à jour de l'état du marché (tendances/saturation/prix métal)
+    // Maintien pour compatibilité: tickMarket force une mise à jour du marché
+    // puis traite une vente automatique.
     market.updateMarketState();
+    _processAutoSales();
+  }
 
-    // 2) Vente (chemin officiel unique)
+  void _processAutoSales() {
     final sale = market.processSales(
       playerPaperclips: player.paperclips,
       sellPrice: player.sellPrice,

@@ -11,77 +11,90 @@ import '../widgets/cards/info_card.dart';
 import '../managers/player_manager.dart';
 import '../models/upgrade.dart' as upgrade_model;
 import '../services/upgrades/upgrade_effects_calculator.dart';
+import '../services/progression/progression_rules_service.dart';
 
 class UpgradesScreen extends StatelessWidget {
   const UpgradesScreen({super.key});
 
+  static bool _shouldShowUpgrades(VisibleUiElements visibleElements) {
+    return visibleElements[UiElement.upgradesSection];
+  }
+
   @override
   Widget build(BuildContext context) {
-    final gameState = Provider.of<GameState>(context);
-    final visibleElements = gameState.getVisibleScreenElements();
-
-    if (visibleElements['upgradesSection'] != true) {
-      // Écran de verrouillage
-      return const Padding(
-        padding: EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.lock,
-              size: 100,
-              color: Colors.grey,
-            ),
-            SizedBox(height: 16),
-            Text(
-              'Améliorations verrouillées',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(height: 16),
-            Text(
-              'Continuez à produire pour débloquer cette section.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const MoneyDisplay(),
-          const SizedBox(height: 16),
-          _buildStatisticsCard(gameState),
-          const SizedBox(height: 16),
-          Expanded(
-            child: ListView.builder(
-              itemCount: gameState.player.upgrades.length,
-              itemBuilder: (context, index) {
-                final entry = gameState.player.upgrades.entries.elementAt(index);
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8.0),
-                  child: _buildUpgradeCard(
-                    context,
-                    gameState,
-                    entry.key,
-                    entry.value as upgrade_model.Upgrade,
+    return Selector<GameState, bool>(
+      selector: (context, gameState) =>
+          _shouldShowUpgrades(gameState.getVisibleUiElements()),
+      builder: (context, showUpgrades, child) {
+        if (!showUpgrades) {
+          // Écran de verrouillage
+          return const Padding(
+            padding: EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.lock,
+                  size: 100,
+                  color: Colors.grey,
+                ),
+                SizedBox(height: 16),
+                Text(
+                  'Améliorations verrouillées',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
                   ),
-                );
-              },
+                ),
+                SizedBox(height: 16),
+                Text(
+                  'Continuez à produire pour débloquer cette section.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey,
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
+          );
+        }
+
+        return Consumer<GameState>(
+          builder: (context, gameState, _) {
+            return Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const MoneyDisplay(),
+                  const SizedBox(height: 16),
+                  _buildStatisticsCard(gameState),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: gameState.player.upgrades.length,
+                      itemBuilder: (context, index) {
+                        final entry =
+                            gameState.player.upgrades.entries.elementAt(index);
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8.0),
+                          child: _buildUpgradeCard(
+                            context,
+                            gameState,
+                            entry.key,
+                            entry.value as upgrade_model.Upgrade,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 

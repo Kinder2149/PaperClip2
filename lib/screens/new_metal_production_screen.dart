@@ -13,6 +13,7 @@ import '../widgets/indicators/stat_indicator.dart';
 import '../widgets/cards/info_card.dart';
 import '../widgets/cards/stats_panel.dart';
 import '../widgets/dialogs/info_dialog.dart';
+import '../services/progression/progression_rules_service.dart';
 
 class NewMetalProductionScreen extends StatefulWidget {
   const NewMetalProductionScreen({Key? key}) : super(key: key);
@@ -179,7 +180,7 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
                 const SizedBox(height: 24),
                 ElevatedButton(
                   onPressed: canProduce
-                      ? () => gameState.player.updateMetal(gameState.player.metal + 100)
+                      ? () => gameState.addMetal(100)
                       : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue,
@@ -542,7 +543,7 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (gameState.getVisibleScreenElements()['autoClipperCountSection'] == true)
+                      if (gameState.getVisibleUiElements()[UiElement.autoClipperCountSection] == true)
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                           child: SizedBox(

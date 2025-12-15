@@ -165,7 +165,7 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
 
   Future<void> _deleteSave(String saveId) async {
     try {
-      await SaveManagerAdapter.deleteSave(saveId);
+      await SaveManagerAdapter.deleteSaveByName(saveId);
       await _loadSaves();
       if (mounted) {
         NotificationManager.instance.showNotification(
@@ -383,7 +383,7 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                                     children: [
                                       IconButton(
                                         icon: Icon(Icons.delete, color: Colors.red),
-                                        onPressed: () => _deleteSave(save.id),
+                                        onPressed: () => _deleteSave(save.name),
                                         tooltip: 'Supprimer',
                                       ),
                                       IconButton(
@@ -398,7 +398,7 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                                     children: [
                                       IconButton(
                                         icon: Icon(Icons.delete, color: Colors.red),
-                                        onPressed: () => _deleteSave(save.id),
+                                        onPressed: () => _deleteSave(save.name),
                                         tooltip: 'Supprimer',
                                       ),
                                       IconButton(

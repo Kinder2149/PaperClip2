@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import 'package:paperclip2/models/game_state_interfaces.dart';
+import '../models/statistics_manager.dart';
 import '../widgets/cards/stats_panel.dart';
 import '../widgets/indicators/stat_indicator.dart';
 
@@ -10,61 +11,67 @@ class StatisticsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<GameState>(
-      builder: (context, gameState, _) {
-        final stats = gameState.statistics.getAllStats();
+    return Selector<GameState, StatisticsManager>(
+      selector: (context, gameState) => gameState.statistics,
+      builder: (context, statistics, _) {
+        return AnimatedBuilder(
+          animation: statistics,
+          builder: (context, child) {
+            final stats = statistics.getAllStats();
 
-        return SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Card(
-                  elevation: 2,
-                  color: Colors.deepPurple.shade50,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        StatIndicator(
-                          label: 'Total Produit',
-                          value: _getDisplayValue(stats['production']?['Total produit'] ?? 0),
-                          icon: Icons.add_chart,
-                          layout: StatIndicatorLayout.vertical,
-                          labelStyle: TextStyle(color: Colors.grey[700], fontSize: 14.0),
-                          valueStyle: TextStyle(color: Colors.deepPurple, fontSize: 16.0, fontWeight: FontWeight.bold),
+            return SafeArea(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Card(
+                      elevation: 2,
+                      color: Colors.deepPurple.shade50,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            StatIndicator(
+                              label: 'Total Produit',
+                              value: _getDisplayValue(stats['production']?['Total produit'] ?? 0),
+                              icon: Icons.add_chart,
+                              layout: StatIndicatorLayout.vertical,
+                              labelStyle: TextStyle(color: Colors.grey[700], fontSize: 14.0),
+                              valueStyle: const TextStyle(color: Colors.deepPurple, fontSize: 16.0, fontWeight: FontWeight.bold),
+                            ),
+                            StatIndicator(
+                              label: 'Argent Total',
+                              value: _getDisplayValue(stats['economy']?['Argent gagné'] ?? 0),
+                              icon: Icons.attach_money,
+                              layout: StatIndicatorLayout.vertical,
+                              labelStyle: TextStyle(color: Colors.grey[700], fontSize: 14.0),
+                              valueStyle: const TextStyle(color: Colors.deepPurple, fontSize: 16.0, fontWeight: FontWeight.bold),
+                            ),
+                            StatIndicator(
+                              label: 'Niveau',
+                              value: _getDisplayValue(stats['progression']?['Niveau actuel'] ?? 0),
+                              icon: Icons.trending_up,
+                              layout: StatIndicatorLayout.vertical,
+                              labelStyle: TextStyle(color: Colors.grey[700], fontSize: 14.0),
+                              valueStyle: const TextStyle(color: Colors.deepPurple, fontSize: 16.0, fontWeight: FontWeight.bold),
+                            ),
+                          ],
                         ),
-                        StatIndicator(
-                          label: 'Argent Total',
-                          value: _getDisplayValue(stats['economie']?['Argent gagné'] ?? 0),
-                          icon: Icons.attach_money,
-                          layout: StatIndicatorLayout.vertical,
-                          labelStyle: TextStyle(color: Colors.grey[700], fontSize: 14.0),
-                          valueStyle: TextStyle(color: Colors.deepPurple, fontSize: 16.0, fontWeight: FontWeight.bold),
-                        ),
-                        StatIndicator(
-                          label: 'Niveau',
-                          value: _getDisplayValue(stats['progression']?['Niveau actuel'] ?? 0),
-                          icon: Icons.trending_up,
-                          layout: StatIndicatorLayout.vertical,
-                          labelStyle: TextStyle(color: Colors.grey[700], fontSize: 14.0),
-                          valueStyle: TextStyle(color: Colors.deepPurple, fontSize: 16.0, fontWeight: FontWeight.bold),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 24),
+                    _buildStatSection('Production', stats['production']!),
+                    const SizedBox(height: 16),
+                    _buildStatSection('Économie', stats['economy']!),
+                    const SizedBox(height: 16),
+                    _buildStatSection('Progression', stats['progression']!),
+                  ],
                 ),
-                const SizedBox(height: 24),
-                _buildStatSection('Production', stats['production']!),
-                const SizedBox(height: 16),
-                _buildStatSection('Économie', stats['economie']!),
-                const SizedBox(height: 16),
-                _buildStatSection('Progression', stats['progression']!),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );

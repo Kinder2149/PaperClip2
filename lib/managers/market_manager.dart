@@ -6,12 +6,6 @@ import '../constants/game_config.dart'; // Mis à jour pour utiliser le dossier 
 import '../models/json_loadable.dart';
 import '../models/statistics_manager.dart';
 import 'player_manager.dart'; // Import de PlayerManager
-import 'resource_manager.dart';
-import '../dialogs/metal_crisis_dialog.dart';
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../models/game_state.dart';
-import '../widgets/indicators/notification_widgets.dart';
 import '../services/upgrades/upgrade_effects_calculator.dart';
 
 class MarketDynamics {
@@ -131,7 +125,6 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
   double _marketingBonus = 1.0;
   final Set<String> _sentNotifications = {};
   bool _hasTriggeredDepletion = false;
-  BuildContext? _context;
   final Set<String> _sentCrisisNotifications = {};
   final Set<String> _sentDepletionNotifications = {};
   double _lastNotifiedPercentage = 100.0;
@@ -142,10 +135,6 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
   double _currentPrice = GameConstants.INITIAL_PRICE;  // Prix par défaut
   DateTime? _lastMetalPriceUpdateTime;
   List<MarketEvent> _activeEvents = [];
-
-  void setContext(BuildContext context) {
-    _context = context;
-  }
 
   List<SaleRecord> salesHistory = [];
   double reputation = 1.0;
@@ -177,6 +166,11 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
   int _totalSalesCount = 0;
   double _averageSalePrice = 0;
   double _highestSalePrice = 0.0;
+
+  double get totalSalesRevenue => _totalSales;
+  int get totalSalesCount => _totalSalesCount;
+  double get averageSalePrice => _averageSalePrice;
+  double get highestSalePrice => _highestSalePrice;
 
   double get currentMetalPrice => _marketMetalPrice;
 
@@ -281,6 +275,7 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
     required void Function(double moneyDelta) updateMoney,
     bool updateMarketState = true,
     bool requireAutoSellEnabled = true,
+    bool verboseLogs = false,
   }) {
     if (_isPaused) {
       if (kDebugMode) print('[MarketManager] processSales: Ignoré - Le marché est en pause');
@@ -295,7 +290,7 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
     }
 
     // Logs détaillés sur les conditions initiales
-    if (kDebugMode) {
+    if (kDebugMode && verboseLogs) {
       print('===== PROCESSUS DE VENTE =====');
       print('[MarketManager] État initial: ${playerPaperclips.toStringAsFixed(1)} trombones, prix de vente: ${sellPrice.toStringAsFixed(2)}, niveau marketing: $marketingLevel');
       print('[MarketManager] État marché: saturation: ${_currentMarketSaturation.toStringAsFixed(2)}, prix métal: ${_marketMetalPrice.toStringAsFixed(2)}');
@@ -308,14 +303,15 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
     double demand = calculateDemand(sellPrice, marketingLevel);
 
     // Log de la demande calculée
-    if (kDebugMode) {
+    if (kDebugMode && verboseLogs) {
       print('[MarketManager] Demande calculée: ${demand.toStringAsFixed(1)} unités');
     }
 
     if (playerPaperclips > 0) {
-      int potentialSales = min(max(1, demand.round()), playerPaperclips.floor());
+      final int demandUnits = max(0, demand.floor());
+      int potentialSales = min(demandUnits, playerPaperclips.floor());
 
-      if (kDebugMode) {
+      if (kDebugMode && verboseLogs) {
         print('[MarketManager] Ventes potentielles: $potentialSales unités');
       }
 
@@ -325,7 +321,7 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
         final revenue = potentialSales * salePrice;
 
         // Logs détaillés de la transaction
-        if (kDebugMode) {
+        if (kDebugMode && verboseLogs) {
           print('[MarketManager] Bonus qualité: x${qualityBonus.toStringAsFixed(2)}');
           print('[MarketManager] Prix de vente effectif: ${salePrice.toStringAsFixed(2)}');
           print('[MarketManager] Transaction: -$potentialSales trombones, +${revenue.toStringAsFixed(2)} argent');
@@ -340,7 +336,7 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
           // Retrait des paramètres sales et price non supportés
         );
         
-        if (kDebugMode) {
+        if (kDebugMode && verboseLogs) {
           print('[MarketManager] Statistiques mises à jour: ${_totalSalesCount} ventes totales, ${_totalSales.toStringAsFixed(2)} revenus cumulés');
           print('===== FIN PROCESSUS DE VENTE =====');
         }
@@ -410,11 +406,15 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
     dynamics.updateMarketConditions();
 
     // Mise à jour de la saturation du marché
-    if (_currentMarketSaturation > GameConstants.MIN_MARKET_SATURATION) {
-      _currentMarketSaturation -= GameConstants.SATURATION_DECAY_RATE;
-      if (_currentMarketSaturation < GameConstants.MIN_MARKET_SATURATION) {
-        _currentMarketSaturation = GameConstants.MIN_MARKET_SATURATION;
+    if (_currentMarketSaturation < GameConstants.DEFAULT_MARKET_SATURATION) {
+      _currentMarketSaturation += GameConstants.SATURATION_DECAY_RATE;
+      if (_currentMarketSaturation > GameConstants.DEFAULT_MARKET_SATURATION) {
+        _currentMarketSaturation = GameConstants.DEFAULT_MARKET_SATURATION;
       }
+    }
+
+    if (_currentMarketSaturation < GameConstants.MIN_MARKET_SATURATION) {
+      _currentMarketSaturation = GameConstants.MIN_MARKET_SATURATION;
     }
 
     // Mise à jour du prix du métal en fonction du stock
@@ -462,7 +462,12 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
     double saturationFactor = _currentMarketSaturation / GameConstants.DEFAULT_MARKET_SATURATION;
     
     // La demande est fonction de tous ces facteurs
-    double demand = baselineDemand * priceMultiplier * marketingMultiplier * saturationFactor;
+    final reputationFactor = max(0.0, reputation);
+    double demand = baselineDemand *
+        priceMultiplier *
+        marketingMultiplier *
+        saturationFactor *
+        reputationFactor;
     
     // Utilise la dynamique du marché pour les fluctuations
     double marketConditionEffect = _marketDynamics.getMarketConditionMultiplier();

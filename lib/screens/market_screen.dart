@@ -6,18 +6,105 @@ import '../constants/game_config.dart'; // Importé depuis constants au lieu de 
 import '../widgets/charts/chart_widgets.dart';
 import '../widgets/resources/resource_widgets.dart';
 import 'demand_calculation_screen.dart';
-import '../services/save_system/save_manager_adapter.dart';
 import '../screens/sales_history_screen.dart';
 import '../widgets/buttons/action_button.dart';
 import '../widgets/cards/info_card.dart';
 import '../widgets/dialogs/info_dialog.dart';
-import '../widgets/indicators/stat_indicator.dart';
-import '../widgets/cards/stats_panel.dart';
-import 'dart:math' show min;
 import '../services/upgrades/upgrade_effects_calculator.dart';
+import '../services/progression/progression_rules_service.dart';
+import '../services/format/game_format.dart';
+import '../services/market/market_insights_service.dart';
+
+class _MarketScreenView {
+  final VisibleUiElements visibleElements;
+  final bool showMarketPrice;
+  final double sellPrice;
+  final int marketingLevel;
+  final int autoClipperCount;
+  final double demand;
+  final double autoclipperProduction;
+  final double effectiveProduction;
+  final double profitability;
+  final int qualityLevel;
+  final double qualityBonus;
+  final double effectiveSellPrice;
+  final double reputation;
+  final List<SaleRecord> salesHistory;
+  final int lastSaleTimestampMs;
+
+  final String formattedDemandPerMin;
+  final String formattedProductionPerMin;
+  final String formattedSalesPerMin;
+  final String formattedProfitabilityPerMin;
+  final String formattedSellPrice;
+  final String formattedEffectiveSellPrice;
+  final String formattedReputationPercent;
+
+  const _MarketScreenView({
+    required this.visibleElements,
+    required this.showMarketPrice,
+    required this.sellPrice,
+    required this.marketingLevel,
+    required this.autoClipperCount,
+    required this.demand,
+    required this.autoclipperProduction,
+    required this.effectiveProduction,
+    required this.profitability,
+    required this.qualityLevel,
+    required this.qualityBonus,
+    required this.effectiveSellPrice,
+    required this.reputation,
+    required this.salesHistory,
+    required this.lastSaleTimestampMs,
+    required this.formattedDemandPerMin,
+    required this.formattedProductionPerMin,
+    required this.formattedSalesPerMin,
+    required this.formattedProfitabilityPerMin,
+    required this.formattedSellPrice,
+    required this.formattedEffectiveSellPrice,
+    required this.formattedReputationPercent,
+  });
+
+  @override
+  bool operator ==(Object other) {
+    return other is _MarketScreenView &&
+        other.showMarketPrice == showMarketPrice &&
+        other.sellPrice == sellPrice &&
+        other.marketingLevel == marketingLevel &&
+        other.autoClipperCount == autoClipperCount &&
+        other.demand == demand &&
+        other.autoclipperProduction == autoclipperProduction &&
+        other.effectiveProduction == effectiveProduction &&
+        other.profitability == profitability &&
+        other.qualityLevel == qualityLevel &&
+        other.qualityBonus == qualityBonus &&
+        other.effectiveSellPrice == effectiveSellPrice &&
+        other.reputation == reputation &&
+        other.lastSaleTimestampMs == lastSaleTimestampMs;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        showMarketPrice,
+        sellPrice,
+        marketingLevel,
+        autoClipperCount,
+        demand,
+        autoclipperProduction,
+        effectiveProduction,
+        profitability,
+        qualityLevel,
+        qualityBonus,
+        effectiveSellPrice,
+        reputation,
+        lastSaleTimestampMs,
+      );
+}
 
 class MarketScreen extends StatelessWidget {
   const MarketScreen({super.key});
+
+  static const MarketInsightsService _insightsService = MarketInsightsService();
 
   Widget _buildMarketCard({
     required String title,
@@ -64,67 +151,11 @@ class MarketScreen extends StatelessWidget {
     );
   }
 
-  // Dans lib/screens/market_screen.dart
-
-  // Méthode _saveGame supprimée car non utilisée et remplacée par le widget SaveButton
-
-  Widget _buildPriceControls(GameState gameState) {
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Min: ${GameConstants.MIN_PRICE.toStringAsFixed(2)} €',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-            ),
-            Text(
-              'Max: ${GameConstants.MAX_PRICE.toStringAsFixed(2)} €',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-            ),
-          ],
-        ),
-        Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.remove),
-              onPressed: () {
-                double newValue = gameState.player.sellPrice - 0.01;
-                if (newValue >= GameConstants.MIN_PRICE) {
-                  gameState.player.setSellPrice(newValue);
-                }
-              },
-            ),
-            Expanded(
-              child: Slider(
-                value: gameState.player.sellPrice,
-                min: GameConstants.MIN_PRICE,
-                max: GameConstants.MAX_PRICE,
-                divisions: 200,
-                label: '${gameState.player.sellPrice.toStringAsFixed(2)} €',
-                onChanged: (value) => gameState.player.setSellPrice(value),
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.add),
-              onPressed: () {
-                double newValue = gameState.player.sellPrice + 0.01;
-                if (newValue <= GameConstants.MAX_PRICE) {
-                  gameState.player.setSellPrice(newValue);
-                }
-              },
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
   String _formatBonusText(String name, double bonus) {
-    return '${name}: ${((bonus - 1.0) * 100).toStringAsFixed(1)}%';
+    return '$name: ${((bonus - 1.0) * 100).toStringAsFixed(1)}%';
   }
 
-  Widget _buildProductionCard(BuildContext context, GameState gameState, double autoclipperProduction) {
+  Widget _buildProductionCard(BuildContext context, GameState gameState, double autoclipperProduction, double demand) {
     List<String> bonuses = [];
 
     // Calcul des bonus
@@ -146,19 +177,18 @@ class MarketScreen extends StatelessWidget {
       bonuses.add('Efficacité: -${((1.0 - efficiencyBonus) * 100).toStringAsFixed(1)}%');
     }
 
-    double baseProduction = gameState.player.autoClipperCount * 60;
-    
-    // Calcul de la demande pour afficher le statut
-    double demand = gameState.market.calculateDemand(
-      gameState.player.sellPrice,
-      gameState.player.getMarketingLevel(),
+    double baseProduction = gameState.player.autoClipperCount *
+        (GameConstants.BASE_AUTOCLIPPER_PRODUCTION * 60.0);
+
+    final metalPerClip = UpgradeEffectsCalculator.metalPerPaperclip(
+      efficiencyLevel: efficiencyLevel,
     );
-    
+
     // Statut de production (excédent ou déficit)
     double productionDelta = autoclipperProduction - demand;
     String productionStatus;
     Color statusColor;
-    
+
     if (productionDelta > 0) {
       productionStatus = "(Excédent: +${productionDelta.toStringAsFixed(1)})";
       statusColor = Colors.red; // Rouge pour surproduction
@@ -172,7 +202,7 @@ class MarketScreen extends StatelessWidget {
 
     return _buildMarketCard(
       title: 'Production des Autoclippers',
-      value: '${autoclipperProduction.toStringAsFixed(1)}/min',
+      value: '${GameFormat.number(autoclipperProduction, decimals: 1)}/min',
       icon: Icons.precision_manufacturing,
       color: Colors.orange.shade100,
       tooltip: 'Production avec bonus appliqués',
@@ -182,12 +212,12 @@ class MarketScreen extends StatelessWidget {
         'Détails de la production :\n'
             '- Base (${gameState.player.autoClipperCount} autoClipperCount): ${baseProduction.toStringAsFixed(1)}/min\n'
             '${bonuses.isNotEmpty ? '\nBonus actifs:\n${bonuses.join("\n")}\n' : ''}'
-            '\nMétal utilisé par trombone: ${(GameConstants.METAL_PER_PAPERCLIP * efficiencyBonus).toStringAsFixed(2)} unités\n'
+            '\nMétal utilisé par trombone: ${metalPerClip.toStringAsFixed(2)} unités\n'
             '(Efficacité: -${((1.0 - efficiencyBonus) * 100).toStringAsFixed(1)}%)\n\n'
             'Comparaison avec la demande du marché:\n'
             '- Production: ${autoclipperProduction.toStringAsFixed(1)}/min\n'
             '- Demande: ${demand.toStringAsFixed(1)}/min\n'
-            '- Statut: ${productionStatus}\n\n'
+            '- Statut: $productionStatus\n\n'
             "${productionDelta > 0 ? 'ATTENTION: Une surproduction par rapport à la demande implique des trombones non vendus!' : ''}\n"
             "${productionDelta < 0 ? 'OPPORTUNITÉ: La demande est supérieure à votre production actuelle. Envisagez d\'augmenter votre capacité!' : ''}",
       ),
@@ -229,96 +259,9 @@ class MarketScreen extends StatelessWidget {
       ),
     );
   }
-  Widget _buildMarketSummaryCard(GameState gameState, double demand, double autoclipperProduction) {
-    double effectiveProduction = min(demand, autoclipperProduction);
-    double profitability = effectiveProduction * gameState.player.sellPrice;
-    final qualityLevel = gameState.player.upgrades['quality']?.level ?? 0;
-    final qualityBonus = UpgradeEffectsCalculator.qualityMultiplier(level: qualityLevel);
-    
-    // Création des statistiques de marché en utilisant StatIndicator
-    List<Widget> marketStats = [
-      _buildMarketStat(
-        'Production',
-        '${autoclipperProduction.toStringAsFixed(1)}/min',
-        Icons.precision_manufacturing,
-      ),
-      _buildMarketStat(
-        'Demande',
-        '${demand.toStringAsFixed(1)}/min',
-        Icons.trending_up,
-      ),
-      _buildMarketStat(
-        'Ventes',
-        '${effectiveProduction.toStringAsFixed(1)}/min',
-        Icons.shopping_cart,
-      ),
-      _buildMarketStat(
-        'Revenus',
-        '${profitability.toStringAsFixed(1)} €/min',
-        Icons.attach_money,
-      ),
-    ];
-    
-    // Bonus de qualité si applicable
-    Widget? qualityBonusWidget;
-    if (qualityBonus > 1.0) {
-      qualityBonusWidget = Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: Text(
-          'Bonus qualité: +${((qualityBonus - 1.0) * 100).toStringAsFixed(0)}%',
-          style: TextStyle(
-            fontSize: 13,
-            color: Colors.teal,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      );
-    }
 
-    // Utilisation du widget StatsPanel réutilisable
-    return StatsPanel(
-      title: 'Résumé du Marché',
-      titleIcon: Icons.analytics,
-      backgroundColor: Colors.teal.shade50,
-      children: [
-        // Wrap pour organiser les statistiques en grille responsive
-        Wrap(
-          spacing: 20,
-          runSpacing: 10,
-          children: marketStats,
-        ),
-        
-        // Affichage du bonus de qualité s'il existe
-        if (qualityBonusWidget != null) ...[const Divider(), qualityBonusWidget],
-      ],
-    );
-  }
-
-  Widget _buildMarketStat(String label, String value, IconData icon) {
-    // Utilisation du widget StatIndicator réutilisable
-    return SizedBox(
-      width: 140, // On conserve la largeur fixe pour garantir l'alignement dans le Wrap
-      child: StatIndicator(
-        label: label,
-        value: value,
-        icon: icon,
-        iconColor: Colors.teal,
-        labelStyle: TextStyle(
-          fontSize: 12,
-          color: Colors.grey[600],
-        ),
-        valueStyle: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.bold,
-        ),
-        layout: StatIndicatorLayout.horizontal,
-      ),
-    );
-  }
-  Widget _buildPriceControlCard(GameState gameState) {
-    final qualityLevel = gameState.player.upgrades['quality']?.level ?? 0;
-    final qualityBonus = UpgradeEffectsCalculator.qualityMultiplier(level: qualityLevel);
-    double effectivePrice = gameState.player.sellPrice * qualityBonus;
+  Widget _buildPriceControlCard(BuildContext context, _MarketScreenView view) {
+    final qualityBonus = view.qualityBonus;
 
     return Card(
       elevation: 2,
@@ -342,7 +285,7 @@ class MarketScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      '${gameState.player.sellPrice.toStringAsFixed(2)} €',
+                      view.formattedSellPrice,
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -350,7 +293,7 @@ class MarketScreen extends StatelessWidget {
                     ),
                     if (qualityBonus > 1.0)
                       Text(
-                        'Prix effectif: ${effectivePrice.toStringAsFixed(2)} €',
+                        'Prix effectif: ${view.formattedEffectiveSellPrice}',
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.green[700],
@@ -365,11 +308,11 @@ class MarketScreen extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Min: ${GameConstants.MIN_PRICE.toStringAsFixed(2)} €',
+                  'Min: ${GameFormat.money(GameConstants.MIN_PRICE, decimals: 2)}',
                   style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                 ),
                 Text(
-                  'Max: ${GameConstants.MAX_PRICE.toStringAsFixed(2)} €',
+                  'Max: ${GameFormat.money(GameConstants.MAX_PRICE, decimals: 2)}',
                   style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                 ),
               ],
@@ -380,28 +323,28 @@ class MarketScreen extends StatelessWidget {
                 IconButton(
                   icon: const Icon(Icons.remove),
                   onPressed: () {
-                    double newValue = gameState.player.sellPrice - 0.01;
+                    double newValue = view.sellPrice - 0.01;
                     if (newValue >= GameConstants.MIN_PRICE) {
-                      gameState.player.setSellPrice(newValue);
+                      context.read<GameState>().setSellPrice(newValue);
                     }
                   },
                 ),
                 Expanded(
                   child: Slider(
-                    value: gameState.player.sellPrice,
+                    value: view.sellPrice,
                     min: GameConstants.MIN_PRICE,
                     max: GameConstants.MAX_PRICE,
                     divisions: 200,
-                    label: '${gameState.player.sellPrice.toStringAsFixed(2)} €',
-                    onChanged: (value) => gameState.player.setSellPrice(value),
+                    label: view.formattedSellPrice,
+                    onChanged: (value) => context.read<GameState>().setSellPrice(value),
                   ),
                 ),
                 IconButton(
                   icon: const Icon(Icons.add),
                   onPressed: () {
-                    double newValue = gameState.player.sellPrice + 0.01;
+                    double newValue = view.sellPrice + 0.01;
                     if (newValue <= GameConstants.MAX_PRICE) {
-                      gameState.player.setSellPrice(newValue);
+                      context.read<GameState>().setSellPrice(newValue);
                     }
                   },
                 ),
@@ -415,27 +358,69 @@ class MarketScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<GameState>(
-      builder: (context, gameState, child) {
-        final visibleElements = gameState.getVisibleScreenElements();
-        double demand = gameState.market.calculateDemand(
-          gameState.player.sellPrice,
-          gameState.player.getMarketingLevel(),
+    return Selector<GameState, _MarketScreenView>(
+      selector: (context, gameState) {
+        final visibleElements = gameState.getVisibleUiElements();
+        final showMarketPrice = visibleElements[UiElement.marketPrice] == true;
+        final sellPrice = gameState.player.sellPrice;
+        final marketingLevel = gameState.player.getMarketingLevel();
+        final autoClipperCount = gameState.player.autoClipperCount;
+        final qualityLevel = gameState.player.upgrades['quality']?.level ?? 0;
+        final speedLevel = gameState.player.upgrades['speed']?.level ?? 0;
+        final bulkLevel = gameState.player.upgrades['bulk']?.level ?? 0;
+
+        final insights = _insightsService.compute(
+          market: gameState.market,
+          input: MarketInsightsInput(
+            sellPrice: sellPrice,
+            marketingLevel: marketingLevel,
+            autoClipperCount: autoClipperCount,
+            speedLevel: speedLevel,
+            bulkLevel: bulkLevel,
+            qualityLevel: qualityLevel,
+          ),
         );
 
-        double autoclipperProduction = 0;
-        if (gameState.player.autoClipperCount > 0) {
-          autoclipperProduction = gameState.player.autoClipperCount * 60;
-          final speedLevel = gameState.player.upgrades['speed']?.level ?? 0;
-          final bulkLevel = gameState.player.upgrades['bulk']?.level ?? 0;
-          final speedBonus = UpgradeEffectsCalculator.speedMultiplier(level: speedLevel);
-          final bulkBonus = UpgradeEffectsCalculator.bulkMultiplier(level: bulkLevel);
-          autoclipperProduction *= speedBonus * bulkBonus;
-        }
+        final salesHistory = gameState.market.salesHistory;
+        final lastSaleTimestampMs = salesHistory.isEmpty
+            ? 0
+            : salesHistory.last.timestamp.millisecondsSinceEpoch;
 
-        double effectiveProduction = min(demand, autoclipperProduction);
-        double profitability = effectiveProduction * gameState.player.sellPrice;
-
+        return _MarketScreenView(
+          visibleElements: visibleElements,
+          showMarketPrice: showMarketPrice,
+          sellPrice: sellPrice,
+          marketingLevel: marketingLevel,
+          autoClipperCount: autoClipperCount,
+          demand: insights.demandPerMin,
+          autoclipperProduction: insights.productionPerMin,
+          effectiveProduction: insights.effectiveSalesPerMin,
+          profitability: insights.profitabilityPerMin,
+          qualityLevel: qualityLevel,
+          qualityBonus: insights.qualityBonus,
+          effectiveSellPrice: insights.effectiveSellPrice,
+          reputation: gameState.marketManager.reputation,
+          salesHistory: salesHistory,
+          lastSaleTimestampMs: lastSaleTimestampMs,
+          formattedDemandPerMin:
+              '${GameFormat.number(insights.demandPerMin, decimals: 1)}/min',
+          formattedProductionPerMin:
+              '${GameFormat.number(insights.productionPerMin, decimals: 1)}/min',
+          formattedSalesPerMin:
+              '${GameFormat.number(insights.effectiveSalesPerMin, decimals: 1)}/min',
+          formattedProfitabilityPerMin: GameFormat.moneyPerMin(
+            insights.profitabilityPerMin,
+            decimals: 1,
+          ),
+          formattedSellPrice: GameFormat.money(sellPrice, decimals: 2),
+          formattedEffectiveSellPrice:
+              GameFormat.money(insights.effectiveSellPrice, decimals: 2),
+          formattedReputationPercent:
+              GameFormat.percentFromRatio(gameState.marketManager.reputation, decimals: 1),
+        );
+      },
+      builder: (context, view, child) {
+        final gameState = context.read<GameState>();
         return Padding(
           padding: const EdgeInsets.all(12.0),
           child: Column(
@@ -450,78 +435,123 @@ class MarketScreen extends StatelessWidget {
                       // Production et Stocks
                       _buildMetalStatus(context, gameState),
                       const SizedBox(height: 8),
-                      if (gameState.player.autoClipperCount > 0)
-                        _buildProductionCard(context, gameState, autoclipperProduction),
+                      if (view.autoClipperCount > 0)
+                        _buildProductionCard(
+                          context,
+                          gameState,
+                          view.autoclipperProduction,
+                          view.demand,
+                        ),
                       const SizedBox(height: 12),
 
-                      if (visibleElements['marketPrice'] == true) ...[
-                      // Ajout du contrôle du prix de vente en premier
-                      _buildPriceControlCard(gameState),
-                      const SizedBox(height: 12),
-                      
-                      // Affichage de la rentabilité estimée avec plus de détails
-                      _buildMarketCard(
-                        title: 'Rentabilité Estimée',
-                        value: '${profitability.toStringAsFixed(1)} €/min',
-                        icon: Icons.assessment,
-                        color: autoclipperProduction > demand ? Colors.orange.shade100 : Colors.indigo.shade100, // Orange si surproduction
-                        tooltip: 'Basé sur la production et la demande',
-                        onInfoPressed: () => _showInfoDialog(
-                          context,
-                          'Rentabilité',
-                          'Estimation des revenus par minute:\n\n'
-                              '• Paramètres de base:\n'
-                              '- Prix de vente: ${gameState.player.sellPrice.toStringAsFixed(2)} €\n'
-                              '- Production totale: ${autoclipperProduction.toStringAsFixed(1)} unités/min\n'
-                              '- Demande du marché: ${demand.toStringAsFixed(1)} unités/min\n\n'
-                              '• Production effective: ${effectiveProduction.toStringAsFixed(1)} unités/min\n'
-                              '(= le minimum entre votre production et la demande du marché)\n\n'
-                              '• Calcul des revenus:\n'
-                              '- Production effective × Prix de vente\n'
-                              '- ${effectiveProduction.toStringAsFixed(1)} × ${gameState.player.sellPrice.toStringAsFixed(2)} € = ${profitability.toStringAsFixed(1)} €/min\n\n'
-                              '${autoclipperProduction > demand ? "⚠️ ALERTE: Vous produisez plus que la demande actuelle!\nSeules ${demand.toStringAsFixed(1)} unités sur ${autoclipperProduction.toStringAsFixed(1)} seront vendues." : ""}\n'
-                              '${demand > autoclipperProduction ? "💡 CONSEIL: La demande (${demand.toStringAsFixed(1)}) dépasse votre capacité de production (${autoclipperProduction.toStringAsFixed(1)}).\nVous pourriez augmenter vos revenus en développant votre production." : ""}',
-                        ),
-                        trailing: autoclipperProduction > demand ? 
-                          Icon(Icons.warning_amber_rounded, color: Colors.orange) : 
-                          (demand > autoclipperProduction ? Icon(Icons.lightbulb, color: Colors.green) : null),
-                      ),
-                      const SizedBox(height: 8),
-                      
-                      // Affichage des autres cartes ensuite
-                      _buildMarketCard(
-                        title: 'Demande du Marché',
-                        value: '${demand.toStringAsFixed(1)}/min',
-                        icon: Icons.trending_up,
-                        color: Colors.amber.shade100,
-                        tooltip: 'Demande actuelle',
-                        onInfoPressed: () => _showInfoDialog(
-                          context,
-                          'Demande du Marché',
-                          'Demande actuelle: ${demand.toStringAsFixed(1)} unités/min\n'
-                              'Production effective: ${effectiveProduction.toStringAsFixed(1)} unités/min',
-                        ),
-                      ),
-                      const SizedBox(height: 8),
+                      if (view.showMarketPrice) ...[
+                        // Ajout du contrôle du prix de vente en premier
+                        _buildPriceControlCard(context, view),
+                        const SizedBox(height: 12),
 
-                      _buildMarketCard(
-                        title: 'Réputation',
-                        value: '${(gameState.marketManager.reputation * 100).toStringAsFixed(1)}%',
-                        icon: Icons.star,
-                        color: Colors.blue.shade100,
-                        tooltip: 'Influence la demande globale',
-                        onInfoPressed: () => _showInfoDialog(
-                          context,
-                          'Réputation',
-                          'La réputation influence directement la demande du marché.\n'
-                              'Une meilleure réputation augmente les ventes potentielles.',
+                        Card(
+                          elevation: 2,
+                          color: Colors.white,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Row(
+                                  children: [
+                                    Icon(Icons.show_chart, color: Colors.deepPurple),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Historique des ventes',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  height: 220,
+                                  child: SalesChartOptimized(
+                                    salesHistory: view.salesHistory,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: 12),
+                        
+                        // Affichage de la rentabilité estimée avec plus de détails
+                        _buildMarketCard(
+                          title: 'Rentabilité Estimée',
+                          value: view.formattedProfitabilityPerMin,
+                          icon: Icons.assessment,
+                          color: view.autoclipperProduction > view.demand
+                              ? Colors.orange.shade100
+                              : Colors.indigo.shade100, // Orange si surproduction
+                          tooltip: 'Basé sur la production et la demande',
+                          onInfoPressed: () => _showInfoDialog(
+                            context,
+                            'Rentabilité',
+                            'Estimation des revenus par minute:\n\n'
+                                '• Paramètres de base:\n'
+                                '- Prix de vente: ${view.formattedSellPrice}\n'
+                                '- Production totale: ${GameFormat.number(view.autoclipperProduction, decimals: 1)} unités/min\n'
+                                '- Demande du marché: ${GameFormat.number(view.demand, decimals: 1)} unités/min\n\n'
+                                '• Production effective: ${GameFormat.number(view.effectiveProduction, decimals: 1)} unités/min\n'
+                                '(= le minimum entre votre production et la demande du marché)\n\n'
+                                '• Calcul des revenus:\n'
+                                '- Production effective × Prix de vente\n'
+                                '- ${view.effectiveProduction.toStringAsFixed(1)} × ${view.formattedSellPrice} = ${view.formattedProfitabilityPerMin}\n\n'
+                                '${view.autoclipperProduction > view.demand ? "⚠️ ALERTE: Vous produisez plus que la demande actuelle!\nSeules ${GameFormat.number(view.demand, decimals: 1)} unités sur ${GameFormat.number(view.autoclipperProduction, decimals: 1)} seront vendues." : ""}\n'
+                                '${view.demand > view.autoclipperProduction ? "💡 CONSEIL: La demande (${GameFormat.number(view.demand, decimals: 1)}) dépasse votre capacité de production (${GameFormat.number(view.autoclipperProduction, decimals: 1)}).\nVous pourriez augmenter vos revenus en développant votre production." : ""}',
+                          ),
+                          trailing: view.autoclipperProduction > view.demand
+                              ? const Icon(Icons.warning_amber_rounded,
+                                  color: Colors.orange)
+                              : (view.demand > view.autoclipperProduction
+                                  ? const Icon(Icons.lightbulb,
+                                      color: Colors.green)
+                                  : null),
+                        ),
+                        const SizedBox(height: 8),
+                        
+                        // Affichage des autres cartes ensuite
+                        _buildMarketCard(
+                          title: 'Demande du Marché',
+                          value: view.formattedDemandPerMin,
+                          icon: Icons.trending_up,
+                          color: Colors.amber.shade100,
+                          tooltip: 'Demande actuelle',
+                          onInfoPressed: () => _showInfoDialog(
+                            context,
+                            'Demande du Marché',
+                            'Demande actuelle: ${GameFormat.number(view.demand, decimals: 1)} unités/min\n'
+                                'Production effective: ${GameFormat.number(view.effectiveProduction, decimals: 1)} unités/min',
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        _buildMarketCard(
+                          title: 'Réputation',
+                          value: view.formattedReputationPercent,
+                          icon: Icons.star,
+                          color: Colors.blue.shade100,
+                          tooltip: 'Influence la demande globale',
+                          onInfoPressed: () => _showInfoDialog(
+                            context,
+                            'Réputation',
+                            'La réputation influence directement la demande du marché.\n'
+                                'Une meilleure réputation augmente les ventes potentielles.',
+                          ),
+                        ),
                       const SizedBox(height: 8),
 
                       _buildMarketCard(
                         title: 'Marketing',
-                        value: 'Niveau ${gameState.player.getMarketingLevel()}',
+                        value: 'Niveau ${view.marketingLevel}',
                         icon: Icons.campaign,
                         color: Colors.cyan.shade100,
                         tooltip: 'Augmente la visibilité',
@@ -556,7 +586,7 @@ class MarketScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  if (visibleElements['marketPrice'] == true)
+                  if (view.showMarketPrice)
                     Expanded(
                       child: ActionButton(
                         onPressed: () => Navigator.push(

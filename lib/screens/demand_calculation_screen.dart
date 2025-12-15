@@ -10,10 +10,11 @@ class DemandCalculationScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final gameState = context.watch<GameState>();
-    double currentDemand = gameState.marketManager.calculateDemand(
+    final demandPerTick = gameState.marketManager.calculateDemand(
       gameState.player.sellPrice,
       gameState.player.getMarketingLevel(),
     );
+    final currentDemandPerMin = demandPerTick * 60.0;
 
     return Scaffold(
       appBar: AppBar(
@@ -41,7 +42,7 @@ class DemandCalculationScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '${currentDemand.toStringAsFixed(1)}',
+                      '${currentDemandPerMin.toStringAsFixed(1)}',
                       style: TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.bold,

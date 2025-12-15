@@ -31,6 +31,34 @@ void main() {
       expect(stats.totalMoneyEarned, 0.0);
     });
 
+    test('processSales retourne none si la demande est nulle (ex: reputation=0)', () {
+      final player = PlayerManager();
+      final stats = StatisticsManager();
+      final market = MarketManager()..setManagers(player, stats);
+
+      market.autoSellEnabled = true;
+      market.reputation = 0.0;
+
+      double paperclipsDelta = 0.0;
+      double moneyDelta = 0.0;
+
+      final result = market.processSales(
+        playerPaperclips: 100,
+        sellPrice: 0.2,
+        marketingLevel: 0,
+        qualityLevel: 0,
+        updatePaperclips: (delta) => paperclipsDelta += delta,
+        updateMoney: (delta) => moneyDelta += delta,
+        updateMarketState: false,
+      );
+
+      expect(result, MarketSaleResult.none);
+      expect(paperclipsDelta, 0.0);
+      expect(moneyDelta, 0.0);
+      expect(stats.totalMoneyEarned, 0.0);
+      expect(market.salesHistory.length, 0);
+    });
+
     test('processSales vend des trombones, crédite l’argent et met à jour stats', () {
       final player = PlayerManager();
       final stats = StatisticsManager();

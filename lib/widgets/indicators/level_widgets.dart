@@ -10,10 +10,11 @@ class XPStatusDisplay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<GameState>(
-      builder: (context, gameState, child) {
-        final comboMultiplier = gameState.levelSystem.currentComboMultiplier;
-        final totalMultiplier = gameState.levelSystem.totalXpMultiplier;
+    return Selector<GameState, LevelSystem>(
+      selector: (context, gameState) => gameState.levelSystem,
+      builder: (context, levelSystem, child) {
+        final comboMultiplier = levelSystem.currentComboMultiplier;
+        final totalMultiplier = levelSystem.totalXpMultiplier;
 
         return Card(
           child: Padding(
@@ -42,10 +43,10 @@ class XPStatusDisplay extends StatelessWidget {
                     fontSize: 12,
                   ),
                 ),
-                if (!gameState.levelSystem.dailyBonus.claimed)
+                if (!levelSystem.dailyBonus.claimed)
                   ElevatedButton.icon(
                     onPressed: () {
-                      if (gameState.levelSystem.claimDailyBonus()) {
+                      if (levelSystem.claimDailyBonus()) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text('Bonus quotidien réclamé !'),
@@ -71,10 +72,11 @@ class LevelDisplay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<GameState>(
-      builder: (context, gameState, child) {
-        final comboMultiplier = gameState.levelSystem.currentComboMultiplier;
-        final totalMultiplier = gameState.levelSystem.totalXpMultiplier;
+    return Selector<GameState, LevelSystem>(
+      selector: (context, gameState) => gameState.levelSystem,
+      builder: (context, levelSystem, child) {
+        final comboMultiplier = levelSystem.currentComboMultiplier;
+        final totalMultiplier = levelSystem.totalXpMultiplier;
 
         return Card(
           elevation: 2,
@@ -86,7 +88,7 @@ class LevelDisplay extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'Niveau ${gameState.levelSystem.level}',
+                      'Niveau ${levelSystem.level}',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -114,7 +116,7 @@ class LevelDisplay extends StatelessWidget {
                       ),
                     IconButton(
                       icon: const Icon(Icons.info_outline),
-                      onPressed: () => showLevelInfo(context, gameState),
+                      onPressed: () => showLevelInfo(context, levelSystem),
                     ),
                   ],
                 ),
@@ -122,7 +124,7 @@ class LevelDisplay extends StatelessWidget {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(10),
                   child: LinearProgressIndicator(
-                    value: gameState.levelSystem.experienceProgress,
+                    value: levelSystem.experienceProgress,
                     minHeight: 10,
                     backgroundColor: Colors.grey[300],
                     valueColor: const AlwaysStoppedAnimation<Color>(Colors.blue),
@@ -133,7 +135,7 @@ class LevelDisplay extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'XP: ${gameState.levelSystem.experience.floor()} / ${gameState.levelSystem.experienceForNextLevel.floor()}',
+                      'XP: ${levelSystem.experience.floor()} / ${levelSystem.experienceForNextLevel.floor()}',
                       style: const TextStyle(fontSize: 12),
                     ),
                     if (totalMultiplier > 1.0)
@@ -147,12 +149,12 @@ class LevelDisplay extends StatelessWidget {
                       ),
                   ],
                 ),
-                if (gameState.levelSystem.isDailyBonusAvailable)
+                if (levelSystem.isDailyBonusAvailable)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: ElevatedButton.icon(
                       onPressed: () {
-                        if (gameState.levelSystem.claimDailyBonus()) {
+                        if (levelSystem.claimDailyBonus()) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                               content: Text('Bonus quotidien réclamé !'),
@@ -177,7 +179,7 @@ class LevelDisplay extends StatelessWidget {
     );
   }
 
-  void showLevelInfo(BuildContext context, GameState gameState) {
+  void showLevelInfo(BuildContext context, LevelSystem levelSystem) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -186,17 +188,17 @@ class LevelDisplay extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Niveau actuel: ${gameState.levelSystem.level}'),
+            Text('Niveau actuel: ${levelSystem.level}'),
             const SizedBox(height: 8),
-            Text('Bonus de production: +${((gameState.levelSystem.productionMultiplier - 1) * 100).toStringAsFixed(1)}%'),
-            Text('Bonus de vente: +${((gameState.levelSystem.salesMultiplier - 1) * 100).toStringAsFixed(1)}%'),
+            Text('Bonus de production: +${((levelSystem.productionMultiplier - 1) * 100).toStringAsFixed(1)}%'),
+            Text('Bonus de vente: +${((levelSystem.salesMultiplier - 1) * 100).toStringAsFixed(1)}%'),
             const SizedBox(height: 16),
             const Text(
               'Multiplicateurs actifs :',
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
-            Text('• Combo: x${gameState.levelSystem.currentComboMultiplier.toStringAsFixed(1)}'),
-            Text('• Total: x${gameState.levelSystem.totalXpMultiplier.toStringAsFixed(1)}'),
+            Text('• Combo: x${levelSystem.currentComboMultiplier.toStringAsFixed(1)}'),
+            Text('• Total: x${levelSystem.totalXpMultiplier.toStringAsFixed(1)}'),
             const SizedBox(height: 16),
             const Text(
               'Gains d\'expérience :',

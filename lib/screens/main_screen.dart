@@ -17,6 +17,8 @@ import '../services/notification_manager.dart';
 // Imports des services
 import '../services/save_system/save_manager_adapter.dart';
 import '../services/background_music.dart';
+import '../controllers/game_session_controller.dart';
+import '../models/statistics_manager.dart';
 
 // Imports des widgets
 import '../widgets/indicators/level_widgets.dart';
@@ -27,6 +29,7 @@ import '../widgets/buttons/production_button.dart';
 import '../widgets/indicators/competitive_mode_indicator.dart';
 import '../widgets/save_button.dart';
 import '../services/upgrades/upgrade_effects_calculator.dart';
+import '../services/progression/progression_rules_service.dart';
 
 // Imports des écrans
 import 'production_screen.dart';
@@ -54,6 +57,10 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<GameSessionController>().startSession();
+    });
     // Corriger l'ordre des écrans
     _screens = [
       const ProductionScreen(),
@@ -108,16 +115,16 @@ class _MainScreenState extends State<MainScreen> {
     return '${hours}h ${minutes}m ${remainingSeconds}s';
   }
 
-  Widget _getCurrentScreen(Map<String, bool> visibleScreens) {
+  Widget _getCurrentScreen(VisibleUiElements visibleScreens) {
     switch (_selectedIndex) {
       case 0:
         return _screens[0]; // Production toujours visible
       case 1:
-        return visibleScreens['market'] == true
+        return visibleScreens[UiElement.market] == true
             ? _screens[1]
             : const PlaceholderLockedScreen();
       case 2:
-        return visibleScreens['upgradesSection'] == true
+        return visibleScreens[UiElement.upgradesSection] == true
             ? _screens[2]
             : const PlaceholderLockedScreen();
       default:
@@ -126,7 +133,7 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   List<NavigationDestination> _buildNavigationDestinations(
-      Map<String, bool> visibleScreens) {
+      VisibleUiElements visibleScreens) {
     return [
       const NavigationDestination(
         icon: Icon(Icons.factory_outlined),
@@ -134,24 +141,24 @@ class _MainScreenState extends State<MainScreen> {
         label: 'Production',
       ),
       NavigationDestination(
-        icon: Icon(visibleScreens['market'] == true
+        icon: Icon(visibleScreens[UiElement.market] == true
             ? Icons.shopping_cart_outlined
             : Icons.lock_outline),
-        selectedIcon: Icon(visibleScreens['market'] == true
+        selectedIcon: Icon(visibleScreens[UiElement.market] == true
             ? Icons.shopping_cart
             : Icons.lock),
-        label: visibleScreens['market'] == true
+        label: visibleScreens[UiElement.market] == true
             ? 'Marché'
             : 'Niveau ${GameConstants.MARKET_UNLOCK_LEVEL}',
       ),
       NavigationDestination(
-        icon: Icon(visibleScreens['upgradesSection'] == true
+        icon: Icon(visibleScreens[UiElement.upgradesSection] == true
             ? Icons.upgrade_outlined
             : Icons.lock_outline),
-        selectedIcon: Icon(visibleScreens['upgradesSection'] == true
+        selectedIcon: Icon(visibleScreens[UiElement.upgradesSection] == true
             ? Icons.upgrade
             : Icons.lock),
-        label: visibleScreens['upgradesSection'] == true
+        label: visibleScreens[UiElement.upgradesSection] == true
             ? 'Améliorations'
             : 'Niveau ${GameConstants.UPGRADES_UNLOCK_LEVEL}',
       ),
@@ -246,19 +253,25 @@ class _MainScreenState extends State<MainScreen> {
               ),
               const Divider(),
               Expanded(
-                child: Consumer<GameState>(
-                  builder: (context, gameState, _) {
-                    final stats = gameState.statistics.getAllStats();
-                    return SingleChildScrollView(
-                      child: Column(
-                        children: [
-                          _buildStatSection('Production', stats['production']!),
-                          const SizedBox(height: 16),
-                          _buildStatSection('Économie', stats['economie']!),
-                          const SizedBox(height: 16),
-                          _buildStatSection('Progression', stats['progression']!),
-                        ],
-                      ),
+                child: Selector<GameState, StatisticsManager>(
+                  selector: (context, gameState) => gameState.statistics,
+                  builder: (context, statistics, _) {
+                    return AnimatedBuilder(
+                      animation: statistics,
+                      builder: (context, child) {
+                        final stats = statistics.getAllStats();
+                        return SingleChildScrollView(
+                          child: Column(
+                            children: [
+                              _buildStatSection('Production', stats['production']!),
+                              const SizedBox(height: 16),
+                              _buildStatSection('Économie', stats['economy']!),
+                              const SizedBox(height: 16),
+                              _buildStatSection('Progression', stats['progression']!),
+                            ],
+                          ),
+                        );
+                      },
                     );
                   },
                 ),
@@ -347,8 +360,6 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     return Consumer<GameState>(
       builder: (context, gameState, child) {
-        print("Mode crise actif : ${gameState.isInCrisisMode}"); // Debug log
-
         final backgroundMusicService = context.watch<BackgroundMusicService>();
 
         // Utilisation de notre nouvelle GameAppBar réutilisable
@@ -383,7 +394,7 @@ class _MainScreenState extends State<MainScreen> {
                 children: [
                   gameState.showingCrisisView
                       ? const NewMetalProductionScreen()
-                      : _getCurrentScreen(gameState.getVisibleScreenElements()),
+                      : _getCurrentScreen(gameState.getVisibleUiElements()),
                   Positioned(
                     top: 16,
                     right: 16,
@@ -413,7 +424,7 @@ class _MainScreenState extends State<MainScreen> {
                 onDestinationSelected: (index) =>
                     setState(() => _selectedIndex = index),
                 destinations: _buildNavigationDestinations(
-                    gameState.getVisibleScreenElements()
+                    gameState.getVisibleUiElements()
                 ),
               ),
             )
@@ -434,7 +445,7 @@ class _MainScreenState extends State<MainScreen> {
         }
 
         // Interface normale
-        final visibleScreens = gameState.getVisibleScreenElements();
+        final visibleScreens = gameState.getVisibleUiElements();
         final efficiencyLevel = gameState.player.upgrades['efficiency']?.level ?? 0;
         final metalPerPaperclip = UpgradeEffectsCalculator.metalPerPaperclip(
           efficiencyLevel: efficiencyLevel,

@@ -5,24 +5,46 @@ import 'package:provider/provider.dart';
 import '../../models/game_state.dart';
 import '../../constants/game_config.dart'; // Importé depuis constants au lieu de models
 
+class _CompetitiveIndicatorView {
+  final GameMode gameMode;
+  final Duration playTime;
+
+  const _CompetitiveIndicatorView({
+    required this.gameMode,
+    required this.playTime,
+  });
+
+  @override
+  bool operator ==(Object other) {
+    return other is _CompetitiveIndicatorView &&
+        other.gameMode == gameMode &&
+        other.playTime == playTime;
+  }
+
+  @override
+  int get hashCode => Object.hash(gameMode, playTime);
+}
+
 class CompetitiveModeIndicator extends StatelessWidget {
   const CompetitiveModeIndicator({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<GameState>(
-      builder: (context, gameState, child) {
+    return Selector<GameState, _CompetitiveIndicatorView>(
+      selector: (context, gameState) => _CompetitiveIndicatorView(
+        gameMode: gameState.gameMode,
+        playTime: gameState.competitivePlayTime,
+      ),
+      builder: (context, view, child) {
         // Ne rien afficher si ce n'est pas le mode compétitif
-        if (gameState.gameMode != GameMode.COMPETITIVE) {
+        if (view.gameMode != GameMode.COMPETITIVE) {
           return const SizedBox.shrink();
         }
 
-        // Calculer le temps écoulé en mode compétitif
-        final Duration playTime = gameState.competitivePlayTime;
-        final String formattedTime = _formatDuration(playTime);
+        final String formattedTime = _formatDuration(view.playTime);
 
         return GestureDetector(
-          onTap: () => _showCompetitiveInfo(context, gameState),
+          onTap: () => _showCompetitiveInfo(context, context.read<GameState>()),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(

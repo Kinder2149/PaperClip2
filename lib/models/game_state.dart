@@ -66,10 +66,46 @@ class GameState extends ChangeNotifier {
   // Suivi interne du temps de jeu et des compteurs globaux
   DateTime _lastUpdateTime = DateTime.now();
   DateTime? _lastSaveTime;
+  DateTime? _lastActiveAt;
+  DateTime? _lastOfflineAppliedAt;
   bool _isPaused = false;
 
   void markLastSaveTime(DateTime value) {
     _lastSaveTime = value;
+  }
+
+  void markLastActiveAt(DateTime value) {
+    _lastActiveAt = value;
+  }
+
+  void markLastOfflineAppliedAt(DateTime value) {
+    _lastOfflineAppliedAt = value;
+  }
+
+  void applyOfflineModeAOnResume() {
+    if (!_isInitialized || isPaused) return;
+
+    final lastActiveAt = _lastActiveAt;
+    if (lastActiveAt == null) return;
+
+    final now = DateTime.now();
+    var delta = now.difference(lastActiveAt);
+    if (delta.isNegative || delta.inSeconds <= 0) {
+      _lastActiveAt = now;
+      return;
+    }
+
+    if (delta > GameConstants.OFFLINE_MAX_DURATION) {
+      delta = GameConstants.OFFLINE_MAX_DURATION;
+    }
+
+    _productionManager.processProduction(
+      elapsedSeconds: delta.inMilliseconds / 1000.0,
+    );
+
+    _lastOfflineAppliedAt = now;
+    _lastActiveAt = now;
+    notifyListeners();
   }
 
   // Getters complémentaires utilisés par l'UI
@@ -149,6 +185,7 @@ class GameState extends ChangeNotifier {
 
   GameState() {
     _initializeManagers();
+    _lastActiveAt = DateTime.now();
   }
 
   // Méthode de compatibilité pour les tests qui appellent initialize()
@@ -401,6 +438,14 @@ class GameState extends ChangeNotifier {
     }
   }
 
+  void addMetal(double amount) {
+    if (amount <= 0) {
+      return;
+    }
+    player.updateMetal(player.metal + amount);
+    notifyListeners();
+  }
+
   void producePaperclip() {
     // Flux officiel : délègue à ProductionManager.
     // La mise à jour des stats/XP/leaderboard est centralisée côté ProductionManager.
@@ -601,19 +646,25 @@ class GameState extends ChangeNotifier {
 
   /// Crée un snapshot sérialisable de l'état courant du jeu
   GameSnapshot toSnapshot() {
+    final now = DateTime.now();
     final metadata = <String, dynamic>{
+      'schemaVersion': 1,
       'gameId': _gameName,
       'gameMode': _gameMode.toString(),
-      'savedAt': DateTime.now().toIso8601String(),
+      'savedAt': now.toIso8601String(),
+      'lastActiveAt': (_lastActiveAt ?? now).toIso8601String(),
+      if (_lastOfflineAppliedAt != null)
+        'lastOfflineAppliedAt': _lastOfflineAppliedAt!.toIso8601String(),
       'gameVersion': GameConstants.VERSION,
     };
 
     final core = <String, dynamic>{
-      'player': {
-        'money': _playerManager.money,
-        'paperclips': _playerManager.paperclips,
-        'metal': _playerManager.metal,
-      },
+      'playerManager': _playerManager.toJson(),
+      'marketManager': _marketManager.toJson(),
+      'resourceManager': _resourceManager.toJson(),
+      'levelSystem': _levelSystem.toJson(),
+      'missionSystem': _missionSystem.toJson(),
+      'productionManager': _productionManager.toJson(),
       'game': {
         'gameName': _gameName,
         'gameMode': _gameMode.toString(),
@@ -634,6 +685,14 @@ class GameState extends ChangeNotifier {
     final metadata = snapshot.metadata;
     final core = snapshot.core;
 
+    final lastActiveRaw = metadata['lastActiveAt'] as String?;
+    _lastActiveAt = lastActiveRaw != null ? DateTime.tryParse(lastActiveRaw) : _lastActiveAt;
+
+    final lastOfflineAppliedRaw = metadata['lastOfflineAppliedAt'] as String?;
+    _lastOfflineAppliedAt = lastOfflineAppliedRaw != null
+        ? DateTime.tryParse(lastOfflineAppliedRaw)
+        : _lastOfflineAppliedAt;
+
     _gameName = metadata['gameId'] as String? ?? _gameName;
 
     final modeString = metadata['gameMode'] as String?;
@@ -645,31 +704,38 @@ class GameState extends ChangeNotifier {
       }
     }
 
-    final metaTime = (metadata['totalTimePlayedInSeconds'] as num?)?.toInt();
-    if (metaTime != null) {
-      _statistics.setTotalGameTimeSec(metaTime);
-    }
-    final metaProduced = (metadata['totalPaperclipsProduced'] as num?)?.toInt();
-    if (metaProduced != null) {
-      _statistics.setTotalPaperclipsProduced(metaProduced);
-    }
-
-    final playerCore = core['player'];
-    if (playerCore is Map) {
-      final playerMap = Map<String, dynamic>.from(playerCore as Map);
+    if (core['playerManager'] is Map) {
+      _playerManager.fromJson(Map<String, dynamic>.from(core['playerManager'] as Map));
+    } else if (core['player'] is Map) {
+      // Fallback snapshot legacy minimal
+      final playerMap = Map<String, dynamic>.from(core['player'] as Map);
       final money = (playerMap['money'] as num?)?.toDouble();
       final paperclips = (playerMap['paperclips'] as num?)?.toDouble();
       final metal = (playerMap['metal'] as num?)?.toDouble();
 
-      if (money != null) {
-        _playerManager.updateMoney(money);
-      }
-      if (paperclips != null) {
-        _playerManager.updatePaperclips(paperclips);
-      }
-      if (metal != null) {
-        _playerManager.updateMetal(metal);
-      }
+      if (money != null) _playerManager.updateMoney(money);
+      if (paperclips != null) _playerManager.updatePaperclips(paperclips);
+      if (metal != null) _playerManager.updateMetal(metal);
+    }
+
+    if (core['marketManager'] is Map) {
+      _marketManager.fromJson(Map<String, dynamic>.from(core['marketManager'] as Map));
+    }
+
+    if (core['resourceManager'] is Map) {
+      _resourceManager.fromJson(Map<String, dynamic>.from(core['resourceManager'] as Map));
+    }
+
+    if (core['levelSystem'] is Map) {
+      _levelSystem.fromJson(Map<String, dynamic>.from(core['levelSystem'] as Map));
+    }
+
+    if (core['missionSystem'] is Map) {
+      _missionSystem.fromJson(Map<String, dynamic>.from(core['missionSystem'] as Map));
+    }
+
+    if (core['productionManager'] is Map) {
+      _productionManager.fromJson(Map<String, dynamic>.from(core['productionManager'] as Map));
     }
 
     final statsCore = snapshot.stats;
@@ -738,6 +804,10 @@ class GameState extends ChangeNotifier {
 
   Map<String, bool> getVisibleScreenElements() {
     return _progressionRules.getVisibleScreenElements(_levelSystem.level);
+  }
+
+  VisibleUiElements getVisibleUiElements() {
+    return _progressionRules.getVisibleUiElements(_levelSystem.level);
   }
 
   void chooseProgressionPath(ProgressionPath path) {

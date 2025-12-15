@@ -5,6 +5,44 @@ import '../managers/market_manager.dart';
 import '../widgets/cards/stats_panel.dart';
 import '../widgets/indicators/stat_indicator.dart';
 import '../widgets/cards/info_card.dart';
+import '../services/format/game_format.dart';
+
+class _SalesHistoryView {
+  final List<SaleRecord> sales;
+  final double sellPrice;
+  final int totalSold;
+  final double totalRevenue;
+  final int salesCount;
+  final int lastSaleTimestampMs;
+
+  const _SalesHistoryView({
+    required this.sales,
+    required this.sellPrice,
+    required this.totalSold,
+    required this.totalRevenue,
+    required this.salesCount,
+    required this.lastSaleTimestampMs,
+  });
+
+  @override
+  bool operator ==(Object other) {
+    return other is _SalesHistoryView &&
+        other.sellPrice == sellPrice &&
+        other.totalSold == totalSold &&
+        other.totalRevenue == totalRevenue &&
+        other.salesCount == salesCount &&
+        other.lastSaleTimestampMs == lastSaleTimestampMs;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        sellPrice,
+        totalSold,
+        totalRevenue,
+        salesCount,
+        lastSaleTimestampMs,
+      );
+}
 
 class SalesHistoryScreen extends StatelessWidget {
   const SalesHistoryScreen({super.key});
@@ -20,9 +58,26 @@ class SalesHistoryScreen extends StatelessWidget {
         title: const Text('Historique des Ventes'),
         elevation: 0,
       ),
-      body: Consumer<GameState>(
-        builder: (context, gameState, child) {
+      body: Selector<GameState, _SalesHistoryView>(
+        selector: (context, gameState) {
           final sales = gameState.market.salesHistory;
+          final totalRevenue = gameState.market.totalSalesRevenue;
+          final totalSold = gameState.market.totalSalesCount;
+          final lastSaleTimestampMs = sales.isEmpty
+              ? 0
+              : sales.last.timestamp.millisecondsSinceEpoch;
+
+          return _SalesHistoryView(
+            sales: sales,
+            sellPrice: gameState.player.sellPrice,
+            totalSold: totalSold,
+            totalRevenue: totalRevenue,
+            salesCount: sales.length,
+            lastSaleTimestampMs: lastSaleTimestampMs,
+          );
+        },
+        builder: (context, view, child) {
+          final sales = view.sales;
 
           if (sales.isEmpty) {
             return Center(
@@ -53,7 +108,7 @@ class SalesHistoryScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _buildSummaryCard(gameState),
+                _buildSummaryCardFromView(view),
                 const SizedBox(height: 24),
                 Row(
                   children: [
@@ -85,26 +140,26 @@ class SalesHistoryScreen extends StatelessWidget {
       ),
     );
   }
-  Widget _buildSummaryCard(GameState gameState) {
-    double totalRevenue = gameState.market.salesHistory
-        .fold(0.0, (sum, sale) => sum + sale.revenue);
-        
+
+  Widget _buildSummaryCardFromView(_SalesHistoryView view) {
+    final double totalRevenue = view.totalRevenue;
+
     List<Widget> statItems = [
       _buildSummaryItem(
         'Revenus Session',
-        '${totalRevenue.toStringAsFixed(2)} €',
+        GameFormat.money(totalRevenue, decimals: 2),
         Icons.euro,
         Colors.green,
       ),
       _buildSummaryItem(
         'Prix Actuel',
-        '${gameState.player.sellPrice.toStringAsFixed(2)} €',
+        GameFormat.money(view.sellPrice, decimals: 2),
         Icons.price_check,
         Colors.blue,
       ),
       _buildSummaryItem(
         'Total Vendu',
-        _formatQuantity(gameState.totalPaperclipsProduced),
+        GameFormat.quantityCompact(view.totalSold, decimals: 1),
         Icons.shopping_cart,
         Colors.orange,
       ),
@@ -113,7 +168,7 @@ class SalesHistoryScreen extends StatelessWidget {
     return StatsPanel(
       title: 'Résumé des Ventes',
       titleIcon: Icons.analytics,
-      titleStyle: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+      titleStyle: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
       backgroundColor: Colors.white,
       padding: const EdgeInsets.all(16),
       direction: Axis.horizontal,
@@ -137,33 +192,29 @@ class SalesHistoryScreen extends StatelessWidget {
 
   Widget _buildSaleCard(SaleRecord sale) {
     Map<String, String> details = {
-      'Prix unitaire': '${sale.price.toStringAsFixed(2)} €',
+      'Prix unitaire': GameFormat.money(sale.price, decimals: 2),
       'Heure': _formatTimestamp(sale.timestamp),
     };
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: InfoCard(
-        title: '${sale.quantity} unités vendues',
-        value: '${sale.revenue.toStringAsFixed(2)} €',
+        title: '${GameFormat.quantityCompact(sale.quantity, decimals: 1)} unités vendues',
+        value: GameFormat.money(sale.revenue, decimals: 2),
         icon: Icons.sell,
         trailing: Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           mainAxisSize: MainAxisSize.min,
-          children: details.entries.map((entry) => Text('${entry.key}: ${entry.value}', style: TextStyle(fontSize: 12))).toList(),
+          children: details.entries
+              .map((entry) => Text(
+                    '${entry.key}: ${entry.value}',
+                    style: const TextStyle(fontSize: 12),
+                  ))
+              .toList(),
         ),
         iconColor: Colors.green,
         backgroundColor: Colors.white,
       ),
     );
-  }
-
-  String _formatQuantity(int quantity) {
-    if (quantity >= 1000000) {
-      return '${(quantity / 1000000).toStringAsFixed(1)}M';
-    } else if (quantity >= 1000) {
-      return '${(quantity / 1000).toStringAsFixed(1)}K';
-    }
-    return quantity.toString();
   }
 }

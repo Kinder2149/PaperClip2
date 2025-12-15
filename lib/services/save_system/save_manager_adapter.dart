@@ -358,6 +358,9 @@ class SaveManagerAdapter {
         }
         throw SaveError('load_error', 'Sauvegarde introuvable');
       }
+
+      // Si plusieurs entrées ont le même nom, prendre la plus récente.
+      matchingMetadata.sort((a, b) => b.lastModified.compareTo(a.lastModified));
       
       // Utiliser l'ID pour charger les données
       final saveId = matchingMetadata.first.id;
@@ -433,31 +436,45 @@ class SaveManagerAdapter {
   /// Restaure une sauvegarde à partir d'un backup
   static Future<bool> restoreFromBackup(String backupName, GameState gameState) async {
     try {
-      // Charger le backup
-      final backupData = await instance.loadSave(backupName);
-      final backupMetadata = await instance.getSaveMetadata(backupName);
-      
-      if (backupMetadata == null) {
+      await ensureInitialized();
+
+      // Résoudre backupName -> backupId
+      final allMetadatas = await instance.listSaves();
+      final matchingBackup = allMetadatas.where((m) => m.name == backupName).toList();
+      if (matchingBackup.isEmpty) {
         return false;
       }
+
+      matchingBackup.sort((a, b) => b.lastModified.compareTo(a.lastModified));
+      final backupMeta = matchingBackup.first;
+      final backupId = backupMeta.id;
 
       // Extraire le nom de la sauvegarde originale
       final originalName = backupName.split(GameConstants.BACKUP_DELIMITER).first;
       
       // Extraire les données du jeu de la sauvegarde de backup
-      final backupSave = await instance.loadSave(backupName);
+      final backupSave = await instance.loadSave(backupId);
       if (backupSave == null) return false;
       
       // Utilisez une assertion non-null pour gameData, car backupSave n'est pas null
       final Map<String, dynamic> extractedGameData = backupSave.gameData;
+
+      // Tenter de restaurer dans l'ID de la sauvegarde originale si elle existe.
+      String? originalId;
+      final matchingOriginal = allMetadatas.where((m) => m.name == originalName).toList();
+      if (matchingOriginal.isNotEmpty) {
+        matchingOriginal.sort((a, b) => b.lastModified.compareTo(a.lastModified));
+        originalId = matchingOriginal.first.id;
+      }
       
       // Créer une nouvelle sauvegarde avec les données du backup
       SaveGame newSave = SaveGame(
+        id: originalId,
         name: originalName,
         lastSaveTime: DateTime.now(),
         gameData: extractedGameData,
-        version: backupMetadata.version,
-        gameMode: backupMetadata.gameMode,
+        version: backupMeta.version,
+        gameMode: backupMeta.gameMode,
         isRestored: true,
       );
       
@@ -622,10 +639,37 @@ class SaveManagerAdapter {
   /// Supprime une sauvegarde
   static Future<void> deleteSave(String name) async {
     try {
-      await instance.deleteSave(name);
+      // deleteSave() du manager attend un ID; ici l'API publique expose un name.
+      await deleteSaveByName(name);
     } catch (e) {
       if (kDebugMode) {
         print('Erreur lors de la suppression: $e');
+      }
+      rethrow;
+    }
+  }
+
+  /// Supprime une sauvegarde à partir de son nom (name) plutôt que de son id.
+  ///
+  /// Utile pour les écrans UI où le concept manipulé est le nom de sauvegarde.
+  static Future<void> deleteSaveByName(String name) async {
+    try {
+      await ensureInitialized();
+
+      final metadatas = await instance.listSaves();
+      final matching = metadatas.where((m) => m.name == name).toList();
+      if (matching.isEmpty) {
+        throw SaveError('delete_error', 'Sauvegarde introuvable');
+      }
+
+      // Si plusieurs entrées ont le même nom, on supprime la plus récente.
+      matching.sort((a, b) => b.lastModified.compareTo(a.lastModified));
+      final id = matching.first.id;
+
+      await instance.deleteSave(id);
+    } catch (e) {
+      if (kDebugMode) {
+        print('Erreur lors de la suppression (par name): $e');
       }
       rethrow;
     }

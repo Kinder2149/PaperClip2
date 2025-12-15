@@ -13,16 +13,23 @@ class AppLifecycleHandler with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
-      final gameState = _gameState;
-      if (gameState == null || gameState.gameName == null) {
-        return;
-      }
+    final gameState = _gameState;
+    if (gameState == null || gameState.gameName == null) {
+      return;
+    }
 
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      gameState.markLastActiveAt(DateTime.now());
       GamePersistenceOrchestrator.instance.requestLifecycleSave(
         gameState,
         reason: 'app_lifecycle_${state.name}',
       );
+      return;
+    }
+
+    if (state == AppLifecycleState.resumed) {
+      gameState.applyOfflineModeAOnResume();
+      return;
     }
   }
 }

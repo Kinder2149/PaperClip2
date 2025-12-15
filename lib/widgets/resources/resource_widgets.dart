@@ -2,8 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/game_state.dart';
-import 'dart:math';
 import '../../constants/game_config.dart'; // Importé depuis constants au lieu de models
+import '../../services/format/game_format.dart';
 
 class MoneyDisplay extends StatelessWidget {
   const MoneyDisplay({super.key});
@@ -19,67 +19,21 @@ class MoneyDisplay extends StatelessWidget {
       return value.toString();
     }
 
-    // Liste des suffixes pour les grands nombres
-    const suffixes = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
-
-    // Fonction helper pour formater avec séparateur de milliers
-    String formatWithThousandSeparator(double n) {
-      String str = n.toString();
-      int dotIndex = str.indexOf('.');
-      if (dotIndex == -1) dotIndex = str.length;
-
-      String result = '';
-      for (int i = 0; i < str.length; i++) {
-        if (i < dotIndex && i > 0 && (dotIndex - i) % 3 == 0) {
-          result += '.';
-        }
-        result += str[i];
-      }
-      return result;
-    }
-
     if (value < 1000) {
-      // Nombres inférieurs à 1000
-      return isInteger
-          ? '${value.toStringAsFixed(0)} €'
-          : '${formatWithThousandSeparator(double.parse(value.toStringAsFixed(2)))} €';
+      return GameFormat.money(
+        value,
+        decimals: isInteger ? 0 : 2,
+      );
     }
 
-    // Pour les grands nombres
-    int index = (log(value) / log(1000)).floor();
-    index = min(index, suffixes.length - 1);
-    double simplified = value / pow(1000, index);
-
-    // Formatage avec plus de précision
-    String formatted;
-    if (simplified >= 100) {
-      // Pour les nombres ≥ 100, on montre 3 chiffres significatifs
-      formatted = simplified.toStringAsFixed(3);
-      // Enlever les zéros inutiles après la virgule
-      if (formatted.contains('.')) {
-        formatted = formatted.replaceAll(RegExp(r'\.?0+$'), '');
-      }
-    } else if (simplified >= 10) {
-      // Pour les nombres entre 10 et 100, on montre jusqu'à 4 chiffres significatifs
-      formatted = simplified.toStringAsFixed(3);
-      if (formatted.contains('.')) {
-        formatted = formatted.replaceAll(RegExp(r'\.?0+$'), '');
-      }
-    } else {
-      // Pour les nombres < 10, on montre jusqu'à 4 chiffres significatifs
-      formatted = simplified.toStringAsFixed(3);
-      if (formatted.contains('.')) {
-        formatted = formatted.replaceAll(RegExp(r'\.?0+$'), '');
-      }
-    }
-
-    return '$formatted${suffixes[index]} €';
+    return '${GameFormat.quantityCompact(value, decimals: 3)} €';
   }
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<GameState>(
-      builder: (context, gameState, child) {
+    return Selector<GameState, double>(
+      selector: (context, gameState) => gameState.player.money,
+      builder: (context, money, child) {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
           decoration: BoxDecoration(
@@ -87,7 +41,7 @@ class MoneyDisplay extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
+                color: Colors.black.withAlpha(25),
                 blurRadius: 4,
                 offset: const Offset(0, 2),
               ),
@@ -99,7 +53,7 @@ class MoneyDisplay extends StatelessWidget {
               const Icon(Icons.euro, size: 20),
               const SizedBox(width: 8),
               Text(
-                formatNumber(gameState.player.money),
+                formatNumber(money),
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -114,13 +68,13 @@ class MoneyDisplay extends StatelessWidget {
 }
 
 class ResourceStatusWidget extends StatelessWidget {
-  const ResourceStatusWidget({Key? key}) : super(key: key);
+  const ResourceStatusWidget({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<GameState>(
-      builder: (context, gameState, child) {
-        final metalStock = gameState.resources.marketMetalStock;  // Utilisation du getter
+    return Selector<GameState, double>(
+      selector: (context, gameState) => gameState.marketManager.marketMetalStock,
+      builder: (context, metalStock, child) {
         final warningLevel = metalStock <= GameConstants.WARNING_THRESHOLD;  // Utilisation de GameConstants
         final criticalLevel = metalStock <= GameConstants.CRITICAL_THRESHOLD;  // Utilisation de GameConstants
 
@@ -154,7 +108,7 @@ class ResourceStatusWidget extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${metalStock.toStringAsFixed(1)} unités',
+                  '${GameFormat.number(metalStock, decimals: 1)} unités',
                   style: TextStyle(
                     fontSize: 12,
                     color: criticalLevel
@@ -171,13 +125,48 @@ class ResourceStatusWidget extends StatelessWidget {
   }
 }
 
+class _ResourceOverviewView {
+  final double money;
+  final double paperclips;
+  final double metal;
+  final double maxMetalStorage;
+
+  const _ResourceOverviewView({
+    required this.money,
+    required this.paperclips,
+    required this.metal,
+    required this.maxMetalStorage,
+  });
+
+  @override
+  bool operator ==(Object other) {
+    return other is _ResourceOverviewView &&
+        other.money == money &&
+        other.paperclips == paperclips &&
+        other.metal == metal &&
+        other.maxMetalStorage == maxMetalStorage;
+  }
+
+  @override
+  int get hashCode => Object.hash(money, paperclips, metal, maxMetalStorage);
+}
+
 class ResourceOverview extends StatelessWidget {
-  const ResourceOverview({Key? key}) : super(key: key);
+  const ResourceOverview({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<GameState>(
-      builder: (context, gameState, child) {
+    return Selector<GameState, _ResourceOverviewView>(
+      selector: (context, gameState) {
+        final player = gameState.player;
+        return _ResourceOverviewView(
+          money: player.money,
+          paperclips: player.paperclips,
+          metal: player.metal,
+          maxMetalStorage: player.maxMetalStorage,
+        );
+      },
+      builder: (context, view, child) {
         return Card(
           child: Padding(
             padding: const EdgeInsets.all(16.0),
@@ -196,19 +185,19 @@ class ResourceOverview extends StatelessWidget {
                     _ResourceItem(
                       icon: Icons.euro,
                       label: 'Argent',
-                      value: gameState.player.money.toStringAsFixed(2),  // Utilisation du getter
+                      value: GameFormat.money(view.money, decimals: 2),
                       color: Colors.green,
                     ),
                     _ResourceItem(
                       icon: Icons.link,
                       label: 'Trombones',
-                      value: gameState.player.paperclips.toStringAsFixed(0),  // Utilisation du getter
+                      value: GameFormat.intWithSeparators(view.paperclips.floor()),
                       color: Colors.blue,
                     ),
                     _ResourceItem(
                       icon: Icons.straighten,
                       label: 'Métal',
-                      value: '${gameState.player.metal.toStringAsFixed(1)}/${gameState.player.maxMetalStorage}',  // Utilisation du getter
+                      value: '${GameFormat.number(view.metal, decimals: 1)}/${GameFormat.number(view.maxMetalStorage, decimals: 0)}',
                       color: Colors.grey,
                     ),
                   ],

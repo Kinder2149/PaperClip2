@@ -4,7 +4,6 @@ import '../models/game_state.dart';
 import '../constants/game_config.dart'; // Importé depuis constants au lieu de models
 import '../widgets/resources/resource_widgets.dart';
 import '../widgets/indicators/level_widgets.dart';
-import '../services/save_system/save_manager_adapter.dart';
 import '../widgets/buttons/action_button.dart';
 import '../widgets/cards/info_card.dart';
 import '../widgets/dialogs/info_dialog.dart';
@@ -12,6 +11,79 @@ import '../widgets/indicators/stat_indicator.dart';
 import '../widgets/cards/stats_panel.dart';
 import '../widgets/save_button.dart';
 import '../services/upgrades/upgrade_effects_calculator.dart';
+import '../services/progression/progression_rules_service.dart';
+import '../services/format/game_format.dart';
+
+class _ProductionScreenView {
+  final bool showMarketInfo;
+  final bool showMetalPurchaseButton;
+  final bool showAutoClipperCountSection;
+  final bool autoSellEnabled;
+  final int totalPaperclipsProduced;
+  final double paperclipsInStock;
+  final double metal;
+  final double maxMetalStorage;
+
+  final double currentMetalPrice;
+  final double sellPrice;
+  final int level;
+  final double productionMultiplier;
+  final int autoClipperCount;
+
+  const _ProductionScreenView({
+    required this.showMarketInfo,
+    required this.showMetalPurchaseButton,
+    required this.showAutoClipperCountSection,
+    required this.autoSellEnabled,
+    required this.totalPaperclipsProduced,
+    required this.paperclipsInStock,
+    required this.metal,
+    required this.maxMetalStorage,
+
+    required this.currentMetalPrice,
+    required this.sellPrice,
+    required this.level,
+    required this.productionMultiplier,
+    required this.autoClipperCount,
+  });
+
+  @override
+  bool operator ==(Object other) {
+    return other is _ProductionScreenView &&
+        other.showMarketInfo == showMarketInfo &&
+        other.showMetalPurchaseButton == showMetalPurchaseButton &&
+        other.showAutoClipperCountSection == showAutoClipperCountSection &&
+        other.autoSellEnabled == autoSellEnabled &&
+        other.totalPaperclipsProduced == totalPaperclipsProduced &&
+        other.paperclipsInStock == paperclipsInStock &&
+        other.metal == metal &&
+        other.maxMetalStorage == maxMetalStorage &&
+
+        other.currentMetalPrice == currentMetalPrice &&
+        other.sellPrice == sellPrice &&
+        other.level == level &&
+        other.productionMultiplier == productionMultiplier &&
+        other.autoClipperCount == autoClipperCount;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        showMarketInfo,
+        showMetalPurchaseButton,
+        showAutoClipperCountSection,
+        autoSellEnabled,
+        totalPaperclipsProduced,
+        paperclipsInStock,
+        metal,
+        maxMetalStorage,
+        currentMetalPrice,
+
+        sellPrice,
+        level,
+        productionMultiplier,
+        autoClipperCount,
+      );
+}
 
 class ProductionScreen extends StatefulWidget {
   const ProductionScreen({super.key});
@@ -25,14 +97,14 @@ class _ProductionScreenState extends State<ProductionScreen> {
   // au travers de `Consumer<GameState>` et des `notifyListeners()`.
 
   bool _canPurchaseMetal(GameState gameState) {
-    return gameState.resourceManager.canPurchaseMetal();
+    return gameState.canBuyMetal();
   }
 
   String formatNumber(double number, bool isMetal) {
     if (isMetal) {
-      return number.toStringAsFixed(2);
+      return GameFormat.number(number, decimals: 2);
     } else {
-      return number.floor().toString();
+      return GameFormat.intWithSeparators(number.floor());
     }
   }
 
@@ -100,14 +172,10 @@ class _ProductionScreenState extends State<ProductionScreen> {
                         ),
                       ),
                       Text(
-                        'Retour sur investissement: ${(gameState.player
-                            .calculateAutoclipperCost() /
-                            (GameConstants.BASE_AUTOCLIPPER_PRODUCTION *
-                                gameState.player.sellPrice)).toStringAsFixed(
-                            1)}s',
-                        style: TextStyle(
+                        'Retour sur investissement: ${GameFormat.number(roi, decimals: 1)}%/min',
+                        style: const TextStyle(
                           fontSize: 12,
-                          color: Colors.grey[600],
+                          color: Colors.grey,
                         ),
                       ),
                     ],
@@ -132,17 +200,17 @@ class _ProductionScreenState extends State<ProductionScreen> {
               children: [
                 _buildBonusIndicator(
                   'Production',
-                  '+${bulkBonus.toStringAsFixed(0)}%',
+                  '+${GameFormat.number(bulkBonus, decimals: 0)}%',
                   Icons.trending_up,
                 ),
                 _buildBonusIndicator(
                   'Vitesse',
-                  '+${speedBonus.toStringAsFixed(0)}%',
+                  '+${GameFormat.number(speedBonus, decimals: 0)}%',
                   Icons.speed,
                 ),
                 _buildBonusIndicator(
                   'Économie Métal',
-                  '-${metalSavingPercent.toStringAsFixed(0)}%',
+                  '-${GameFormat.number(metalSavingPercent, decimals: 0)}%',
                   Icons.eco,
                 ),
               ],
@@ -150,7 +218,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
             const SizedBox(height: 12),
             ActionButton.purchase(
               onPressed: canBuyAutoclipper ? () => gameState.buyAutoclipper() : null,
-              label: 'Acheter Autoclipper (${autoclipperCost.toStringAsFixed(1)} €)',
+              label: 'Acheter Autoclipper (${GameFormat.money(autoclipperCost, decimals: 1)})',
               showComboMultiplier: true,
             ),
           ],
@@ -165,13 +233,21 @@ class _ProductionScreenState extends State<ProductionScreen> {
       double speedBonus,
       double metalSavingPercent) {
     // Calculs pour des informations précises
-    double baseProduction = gameState.player.autoClipperCount * 60; // par minute
+    double baseProduction = gameState.player.autoClipperCount *
+        (GameConstants.BASE_AUTOCLIPPER_PRODUCTION * 60.0); // par minute
     double speedMultiplier = 1.0 + (speedBonus / 100);
     double bulkMultiplier = 1.0 + (bulkBonus / 100);
     double effectiveProduction = baseProduction * speedMultiplier * bulkMultiplier;
-    double baseMetalConsumption = baseProduction * GameConstants.METAL_PER_PAPERCLIP;
-    double effectiveMetalConsumption = effectiveProduction * GameConstants.METAL_PER_PAPERCLIP * (1.0 - metalSavingPercent / 100);
-    double metalSaved = effectiveProduction * GameConstants.METAL_PER_PAPERCLIP * (metalSavingPercent / 100);
+
+    final efficiencyLevel = gameState.player.upgrades['efficiency']?.level ?? 0;
+    final metalPerPaperclip = UpgradeEffectsCalculator.metalPerPaperclip(
+      efficiencyLevel: efficiencyLevel,
+    );
+
+    double effectiveMetalConsumption =
+        effectiveProduction * metalPerPaperclip * (1.0 - metalSavingPercent / 100);
+    double metalSaved =
+        effectiveProduction * metalPerPaperclip * (metalSavingPercent / 100);
 
     showDialog(
       context: context,
@@ -188,9 +264,9 @@ class _ProductionScreenState extends State<ProductionScreen> {
                     TextSpan(
                       children: [
                         const TextSpan(text: 'Production de base: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                        TextSpan(text: '${baseProduction.toStringAsFixed(1)} trombones/min\n'),
+                        TextSpan(text: '${GameFormat.number(baseProduction, decimals: 1)} trombones/min\n'),
                         const TextSpan(text: 'Avec améliorations: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                        TextSpan(text: '${effectiveProduction.toStringAsFixed(1)} trombones/min'),
+                        TextSpan(text: '${GameFormat.number(effectiveProduction, decimals: 1)} trombones/min'),
                       ],
                     ),
                   ),
@@ -201,9 +277,9 @@ class _ProductionScreenState extends State<ProductionScreen> {
                     TextSpan(
                       children: [
                         const TextSpan(text: 'Bonus de production: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                        TextSpan(text: '+${bulkBonus.toStringAsFixed(0)}%\n', style: TextStyle(color: Colors.green)),
+                        TextSpan(text: '+${GameFormat.number(bulkBonus, decimals: 0)}%\n', style: const TextStyle(color: Colors.green)),
                         const TextSpan(text: 'Bonus de vitesse: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                        TextSpan(text: '+${speedBonus.toStringAsFixed(0)}%', style: TextStyle(color: Colors.blue)),
+                        TextSpan(text: '+${GameFormat.number(speedBonus, decimals: 0)}%', style: const TextStyle(color: Colors.blue)),
                       ],
                     ),
                   ),
@@ -214,10 +290,10 @@ class _ProductionScreenState extends State<ProductionScreen> {
                     TextSpan(
                       children: [
                         const TextSpan(text: 'Consommation de métal: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                        TextSpan(text: '${effectiveMetalConsumption.toStringAsFixed(2)}/min\n'),
+                        TextSpan(text: '${GameFormat.number(effectiveMetalConsumption, decimals: 2)}/min\n'),
                         const TextSpan(text: 'Économie de métal: ', style: TextStyle(fontWeight: FontWeight.bold)),
                         TextSpan(
-                          text: '-${metalSavingPercent.toStringAsFixed(0)}% (${metalSaved.toStringAsFixed(2)} unités/min)',
+                          text: '-${GameFormat.number(metalSavingPercent, decimals: 0)}% (${GameFormat.number(metalSaved, decimals: 2)} unités/min)',
                           style: TextStyle(color: Colors.green[700]),
                         ),
                       ],
@@ -231,7 +307,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
                       children: [
                         const TextSpan(text: 'Coûts de maintenance: ', style: TextStyle(fontWeight: FontWeight.bold)),
                         TextSpan(
-                          text: '${gameState.maintenanceCosts.toStringAsFixed(2)} € par min',
+                          text: '${GameFormat.money(gameState.maintenanceCosts, decimals: 2)} par min',
                           style: TextStyle(color: Colors.red[700]),
                         ),
                       ],
@@ -247,38 +323,6 @@ class _ProductionScreenState extends State<ProductionScreen> {
               ),
             ],
           ),
-    );
-  }
-
-  void _showItemInfoDialog(BuildContext context, String title, Map<String, dynamic> item) {
-    String priceStr = item['price'].toStringAsFixed(1);
-    String description = item['description'] ?? "Description non disponible";
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(description),
-              const SizedBox(height: 8),
-              Text(
-                "Prix: $priceStr €",
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Fermer'),
-          ),
-        ],
-      ),
     );
   }
 
@@ -308,15 +352,15 @@ class _ProductionScreenState extends State<ProductionScreen> {
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     const TextSpan(text: 'Base: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                    TextSpan(text: '${baseProduction.toStringAsFixed(1)} trombones/min\n'),
+                    TextSpan(text: '${GameFormat.number(baseProduction, decimals: 1)} trombones/min\n'),
                     const TextSpan(text: 'Effective: ', style: TextStyle(fontWeight: FontWeight.bold)),
                     TextSpan(
-                      text: '${actualProduction.toStringAsFixed(1)} trombones/min ',
+                      text: '${GameFormat.number(actualProduction, decimals: 1)} trombones/min ',
                       style: const TextStyle(fontWeight: FontWeight.w500),
                     ),
                     TextSpan(
-                      text: '(+${productionIncrease.toStringAsFixed(0)}%)',
-                      style: TextStyle(color: Colors.green[700], fontWeight: FontWeight.bold),
+                      text: '(+${GameFormat.number(productionIncrease, decimals: 0)}%)',
+                      style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
@@ -332,17 +376,17 @@ class _ProductionScreenState extends State<ProductionScreen> {
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     const TextSpan(text: 'Consommation: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                    TextSpan(text: '${metalUsage.toStringAsFixed(1)} unités/min\n'),
+                    TextSpan(text: '${GameFormat.number(metalUsage, decimals: 1)} unités/min\n'),
                     const TextSpan(text: 'Économie: ', style: TextStyle(fontWeight: FontWeight.bold)),
                     TextSpan(
                       text: metalSavingPercent > 0 ? 
-                        '${metalSaved.toStringAsFixed(1)} unités/min ' : 
+                        '${GameFormat.number(metalSaved, decimals: 1)} unités/min ' : 
                         '0 unités/min',
                     ),
                     if (metalSavingPercent > 0)
                       TextSpan(
-                        text: '(-${metalSavingPercent.toStringAsFixed(0)}%)',
-                        style: TextStyle(color: Colors.green[700], fontWeight: FontWeight.bold),
+                        text: '(-${GameFormat.number(metalSavingPercent, decimals: 0)}%)',
+                        style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
                       ),
                   ],
                 ),
@@ -385,8 +429,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('Réputation: ${gameState.market.reputation
-                      .toStringAsFixed(2)}'),
+                  Text('Réputation: ${GameFormat.number(gameState.market.reputation, decimals: 2)}'),
                   const Text(
                     'Influence les ventes et les prix maximum.',
                     style: TextStyle(fontSize: 12, color: Colors.grey),
@@ -394,14 +437,13 @@ class _ProductionScreenState extends State<ProductionScreen> {
                   const Divider(),
                   Text('Demande actuelle: ${(gameState.market.calculateDemand(
                       gameState.player.sellPrice,
-                      gameState.player.getMarketingLevel()) * 100)
-                      .toStringAsFixed(0)}%'),
+                      gameState.player.getMarketingLevel()) * 100).toStringAsFixed(0)}%'),
                   const Text(
                     'Basée sur le prix et le niveau marketing.',
                     style: TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                   const Divider(),
-                  Text('Stock mondial de métal: ${gameState.resources
+                  Text('Stock mondial de métal: ${gameState.marketManager
                       .marketMetalStock.toStringAsFixed(0)}'),
                   const Text(
                     'Influence les prix et la disponibilité.',
@@ -417,16 +459,6 @@ class _ProductionScreenState extends State<ProductionScreen> {
               ),
             ],
           ),
-    );
-  }
-
-  Widget _buildMarketIndicator(String label, String value, IconData icon) {
-    // Utilisation du nouveau widget StatIndicator
-    return StatIndicator(
-      label: label,
-      value: value,
-      icon: icon,
-      layout: StatIndicatorLayout.horizontal,
     );
   }
 
@@ -447,6 +479,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
       title: 'État du Marché',
       titleIcon: Icons.trending_up,
       backgroundColor: Colors.teal.shade100,
+      // Le paramètre trailing n'est pas supporté, nous utilisons action à la place
       action: IconButton(
         icon: const Icon(Icons.info_outline),
         onPressed: () => _showMarketInfoDialog(context, gameState),
@@ -455,7 +488,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
       children: [
         StatIndicator(
           label: 'Réputation',
-          value: gameState.market.reputation.toStringAsFixed(2),
+          value: GameFormat.number(gameState.market.reputation, decimals: 2),
           icon: Icons.star,
         ),
         StatIndicator(
@@ -467,7 +500,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
         ),
         StatIndicator(
           label: 'Stock Métal Mondial',
-          value: gameState.resources.marketMetalStock.toStringAsFixed(0),
+          value: gameState.marketManager.marketMetalStock.toStringAsFixed(0),
           icon: Icons.inventory_2,
         ),
       ],
@@ -504,7 +537,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
           width: 160,
           child: StatIndicator(
             label: 'Production de base',
-            value: baseProduction.toStringAsFixed(1) + '/min',
+            value: '${GameFormat.number(baseProduction, decimals: 1)}/min',
             icon: Icons.speed,
             layout: StatIndicatorLayout.vertical,
             iconColor: Colors.blue,
@@ -516,7 +549,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
           width: 160,
           child: StatIndicator(
             label: 'Production effective',
-            value: actualProduction.toStringAsFixed(1) + '/min',
+            value: '${GameFormat.number(actualProduction, decimals: 1)}/min',
             icon: Icons.precision_manufacturing,
             layout: StatIndicatorLayout.vertical,
             iconColor: Colors.green,
@@ -533,7 +566,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
           child: StatIndicator(
             label: 'Économie de métal',
             value: metalSavingPercent > 0 ? 
-              '-${metalSavingPercent.toStringAsFixed(0)}%' : 
+              '-${GameFormat.number(metalSavingPercent, decimals: 0)}%' : 
               '0%',
             icon: Icons.eco,
             layout: StatIndicatorLayout.vertical,
@@ -550,7 +583,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
           width: 160,
           child: StatIndicator(
             label: 'Métal utilisé/min',
-            value: metalUsage.toStringAsFixed(1),
+            value: GameFormat.number(metalUsage, decimals: 1),
             icon: Icons.settings_input_component,
             layout: StatIndicatorLayout.vertical,
             iconColor: Colors.orange[700],
@@ -568,7 +601,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
         children: [
           StatIndicator(
             label: 'Vitesse',
-            value: '+${((speedBonus - 1.0) * 100).toStringAsFixed(0)}%',
+            value: '+${GameFormat.number(((speedBonus - 1.0) * 100), decimals: 0)}%',
             icon: Icons.shutter_speed,
             layout: StatIndicatorLayout.horizontal,
             iconColor: Colors.blue[400],
@@ -577,7 +610,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
           ),
           StatIndicator(
             label: 'Production',
-            value: '+${((bulkBonus - 1.0) * 100).toStringAsFixed(0)}%',
+            value: '+${GameFormat.number(((bulkBonus - 1.0) * 100), decimals: 0)}%',
             icon: Icons.inventory_2,
             layout: StatIndicatorLayout.horizontal,
             iconColor: Colors.green[400],
@@ -593,7 +626,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
       padding: const EdgeInsets.only(top: 12),
       child: StatIndicator(
         label: 'Coût maintenance',
-        value: '${gameState.maintenanceCosts.toStringAsFixed(2)} €/min',
+        value: GameFormat.moneyPerMin(gameState.maintenanceCosts, decimals: 2),
         icon: Icons.euro,
         layout: StatIndicatorLayout.horizontal,
         iconColor: Colors.red[400],
@@ -630,10 +663,27 @@ class _ProductionScreenState extends State<ProductionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<GameState>(
-      builder: (context, gameState, child) {
-        final visibleElements = gameState.getVisibleScreenElements();
-
+    return Selector<GameState, _ProductionScreenView>(
+      selector: (context, gameState) {
+        final visibleElements = gameState.getVisibleUiElements();
+        return _ProductionScreenView(
+          showMarketInfo: visibleElements[UiElement.marketInfo],
+          showMetalPurchaseButton: visibleElements[UiElement.metalPurchaseButton],
+          showAutoClipperCountSection:
+              visibleElements[UiElement.autoClipperCountSection],
+          autoSellEnabled: gameState.autoSellEnabled,
+          totalPaperclipsProduced: gameState.totalPaperclipsProduced,
+          paperclipsInStock: gameState.player.paperclips,
+          metal: gameState.player.metal,
+          maxMetalStorage: gameState.player.maxMetalStorage,
+          currentMetalPrice: gameState.market.currentMetalPrice,
+          sellPrice: gameState.player.sellPrice,
+          level: gameState.level.level,
+          productionMultiplier: gameState.level.productionMultiplier,
+          autoClipperCount: gameState.player.autoClipperCount,
+        );
+      },
+      builder: (context, view, child) {
         return Column(
           children: [
             Expanded(
@@ -648,10 +698,11 @@ class _ProductionScreenState extends State<ProductionScreen> {
 
                       SwitchListTile(
                         title: const Text('Vente automatique'),
-                        subtitle: const Text('Vendre automatiquement selon la demande du marché'),
-                        value: gameState.autoSellEnabled,
+                        subtitle: const Text(
+                            'Vendre automatiquement selon la demande du marché'),
+                        value: view.autoSellEnabled,
                         onChanged: (value) {
-                          gameState.setAutoSellEnabled(value);
+                          context.read<GameState>().setAutoSellEnabled(value);
                         },
                       ),
 
@@ -662,51 +713,37 @@ class _ProductionScreenState extends State<ProductionScreen> {
                         children: [
                           _buildResourceCard(
                             'Total Trombones',
-                            MoneyDisplay.formatNumber(
-                                gameState.totalPaperclipsProduced.toDouble(),
-                                isInteger: true).replaceAll(' €', ''),
+                            GameFormat.intWithSeparators(view.totalPaperclipsProduced),
                             Colors.purple.shade100,
-                            onTap: () =>
-                                _showInfoDialog(
-                                  context,
-                                  'Statistiques de Production',
-                                  'Total produit: ${MoneyDisplay.formatNumber(
-                                      gameState.totalPaperclipsProduced
-                                          .toDouble(), isInteger: true)
-                                      .replaceAll(' €', '')}\n'
-                                      'Niveau: ${gameState.level.level}\n'
-                                      'Multiplicateur: x${gameState.level
-                                      .productionMultiplier.toStringAsFixed(
-                                      2)}',
-                                ),
+                            onTap: () => _showInfoDialog(
+                              context,
+                              'Statistiques de Production',
+                              'Total produit: ${GameFormat.intWithSeparators(view.totalPaperclipsProduced)}\n'
+                                  'Niveau: ${view.level}\n'
+                                  'Multiplicateur: x${view.productionMultiplier.toStringAsFixed(2)}',
+                            ),
                           ),
                           const SizedBox(width: 16),
                           _buildResourceCard(
                             'Stock Trombones',
-                            MoneyDisplay.formatNumber(
-                                gameState.player.paperclips, isInteger: true)
-                                .replaceAll(' €', ''),
+                            GameFormat.intWithSeparators(view.paperclipsInStock.floor()),
                             Colors.blue.shade100,
-                            onTap: () =>
-                                _showInfoDialog(
-                                  context,
-                                  'Stock de Trombones',
-                                  'Total en stock: ${MoneyDisplay.formatNumber(
-                                      gameState.player.paperclips,
-                                      isInteger: true).replaceAll(' €', '')}\n'
-                                      'Production totale: ${MoneyDisplay
-                                      .formatNumber(
-                                      gameState.totalPaperclipsProduced
-                                          .toDouble(), isInteger: true)
-                                      .replaceAll(' €', '')}',
-                                ),
+                            onTap: () => _showInfoDialog(
+                              context,
+                              'Stock de Trombones',
+                              'Total en stock: ${GameFormat.intWithSeparators(view.paperclipsInStock.floor())}\n'
+                                  'Production totale: ${GameFormat.intWithSeparators(view.totalPaperclipsProduced)}',
+                            ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 16),
 
-                      if (visibleElements['marketInfo'] == true)
-                        _buildMarketInfoCard(context, gameState),
+                      if (view.showMarketInfo)
+                        Consumer<GameState>(
+                          builder: (context, gameState, _) =>
+                              _buildMarketInfoCard(context, gameState),
+                        ),
 
                       const SizedBox(height: 16),
 
@@ -714,69 +751,69 @@ class _ProductionScreenState extends State<ProductionScreen> {
                         children: [
                           _buildResourceCard(
                             'Métal',
-                            '${formatNumber(
-                                gameState.player.metal, true)} / ${gameState
-                                .player.maxMetalStorage}',
+                            '${GameFormat.number(view.metal, decimals: 2)} / ${GameFormat.number(view.maxMetalStorage, decimals: 0)}',
                             Colors.grey.shade200,
-                            onTap: () =>
-                                _showInfoDialog(
-                                  context,
-                                  'Stock de Métal',
-                                  'Stock: ${formatNumber(
-                                      gameState.player.metal, true)}\n'
-                                      'Capacité: ${gameState.player
-                                      .maxMetalStorage}\n'
-                                      'Prix: ${gameState.market
-                                      .currentMetalPrice.toStringAsFixed(
-                                      2)} €\n'
-                                      'Efficacité: ${((1 -
-                                      ((gameState.player.upgrades["efficiency"]
-                                          ?.level ?? 0) * 0.15)) * 100)
-                                      .toStringAsFixed(0)}%',
-                                ),
+                            onTap: () {
+                              final gameState = context.read<GameState>();
+                              _showInfoDialog(
+                                context,
+                                'Stock de Métal',
+                                'Stock: ${GameFormat.number(view.metal, decimals: 2)}\n'
+                                    'Capacité: ${GameFormat.number(view.maxMetalStorage, decimals: 0)}\n'
+                                    'Prix: ${GameFormat.money(view.currentMetalPrice, decimals: 2)}\n'
+                                    'Efficacité: ${((1 - ((gameState.player.upgrades["efficiency"]?.level ?? 0) * 0.15)) * 100).toStringAsFixed(0)}%',
+                              );
+                            },
                           ),
                           const SizedBox(width: 16),
                           _buildResourceCard(
                             'Prix Vente',
-                            '${gameState.player.sellPrice.toStringAsFixed(
-                                2)} €',
+                            GameFormat.money(view.sellPrice, decimals: 2),
                             Colors.green.shade100,
-                            onTap: () =>
-                                _showInfoDialog(
-                                  context,
-                                  'Prix de Vente',
-                                  'Prix actuel: ${gameState.player.sellPrice
-                                      .toStringAsFixed(2)} €\n'
-                                      'Bonus qualité: +${((gameState.player
-                                      .upgrades["quality"]?.level ?? 0) *
-                                      10)}%\n'
-                                      'Impact réputation: x${gameState.market
-                                      .reputation.toStringAsFixed(2)}',
-                                ),
+                            onTap: () {
+                              final gameState = context.read<GameState>();
+                              _showInfoDialog(
+                                context,
+                                'Prix de Vente',
+                                'Prix actuel: ${GameFormat.money(view.sellPrice, decimals: 2)}\n'
+                                    'Bonus qualité: +${((gameState.player.upgrades["quality"]?.level ?? 0) * 10)}%\n'
+                                    'Impact réputation: x${gameState.market.reputation.toStringAsFixed(2)}',
+                              );
+                            },
                           ),
                         ],
                       ),
                       const SizedBox(height: 16),
 
-                      if (visibleElements['marketInfo'] == true)
-                        _buildMarketInfoCard(context, gameState),
-                      if (visibleElements['marketInfo'] == true)
+                      if (view.showMarketInfo)
+                        Consumer<GameState>(
+                          builder: (context, gameState, _) =>
+                              _buildMarketInfoCard(context, gameState),
+                        ),
+                      if (view.showMarketInfo)
                         const SizedBox(height: 16),
 
-                      if (visibleElements['metalPurchaseButton'] == true) ...[
-                        ActionButton.purchase(
-                          onPressed: _canPurchaseMetal(gameState)
-                              ? () => gameState.purchaseMetal()
-                              : null,
-                          label: 'Acheter Métal (${gameState.market
-                              .currentMetalPrice.toStringAsFixed(1)} €)',
-                          showComboMultiplier: true,
+                      if (view.showMetalPurchaseButton) ...[
+                        Consumer<GameState>(
+                          builder: (context, gameState, _) {
+                            return ActionButton.purchase(
+                              onPressed: _canPurchaseMetal(gameState)
+                                  ? () => context.read<GameState>().purchaseMetal()
+                                  : null,
+                              label:
+                                  'Acheter Métal (${GameFormat.money(gameState.market.currentMetalPrice, decimals: 1)})',
+                              showComboMultiplier: true,
+                            );
+                          },
                         ),
                         const SizedBox(height: 16),
                       ],
 
-                      if (visibleElements['autoClipperCountSection'] == true) ...[
-                        _buildAutoclippersSection(context, gameState),
+                      if (view.showAutoClipperCountSection) ...[
+                        Consumer<GameState>(
+                          builder: (context, gameState, _) =>
+                              _buildAutoclippersSection(context, gameState),
+                        ),
                         const SizedBox(height: 16),
                       ],
 
@@ -785,9 +822,12 @@ class _ProductionScreenState extends State<ProductionScreen> {
                       ),
 
                       // Statistiques de production déplacées à la fin
-                      if (gameState.player.autoClipperCount > 0) ...[
+                      if (view.autoClipperCount > 0) ...[
                         const SizedBox(height: 16),
-                        _buildProductionStatsCard(gameState),
+                        Consumer<GameState>(
+                          builder: (context, gameState, _) =>
+                              _buildProductionStatsCard(gameState),
+                        ),
                       ],
                     ],
                   ),

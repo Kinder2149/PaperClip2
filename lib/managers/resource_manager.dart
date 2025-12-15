@@ -208,10 +208,8 @@ class ResourceManager extends ChangeNotifier implements JsonLoadable {
     'Hors contrat ResourceManager (réduction ciblée): la consommation de métal pour production est gérée par ProductionManager/PlayerManager. Conservé pour compatibilité.'
   )
   bool consumeMetal(double amount) {
-    throw UnsupportedError(
-      'ResourceManager.consumeMetal() est hors contrat. '
-      'Utiliser ProductionManager/PlayerManager pour la consommation liée à la production.',
-    );
+    // Compatibilité: ne doit plus être utilisé. On évite cependant un crash runtime.
+    return false;
   }
   
   /// Calcul la quantité de trombones pouvant être produits avec le métal disponible
@@ -219,10 +217,8 @@ class ResourceManager extends ChangeNotifier implements JsonLoadable {
     'Hors contrat ResourceManager (réduction ciblée): la production relève de ProductionManager. Ne pas utiliser. (Retour par défaut)'
   )
   int calculatePossibleClips() {
-    throw UnsupportedError(
-      'ResourceManager.calculatePossibleClips() est hors contrat. '
-      'Utiliser ProductionManager pour toute logique de production.',
-    );
+    // Compatibilité: ne doit plus être utilisé. On évite cependant un crash runtime.
+    return 0;
   }
   
   /// Calculer la consommation de métal pour un nombre de trombones
@@ -230,10 +226,8 @@ class ResourceManager extends ChangeNotifier implements JsonLoadable {
     'Hors contrat ResourceManager (réduction ciblée): la consommation relève de ProductionManager. Ne pas utiliser. (Retour par défaut)'
   )
   double calculateMetalConsumption(int clipCount) {
-    throw UnsupportedError(
-      'ResourceManager.calculateMetalConsumption() est hors contrat. '
-      'Utiliser ProductionManager pour toute logique de consommation en production.',
-    );
+    // Compatibilité: ne doit plus être utilisé. On évite cependant un crash runtime.
+    return 0.0;
   }
   
   // Méthode calculateWireConsumption supprimée - migration wire vers metal complète

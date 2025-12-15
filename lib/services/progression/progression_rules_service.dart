@@ -3,6 +3,110 @@ import 'package:paperclip2/managers/player_manager.dart';
 import 'package:paperclip2/models/progression_system.dart';
 import 'package:paperclip2/gameplay/events/game_event.dart';
 
+enum UiElement {
+  metalStock,
+  paperclipStock,
+  manualProductionButton,
+  moneyDisplay,
+  marketPrice,
+  sellButton,
+  market,
+  marketStats,
+  priceChart,
+  marketInfo,
+  metalPurchaseButton,
+  autoclippersSection,
+  autoClipperCountSection,
+  productionStats,
+  efficiencyDisplay,
+  upgradesSection,
+  upgradesScreen,
+  levelDisplay,
+  experienceBar,
+  comboDisplay,
+  statsSection,
+  achievementsSection,
+  settingsButton,
+  musicToggle,
+  notificationButton,
+  saveLoadButtons,
+}
+
+extension UiElementKey on UiElement {
+  String get key {
+    switch (this) {
+      case UiElement.metalStock:
+        return 'metalStock';
+      case UiElement.paperclipStock:
+        return 'paperclipStock';
+      case UiElement.manualProductionButton:
+        return 'manualProductionButton';
+      case UiElement.moneyDisplay:
+        return 'moneyDisplay';
+      case UiElement.marketPrice:
+        return 'marketPrice';
+      case UiElement.sellButton:
+        return 'sellButton';
+      case UiElement.market:
+        return 'market';
+      case UiElement.marketStats:
+        return 'marketStats';
+      case UiElement.priceChart:
+        return 'priceChart';
+      case UiElement.marketInfo:
+        return 'marketInfo';
+      case UiElement.metalPurchaseButton:
+        return 'metalPurchaseButton';
+      case UiElement.autoclippersSection:
+        return 'autoclippersSection';
+      case UiElement.autoClipperCountSection:
+        return 'autoClipperCountSection';
+      case UiElement.productionStats:
+        return 'productionStats';
+      case UiElement.efficiencyDisplay:
+        return 'efficiencyDisplay';
+      case UiElement.upgradesSection:
+        return 'upgradesSection';
+      case UiElement.upgradesScreen:
+        return 'upgradesScreen';
+      case UiElement.levelDisplay:
+        return 'levelDisplay';
+      case UiElement.experienceBar:
+        return 'experienceBar';
+      case UiElement.comboDisplay:
+        return 'comboDisplay';
+      case UiElement.statsSection:
+        return 'statsSection';
+      case UiElement.achievementsSection:
+        return 'achievementsSection';
+      case UiElement.settingsButton:
+        return 'settingsButton';
+      case UiElement.musicToggle:
+        return 'musicToggle';
+      case UiElement.notificationButton:
+        return 'notificationButton';
+      case UiElement.saveLoadButtons:
+        return 'saveLoadButtons';
+    }
+  }
+}
+
+class VisibleUiElements {
+  final Map<UiElement, bool> _flags;
+
+  const VisibleUiElements(this._flags);
+
+  bool isEnabled(UiElement element) => _flags[element] ?? false;
+
+  bool operator [](UiElement element) => isEnabled(element);
+
+  Map<String, bool> toLegacyMap() {
+    return {
+      for (final element in UiElement.values) element.key: isEnabled(element),
+    };
+  }
+}
+
 class ProgressionRulesService {
   final LevelSystem _levelSystem;
   final PlayerManager _playerManager;
@@ -13,55 +117,55 @@ class ProgressionRulesService {
   })  : _levelSystem = levelSystem,
         _playerManager = playerManager;
 
-  Map<String, bool> getVisibleScreenElements(int level) {
-    final flags = {
-      'metalStock': true,
-      'paperclipStock': true,
-      'manualProductionButton': true,
-      'moneyDisplay': true,
+  VisibleUiElements getVisibleUiElements(int level) {
+    final flags = <UiElement, bool>{
+      UiElement.metalStock: true,
+      UiElement.paperclipStock: true,
+      UiElement.manualProductionButton: true,
+      UiElement.moneyDisplay: true,
 
-      // Ventes activables dès le début (l'utilisateur peut ensuite désactiver via l'UI).
-      'marketPrice': level >= 1,
-      'sellButton': level >= 1,
+      UiElement.marketPrice: level >= 1,
+      UiElement.sellButton: level >= 1,
 
-      // L'écran/onglet Marché (analyses/graphes) reste un déblocage UX.
-      'market': level >= GameConstants.MARKET_UNLOCK_LEVEL,
-      'marketStats': level >= GameConstants.MARKET_UNLOCK_LEVEL,
-      'priceChart': level >= GameConstants.MARKET_UNLOCK_LEVEL,
-      'marketInfo': level >= GameConstants.MARKET_UNLOCK_LEVEL,
+      UiElement.market: level >= GameConstants.MARKET_UNLOCK_LEVEL,
+      UiElement.marketStats: level >= GameConstants.MARKET_UNLOCK_LEVEL,
+      UiElement.priceChart: level >= GameConstants.MARKET_UNLOCK_LEVEL,
+      UiElement.marketInfo: level >= GameConstants.MARKET_UNLOCK_LEVEL,
 
-      // Achat de métal débloqué au niveau 2.
-      'metalPurchaseButton': level >= 2,
+      UiElement.metalPurchaseButton: level >= 2,
 
-      // Autoclippers
-      'autoclippersSection': level >= 3,
-      // Alias utilisé par certains écrans.
-      'autoClipperCountSection': level >= 3,
+      UiElement.autoclippersSection: level >= 3,
+      UiElement.autoClipperCountSection: level >= 3,
 
-      'productionStats': level >= 2,
-      'efficiencyDisplay': level >= 3,
-      'upgradesSection': level >= GameConstants.UPGRADES_UNLOCK_LEVEL,
-      'upgradesScreen': level >= GameConstants.UPGRADES_UNLOCK_LEVEL,
-      'levelDisplay': true,
-      'experienceBar': true,
-      'comboDisplay': level >= 2,
-      'statsSection': level >= 4,
-      'achievementsSection': level >= 5,
-      'settingsButton': true,
-      'musicToggle': true,
-      'notificationButton': true,
-      'saveLoadButtons': true,
+      UiElement.productionStats: level >= 2,
+      UiElement.efficiencyDisplay: level >= 3,
+      UiElement.upgradesSection: level >= GameConstants.UPGRADES_UNLOCK_LEVEL,
+      UiElement.upgradesScreen: level >= GameConstants.UPGRADES_UNLOCK_LEVEL,
+      UiElement.levelDisplay: true,
+      UiElement.experienceBar: true,
+      UiElement.comboDisplay: level >= 2,
+      UiElement.statsSection: level >= 4,
+      UiElement.achievementsSection: level >= 5,
+      UiElement.settingsButton: true,
+      UiElement.musicToggle: true,
+      UiElement.notificationButton: true,
+      UiElement.saveLoadButtons: true,
     };
 
     assert(() {
       // Cohérence minimale: si le marché (onglet) est visible, alors les éléments associés doivent être présents.
-      if (flags['market'] == true) {
-        return flags['marketStats'] == true && flags['priceChart'] == true;
+      if (flags[UiElement.market] == true) {
+        return flags[UiElement.marketStats] == true &&
+            flags[UiElement.priceChart] == true;
       }
       return true;
     }());
 
-    return flags;
+    return VisibleUiElements(flags);
+  }
+
+  Map<String, bool> getVisibleScreenElements(int level) {
+    return getVisibleUiElements(level).toLegacyMap();
   }
 
   void onSale({required int quantity, required double unitPrice}) {
