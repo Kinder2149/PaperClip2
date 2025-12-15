@@ -32,10 +32,22 @@ class _MarketScreenView {
   final List<SaleRecord> salesHistory;
   final int lastSaleTimestampMs;
 
-  final String formattedDemandPerMin;
-  final String formattedProductionPerMin;
-  final String formattedSalesPerMin;
-  final String formattedProfitabilityPerMin;
+  final List<String> productionBonuses;
+  final double baseAutoclipperProductionPerSec;
+  final double metalPerClip;
+  final double currentMetalForClips;
+  final double productionDelta;
+  final String productionStatus;
+  final Color productionStatusColor;
+
+  final String formattedDemandPerSec;
+  final String formattedDemandPerMinDisplay;
+  final String formattedProductionPerSec;
+  final String formattedProductionPerMinDisplay;
+  final String formattedSalesPerSec;
+  final String formattedSalesPerMinDisplay;
+  final String formattedProfitabilityPerSec;
+  final String formattedProfitabilityPerMinDisplay;
   final String formattedSellPrice;
   final String formattedEffectiveSellPrice;
   final String formattedReputationPercent;
@@ -56,10 +68,23 @@ class _MarketScreenView {
     required this.reputation,
     required this.salesHistory,
     required this.lastSaleTimestampMs,
-    required this.formattedDemandPerMin,
-    required this.formattedProductionPerMin,
-    required this.formattedSalesPerMin,
-    required this.formattedProfitabilityPerMin,
+
+    required this.productionBonuses,
+    required this.baseAutoclipperProductionPerSec,
+    required this.metalPerClip,
+    required this.currentMetalForClips,
+    required this.productionDelta,
+    required this.productionStatus,
+    required this.productionStatusColor,
+
+    required this.formattedDemandPerSec,
+    required this.formattedDemandPerMinDisplay,
+    required this.formattedProductionPerSec,
+    required this.formattedProductionPerMinDisplay,
+    required this.formattedSalesPerSec,
+    required this.formattedSalesPerMinDisplay,
+    required this.formattedProfitabilityPerSec,
+    required this.formattedProfitabilityPerMinDisplay,
     required this.formattedSellPrice,
     required this.formattedEffectiveSellPrice,
     required this.formattedReputationPercent,
@@ -80,7 +105,12 @@ class _MarketScreenView {
         other.qualityBonus == qualityBonus &&
         other.effectiveSellPrice == effectiveSellPrice &&
         other.reputation == reputation &&
-        other.lastSaleTimestampMs == lastSaleTimestampMs;
+        other.lastSaleTimestampMs == lastSaleTimestampMs &&
+        other.baseAutoclipperProductionPerSec == baseAutoclipperProductionPerSec &&
+        other.metalPerClip == metalPerClip &&
+        other.currentMetalForClips == currentMetalForClips &&
+        other.productionDelta == productionDelta &&
+        other.productionStatus == productionStatus;
   }
 
   @override
@@ -98,6 +128,11 @@ class _MarketScreenView {
         effectiveSellPrice,
         reputation,
         lastSaleTimestampMs,
+        baseAutoclipperProductionPerSec,
+        metalPerClip,
+        currentMetalForClips,
+        productionDelta,
+        productionStatus,
       );
 }
 
@@ -105,6 +140,20 @@ class MarketScreen extends StatelessWidget {
   const MarketScreen({super.key});
 
   static const MarketInsightsService _insightsService = MarketInsightsService();
+
+  double _perSecFromPerMin(double perMin) => perMin / 60.0;
+
+  String _formatUnitsPerSec(double value, {int decimals = 2}) {
+    return '${GameFormat.number(value, decimals: decimals)}/sec';
+  }
+
+  String _formatUnitsPerMinApprox(double perSec, {int decimals = 1}) {
+    return '≈ ${GameFormat.number(perSec * 60.0, decimals: decimals)}/min';
+  }
+
+  String _formatMoneyPerSec(double valuePerSec, {int decimals = 2}) {
+    return '${GameFormat.money(valuePerSec, decimals: decimals)}/sec';
+  }
 
   Widget _buildMarketCard({
     required String title,
@@ -155,97 +204,48 @@ class MarketScreen extends StatelessWidget {
     return '$name: ${((bonus - 1.0) * 100).toStringAsFixed(1)}%';
   }
 
-  Widget _buildProductionCard(BuildContext context, GameState gameState, double autoclipperProduction, double demand) {
-    List<String> bonuses = [];
-
-    // Calcul des bonus
-    final speedLevel = gameState.player.upgrades['speed']?.level ?? 0;
-    final bulkLevel = gameState.player.upgrades['bulk']?.level ?? 0;
-    final efficiencyLevel = gameState.player.upgrades['efficiency']?.level ?? 0;
-
-    final speedBonus = UpgradeEffectsCalculator.speedMultiplier(level: speedLevel);
-    final bulkBonus = UpgradeEffectsCalculator.bulkMultiplier(level: bulkLevel);
-    final efficiencyBonus = 1.0 - UpgradeEffectsCalculator.efficiencyReduction(level: efficiencyLevel);
-
-    if (speedLevel > 0) {
-      bonuses.add(_formatBonusText('Vitesse', speedBonus));
-    }
-    if (bulkLevel > 0) {
-      bonuses.add(_formatBonusText('Production en masse', bulkBonus));
-    }
-    if (efficiencyLevel > 0) {
-      bonuses.add('Efficacité: -${((1.0 - efficiencyBonus) * 100).toStringAsFixed(1)}%');
-    }
-
-    double baseProduction = gameState.player.autoClipperCount *
-        (GameConstants.BASE_AUTOCLIPPER_PRODUCTION * 60.0);
-
-    final metalPerClip = UpgradeEffectsCalculator.metalPerPaperclip(
-      efficiencyLevel: efficiencyLevel,
-    );
-
-    // Statut de production (excédent ou déficit)
-    double productionDelta = autoclipperProduction - demand;
-    String productionStatus;
-    Color statusColor;
-
-    if (productionDelta > 0) {
-      productionStatus = "(Excédent: +${productionDelta.toStringAsFixed(1)})";
-      statusColor = Colors.red; // Rouge pour surproduction
-    } else if (productionDelta < 0) {
-      productionStatus = "(Déficit: ${productionDelta.toStringAsFixed(1)})";
-      statusColor = Colors.green; // Vert pour capacité insuffisante = opportunité
-    } else {
-      productionStatus = "(Équilibrée)";
-      statusColor = Colors.black; // Équilibrée
-    }
-
+  Widget _buildProductionCard(BuildContext context, GameState gameState, _MarketScreenView view) {
     return _buildMarketCard(
       title: 'Production des Autoclippers',
-      value: '${GameFormat.number(autoclipperProduction, decimals: 1)}/min',
+      value: _formatUnitsPerSec(view.autoclipperProduction, decimals: 2),
       icon: Icons.precision_manufacturing,
       color: Colors.orange.shade100,
-      tooltip: 'Production avec bonus appliqués',
+      tooltip: 'Production (estimée) avec bonus appliqués',
       onInfoPressed: () => _showInfoDialog(
         context,
         'Production Détaillée',
         'Détails de la production :\n'
-            '- Base (${gameState.player.autoClipperCount} autoClipperCount): ${baseProduction.toStringAsFixed(1)}/min\n'
-            '${bonuses.isNotEmpty ? '\nBonus actifs:\n${bonuses.join("\n")}\n' : ''}'
-            '\nMétal utilisé par trombone: ${metalPerClip.toStringAsFixed(2)} unités\n'
-            '(Efficacité: -${((1.0 - efficiencyBonus) * 100).toStringAsFixed(1)}%)\n\n'
+            '- Base (${gameState.player.autoClipperCount} autoClipperCount): ${_formatUnitsPerSec(view.baseAutoclipperProductionPerSec, decimals: 2)}\n'
+            '  ${_formatUnitsPerMinApprox(view.baseAutoclipperProductionPerSec)}\n'
+            '${view.productionBonuses.isNotEmpty ? '\nBonus actifs:\n${view.productionBonuses.join("\n")}\n' : ''}'
+            '\nMétal utilisé par trombone: ${view.metalPerClip.toStringAsFixed(2)} unités\n'
             'Comparaison avec la demande du marché:\n'
-            '- Production: ${autoclipperProduction.toStringAsFixed(1)}/min\n'
-            '- Demande: ${demand.toStringAsFixed(1)}/min\n'
-            '- Statut: $productionStatus\n\n'
-            "${productionDelta > 0 ? 'ATTENTION: Une surproduction par rapport à la demande implique des trombones non vendus!' : ''}\n"
-            "${productionDelta < 0 ? 'OPPORTUNITÉ: La demande est supérieure à votre production actuelle. Envisagez d\'augmenter votre capacité!' : ''}",
+            '- Production (estimée): ${_formatUnitsPerSec(view.autoclipperProduction, decimals: 2)}\n'
+            '  ${_formatUnitsPerMinApprox(view.autoclipperProduction)}\n'
+            '- Demande (estimée): ${_formatUnitsPerSec(view.demand, decimals: 2)}\n'
+            '  ${_formatUnitsPerMinApprox(view.demand)}\n'
+            '- Statut: ${view.productionStatus}\n\n'
+            "${view.productionDelta > 0 ? 'ATTENTION: Une surproduction par rapport à la demande implique des trombones non vendus!' : ''}\n"
+            "${view.productionDelta < 0 ? 'OPPORTUNITÉ: La demande est supérieure à votre production actuelle. Envisagez d\'augmenter votre capacité!' : ''}",
       ),
       trailing: Text(
-        productionStatus,
+        view.productionStatus,
         style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.bold,
-          color: statusColor,
+          color: view.productionStatusColor,
         ),
       ),
     );
   }
 
-  Widget _buildMetalStatus(BuildContext context, GameState gameState) {
-    final efficiencyLevel = gameState.player.upgrades['efficiency']?.level ?? 0;
-    final metalPerClip = UpgradeEffectsCalculator.metalPerPaperclip(
-      efficiencyLevel: efficiencyLevel,
-    );
-
-    double currentMetalForClips = gameState.player.metal / metalPerClip;
-
+  Widget _buildMetalStatus(BuildContext context, GameState gameState, _MarketScreenView view) {
     return _buildMarketCard(
       title: 'Stock de Métal',
       value: '${gameState.player.metal.toStringAsFixed(1)} / ${gameState.player.maxMetalStorage}',
       icon: Icons.inventory_2,
       color: Colors.grey.shade200,
-      tooltip: 'Production possible: ${currentMetalForClips.toStringAsFixed(0)} trombones',
+      tooltip: 'Production possible: ${view.currentMetalForClips.toStringAsFixed(0)} trombones',
       onInfoPressed: () => _showInfoDialog(
         context,
         'Stock de Métal',
@@ -254,8 +254,8 @@ class MarketScreen extends StatelessWidget {
             '- Capacité maximale: ${gameState.player.maxMetalStorage} unités\n'
             '- Prix actuel: ${gameState.market.currentMetalPrice.toStringAsFixed(2)} €\n\n'
             'Production possible:\n'
-            '- Métal par trombone: ${metalPerClip.toStringAsFixed(2)} unités\n'
-            '- Trombones possibles: ${currentMetalForClips.toStringAsFixed(0)} unités',
+            '- Métal par trombone: ${view.metalPerClip.toStringAsFixed(2)} unités\n'
+            '- Trombones possibles: ${view.currentMetalForClips.toStringAsFixed(0)} unités',
       ),
     );
   }
@@ -381,6 +381,52 @@ class MarketScreen extends StatelessWidget {
           ),
         );
 
+        final demandPerSecEstimated = _perSecFromPerMin(insights.demandPerMin);
+        final productionPerSecEstimated = _perSecFromPerMin(insights.productionPerMin);
+        final salesPerSecEstimated = _perSecFromPerMin(insights.effectiveSalesPerMin);
+        final profitabilityPerSecEstimated = _perSecFromPerMin(insights.profitabilityPerMin);
+
+        final speedBonus = UpgradeEffectsCalculator.speedMultiplier(level: speedLevel);
+        final bulkBonus = UpgradeEffectsCalculator.bulkMultiplier(level: bulkLevel);
+        final efficiencyLevel = gameState.player.upgrades['efficiency']?.level ?? 0;
+        final efficiencyBonus = 1.0 - UpgradeEffectsCalculator.efficiencyReduction(level: efficiencyLevel);
+
+        final productionBonuses = <String>[];
+        if (speedLevel > 0) {
+          productionBonuses.add(_formatBonusText('Vitesse', speedBonus));
+        }
+        if (bulkLevel > 0) {
+          productionBonuses.add(_formatBonusText('Production en masse', bulkBonus));
+        }
+        if (efficiencyLevel > 0) {
+          productionBonuses.add('Efficacité: -${((1.0 - efficiencyBonus) * 100).toStringAsFixed(1)}%');
+        }
+
+        final baseAutoclipperProductionPerSec = gameState.player.autoClipperCount *
+            GameConstants.BASE_AUTOCLIPPER_PRODUCTION;
+
+        final metalPerClip = UpgradeEffectsCalculator.metalPerPaperclip(
+          efficiencyLevel: efficiencyLevel,
+        );
+
+        final currentMetalForClips = metalPerClip > 0
+            ? (gameState.player.metal / metalPerClip)
+            : 0.0;
+
+        final productionDelta = productionPerSecEstimated - demandPerSecEstimated;
+        late final String productionStatus;
+        late final Color productionStatusColor;
+        if (productionDelta > 0) {
+          productionStatus = "(Excédent: +${productionDelta.toStringAsFixed(1)})";
+          productionStatusColor = Colors.red;
+        } else if (productionDelta < 0) {
+          productionStatus = "(Déficit: ${productionDelta.toStringAsFixed(1)})";
+          productionStatusColor = Colors.green;
+        } else {
+          productionStatus = "(Équilibrée)";
+          productionStatusColor = Colors.black;
+        }
+
         final salesHistory = gameState.market.salesHistory;
         final lastSaleTimestampMs = salesHistory.isEmpty
             ? 0
@@ -392,35 +438,44 @@ class MarketScreen extends StatelessWidget {
           sellPrice: sellPrice,
           marketingLevel: marketingLevel,
           autoClipperCount: autoClipperCount,
-          demand: insights.demandPerMin,
-          autoclipperProduction: insights.productionPerMin,
-          effectiveProduction: insights.effectiveSalesPerMin,
-          profitability: insights.profitabilityPerMin,
+          demand: demandPerSecEstimated,
+          autoclipperProduction: productionPerSecEstimated,
+          effectiveProduction: salesPerSecEstimated,
+          profitability: profitabilityPerSecEstimated,
           qualityLevel: qualityLevel,
           qualityBonus: insights.qualityBonus,
           effectiveSellPrice: insights.effectiveSellPrice,
           reputation: gameState.marketManager.reputation,
           salesHistory: salesHistory,
           lastSaleTimestampMs: lastSaleTimestampMs,
-          formattedDemandPerMin:
-              '${GameFormat.number(insights.demandPerMin, decimals: 1)}/min',
-          formattedProductionPerMin:
-              '${GameFormat.number(insights.productionPerMin, decimals: 1)}/min',
-          formattedSalesPerMin:
-              '${GameFormat.number(insights.effectiveSalesPerMin, decimals: 1)}/min',
-          formattedProfitabilityPerMin: GameFormat.moneyPerMin(
-            insights.profitabilityPerMin,
+
+          productionBonuses: productionBonuses,
+          baseAutoclipperProductionPerSec: baseAutoclipperProductionPerSec,
+          metalPerClip: metalPerClip,
+          currentMetalForClips: currentMetalForClips,
+          productionDelta: productionDelta,
+          productionStatus: productionStatus,
+          productionStatusColor: productionStatusColor,
+
+          formattedDemandPerSec: _formatUnitsPerSec(demandPerSecEstimated, decimals: 2),
+          formattedDemandPerMinDisplay: _formatUnitsPerMinApprox(demandPerSecEstimated),
+          formattedProductionPerSec: _formatUnitsPerSec(productionPerSecEstimated, decimals: 2),
+          formattedProductionPerMinDisplay: _formatUnitsPerMinApprox(productionPerSecEstimated),
+          formattedSalesPerSec: _formatUnitsPerSec(salesPerSecEstimated, decimals: 2),
+          formattedSalesPerMinDisplay: _formatUnitsPerMinApprox(salesPerSecEstimated),
+          formattedProfitabilityPerSec: _formatMoneyPerSec(profitabilityPerSecEstimated, decimals: 2),
+          formattedProfitabilityPerMinDisplay: GameFormat.moneyPerMin(
+            profitabilityPerSecEstimated * 60.0,
             decimals: 1,
           ),
           formattedSellPrice: GameFormat.money(sellPrice, decimals: 2),
-          formattedEffectiveSellPrice:
-              GameFormat.money(insights.effectiveSellPrice, decimals: 2),
-          formattedReputationPercent:
-              GameFormat.percentFromRatio(gameState.marketManager.reputation, decimals: 1),
+          formattedEffectiveSellPrice: GameFormat.money(insights.effectiveSellPrice, decimals: 2),
+          formattedReputationPercent: GameFormat.percentFromRatio(gameState.marketManager.reputation, decimals: 1),
         );
       },
       builder: (context, view, child) {
         final gameState = context.read<GameState>();
+
         return Padding(
           padding: const EdgeInsets.all(12.0),
           child: Column(
@@ -433,14 +488,13 @@ class MarketScreen extends StatelessWidget {
                   child: Column(
                     children: [
                       // Production et Stocks
-                      _buildMetalStatus(context, gameState),
+                      _buildMetalStatus(context, gameState, view),
                       const SizedBox(height: 8),
                       if (view.autoClipperCount > 0)
                         _buildProductionCard(
                           context,
                           gameState,
-                          view.autoclipperProduction,
-                          view.demand,
+                          view,
                         ),
                       const SizedBox(height: 12),
 
@@ -482,11 +536,11 @@ class MarketScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        
+
                         // Affichage de la rentabilité estimée avec plus de détails
                         _buildMarketCard(
                           title: 'Rentabilité Estimée',
-                          value: view.formattedProfitabilityPerMin,
+                          value: '${view.formattedProfitabilityPerSec}\n${view.formattedProfitabilityPerMinDisplay}',
                           icon: Icons.assessment,
                           color: view.autoclipperProduction > view.demand
                               ? Colors.orange.shade100
@@ -495,18 +549,22 @@ class MarketScreen extends StatelessWidget {
                           onInfoPressed: () => _showInfoDialog(
                             context,
                             'Rentabilité',
-                            'Estimation des revenus par minute:\n\n'
+                            'Estimation des revenus:\n\n'
                                 '• Paramètres de base:\n'
                                 '- Prix de vente: ${view.formattedSellPrice}\n'
-                                '- Production totale: ${GameFormat.number(view.autoclipperProduction, decimals: 1)} unités/min\n'
-                                '- Demande du marché: ${GameFormat.number(view.demand, decimals: 1)} unités/min\n\n'
-                                '• Production effective: ${GameFormat.number(view.effectiveProduction, decimals: 1)} unités/min\n'
+                                '- Production totale (estimée): ${view.formattedProductionPerSec}\n'
+                                '  ${view.formattedProductionPerMinDisplay}\n'
+                                '- Demande du marché (estimée): ${view.formattedDemandPerSec}\n'
+                                '  ${view.formattedDemandPerMinDisplay}\n\n'
+                                '• Ventes effectives (estimées): ${view.formattedSalesPerSec}\n'
+                                '  ${view.formattedSalesPerMinDisplay}\n'
                                 '(= le minimum entre votre production et la demande du marché)\n\n'
                                 '• Calcul des revenus:\n'
-                                '- Production effective × Prix de vente\n'
-                                '- ${view.effectiveProduction.toStringAsFixed(1)} × ${view.formattedSellPrice} = ${view.formattedProfitabilityPerMin}\n\n'
-                                '${view.autoclipperProduction > view.demand ? "⚠️ ALERTE: Vous produisez plus que la demande actuelle!\nSeules ${GameFormat.number(view.demand, decimals: 1)} unités sur ${GameFormat.number(view.autoclipperProduction, decimals: 1)} seront vendues." : ""}\n'
-                                '${view.demand > view.autoclipperProduction ? "💡 CONSEIL: La demande (${GameFormat.number(view.demand, decimals: 1)}) dépasse votre capacité de production (${GameFormat.number(view.autoclipperProduction, decimals: 1)}).\nVous pourriez augmenter vos revenus en développant votre production." : ""}',
+                                '- Ventes effectives × Prix de vente\n'
+                                '- ${GameFormat.number(view.effectiveProduction, decimals: 2)} × ${view.formattedSellPrice} = ${view.formattedProfitabilityPerSec}\n'
+                                '  ${view.formattedProfitabilityPerMinDisplay}\n\n'
+                                '${view.autoclipperProduction > view.demand ? "⚠️ ALERTE: Vous produisez plus que la demande estimée!\nSeules ${view.formattedDemandPerSec} (${view.formattedDemandPerMinDisplay}) seront vendues." : ""}\n'
+                                '${view.demand > view.autoclipperProduction ? "💡 CONSEIL: La demande estimée (${view.formattedDemandPerSec}) dépasse votre production (${view.formattedProductionPerSec}).\nVous pourriez augmenter vos revenus en développant votre production." : ""}',
                           ),
                           trailing: view.autoclipperProduction > view.demand
                               ? const Icon(Icons.warning_amber_rounded,
@@ -517,19 +575,21 @@ class MarketScreen extends StatelessWidget {
                                   : null),
                         ),
                         const SizedBox(height: 8),
-                        
+
                         // Affichage des autres cartes ensuite
                         _buildMarketCard(
                           title: 'Demande du Marché',
-                          value: view.formattedDemandPerMin,
+                          value: '${view.formattedDemandPerSec}\n${view.formattedDemandPerMinDisplay}',
                           icon: Icons.trending_up,
                           color: Colors.amber.shade100,
                           tooltip: 'Demande actuelle',
                           onInfoPressed: () => _showInfoDialog(
                             context,
                             'Demande du Marché',
-                            'Demande actuelle: ${GameFormat.number(view.demand, decimals: 1)} unités/min\n'
-                                'Production effective: ${GameFormat.number(view.effectiveProduction, decimals: 1)} unités/min',
+                            'Demande (estimée): ${view.formattedDemandPerSec}\n'
+                                '${view.formattedDemandPerMinDisplay}\n\n'
+                                'Ventes effectives (estimées): ${view.formattedSalesPerSec}\n'
+                                '${view.formattedSalesPerMinDisplay}',
                           ),
                         ),
                         const SizedBox(height: 8),

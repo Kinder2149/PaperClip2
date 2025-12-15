@@ -17,19 +17,127 @@ import '../constants/storage_constants.dart';  // Chemin corrigé vers les const
 import 'save_system/save_validator.dart';  // Import du nouveau validateur de sauvegarde
 import '../services/persistence/game_persistence_orchestrator.dart';
 
+typedef AutoSavePostFrameScheduler = void Function(VoidCallback callback);
+
+abstract class AutoSaveOrchestratorPort {
+  Future<void> requestAutoSave(GameState state, {String? reason});
+  Future<void> requestBackup(
+    GameState state, {
+    required String backupName,
+    String? reason,
+    bool bypassCooldown,
+  });
+
+  Future<void> requestLifecycleSave(GameState state, {String? reason});
+}
+
+class _DefaultAutoSaveOrchestratorPort implements AutoSaveOrchestratorPort {
+  final GamePersistenceOrchestrator _inner;
+
+  _DefaultAutoSaveOrchestratorPort(this._inner);
+
+  @override
+  Future<void> requestAutoSave(GameState state, {String? reason}) {
+    return _inner.requestAutoSave(state, reason: reason);
+  }
+
+  @override
+  Future<void> requestBackup(
+    GameState state, {
+    required String backupName,
+    String? reason,
+    bool bypassCooldown = false,
+  }) {
+    return _inner.requestBackup(
+      state,
+      backupName: backupName,
+      reason: reason,
+      bypassCooldown: bypassCooldown,
+    );
+  }
+
+  @override
+  Future<void> requestLifecycleSave(GameState state, {String? reason}) {
+    return _inner.requestLifecycleSave(state, reason: reason);
+  }
+}
+
+abstract class AutoSaveStoragePort {
+  Future<List<SaveGameInfo>> listSaves();
+  Future<void> deleteSaveByName(String name);
+}
+
+class _DefaultAutoSaveStoragePort implements AutoSaveStoragePort {
+  @override
+  Future<List<SaveGameInfo>> listSaves() => SaveManagerAdapter.listSaves();
+
+  @override
+  Future<void> deleteSaveByName(String name) => SaveManagerAdapter.deleteSaveByName(name);
+}
+
+abstract class AutoSaveEventPort {
+  void addEvent(
+    EventType type,
+    String title, {
+    required String description,
+    required EventImportance importance,
+  });
+}
+
+class _DefaultAutoSaveEventPort implements AutoSaveEventPort {
+  @override
+  void addEvent(
+    EventType type,
+    String title, {
+    required String description,
+    required EventImportance importance,
+  }) {
+    EventManager.instance.addEvent(
+      type,
+      title,
+      description: description,
+      importance: importance,
+    );
+  }
+}
+
 class AutoSaveService {
-    // Définition du logger (static pour être partagé entre les instances)
+  // Définition du logger (static pour être partagé entre les instances)
   static final Logger _logger = Logger('AutoSaveService');
   
   // Utilise les constantes centralisées depuis GameConstants
   final GameState _gameState;
+  final AutoSaveOrchestratorPort _orchestrator;
+  final AutoSaveStoragePort _storage;
+  final AutoSaveEventPort _events;
+  final AutoSavePostFrameScheduler _postFrame;
+  final int _maxStorageSizeBytes;
+  final int _maxFailedAttempts;
   Timer? _mainTimer;
   DateTime? _lastAutoSave;
   bool _isInitialized = false;
   final Map<String, int> _saveSizes = {};
   int _failedSaveAttempts = 0;
 
-  AutoSaveService(this._gameState);
+  AutoSaveService(
+    this._gameState, {
+    AutoSaveOrchestratorPort? orchestrator,
+    AutoSaveStoragePort? storage,
+    AutoSaveEventPort? events,
+    AutoSavePostFrameScheduler? postFrame,
+    int? maxStorageSizeBytes,
+    int? maxFailedAttempts,
+  })  : _orchestrator = orchestrator ??
+            _DefaultAutoSaveOrchestratorPort(GamePersistenceOrchestrator.instance),
+        _storage = storage ?? _DefaultAutoSaveStoragePort(),
+        _events = events ?? _DefaultAutoSaveEventPort(),
+        _postFrame = postFrame ?? ((callback) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            callback();
+          });
+        }),
+        _maxStorageSizeBytes = maxStorageSizeBytes ?? GameConstants.MAX_STORAGE_SIZE,
+        _maxFailedAttempts = maxFailedAttempts ?? GameConstants.MAX_FAILED_ATTEMPTS;
 
   Future<void> initialize() async {
     if (_isInitialized) return;
@@ -62,7 +170,7 @@ class AutoSaveService {
     _mainTimer?.cancel();
     _mainTimer = Timer.periodic(GameConstants.AUTO_SAVE_INTERVAL, (_) {
       // Vérifier si l'UI n'est pas occupée avant de sauvegarder
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      _postFrame(() {
         _performAutoSave();
       });
     });
@@ -83,7 +191,7 @@ class AutoSaveService {
         gameMode: _gameState.gameMode,
       );
 
-      await GamePersistenceOrchestrator.instance.requestBackup(
+      await _orchestrator.requestBackup(
         _gameState,
         backupName: backupName,
         reason: 'autosave_service_create_backup',
@@ -100,7 +208,7 @@ class AutoSaveService {
 
   Future<void> _cleanupOldBackups() async {
     try {
-      final saves = await SaveManagerAdapter.listSaves();
+      final saves = await _storage.listSaves();
       final backups = saves.where((save) =>
           save.name.contains(GameConstants.BACKUP_DELIMITER)).toList();
 
@@ -108,7 +216,7 @@ class AutoSaveService {
       if (backups.length > GameConstants.MAX_BACKUPS) {
         backups.sort((a, b) => b.timestamp.compareTo(a.timestamp)); // Utilisation de timestamp pour compatibilité avec SaveGameInfo
         for (var i = GameConstants.MAX_BACKUPS; i < backups.length; i++) {
-          await SaveManagerAdapter.deleteSaveByName(backups[i].name);
+          await _storage.deleteSaveByName(backups[i].name);
         }
       }
       print('Nettoyage des anciens backups terminé');
@@ -164,7 +272,7 @@ class AutoSaveService {
         return;
       }
 
-      await GamePersistenceOrchestrator.instance.requestAutoSave(
+      await _orchestrator.requestAutoSave(
         _gameState,
         reason: 'autosave_timer',
       );
@@ -187,18 +295,18 @@ class AutoSaveService {
       _saveSizes[_gameState.gameName!] = size;
     }
 
-    return size <= GameConstants.MAX_STORAGE_SIZE;
+    return size <= _maxStorageSizeBytes;
   }
 
   Future<void> _cleanupStorage() async {
-    final saves = await SaveManagerAdapter.listSaves();
+    final saves = await _storage.listSaves();
     saves.sort((a, b) => a.lastModified.compareTo(b.lastModified));
 
     final now = DateTime.now();
     for (var save in saves) {
       if (now.difference(save.lastModified) > GameConstants.MAX_SAVE_AGE &&
           !save.name.contains(GameConstants.BACKUP_DELIMITER)) {
-        await SaveManagerAdapter.deleteSaveByName(save.name);
+        await _storage.deleteSaveByName(save.name);
         _saveSizes.remove(save.name);
       }
     }
@@ -220,7 +328,7 @@ class AutoSaveService {
         gameMode: _gameState.gameMode,
       );
 
-      await GamePersistenceOrchestrator.instance.requestBackup(
+      await _orchestrator.requestBackup(
         _gameState,
         backupName: backupName,
         reason: 'autosave_service_perform_backup',
@@ -262,7 +370,7 @@ class AutoSaveService {
         id: _gameState.gameId ?? DateTime.now().millisecondsSinceEpoch.toString(),
       );
 
-      await GamePersistenceOrchestrator.instance.requestLifecycleSave(
+      await _orchestrator.requestLifecycleSave(
         _gameState,
         reason: 'autosave_service_save_on_exit',
       );
@@ -283,16 +391,16 @@ class AutoSaveService {
   Future<void> _handleSaveError(dynamic error) async {
     _failedSaveAttempts++;
 
-    _logger.warning('Tentative de sauvegarde échouée ($_failedSaveAttempts/${GameConstants.MAX_FAILED_ATTEMPTS}): $error');
+    _logger.warning('Tentative de sauvegarde échouée ($_failedSaveAttempts/$_maxFailedAttempts): $error');
 
-    if (_failedSaveAttempts >= GameConstants.MAX_FAILED_ATTEMPTS) {
+    if (_failedSaveAttempts >= _maxFailedAttempts) {
       _logger.severe('Nombre maximum d\'erreurs de sauvegarde atteint, création d\'une sauvegarde de secours');
       
       try {
         await createBackup();
         _failedSaveAttempts = 0;
 
-        EventManager.instance.addEvent(
+        _events.addEvent(
           EventType.RESOURCE_DEPLETION,  // Au lieu de EventType.ERROR
           "Problème de sauvegarde",
           description: "Une sauvegarde de secours a été créée automatiquement",
@@ -303,7 +411,7 @@ class AutoSaveService {
       } catch (backupError) {
         _logger.severe('Impossible de créer une sauvegarde de secours: $backupError');
         
-        EventManager.instance.addEvent(
+        _events.addEvent(
           EventType.RESOURCE_DEPLETION, // Utilisation de RESOURCE_DEPLETION au lieu de ERROR
           "Erreur critique de sauvegarde",
           description: "Impossible de sauvegarder vos données de jeu",
@@ -312,6 +420,12 @@ class AutoSaveService {
       }
     }
   }
+
+  @visibleForTesting
+  Future<void> performAutoSaveForTest() => _performAutoSave();
+
+  @visibleForTesting
+  Future<void> cleanupOldBackupsForTest() => _cleanupOldBackups();
 
   DateTime? get lastAutoSave => _lastAutoSave;
 

@@ -1,21 +1,121 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:paperclip2/constants/game_config.dart';
 import 'package:paperclip2/models/game_state.dart';
+import 'package:paperclip2/models/save_game.dart' as model;
+import 'package:paperclip2/models/save_metadata.dart';
 import 'package:paperclip2/services/persistence/game_persistence_orchestrator.dart';
 import 'package:paperclip2/services/save_game.dart';
+import 'package:paperclip2/services/save_system/local_save_game_manager.dart';
+import 'package:paperclip2/services/save_system/save_manager_adapter.dart';
 
 class _UninitializedGameState extends GameState {
   @override
   bool get isInitialized => false;
 }
 
+class _InMemorySaveGameManager extends Fake implements LocalSaveGameManager {
+  final Map<String, model.SaveGame> _saves = <String, model.SaveGame>{};
+  final Map<String, SaveMetadata> _metas = <String, SaveMetadata>{};
+  String? _activeSaveId;
+
+  @override
+  String? get activeSaveId => _activeSaveId;
+
+  @override
+  set activeSaveId(String? id) {
+    _activeSaveId = id;
+  }
+
+  @override
+  Future<List<SaveMetadata>> listSaves() async {
+    final list = _metas.values.toList();
+    list.sort((a, b) => b.lastModified.compareTo(a.lastModified));
+    return list;
+  }
+
+  @override
+  Future<model.SaveGame?> loadSave(String saveId) async {
+    return _saves[saveId];
+  }
+
+  @override
+  Future<bool> saveGame(model.SaveGame save) async {
+    _saves[save.id] = save;
+    final now = DateTime.now();
+    final existing = _metas[save.id];
+    _metas[save.id] = SaveMetadata(
+      id: save.id,
+      name: save.name,
+      creationDate: existing?.creationDate ?? now,
+      lastModified: now,
+      version: save.version,
+      gameMode: save.gameMode,
+      isRestored: false,
+    );
+    _activeSaveId ??= save.id;
+    return true;
+  }
+
+  @override
+  Future<bool> deleteSave(String saveId) async {
+    _saves.remove(saveId);
+    _metas.remove(saveId);
+    if (_activeSaveId == saveId) {
+      _activeSaveId = null;
+    }
+    return true;
+  }
+
+  @override
+  Future<bool> updateSaveMetadata(String saveId, SaveMetadata metadata) async {
+    _metas[saveId] = metadata;
+    return true;
+  }
+
+  @override
+  Future<SaveMetadata?> getSaveMetadata(String saveId) async {
+    return _metas[saveId];
+  }
+
+  @override
+  String compressData(String data) => data;
+
+  @override
+  String decompressData(String compressed) => compressed;
+}
+
+model.SaveGame _makeSave(
+  String name,
+  Map<String, dynamic> gameData, {
+  String id = 'fixed-id',
+  DateTime? lastSaveTime,
+}) {
+  return model.SaveGame(
+    id: id,
+    name: name,
+    gameData: gameData,
+    gameMode: GameMode.INFINITE,
+    lastSaveTime: lastSaveTime ?? DateTime(2025, 1, 1),
+    version: '1.0.3',
+  );
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('GamePersistenceOrchestrator', () {
+    late _InMemorySaveGameManager saveManager;
+
     setUp(() {
-      SharedPreferences.setMockInitialValues({});
+      saveManager = _InMemorySaveGameManager();
+      SaveManagerAdapter.setSaveManagerForTesting(saveManager);
+      GamePersistenceOrchestrator.instance.resetForTesting();
+    });
+
+    tearDown(() {
+      SaveManagerAdapter.resetForTesting();
+      GamePersistenceOrchestrator.instance.resetForTesting();
     });
 
     test('saveGame throw SaveError si GameState non initialisé', () async {
@@ -53,6 +153,162 @@ void main() {
 
       original.dispose();
       restored.dispose();
+    });
+
+    test('requestLifecycleSave enfile un save lifecycle + un backup (1er appel)', () async {
+      final state = GameState();
+      state.initialize();
+      const gameName = 'lifecycle-orchestrator-first';
+      await state.startNewGame(gameName);
+
+      await GamePersistenceOrchestrator.instance.requestLifecycleSave(
+        state,
+        reason: 'test_lifecycle',
+      );
+
+      final saves = await SaveManagerAdapter.listSaves();
+      final backups = saves
+          .where((s) => s.isBackup && s.name.startsWith('$gameName${GameConstants.BACKUP_DELIMITER}'))
+          .toList();
+      final regular = saves.where((s) => !s.isBackup && s.name == gameName).toList();
+
+      expect(regular.map((s) => s.name), contains(gameName));
+      expect(backups.length, 1);
+      expect(backups.first.name, startsWith(gameName));
+
+      state.dispose();
+    });
+
+    test('requestLifecycleSave respecte le cooldown backup (pas de 2e backup immédiat)', () async {
+      final state = GameState();
+      state.initialize();
+      const gameName = 'lifecycle-orchestrator-cooldown';
+      await state.startNewGame(gameName);
+
+      await GamePersistenceOrchestrator.instance.requestLifecycleSave(
+        state,
+        reason: 'test_lifecycle_1',
+      );
+      await GamePersistenceOrchestrator.instance.requestLifecycleSave(
+        state,
+        reason: 'test_lifecycle_2',
+      );
+
+      final saves = await SaveManagerAdapter.listSaves();
+      final backups = saves
+          .where((s) => s.isBackup && s.name.startsWith('$gameName${GameConstants.BACKUP_DELIMITER}'))
+          .toList();
+
+      expect(backups.length, 1);
+
+      state.dispose();
+    });
+
+    test('checkAndRestoreLastSaveFromBackupIfNeeded: save invalide => restore depuis le backup le plus récent',
+        () async {
+      const baseName = 'restore-me';
+      final backupOld = '$baseName${GameConstants.BACKUP_DELIMITER}111';
+      final backupNew = '$baseName${GameConstants.BACKUP_DELIMITER}222';
+
+      // 1) Insérer une sauvegarde principale invalide.
+      // On force un gameData qui fera échouer Map<String, dynamic>.from(...) dans SaveValidator.quickValidate
+      // (clés non-String via cast()) => severity critical.
+      final invalidRaw = <dynamic, dynamic>{1: 'boom'};
+      final invalidGameData = invalidRaw.cast<String, dynamic>();
+      await saveManager.saveGame(_makeSave(baseName, invalidGameData, id: 'base-invalid'));
+      await saveManager.updateSaveMetadata(
+        'base-invalid',
+        SaveMetadata(
+          id: 'base-invalid',
+          name: baseName,
+          creationDate: DateTime(2025, 1, 1),
+          lastModified: DateTime(2025, 1, 10),
+          version: '1.0.3',
+          gameMode: GameMode.INFINITE,
+          isRestored: false,
+        ),
+      );
+
+      // 2) Insérer deux backups valides, dont un plus récent.
+      await saveManager.saveGame(
+        _makeSave(
+          backupOld,
+          <String, dynamic>{
+            'playerManager': {'money': 10.0, 'metal': 0.0, 'paperclips': 0.0, 'sellPrice': 0.05},
+            'marketManager': {'marketMetalStock': 0.0},
+          },
+          id: 'backup-old',
+        ),
+      );
+      await saveManager.updateSaveMetadata(
+        'backup-old',
+        SaveMetadata(
+          id: 'backup-old',
+          name: backupOld,
+          creationDate: DateTime(2025, 1, 1),
+          lastModified: DateTime(2025, 1, 2),
+          version: '1.0.3',
+          gameMode: GameMode.INFINITE,
+          isRestored: false,
+        ),
+      );
+
+      await saveManager.saveGame(
+        _makeSave(
+          backupNew,
+          <String, dynamic>{
+            'playerManager': {'money': 42.0, 'metal': 0.0, 'paperclips': 0.0, 'sellPrice': 0.05},
+            'marketManager': {'marketMetalStock': 0.0},
+          },
+          id: 'backup-new',
+        ),
+      );
+      await saveManager.updateSaveMetadata(
+        'backup-new',
+        SaveMetadata(
+          id: 'backup-new',
+          name: backupNew,
+          creationDate: DateTime(2025, 1, 1),
+          lastModified: DateTime(2025, 1, 3),
+          version: '1.0.3',
+          gameMode: GameMode.INFINITE,
+          isRestored: false,
+        ),
+      );
+
+      await GamePersistenceOrchestrator.instance.checkAndRestoreLastSaveFromBackupIfNeeded();
+
+      // La restauration ré-écrit une sauvegarde "baseName" avec les données du backup le plus récent.
+      final restored = await SaveManagerAdapter.loadGame(baseName);
+      final restoredPlayer = restored.gameData['playerManager'] as Map<String, dynamic>?;
+      expect(restoredPlayer?['money'], 42.0);
+    });
+
+    test('checkAndRestoreLastSaveFromBackupIfNeeded: save invalide mais aucun backup => no-op', () async {
+      const baseName = 'restore-me-no-backup';
+
+      final invalidRaw = <dynamic, dynamic>{1: 'boom'};
+      final invalidGameData = invalidRaw.cast<String, dynamic>();
+      await saveManager.saveGame(_makeSave(baseName, invalidGameData, id: 'base-invalid'));
+      await saveManager.updateSaveMetadata(
+        'base-invalid',
+        SaveMetadata(
+          id: 'base-invalid',
+          name: baseName,
+          creationDate: DateTime(2025, 1, 1),
+          lastModified: DateTime(2025, 1, 10),
+          version: '1.0.3',
+          gameMode: GameMode.INFINITE,
+          isRestored: false,
+        ),
+      );
+
+      await GamePersistenceOrchestrator.instance.checkAndRestoreLastSaveFromBackupIfNeeded();
+
+      // Il n'y a pas de backup, donc aucun nouveau save "restauré" n'est créé.
+      // On vérifie juste que la sauvegarde reste "invalid" (loadGame retombe en fallback vide en cas d'erreur).
+      final loaded = await SaveManagerAdapter.loadGame(baseName);
+      expect(loaded.name, baseName);
     });
   });
 }

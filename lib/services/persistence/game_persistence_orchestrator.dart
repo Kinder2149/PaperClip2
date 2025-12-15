@@ -66,6 +66,13 @@ class GamePersistenceOrchestrator {
   DateTime? _lastBackupAt;
   DateTime? _lastImportantEventEnqueuedAt;
 
+  void resetForTesting() {
+    _queue.clear();
+    _isPumping = false;
+    _lastBackupAt = null;
+    _lastImportantEventEnqueuedAt = null;
+  }
+
   /// Boot: vérifie la dernière sauvegarde (si elle existe) et tente une restauration
   /// depuis le backup le plus récent si la sauvegarde semble invalide.
   ///

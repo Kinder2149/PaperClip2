@@ -7,14 +7,16 @@ import '../widgets/charts/chart_widgets.dart';
 class DemandCalculationScreen extends StatelessWidget {
   const DemandCalculationScreen({super.key});
 
+  double _perMinFromPerSec(double perSec) => perSec * 60.0;
+
   @override
   Widget build(BuildContext context) {
     final gameState = context.watch<GameState>();
-    final demandPerTick = gameState.marketManager.calculateDemand(
+    final demandPerSecEstimated = gameState.marketManager.calculateDemand(
       gameState.player.sellPrice,
       gameState.player.getMarketingLevel(),
     );
-    final currentDemandPerMin = demandPerTick * 60.0;
+    final currentDemandPerMinDisplay = _perMinFromPerSec(demandPerSecEstimated);
 
     return Scaffold(
       appBar: AppBar(
@@ -42,7 +44,7 @@ class DemandCalculationScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '${currentDemandPerMin.toStringAsFixed(1)}',
+                      '${demandPerSecEstimated.toStringAsFixed(2)}',
                       style: TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
@@ -50,9 +52,17 @@ class DemandCalculationScreen extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      'unités par minute',
+                      'unités par seconde (estimé)',
                       style: TextStyle(
                         fontSize: 14,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '≈ ${currentDemandPerMinDisplay.toStringAsFixed(1)} unités/min',
+                      style: TextStyle(
+                        fontSize: 12,
                         color: Colors.grey[600],
                       ),
                     ),

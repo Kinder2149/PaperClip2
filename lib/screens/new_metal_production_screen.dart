@@ -25,6 +25,8 @@ class NewMetalProductionScreen extends StatefulWidget {
 class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
+  double _perMinFromPerSec(double perSec) => perSec * 60.0;
+
   @override
   void initState() {
     super.initState();
@@ -232,7 +234,8 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
                   _buildStatRow('Métal Stocké',
                       '${formatNumber(gameState.player.metal)}/${formatNumber(gameState.player.maxMetalStorage)}'),
                   _buildStatRow('Coût de Maintenance',
-                      '${gameState.player.maintenanceCosts.toStringAsFixed(2)} €/min'),
+                      '${gameState.player.maintenanceCosts.toStringAsFixed(2)} €/sec\n'
+                      '≈ ${_perMinFromPerSec(gameState.player.maintenanceCosts).toStringAsFixed(2)} €/min'),
                   _buildStatRow('Niveau de Production', '${gameState.level}'),
                 ],
               ),

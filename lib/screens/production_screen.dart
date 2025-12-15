@@ -30,6 +30,23 @@ class _ProductionScreenView {
   final double productionMultiplier;
   final int autoClipperCount;
 
+  final double demandPerSecEstimated;
+  final String formattedDemandPerSec;
+  final String formattedDemandPerMinDisplay;
+  final String formattedReputation;
+
+  final double baseProductionPerSecEstimated;
+  final double actualProductionPerSecEstimated;
+  final double metalUsagePerSecEstimated;
+  final double metalSavedPerSecEstimated;
+  final double metalSavingPercent;
+  final double speedBonusPercent;
+  final double bulkBonusPercent;
+
+  final double paybackSecondsEstimated;
+  final double autoclipperCost;
+  final bool canBuyAutoclipper;
+
   const _ProductionScreenView({
     required this.showMarketInfo,
     required this.showMetalPurchaseButton,
@@ -45,6 +62,23 @@ class _ProductionScreenView {
     required this.level,
     required this.productionMultiplier,
     required this.autoClipperCount,
+
+    required this.demandPerSecEstimated,
+    required this.formattedDemandPerSec,
+    required this.formattedDemandPerMinDisplay,
+    required this.formattedReputation,
+
+    required this.baseProductionPerSecEstimated,
+    required this.actualProductionPerSecEstimated,
+    required this.metalUsagePerSecEstimated,
+    required this.metalSavedPerSecEstimated,
+    required this.metalSavingPercent,
+    required this.speedBonusPercent,
+    required this.bulkBonusPercent,
+
+    required this.paybackSecondsEstimated,
+    required this.autoclipperCost,
+    required this.canBuyAutoclipper,
   });
 
   @override
@@ -63,11 +97,27 @@ class _ProductionScreenView {
         other.sellPrice == sellPrice &&
         other.level == level &&
         other.productionMultiplier == productionMultiplier &&
-        other.autoClipperCount == autoClipperCount;
+        other.autoClipperCount == autoClipperCount &&
+
+        other.demandPerSecEstimated == demandPerSecEstimated &&
+        other.formattedDemandPerSec == formattedDemandPerSec &&
+        other.formattedDemandPerMinDisplay == formattedDemandPerMinDisplay &&
+        other.formattedReputation == formattedReputation &&
+
+        other.baseProductionPerSecEstimated == baseProductionPerSecEstimated &&
+        other.actualProductionPerSecEstimated == actualProductionPerSecEstimated &&
+        other.metalUsagePerSecEstimated == metalUsagePerSecEstimated &&
+        other.metalSavedPerSecEstimated == metalSavedPerSecEstimated &&
+        other.metalSavingPercent == metalSavingPercent &&
+        other.speedBonusPercent == speedBonusPercent &&
+        other.bulkBonusPercent == bulkBonusPercent &&
+        other.paybackSecondsEstimated == paybackSecondsEstimated &&
+        other.autoclipperCost == autoclipperCost &&
+        other.canBuyAutoclipper == canBuyAutoclipper;
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
         showMarketInfo,
         showMetalPurchaseButton,
         showAutoClipperCountSection,
@@ -82,72 +132,79 @@ class _ProductionScreenView {
         level,
         productionMultiplier,
         autoClipperCount,
-      );
+
+        demandPerSecEstimated,
+        formattedDemandPerSec,
+        formattedDemandPerMinDisplay,
+        formattedReputation,
+
+        baseProductionPerSecEstimated,
+        actualProductionPerSecEstimated,
+        metalUsagePerSecEstimated,
+        metalSavedPerSecEstimated,
+        metalSavingPercent,
+        speedBonusPercent,
+        bulkBonusPercent,
+        paybackSecondsEstimated,
+        autoclipperCost,
+        canBuyAutoclipper,
+      ]);
 }
 
-class ProductionScreen extends StatefulWidget {
+class ProductionScreen extends StatelessWidget {
   const ProductionScreen({super.key});
 
-  @override
-  State<ProductionScreen> createState() => _ProductionScreenState();
-}
+  double _perMinFromPerSec(double perSec) => perSec * 60.0;
 
-class _ProductionScreenState extends State<ProductionScreen> {
-  // L'écran est mis à jour via l'architecture réactive (Provider/ChangeNotifier)
-  // au travers de `Consumer<GameState>` et des `notifyListeners()`.
+  Widget _buildResourceCard(
+    String title,
+    String value,
+    Color color, {
+    VoidCallback? onTap,
+  }) {
+    return Expanded(
+      child: InfoCard(
+        title: title,
+        value: value,
+        backgroundColor: color,
+        onTap: onTap,
+      ),
+    );
+  }
+
+  Future<void> _showInfoDialog(BuildContext context, String title, String message) async {
+    await InfoDialog.show(
+      context,
+      title: title,
+      message: message,
+      barrierDismissible: true,
+    );
+  }
 
   bool _canPurchaseMetal(GameState gameState) {
     return gameState.canBuyMetal();
   }
 
-  String formatNumber(double number, bool isMetal) {
-    if (isMetal) {
-      return GameFormat.number(number, decimals: 2);
-    } else {
-      return GameFormat.intWithSeparators(number.floor());
-    }
+  String _formatUnitsPerSec(double value, {int decimals = 2}) {
+    return '${GameFormat.number(value, decimals: decimals)}/sec';
   }
 
-  Widget _buildResourceCard(String title, String value, Color color,
-      {VoidCallback? onTap}) {
-    // Utilisation du nouveau widget InfoCard
-    return InfoCard(
-      title: title,
-      value: value,
-      backgroundColor: color,
-      onTap: onTap,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      expanded: true,
-    );
+  String _formatUnitsPerMinApprox(double perSec, {int decimals = 1}) {
+    return '≈ ${GameFormat.number(_perMinFromPerSec(perSec), decimals: decimals)}/min';
   }
 
-  void _showInfoDialog(BuildContext context, String title, String message) {
-    // Utilisation du nouveau widget InfoDialog
-    InfoDialog.show(
-      context,
-      title: title,
-      message: message,
-    );
+  String _formatMoneyPerSec(double valuePerSec, {int decimals = 2}) {
+    return '${GameFormat.money(valuePerSec, decimals: decimals)}/sec';
   }
 
-  // Méthode _saveGame supprimée car maintenant gérée par le widget SaveButton
+  String _formatMoneyPerMinApprox(double perSec, {int decimals = 2}) {
+    return '≈ ${GameFormat.money(_perMinFromPerSec(perSec), decimals: decimals)}/min';
+  }
 
-  Widget _buildAutoclippersSection(BuildContext context, GameState gameState) {
-    final bulkLevel = gameState.player.upgrades['bulk']?.level ?? 0;
-    final speedLevel = gameState.player.upgrades['speed']?.level ?? 0;
-    final efficiencyLevel = gameState.player.upgrades['efficiency']?.level ?? 0;
-
-    final bulkMultiplier = UpgradeEffectsCalculator.bulkMultiplier(level: bulkLevel);
-    final speedMultiplier = UpgradeEffectsCalculator.speedMultiplier(level: speedLevel);
-    final reduction = UpgradeEffectsCalculator.efficiencyReduction(level: efficiencyLevel);
-
-    final bulkBonus = (bulkMultiplier - 1.0) * 100;
-    final speedBonus = (speedMultiplier - 1.0) * 100;
-    final metalSavingPercent = reduction * 100;
-    double roi = gameState.player.calculateAutoclipperROI();
-
-    final autoclipperCost = gameState.productionManager.calculateAutoclipperCost();
-    final canBuyAutoclipper = gameState.productionManager.canBuyAutoclipper();
+  Widget _buildAutoclippersSection(BuildContext context, GameState gameState, _ProductionScreenView view) {
+    final bulkBonus = view.bulkBonusPercent;
+    final speedBonus = view.speedBonusPercent;
+    final metalSavingPercent = view.metalSavingPercent;
 
     return Card(
       elevation: 2,
@@ -165,14 +222,16 @@ class _ProductionScreenState extends State<ProductionScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Autoclippers: ${gameState.player.autoClipperCount}',
+                        'Autoclippers: ${view.autoClipperCount}',
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
                       Text(
-                        'Retour sur investissement: ${GameFormat.number(roi, decimals: 1)}%/min',
+                        view.paybackSecondsEstimated.isFinite
+                            ? 'Temps de retour: ≈ ${GameFormat.number(view.paybackSecondsEstimated, decimals: 0)} sec (estimé)'
+                            : 'Temps de retour: —',
                         style: const TextStyle(
                           fontSize: 12,
                           color: Colors.grey,
@@ -183,14 +242,13 @@ class _ProductionScreenState extends State<ProductionScreen> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.info_outline),
-                  onPressed: () =>
-                      _showAutoclipperInfoDialog(
-                        context,
-                        gameState,
-                        bulkBonus,
-                        speedBonus,
-                        metalSavingPercent,
-                      ),
+                  onPressed: () => _showAutoclipperInfoDialog(
+                    context,
+                    gameState,
+                    bulkBonus,
+                    speedBonus,
+                    metalSavingPercent,
+                  ),
                 ),
               ],
             ),
@@ -217,8 +275,8 @@ class _ProductionScreenState extends State<ProductionScreen> {
             ),
             const SizedBox(height: 12),
             ActionButton.purchase(
-              onPressed: canBuyAutoclipper ? () => gameState.buyAutoclipper() : null,
-              label: 'Acheter Autoclipper (${GameFormat.money(autoclipperCost, decimals: 1)})',
+              onPressed: view.canBuyAutoclipper ? () => gameState.buyAutoclipper() : null,
+              label: 'Acheter Autoclipper (${GameFormat.money(view.autoclipperCost, decimals: 1)})',
               showComboMultiplier: true,
             ),
           ],
@@ -233,21 +291,22 @@ class _ProductionScreenState extends State<ProductionScreen> {
       double speedBonus,
       double metalSavingPercent) {
     // Calculs pour des informations précises
-    double baseProduction = gameState.player.autoClipperCount *
-        (GameConstants.BASE_AUTOCLIPPER_PRODUCTION * 60.0); // par minute
+    final double baseProductionPerSec = gameState.player.autoClipperCount *
+        GameConstants.BASE_AUTOCLIPPER_PRODUCTION;
     double speedMultiplier = 1.0 + (speedBonus / 100);
     double bulkMultiplier = 1.0 + (bulkBonus / 100);
-    double effectiveProduction = baseProduction * speedMultiplier * bulkMultiplier;
+    final double effectiveProductionPerSec =
+        baseProductionPerSec * speedMultiplier * bulkMultiplier;
 
     final efficiencyLevel = gameState.player.upgrades['efficiency']?.level ?? 0;
     final metalPerPaperclip = UpgradeEffectsCalculator.metalPerPaperclip(
       efficiencyLevel: efficiencyLevel,
     );
 
-    double effectiveMetalConsumption =
-        effectiveProduction * metalPerPaperclip * (1.0 - metalSavingPercent / 100);
-    double metalSaved =
-        effectiveProduction * metalPerPaperclip * (metalSavingPercent / 100);
+    final double effectiveMetalConsumptionPerSec =
+        effectiveProductionPerSec * metalPerPaperclip * (1.0 - metalSavingPercent / 100);
+    final double metalSavedPerSec =
+        effectiveProductionPerSec * metalPerPaperclip * (metalSavingPercent / 100);
 
     showDialog(
       context: context,
@@ -264,14 +323,16 @@ class _ProductionScreenState extends State<ProductionScreen> {
                     TextSpan(
                       children: [
                         const TextSpan(text: 'Production de base: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                        TextSpan(text: '${GameFormat.number(baseProduction, decimals: 1)} trombones/min\n'),
+                        TextSpan(text: '${_formatUnitsPerSec(baseProductionPerSec, decimals: 2)}\n'),
+                        TextSpan(text: '  ${_formatUnitsPerMinApprox(baseProductionPerSec)}\n'),
                         const TextSpan(text: 'Avec améliorations: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                        TextSpan(text: '${GameFormat.number(effectiveProduction, decimals: 1)} trombones/min'),
+                        TextSpan(text: '${_formatUnitsPerSec(effectiveProductionPerSec, decimals: 2)}\n'),
+                        TextSpan(text: '  ${_formatUnitsPerMinApprox(effectiveProductionPerSec)}'),
                       ],
                     ),
                   ),
                   const SizedBox(height: 8),
-                  
+
                   // Détail des bonus
                   Text.rich(
                     TextSpan(
@@ -284,32 +345,34 @@ class _ProductionScreenState extends State<ProductionScreen> {
                     ),
                   ),
                   const Divider(),
-                  
+
                   // Consommation de métal
                   Text.rich(
                     TextSpan(
                       children: [
                         const TextSpan(text: 'Consommation de métal: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                        TextSpan(text: '${GameFormat.number(effectiveMetalConsumption, decimals: 2)}/min\n'),
+                        TextSpan(text: '${_formatUnitsPerSec(effectiveMetalConsumptionPerSec, decimals: 2)}\n'),
+                        TextSpan(text: '  ${_formatUnitsPerMinApprox(effectiveMetalConsumptionPerSec, decimals: 1)}\n'),
                         const TextSpan(text: 'Économie de métal: ', style: TextStyle(fontWeight: FontWeight.bold)),
                         TextSpan(
-                          text: '-${GameFormat.number(metalSavingPercent, decimals: 0)}% (${GameFormat.number(metalSaved, decimals: 2)} unités/min)',
+                          text: '-${GameFormat.number(metalSavingPercent, decimals: 0)}% (${_formatUnitsPerSec(metalSavedPerSec, decimals: 2)} / ${_formatUnitsPerMinApprox(metalSavedPerSec, decimals: 1)})',
                           style: TextStyle(color: Colors.green[700]),
                         ),
                       ],
                     ),
                   ),
                   const Divider(),
-                  
+
                   // Coûts de maintenance
                   Text.rich(
                     TextSpan(
                       children: [
                         const TextSpan(text: 'Coûts de maintenance: ', style: TextStyle(fontWeight: FontWeight.bold)),
                         TextSpan(
-                          text: '${GameFormat.money(gameState.maintenanceCosts, decimals: 2)} par min',
+                          text: '${_formatMoneyPerSec(gameState.maintenanceCosts, decimals: 2)}\n',
                           style: TextStyle(color: Colors.red[700]),
                         ),
+                        TextSpan(text: '  ${_formatMoneyPerMinApprox(gameState.maintenanceCosts, decimals: 2)}'),
                       ],
                     ),
                   ),
@@ -327,12 +390,12 @@ class _ProductionScreenState extends State<ProductionScreen> {
   }
 
   void _showProductionStatsInfoDialog(BuildContext context, GameState gameState, 
-      double baseProduction, double actualProduction, double metalUsage, 
-      double metalSaved, double metalSavingPercent) {
+      double baseProductionPerSec, double actualProductionPerSec, double metalUsagePerSec, 
+      double metalSavedPerSec, double metalSavingPercent) {
     
     // Calculer le pourcentage d'augmentation de la production
-    double productionIncrease = baseProduction > 0 ? 
-        ((actualProduction - baseProduction) / baseProduction * 100) : 0;
+    double productionIncrease = baseProductionPerSec > 0 ? 
+        ((actualProductionPerSec - baseProductionPerSec) / baseProductionPerSec * 100) : 0;
 
     showDialog(
       context: context,
@@ -352,10 +415,11 @@ class _ProductionScreenState extends State<ProductionScreen> {
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     const TextSpan(text: 'Base: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                    TextSpan(text: '${GameFormat.number(baseProduction, decimals: 1)} trombones/min\n'),
+                    TextSpan(text: '${_formatUnitsPerSec(baseProductionPerSec, decimals: 2)}\n'),
+                    TextSpan(text: '  ${_formatUnitsPerMinApprox(baseProductionPerSec)}\n'),
                     const TextSpan(text: 'Effective: ', style: TextStyle(fontWeight: FontWeight.bold)),
                     TextSpan(
-                      text: '${GameFormat.number(actualProduction, decimals: 1)} trombones/min ',
+                      text: '${_formatUnitsPerSec(actualProductionPerSec, decimals: 2)} ',
                       style: const TextStyle(fontWeight: FontWeight.w500),
                     ),
                     TextSpan(
@@ -376,12 +440,13 @@ class _ProductionScreenState extends State<ProductionScreen> {
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     const TextSpan(text: 'Consommation: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                    TextSpan(text: '${GameFormat.number(metalUsage, decimals: 1)} unités/min\n'),
+                    TextSpan(text: '${_formatUnitsPerSec(metalUsagePerSec, decimals: 2)}\n'),
+                    TextSpan(text: '  ${_formatUnitsPerMinApprox(metalUsagePerSec, decimals: 1)}\n'),
                     const TextSpan(text: 'Économie: ', style: TextStyle(fontWeight: FontWeight.bold)),
                     TextSpan(
                       text: metalSavingPercent > 0 ? 
-                        '${GameFormat.number(metalSaved, decimals: 1)} unités/min ' : 
-                        '0 unités/min',
+                        '${_formatUnitsPerSec(metalSavedPerSec, decimals: 2)} ' : 
+                        '0',
                     ),
                     if (metalSavingPercent > 0)
                       TextSpan(
@@ -418,7 +483,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
     );
   }
 
-  void _showMarketInfoDialog(BuildContext context, GameState gameState) {
+  void _showMarketInfoDialog(BuildContext context, GameState gameState, _ProductionScreenView view) {
     showDialog(
       context: context,
       builder: (context) =>
@@ -435,9 +500,11 @@ class _ProductionScreenState extends State<ProductionScreen> {
                     style: TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                   const Divider(),
-                  Text('Demande actuelle: ${(gameState.market.calculateDemand(
-                      gameState.player.sellPrice,
-                      gameState.player.getMarketingLevel()) * 100).toStringAsFixed(0)}%'),
+                  Text('Demande (estimée): ${view.formattedDemandPerSec}'),
+                  Text(
+                    view.formattedDemandPerMinDisplay,
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
                   const Text(
                     'Basée sur le prix et le niveau marketing.',
                     style: TextStyle(fontSize: 12, color: Colors.grey),
@@ -473,7 +540,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
     );
   }
 
-  Widget _buildMarketInfoCard(BuildContext context, GameState gameState) {
+  Widget _buildMarketInfoCard(BuildContext context, GameState gameState, _ProductionScreenView view) {
     // Utilisation du nouveau widget StatsPanel
     return StatsPanel(
       title: 'État du Marché',
@@ -482,20 +549,18 @@ class _ProductionScreenState extends State<ProductionScreen> {
       // Le paramètre trailing n'est pas supporté, nous utilisons action à la place
       action: IconButton(
         icon: const Icon(Icons.info_outline),
-        onPressed: () => _showMarketInfoDialog(context, gameState),
+        onPressed: () => _showMarketInfoDialog(context, gameState, view),
         iconSize: 20,
       ),
       children: [
         StatIndicator(
           label: 'Réputation',
-          value: GameFormat.number(gameState.market.reputation, decimals: 2),
+          value: view.formattedReputation,
           icon: Icons.star,
         ),
         StatIndicator(
           label: 'Demande',
-          value: '${(gameState.market.calculateDemand(
-              gameState.player.sellPrice,
-              gameState.player.getMarketingLevel()) * 100).toStringAsFixed(0)}%',
+          value: view.formattedDemandPerSec,
           icon: Icons.people,
         ),
         StatIndicator(
@@ -507,26 +572,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
     );
   }
 
-  Widget _buildProductionStatsCard(GameState gameState) {
-    // Calcul des bonus et effets des améliorations
-    final efficiencyLevel = (gameState.player.upgrades['efficiency']?.level ?? 0);
-    final speedLevel = (gameState.player.upgrades['speed']?.level ?? 0);
-    final bulkLevel = (gameState.player.upgrades['bulk']?.level ?? 0);
-
-    final metalSavingPercent = UpgradeEffectsCalculator.efficiencyReduction(level: efficiencyLevel) * 100;
-    final efficiencyBonus = 1.0 - (metalSavingPercent / 100);
-    final speedBonus = UpgradeEffectsCalculator.speedMultiplier(level: speedLevel);
-    final bulkBonus = UpgradeEffectsCalculator.bulkMultiplier(level: bulkLevel);
-
-    // Calculs de production précis
-    double baseAutoclipperRate = GameConstants.BASE_AUTOCLIPPER_PRODUCTION;
-    double clipperCount = gameState.player.autoClipperCount.toDouble();
-    double baseProduction = clipperCount * baseAutoclipperRate * 60; // par minute
-    double boostedProduction = baseProduction * speedBonus * bulkBonus; // avec les bonus
-    double actualProduction = boostedProduction; // production effective
-    double metalUsage = actualProduction * GameConstants.METAL_PER_PAPERCLIP * efficiencyBonus; // consommation de métal
-    double metalSaved = actualProduction * GameConstants.METAL_PER_PAPERCLIP * (metalSavingPercent / 100); // métal économisé
-
+  Widget _buildProductionStatsCard(BuildContext context, GameState gameState, _ProductionScreenView view) {
     // Statistiques principales avec un affichage vertical
     Widget statsWrap = Wrap(
       spacing: 20, // Espace horizontal entre les éléments
@@ -537,7 +583,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
           width: 160,
           child: StatIndicator(
             label: 'Production de base',
-            value: '${GameFormat.number(baseProduction, decimals: 1)}/min',
+            value: _formatUnitsPerSec(view.baseProductionPerSecEstimated, decimals: 2),
             icon: Icons.speed,
             layout: StatIndicatorLayout.vertical,
             iconColor: Colors.blue,
@@ -549,12 +595,12 @@ class _ProductionScreenState extends State<ProductionScreen> {
           width: 160,
           child: StatIndicator(
             label: 'Production effective',
-            value: '${GameFormat.number(actualProduction, decimals: 1)}/min',
+            value: _formatUnitsPerSec(view.actualProductionPerSecEstimated, decimals: 2),
             icon: Icons.precision_manufacturing,
             layout: StatIndicatorLayout.vertical,
             iconColor: Colors.green,
             valueStyle: TextStyle(
-              color: actualProduction > baseProduction ? Colors.green : Colors.black,
+              color: view.actualProductionPerSecEstimated > view.baseProductionPerSecEstimated ? Colors.green : Colors.black,
               fontWeight: FontWeight.bold,
             ),
             // tooltip: 'Production avec tous les bonus appliqués',
@@ -565,29 +611,29 @@ class _ProductionScreenState extends State<ProductionScreen> {
           width: 160,
           child: StatIndicator(
             label: 'Économie de métal',
-            value: metalSavingPercent > 0 ? 
-              '-${GameFormat.number(metalSavingPercent, decimals: 0)}%' : 
+            value: view.metalSavingPercent > 0 ? 
+              '-${GameFormat.number(view.metalSavingPercent, decimals: 0)}%' : 
               '0%',
             icon: Icons.eco,
             layout: StatIndicatorLayout.vertical,
             iconColor: Colors.green[700],
             valueStyle: TextStyle(
-              color: metalSavingPercent > 0 ? Colors.green[700]! : Colors.black,
+              color: view.metalSavingPercent > 0 ? Colors.green[700]! : Colors.black,
               fontWeight: FontWeight.bold,
             ),
             // tooltip: 'Réduction de la consommation de métal par trombone',
           ),
         ),
-        // Métal utilisé par minute
+        // Métal utilisé par seconde
         SizedBox(
           width: 160,
           child: StatIndicator(
-            label: 'Métal utilisé/min',
-            value: GameFormat.number(metalUsage, decimals: 1),
+            label: 'Métal utilisé',
+            value: _formatUnitsPerSec(view.metalUsagePerSecEstimated, decimals: 2),
             icon: Icons.settings_input_component,
             layout: StatIndicatorLayout.vertical,
             iconColor: Colors.orange[700],
-            // tooltip: 'Quantité de métal consommée par minute pour la production',
+            // tooltip: 'Quantité de métal consommée par seconde pour la production',
           ),
         ),
       ],
@@ -601,7 +647,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
         children: [
           StatIndicator(
             label: 'Vitesse',
-            value: '+${GameFormat.number(((speedBonus - 1.0) * 100), decimals: 0)}%',
+            value: '+${GameFormat.number(view.speedBonusPercent, decimals: 0)}%',
             icon: Icons.shutter_speed,
             layout: StatIndicatorLayout.horizontal,
             iconColor: Colors.blue[400],
@@ -610,7 +656,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
           ),
           StatIndicator(
             label: 'Production',
-            value: '+${GameFormat.number(((bulkBonus - 1.0) * 100), decimals: 0)}%',
+            value: '+${GameFormat.number(view.bulkBonusPercent, decimals: 0)}%',
             icon: Icons.inventory_2,
             layout: StatIndicatorLayout.horizontal,
             iconColor: Colors.green[400],
@@ -626,7 +672,8 @@ class _ProductionScreenState extends State<ProductionScreen> {
       padding: const EdgeInsets.only(top: 12),
       child: StatIndicator(
         label: 'Coût maintenance',
-        value: GameFormat.moneyPerMin(gameState.maintenanceCosts, decimals: 2),
+        value: '${_formatMoneyPerSec(gameState.maintenanceCosts, decimals: 2)}\n'
+            '${_formatMoneyPerMinApprox(gameState.maintenanceCosts, decimals: 2)}',
         icon: Icons.euro,
         layout: StatIndicatorLayout.horizontal,
         iconColor: Colors.red[400],
@@ -647,11 +694,11 @@ class _ProductionScreenState extends State<ProductionScreen> {
         onPressed: () => _showProductionStatsInfoDialog(
           context, 
           gameState, 
-          baseProduction, 
-          actualProduction, 
-          metalUsage, 
-          metalSaved, 
-          metalSavingPercent),
+          view.baseProductionPerSecEstimated,
+          view.actualProductionPerSecEstimated,
+          view.metalUsagePerSecEstimated,
+          view.metalSavedPerSecEstimated,
+          view.metalSavingPercent),
       ),
       children: [
         statsWrap,
@@ -666,6 +713,44 @@ class _ProductionScreenState extends State<ProductionScreen> {
     return Selector<GameState, _ProductionScreenView>(
       selector: (context, gameState) {
         final visibleElements = gameState.getVisibleUiElements();
+
+        final demandPerSecEstimated = gameState.market.calculateDemand(
+          gameState.player.sellPrice,
+          gameState.player.getMarketingLevel(),
+        );
+
+        final formattedDemandPerSec = _formatUnitsPerSec(demandPerSecEstimated, decimals: 2);
+        final formattedDemandPerMinDisplay = _formatUnitsPerMinApprox(demandPerSecEstimated);
+        final formattedReputation = GameFormat.number(gameState.market.reputation, decimals: 2);
+
+        final efficiencyLevel = (gameState.player.upgrades['efficiency']?.level ?? 0);
+        final speedLevel = (gameState.player.upgrades['speed']?.level ?? 0);
+        final bulkLevel = (gameState.player.upgrades['bulk']?.level ?? 0);
+
+        final metalSavingPercent =
+            UpgradeEffectsCalculator.efficiencyReduction(level: efficiencyLevel) * 100;
+        final efficiencyBonus = 1.0 - (metalSavingPercent / 100);
+        final speedBonus = UpgradeEffectsCalculator.speedMultiplier(level: speedLevel);
+        final bulkBonus = UpgradeEffectsCalculator.bulkMultiplier(level: bulkLevel);
+
+        final baseProductionPerSecEstimated =
+            gameState.player.autoClipperCount * GameConstants.BASE_AUTOCLIPPER_PRODUCTION;
+        final actualProductionPerSecEstimated =
+            baseProductionPerSecEstimated * speedBonus * bulkBonus;
+
+        final metalUsagePerSecEstimated = actualProductionPerSecEstimated *
+            GameConstants.METAL_PER_PAPERCLIP *
+            efficiencyBonus;
+        final metalSavedPerSecEstimated = actualProductionPerSecEstimated *
+            GameConstants.METAL_PER_PAPERCLIP *
+            (metalSavingPercent / 100);
+
+        final roi = gameState.player.calculateAutoclipperROI();
+        final paybackSecondsEstimated = roi > 0 ? (6000.0 / roi) : double.infinity;
+
+        final autoclipperCost = gameState.productionManager.calculateAutoclipperCost();
+        final canBuyAutoclipper = gameState.productionManager.canBuyAutoclipper();
+
         return _ProductionScreenView(
           showMarketInfo: visibleElements[UiElement.marketInfo],
           showMetalPurchaseButton: visibleElements[UiElement.metalPurchaseButton],
@@ -681,6 +766,23 @@ class _ProductionScreenState extends State<ProductionScreen> {
           level: gameState.level.level,
           productionMultiplier: gameState.level.productionMultiplier,
           autoClipperCount: gameState.player.autoClipperCount,
+
+          demandPerSecEstimated: demandPerSecEstimated,
+          formattedDemandPerSec: formattedDemandPerSec,
+          formattedDemandPerMinDisplay: formattedDemandPerMinDisplay,
+          formattedReputation: formattedReputation,
+
+          baseProductionPerSecEstimated: baseProductionPerSecEstimated,
+          actualProductionPerSecEstimated: actualProductionPerSecEstimated,
+          metalUsagePerSecEstimated: metalUsagePerSecEstimated,
+          metalSavedPerSecEstimated: metalSavedPerSecEstimated,
+          metalSavingPercent: metalSavingPercent,
+          speedBonusPercent: ((speedBonus - 1.0) * 100),
+          bulkBonusPercent: ((bulkBonus - 1.0) * 100),
+
+          paybackSecondsEstimated: paybackSecondsEstimated,
+          autoclipperCost: autoclipperCost,
+          canBuyAutoclipper: canBuyAutoclipper,
         );
       },
       builder: (context, view, child) {
@@ -740,10 +842,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
                       const SizedBox(height: 16),
 
                       if (view.showMarketInfo)
-                        Consumer<GameState>(
-                          builder: (context, gameState, _) =>
-                              _buildMarketInfoCard(context, gameState),
-                        ),
+                        _buildMarketInfoCard(context, context.read<GameState>(), view),
 
                       const SizedBox(height: 16),
 
@@ -754,14 +853,13 @@ class _ProductionScreenState extends State<ProductionScreen> {
                             '${GameFormat.number(view.metal, decimals: 2)} / ${GameFormat.number(view.maxMetalStorage, decimals: 0)}',
                             Colors.grey.shade200,
                             onTap: () {
-                              final gameState = context.read<GameState>();
                               _showInfoDialog(
                                 context,
                                 'Stock de Métal',
                                 'Stock: ${GameFormat.number(view.metal, decimals: 2)}\n'
                                     'Capacité: ${GameFormat.number(view.maxMetalStorage, decimals: 0)}\n'
                                     'Prix: ${GameFormat.money(view.currentMetalPrice, decimals: 2)}\n'
-                                    'Efficacité: ${((1 - ((gameState.player.upgrades["efficiency"]?.level ?? 0) * 0.15)) * 100).toStringAsFixed(0)}%',
+                                    'Efficacité: -${GameFormat.number(view.metalSavingPercent, decimals: 0)}%',
                               );
                             },
                           ),
@@ -771,13 +869,12 @@ class _ProductionScreenState extends State<ProductionScreen> {
                             GameFormat.money(view.sellPrice, decimals: 2),
                             Colors.green.shade100,
                             onTap: () {
-                              final gameState = context.read<GameState>();
                               _showInfoDialog(
                                 context,
                                 'Prix de Vente',
                                 'Prix actuel: ${GameFormat.money(view.sellPrice, decimals: 2)}\n'
-                                    'Bonus qualité: +${((gameState.player.upgrades["quality"]?.level ?? 0) * 10)}%\n'
-                                    'Impact réputation: x${gameState.market.reputation.toStringAsFixed(2)}',
+                                    'Bonus qualité: +${((context.read<GameState>().player.upgrades["quality"]?.level ?? 0) * 10)}%\n'
+                                    'Impact réputation: x${context.read<GameState>().market.reputation.toStringAsFixed(2)}',
                               );
                             },
                           ),
@@ -785,35 +882,20 @@ class _ProductionScreenState extends State<ProductionScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      if (view.showMarketInfo)
-                        Consumer<GameState>(
-                          builder: (context, gameState, _) =>
-                              _buildMarketInfoCard(context, gameState),
-                        ),
-                      if (view.showMarketInfo)
-                        const SizedBox(height: 16),
-
                       if (view.showMetalPurchaseButton) ...[
-                        Consumer<GameState>(
-                          builder: (context, gameState, _) {
-                            return ActionButton.purchase(
-                              onPressed: _canPurchaseMetal(gameState)
-                                  ? () => context.read<GameState>().purchaseMetal()
-                                  : null,
-                              label:
-                                  'Acheter Métal (${GameFormat.money(gameState.market.currentMetalPrice, decimals: 1)})',
-                              showComboMultiplier: true,
-                            );
-                          },
+                        ActionButton.purchase(
+                          onPressed: _canPurchaseMetal(context.read<GameState>())
+                              ? () => context.read<GameState>().purchaseMetal()
+                              : null,
+                          label:
+                              'Acheter Métal (${GameFormat.money(context.read<GameState>().market.currentMetalPrice, decimals: 1)})',
+                          showComboMultiplier: true,
                         ),
                         const SizedBox(height: 16),
                       ],
 
                       if (view.showAutoClipperCountSection) ...[
-                        Consumer<GameState>(
-                          builder: (context, gameState, _) =>
-                              _buildAutoclippersSection(context, gameState),
-                        ),
+                        _buildAutoclippersSection(context, context.read<GameState>(), view),
                         const SizedBox(height: 16),
                       ],
 
@@ -824,10 +906,7 @@ class _ProductionScreenState extends State<ProductionScreen> {
                       // Statistiques de production déplacées à la fin
                       if (view.autoClipperCount > 0) ...[
                         const SizedBox(height: 16),
-                        Consumer<GameState>(
-                          builder: (context, gameState, _) =>
-                              _buildProductionStatsCard(gameState),
-                        ),
+                        _buildProductionStatsCard(context, context.read<GameState>(), view),
                       ],
                     ],
                   ),
