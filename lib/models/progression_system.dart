@@ -4,8 +4,29 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:math' show pow, max;
 import '../constants/game_config.dart';
-import 'event_system.dart';
+import 'package:paperclip2/domain/events/domain_event.dart';
+import 'package:paperclip2/domain/events/domain_event_type.dart';
+import 'package:paperclip2/domain/ports/domain_event_sink.dart';
+import 'package:paperclip2/domain/ports/no_op_domain_event_sink.dart';
 import 'json_loadable.dart';
+
+class UnlockDetails {
+  final String name;
+  final String description;
+  final String howToUse;
+  final List<String> benefits;
+  final List<String> tips;
+  final IconData icon;
+
+  UnlockDetails({
+    required this.name,
+    required this.description,
+    required this.howToUse,
+    required this.benefits,
+    required this.tips,
+    required this.icon,
+  });
+}
 
 /// Système de bonus de progression
 class ProgressionBonus {
@@ -348,6 +369,7 @@ class LevelSystem with ChangeNotifier implements JsonLoadable {
   final GameFeatureUnlocker _featureUnlocker = GameFeatureUnlocker();
   final XPComboSystem comboSystem = XPComboSystem();
   final DailyXPBonus dailyBonus = DailyXPBonus();
+  DomainEventSink _eventSink = const NoOpDomainEventSink();
   double _xpMultiplier = 1.0;
   Map<ProgressionPath, double> _pathProgress = {};
   Map<String, bool> _unlockedMilestones = {};
@@ -357,6 +379,10 @@ class LevelSystem with ChangeNotifier implements JsonLoadable {
 
   Function(int level, List<UnlockableFeature> newFeatures)? onLevelUp;
   Function(int level, List<PathOption> options)? onPathChoiceRequired;
+
+  void setDomainEventSink(DomainEventSink sink) {
+    _eventSink = sink;
+  }
 
   // Getters
   double get experience => _experience;
@@ -571,15 +597,16 @@ class LevelSystem with ChangeNotifier implements JsonLoadable {
       final key = '${path.index}_$i';
       if (progress >= thresholds[i] && _unlockedMilestones[key] != true) {
         _unlockedMilestones[key] = true;
-        EventManager.instance.addEvent(
-          EventType.INFO,
-          'Milestone de progression atteint !',
-          description: 'Chemin ${path.name}: palier ${i + 1} débloqué',
-          importance: EventImportance.MEDIUM,
-          additionalData: {
-            'path': path.index,
-            'tier': i + 1,
-          },
+        _eventSink.publish(
+          DomainEvent(
+            type: DomainEventType.milestoneUnlocked,
+            data: <String, Object?>{
+              'title': 'Milestone de progression atteint !',
+              'description': 'Chemin ${path.name}: palier ${i + 1} débloqué',
+              'path': path.index,
+              'tier': i + 1,
+            },
+          ),
         );
       }
     }
@@ -604,15 +631,16 @@ class LevelSystem with ChangeNotifier implements JsonLoadable {
   void _handleLevelUp(int newLevel) {
     final unlocks = _levelUnlocks[newLevel];
     if (unlocks != null) {
-      EventManager.instance.addEvent(
-          EventType.LEVEL_UP,
-          "Niveau $newLevel Atteint !",
-          description: unlocks.description,
-          importance: EventImportance.HIGH,
-          additionalData: {
+      _eventSink.publish(
+        DomainEvent(
+          type: DomainEventType.levelUp,
+          data: <String, Object?>{
+            'title': 'Niveau $newLevel Atteint !',
+            'description': unlocks.description,
             'level': newLevel,
-            'unlockedFeatures': unlocks.unlockedFeatures,
-          }
+            'unlockedFeatures': List<String>.from(unlocks.unlockedFeatures),
+          },
+        ),
       );
     }
     notifyListeners();
@@ -633,23 +661,22 @@ ${details.tips.map((t) => '• $t').join('\n')}
   }
   void handleFeatureUnlock(UnlockableFeature feature, int level) {
     final details = getUnlockDetails(feature);
-    if (details != null) {
-      EventManager.instance.addEvent(
-          EventType.LEVEL_UP,
-          'Nouvelle Fonctionnalité Débloquée !',
-          description: details.description,
-          detailedDescription: _formatUnlockDescription(details),
-          importance: EventImportance.HIGH,
-          additionalData: {
-            'unlockedFeature': feature,
-            'level': level,
-            'featureName': details.name,
-            'howToUse': details.howToUse,
-            'benefits': details.benefits.join('\n'),
-            'tips': details.tips.join('\n'),
-          }
-      );
-    }
+    _eventSink.publish(
+      DomainEvent(
+        type: DomainEventType.levelUp,
+        data: <String, Object?>{
+          'title': 'Nouvelle Fonctionnalité Débloquée !',
+          'description': details.description,
+          'detailedDescription': _formatUnlockDescription(details),
+          'unlockedFeature': feature.toString(),
+          'level': level,
+          'featureName': details.name,
+          'howToUse': details.howToUse,
+          'benefits': details.benefits.join('\n'),
+          'tips': details.tips.join('\n'),
+        },
+      ),
+    );
   }
 
   static UnlockDetails getUnlockDetails(UnlockableFeature feature) {
@@ -875,11 +902,17 @@ ${details.tips.map((t) => '• $t').join('\n')}
 
   void applyXPBoost(double multiplier, Duration duration) {
     _xpMultiplier = multiplier;
-    EventManager.instance.addEvent(
-        EventType.XP_BOOST,
-        "Bonus d'XP activé !",
-        description: "Multiplicateur x$multiplier pendant ${duration.inMinutes} minutes",
-        importance: EventImportance.MEDIUM
+    _eventSink.publish(
+      DomainEvent(
+        type: DomainEventType.xpBoostActivated,
+        data: <String, Object?>{
+          'title': "Bonus d'XP activé !",
+          'description':
+              "Multiplicateur x$multiplier pendant ${duration.inMinutes} minutes",
+          'multiplier': multiplier,
+          'durationMinutes': duration.inMinutes,
+        },
+      ),
     );
 
     Future.delayed(duration, () {
@@ -924,36 +957,33 @@ ${details.tips.map((t) => '• $t').join('\n')}
 
   void _triggerLevelUpEvent(int newLevel, List<UnlockableFeature> newFeatures) {
     if (newFeatures.isEmpty) {
-      EventManager.instance.addEvent(
-          EventType.LEVEL_UP,
-          "Niveau $newLevel atteint !",
-          description: "Continuez votre progression !",
-          importance: EventImportance.HIGH
+      _eventSink.publish(
+        DomainEvent(
+          type: DomainEventType.levelUp,
+          data: <String, Object?>{
+            'title': 'Niveau $newLevel atteint !',
+            'description': 'Continuez votre progression !',
+            'level': newLevel,
+          },
+        ),
       );
     } else {
       for (var feature in newFeatures) {
         final details = LevelSystem.getUnlockDetails(feature);
-        EventManager.instance.addEvent(
-            EventType.LEVEL_UP,
-            "Niveau $newLevel atteint !",
-            description: details.name,
-            detailedDescription: '''
-${details.description}
-
-📋 Comment utiliser :
-${details.howToUse}
-
-✨ Avantages :
-${details.benefits.map((b) => '• $b').join('\n')}
-
-💡 Conseils :
-${details.tips.map((t) => '• $t').join('\n')}
-''',
-            importance: EventImportance.HIGH,
-            additionalData: {
-              'unlockedFeature': feature,
+        _eventSink.publish(
+          DomainEvent(
+            type: DomainEventType.levelUp,
+            data: <String, Object?>{
+              'title': 'Niveau $newLevel atteint !',
+              'description': details.name,
+              'unlockedFeature': feature.toString(),
               'level': newLevel,
-            }
+              'featureName': details.name,
+              'howToUse': details.howToUse,
+              'benefits': details.benefits.join('\n'),
+              'tips': details.tips.join('\n'),
+            },
+          ),
         );
       }
     }

@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../models/game_state.dart';
 import '../constants/game_config.dart'; // Importé depuis constants au lieu de models
 import '../utils/update_manager.dart';
 import '../services/save_system/save_manager_adapter.dart';
 import '../services/notification_manager.dart'; // Ajout de l'import pour NotificationManager
 import '../services/navigation_service.dart';
+import '../services/app_bootstrap_controller.dart';
+import '../services/game_runtime_coordinator.dart';
 import 'save_load_screen.dart';
 import 'introduction_screen.dart';
 import 'package:paperclip2/screens/main_screen.dart';
@@ -40,22 +41,14 @@ class _StartScreenState extends State<StartScreen> {
   Future<void> _continueLastGame() async {
     setState(() => _isLoading = true);
     try {
+      // Boot déterministe: attendre que l'application soit prête.
+      await context.read<AppBootstrapController>().waitUntilReady();
+
       final lastSave = await SaveManagerAdapter.getLastSave();
       if (lastSave != null) {
-        // Utiliser un délai pour s'assurer que le context est prêt avant de charger
-        await Future.delayed(const Duration(milliseconds: 200));
-        
-        // Obtenir le GameState avant le chargement
-        final gameState = Provider.of<GameState>(context, listen: false);
-        
-        // Charger la sauvegarde
-        await gameState.loadGame(lastSave.name);
-
-        // Mission 2: démarrage autosave orchestré hors GameState
-        gameState.autoSaveService.start();
-        
-        // Attendre un court instant pour s'assurer que tout est bien initialisé
-        await Future.delayed(const Duration(milliseconds: 300));
+        await context
+            .read<GameRuntimeCoordinator>()
+            .loadGameAndStartAutoSave(lastSave.name);
         
         if (mounted) {
           // Naviguer vers l'écran principal
@@ -219,7 +212,9 @@ class _StartScreenState extends State<StartScreen> {
                   Navigator.pop(context);
                   try {
                     // Utiliser le mode sélectionné lors de la création
-                    await context.read<GameState>().startNewGame(gameName, mode: selectedMode);
+                    await context
+                        .read<GameRuntimeCoordinator>()
+                        .startNewGameAndStartAutoSave(gameName, mode: selectedMode);
 
                     if (context.mounted) {
                       // Créer une classe intermédiaire pour la navigation
@@ -228,8 +223,8 @@ class _StartScreenState extends State<StartScreen> {
                         isCompetitiveMode: selectedMode == GameMode.COMPETITIVE,
                         onStart: () {
                           context.read<NavigationService>().pushReplacement(
-                                MaterialPageRoute(builder: (_) => const MainScreen()),
-                              );
+                            MaterialPageRoute(builder: (_) => const MainScreen()),
+                          );
                         },
                       );
 

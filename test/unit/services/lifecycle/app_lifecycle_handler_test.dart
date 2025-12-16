@@ -5,12 +5,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:paperclip2/models/game_state.dart';
 import 'package:paperclip2/services/lifecycle/app_lifecycle_handler.dart';
 
-class _FakePersistencePort implements AppLifecyclePersistencePort {
+class _FakeSavePort {
   int calls = 0;
   String? lastReason;
 
-  @override
-  Future<void> requestLifecycleSave(GameState state, {String? reason}) async {
+  Future<void> save({required String reason}) async {
     calls++;
     lastReason = reason;
   }
@@ -20,7 +19,7 @@ class _FakeGameState extends GameState {
   int offlineAppliedCalls = 0;
 
   @override
-  void applyOfflineModeAOnResume() {
+  void applyOfflineProgressV2({DateTime? nowOverride}) {
     offlineAppliedCalls++;
   }
 }
@@ -34,11 +33,11 @@ void main() {
     });
 
     test('paused déclenche requestLifecycleSave avec reason', () async {
-      final persistence = _FakePersistencePort();
+      final persistence = _FakeSavePort();
       final now = DateTime(2025, 1, 1, 12, 0, 0);
 
       final handler = AppLifecycleHandler(
-        persistence: persistence,
+        onLifecycleSave: persistence.save,
         now: () => now,
       );
 
@@ -58,10 +57,10 @@ void main() {
     });
 
     test('inactive déclenche requestLifecycleSave avec reason', () async {
-      final persistence = _FakePersistencePort();
+      final persistence = _FakeSavePort();
 
       final handler = AppLifecycleHandler(
-        persistence: persistence,
+        onLifecycleSave: persistence.save,
         now: () => DateTime(2025, 1, 1),
       );
 
@@ -80,10 +79,10 @@ void main() {
       state.dispose();
     });
 
-    test('resumed appelle applyOfflineModeAOnResume', () async {
-      final persistence = _FakePersistencePort();
+    test('resumed appelle applyOfflineProgressV2', () async {
+      final persistence = _FakeSavePort();
       final handler = AppLifecycleHandler(
-        persistence: persistence,
+        onLifecycleSave: persistence.save,
         now: () => DateTime(2025, 1, 1),
       );
 
@@ -103,9 +102,9 @@ void main() {
     });
 
     test('ignore si gameName null', () {
-      final persistence = _FakePersistencePort();
+      final persistence = _FakeSavePort();
       final handler = AppLifecycleHandler(
-        persistence: persistence,
+        onLifecycleSave: persistence.save,
         now: () => DateTime(2025, 1, 1),
       );
 

@@ -1,9 +1,9 @@
 // lib/models/game_state_interfaces.dart
 import 'package:flutter/foundation.dart';
 import 'dart:async';
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/game_config.dart';
+import '../services/persistence/game_persistence_orchestrator.dart';
+import 'game_state.dart';
 import '../managers/market_manager.dart';
 import '../managers/player_manager.dart';
 import 'progression_system.dart';
@@ -84,9 +84,14 @@ mixin GameStateProduction on ChangeNotifier {
 mixin GameStateSave on ChangeNotifier {
   Future<void> saveGame() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final gameData = prepareGameData();
-      await prefs.setString(GameConstants.SAVE_KEY, jsonEncode(gameData));
+      if (this is GameState) {
+        final gameState = this as GameState;
+        await GamePersistenceOrchestrator.instance.requestManualSave(
+          gameState,
+          slotId: gameState.gameName,
+          reason: 'game_state_interfaces_saveGame',
+        );
+      }
     } catch (e) {
       print('Error saving game: $e');
     }
@@ -94,11 +99,13 @@ mixin GameStateSave on ChangeNotifier {
 
   Future<void> loadGame() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final savedData = prefs.getString(GameConstants.SAVE_KEY);
-      if (savedData != null) {
-        final gameData = jsonDecode(savedData);
-        loadGameData(gameData);
+      if (this is GameState) {
+        final gameState = this as GameState;
+        final name = gameState.gameName;
+        if (name == null) {
+          return;
+        }
+        await GamePersistenceOrchestrator.instance.loadGame(gameState, name);
       }
     } catch (e) {
       print('Error loading game: $e');

@@ -1,35 +1,19 @@
 import 'package:flutter/widgets.dart';
 
 import 'package:paperclip2/models/game_state.dart';
-import 'package:paperclip2/services/persistence/game_persistence_orchestrator.dart';
 
 typedef AppLifecycleNowProvider = DateTime Function();
-
-abstract class AppLifecyclePersistencePort {
-  Future<void> requestLifecycleSave(GameState state, {String? reason});
-}
-
-class _DefaultAppLifecyclePersistencePort implements AppLifecyclePersistencePort {
-  final GamePersistenceOrchestrator _inner;
-
-  _DefaultAppLifecyclePersistencePort(this._inner);
-
-  @override
-  Future<void> requestLifecycleSave(GameState state, {String? reason}) {
-    return _inner.requestLifecycleSave(state, reason: reason);
-  }
-}
+typedef AppLifecycleSavePort = Future<void> Function({required String reason});
 
 class AppLifecycleHandler with WidgetsBindingObserver {
   GameState? _gameState;
-  final AppLifecyclePersistencePort _persistence;
+  final AppLifecycleSavePort _onLifecycleSave;
   final AppLifecycleNowProvider _now;
 
   AppLifecycleHandler({
-    AppLifecyclePersistencePort? persistence,
+    AppLifecycleSavePort? onLifecycleSave,
     AppLifecycleNowProvider? now,
-  })  : _persistence =
-            persistence ?? _DefaultAppLifecyclePersistencePort(GamePersistenceOrchestrator.instance),
+  })  : _onLifecycleSave = onLifecycleSave ?? (({required String reason}) async {}),
         _now = now ?? DateTime.now;
 
   void register(GameState gameState) {
@@ -51,15 +35,12 @@ class AppLifecycleHandler with WidgetsBindingObserver {
 
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
       gameState.markLastActiveAt(_now());
-      _persistence.requestLifecycleSave(
-        gameState,
-        reason: 'app_lifecycle_${state.name}',
-      );
+      _onLifecycleSave(reason: 'app_lifecycle_${state.name}');
       return;
     }
 
     if (state == AppLifecycleState.resumed) {
-      gameState.applyOfflineModeAOnResume();
+      gameState.applyOfflineProgressV2();
       return;
     }
   }

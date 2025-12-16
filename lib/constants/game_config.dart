@@ -1,5 +1,6 @@
 // lib/models/game_config.dart
 import 'package:flutter/material.dart';
+import 'package:paperclip2/constants/storage_keys.dart';
 
 /// Classe centrale pour toutes les constantes du jeu
 /// Toutes les constantes du projet doivent être définies ici pour éviter les duplications
@@ -30,11 +31,11 @@ class GameConstants {
   // Clés de sauvegarde
   static const String SAVE_KEY = 'paperclip_game_save';
   static const String SAVE_DIR_KEY = 'paperclip_save_directory';
-  static const String SAVE_PREFIX = 'paperclip_save_';      // Depuis StorageConstants
-  static const String BACKUP_PREFIX = 'paperclip_backup_';   // Depuis StorageConstants
+  static const String SAVE_PREFIX = StorageKeys.legacySavePrefix;      // Depuis StorageConstants
+  static const String BACKUP_PREFIX = StorageKeys.legacyBackupPrefix;   // Depuis StorageConstants
   static const String CURRENT_SAVE_FORMAT_VERSION = '2.0';  // Depuis StorageConstants
   static const int MAX_BACKUPS = 3;                        // Depuis StorageConstants
-  static const String BACKUP_DELIMITER = '_backup_';        // Depuis StorageConstants
+  static const String BACKUP_DELIMITER = StorageKeys.backupDelimiter;        // Depuis StorageConstants
   static const int MAX_STORAGE_SIZE = 50 * 1024 * 1024;    // Depuis AutoSaveService
   static const Duration MAX_SAVE_AGE = Duration(days: 30); // Depuis AutoSaveService
   static const int MAX_TOTAL_SAVES = 10;                   // Depuis AutoSaveService

@@ -1,17 +1,15 @@
 /// lib/services/save_migration_service.dart
 
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'package:paperclip2/constants/game_config.dart';
+import 'package:paperclip2/constants/storage_keys.dart';
 import 'package:paperclip2/models/save_game.dart';
-import 'package:paperclip2/models/save_metadata.dart';
 import 'package:paperclip2/services/persistence/local_game_persistence.dart';
 import 'package:paperclip2/services/save_system/save_manager_adapter.dart';
 import 'package:paperclip2/services/save_system/save_validator.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
@@ -43,7 +41,7 @@ class SaveMigrationService {
   static final Logger _logger = Logger('SaveMigrationService');
   
   // Préfixe utilisé par l'ancien système de sauvegarde
-  static const String OLD_SAVE_PREFIX = GameConstants.SAVE_PREFIX;
+  static const String OLD_SAVE_PREFIX = StorageKeys.legacySavePrefix;
   
   // Versions du format de sauvegarde
   static const String CURRENT_SAVE_FORMAT_VERSION = '2.0';
@@ -136,7 +134,7 @@ class SaveMigrationService {
       final legacySaveKeys = allKeys
           .where((key) =>
               key.startsWith(OLD_SAVE_PREFIX) &&
-              !key.contains(GameConstants.BACKUP_DELIMITER) &&
+              !key.contains(StorageKeys.backupDelimiter) &&
               !key.endsWith(_legacyPreMigrationBackupSuffix) &&
               !key.contains(_legacyPreMigrationBackupTimestampedMarker))
           .toList();

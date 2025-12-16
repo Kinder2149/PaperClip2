@@ -7,6 +7,9 @@ import 'package:paperclip2/models/game_state.dart';
 import 'package:paperclip2/services/auto_save_service.dart';
 import 'package:paperclip2/services/save_game.dart';
 import 'package:paperclip2/constants/game_config.dart';
+import 'package:paperclip2/domain/events/domain_event.dart';
+import 'package:paperclip2/domain/events/domain_event_type.dart';
+import 'package:paperclip2/domain/ports/domain_event_sink.dart';
 
 class _FakeOrchestrator implements AutoSaveOrchestratorPort {
   int autoSaveCalls = 0;
@@ -60,38 +63,12 @@ class _FakeStorage implements AutoSaveStoragePort {
   }
 }
 
-class _RecordedEvent {
-  final EventType type;
-  final String title;
-  final String? description;
-  final EventImportance importance;
-
-  const _RecordedEvent({
-    required this.type,
-    required this.title,
-    required this.description,
-    required this.importance,
-  });
-}
-
-class _FakeEvents implements AutoSaveEventPort {
-  final List<_RecordedEvent> recorded = <_RecordedEvent>[];
+class _FakeDomainEvents implements DomainEventSink {
+  final List<DomainEvent> recorded = <DomainEvent>[];
 
   @override
-  void addEvent(
-    EventType type,
-    String title, {
-    required String description,
-    required EventImportance importance,
-  }) {
-    recorded.add(
-      _RecordedEvent(
-        type: type,
-        title: title,
-        description: description,
-        importance: importance,
-      ),
-    );
+  void publish(DomainEvent event) {
+    recorded.add(event);
   }
 }
 
@@ -223,11 +200,11 @@ void main() {
       await gameState.startNewGame('oversize');
 
       final orchestrator = _FakeOrchestrator();
-      final events = _FakeEvents();
+      final events = _FakeDomainEvents();
       final service = AutoSaveService(
         gameState,
         orchestrator: orchestrator,
-        events: events,
+        eventSink: events,
         postFrame: (VoidCallback cb) => cb(),
         maxStorageSizeBytes: 1,
       );
@@ -251,13 +228,13 @@ void main() {
 
       final orchestrator = _FakeOrchestrator()..throwOnAutoSave = true;
       final storage = _FakeStorage();
-      final events = _FakeEvents();
+      final events = _FakeDomainEvents();
 
       final service = AutoSaveService(
         gameState,
         orchestrator: orchestrator,
         storage: storage,
-        events: events,
+        eventSink: events,
         postFrame: (VoidCallback cb) => cb(),
         maxFailedAttempts: 3,
       );
@@ -274,7 +251,7 @@ void main() {
       expect(orchestrator.lastBackupReason, 'autosave_service_create_backup');
 
       expect(events.recorded.length, 1);
-      expect(events.recorded.first.importance, EventImportance.HIGH);
+      expect(events.recorded.first.type, DomainEventType.resourceDepletion);
 
       service.dispose();
       gameState.dispose();

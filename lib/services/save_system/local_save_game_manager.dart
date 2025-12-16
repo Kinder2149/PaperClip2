@@ -12,6 +12,8 @@ import 'package:uuid/uuid.dart';
 import 'package:logging/logging.dart';
 
 import 'package:paperclip2/constants/game_config.dart';
+import 'package:paperclip2/services/persistence/game_data_compat.dart';
+import 'package:paperclip2/constants/storage_keys.dart';
 // Toutes les constantes de stockage sont maintenant dans game_config.dart
 import 'package:paperclip2/models/save_metadata.dart';
 import 'package:paperclip2/models/save_game.dart';
@@ -24,8 +26,8 @@ import 'package:paperclip2/services/save_system/save_validator.dart';
 /// Cette classe gère le stockage, le chargement et la gestion des sauvegardes
 /// locales sur l'appareil de l'utilisateur.
 class LocalSaveGameManager implements SaveGameManager {
-  static const String _metadataPrefix = 'save_metadata_';
-  static const String _saveDataPrefix = 'save_data_';
+  static const String _metadataPrefix = StorageKeys.saveMetadataPrefix;
+  static const String _saveDataPrefix = StorageKeys.saveDataPrefix;
   
   // Constantes pour la persistance des sauvegardes
   static const int _maxSaveAge = 365; // Durée maximale en jours avant archivage
@@ -1144,11 +1146,13 @@ class LocalSaveGameManager implements SaveGameManager {
   /// Extrait les données d'affichage à partir des données de jeu
   Map<String, dynamic> _extractDisplayDataFromGameData(Map<String, dynamic> gameData) {
     final Map<String, dynamic> displayData = {};
+    final normalizedGameData = GameDataCompat.normalizeLegacyGameData(gameData);
     
     // Extraire des statistiques pertinentes pour l'affichage dans l'interface
     try {
-      if (gameData.containsKey('playerManager') && gameData['playerManager'] is Map) {
-        final playerManager = gameData['playerManager'] as Map<String, dynamic>;
+      if (normalizedGameData.containsKey('playerManager') &&
+          normalizedGameData['playerManager'] is Map) {
+        final playerManager = normalizedGameData['playerManager'] as Map<String, dynamic>;
         
         // Paperclips
         if (playerManager.containsKey('paperclips')) {
@@ -1167,8 +1171,9 @@ class LocalSaveGameManager implements SaveGameManager {
       }
       
       // Niveau
-      if (gameData.containsKey('levelSystem') && gameData['levelSystem'] is Map) {
-        final levelSystem = gameData['levelSystem'] as Map<String, dynamic>;
+      if (normalizedGameData.containsKey('levelSystem') &&
+          normalizedGameData['levelSystem'] is Map) {
+        final levelSystem = normalizedGameData['levelSystem'] as Map<String, dynamic>;
         
         if (levelSystem.containsKey('level')) {
           displayData['level'] = levelSystem['level'];

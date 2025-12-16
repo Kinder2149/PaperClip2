@@ -5,6 +5,8 @@ import 'dart:math';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/persistence/game_snapshot.dart';
 import '../services/persistence/game_persistence_orchestrator.dart';
+import '../services/persistence/game_data_compat.dart';
+
 import '../constants/game_config.dart';
 import '../managers/player_manager.dart';
 import '../managers/market_manager.dart';
@@ -68,6 +70,7 @@ class GameState extends ChangeNotifier {
   DateTime? _lastSaveTime;
   DateTime? _lastActiveAt;
   DateTime? _lastOfflineAppliedAt;
+  String? _offlineSpecVersion;
   bool _isPaused = false;
 
   void markLastSaveTime(DateTime value) {
@@ -82,16 +85,25 @@ class GameState extends ChangeNotifier {
     _lastOfflineAppliedAt = value;
   }
 
-  void applyOfflineModeAOnResume() {
+  void applyOfflineProgressV2({DateTime? nowOverride}) {
     if (!_isInitialized || isPaused) return;
 
-    final lastActiveAt = _lastActiveAt;
-    if (lastActiveAt == null) return;
+    final now = nowOverride ?? DateTime.now();
+    final base = [_lastActiveAt, _lastOfflineAppliedAt]
+        .whereType<DateTime>()
+        .fold<DateTime?>(null, (acc, v) => acc == null || v.isAfter(acc) ? v : acc);
 
-    final now = DateTime.now();
-    var delta = now.difference(lastActiveAt);
+    if (base == null) {
+      _lastActiveAt = now;
+      _lastOfflineAppliedAt = now;
+      _offlineSpecVersion ??= 'v2';
+      return;
+    }
+
+    var delta = now.difference(base);
     if (delta.isNegative || delta.inSeconds <= 0) {
       _lastActiveAt = now;
+      _offlineSpecVersion ??= 'v2';
       return;
     }
 
@@ -99,17 +111,29 @@ class GameState extends ChangeNotifier {
       delta = GameConstants.OFFLINE_MAX_DURATION;
     }
 
-    _productionManager.processProduction(
-      elapsedSeconds: delta.inMilliseconds / 1000.0,
-    );
+    // Offline v2: simulation best-effort via la boucle métier officielle.
+    // On exécute en pas de temps (max 10s) pour faire évoluer le marché.
+    double remainingSeconds = delta.inMilliseconds / 1000.0;
+    const double maxStepSeconds = 10.0;
+
+    while (remainingSeconds > 0) {
+      final step = remainingSeconds > maxStepSeconds ? maxStepSeconds : remainingSeconds;
+      _engine.tick(
+        elapsedSeconds: step,
+        autoSellEnabled: autoSellEnabled,
+      );
+      remainingSeconds -= step;
+    }
 
     _lastOfflineAppliedAt = now;
     _lastActiveAt = now;
+    _offlineSpecVersion ??= 'v2';
     notifyListeners();
   }
 
   // Getters complémentaires utilisés par l'UI
   DateTime? get lastSaveTime => _lastSaveTime;
+
   int get totalTimePlayed => _statistics.totalGameTimeSec;
   int get totalPaperclipsProduced => _statistics.totalPaperclipsProduced;
   double get maintenanceCosts => 0.0; // La maintenance est désactivée pour le moment.
@@ -501,44 +525,41 @@ class GameState extends ChangeNotifier {
   void applyLoadedGameDataWithoutSnapshot(String name, Map<String, dynamic> gameData) {
     _resetGameDataOnly();
 
+    final normalizedGameData = GameDataCompat.normalizeLegacyGameData(gameData);
+
     _gameName = name;
 
-    _gameMode = gameData.containsKey('gameMode')
-        ? GameMode.values[gameData['gameMode'] as int]
+    _gameMode = normalizedGameData.containsKey('gameMode')
+        ? GameMode.values[normalizedGameData['gameMode'] as int]
         : GameMode.INFINITE;
 
-    if (gameData.containsKey('playerManager')) {
-      _playerManager.fromJson(gameData['playerManager'] as Map<String, dynamic>);
-    } else if (gameData.containsKey('player')) {
-      _playerManager.fromJson(gameData['player'] as Map<String, dynamic>);
+    if (normalizedGameData.containsKey('playerManager')) {
+      _playerManager
+          .fromJson(normalizedGameData['playerManager'] as Map<String, dynamic>);
     }
 
-    if (gameData.containsKey('resourceManager')) {
-      _resourceManager.fromJson(gameData['resourceManager'] as Map<String, dynamic>);
-    } else if (gameData.containsKey('resources')) {
-      _resourceManager.fromJson(gameData['resources'] as Map<String, dynamic>);
+    if (normalizedGameData.containsKey('resourceManager')) {
+      _resourceManager
+          .fromJson(normalizedGameData['resourceManager'] as Map<String, dynamic>);
     }
 
-    if (gameData.containsKey('marketManager')) {
-      _marketManager.fromJson(gameData['marketManager'] as Map<String, dynamic>);
-    } else if (gameData.containsKey('market')) {
-      _marketManager.fromJson(gameData['market'] as Map<String, dynamic>);
+    if (normalizedGameData.containsKey('marketManager')) {
+      _marketManager
+          .fromJson(normalizedGameData['marketManager'] as Map<String, dynamic>);
     }
 
-    if (gameData.containsKey('levelSystem')) {
-      _levelSystem.fromJson(gameData['levelSystem'] as Map<String, dynamic>);
-    } else if (gameData.containsKey('level')) {
-      _levelSystem.fromJson(gameData['level'] as Map<String, dynamic>);
+    if (normalizedGameData.containsKey('levelSystem')) {
+      _levelSystem
+          .fromJson(normalizedGameData['levelSystem'] as Map<String, dynamic>);
     }
 
-    if (gameData.containsKey('missionSystem')) {
-      _missionSystem.fromJson(gameData['missionSystem'] as Map<String, dynamic>);
-    } else if (gameData.containsKey('missions')) {
-      _missionSystem.fromJson(gameData['missions'] as Map<String, dynamic>);
+    if (normalizedGameData.containsKey('missionSystem')) {
+      _missionSystem
+          .fromJson(normalizedGameData['missionSystem'] as Map<String, dynamic>);
     }
 
-    if (gameData.containsKey('statistics')) {
-      _statistics.fromJson(gameData['statistics'] as Map<String, dynamic>);
+    if (normalizedGameData.containsKey('statistics')) {
+      _statistics.fromJson(normalizedGameData['statistics'] as Map<String, dynamic>);
     }
   }
 
@@ -649,13 +670,17 @@ class GameState extends ChangeNotifier {
     final now = DateTime.now();
     final metadata = <String, dynamic>{
       'schemaVersion': 1,
+      'snapshotSchemaVersion': 1,
       'gameId': _gameName,
       'gameMode': _gameMode.toString(),
       'savedAt': now.toIso8601String(),
       'lastActiveAt': (_lastActiveAt ?? now).toIso8601String(),
       if (_lastOfflineAppliedAt != null)
         'lastOfflineAppliedAt': _lastOfflineAppliedAt!.toIso8601String(),
+      if (_offlineSpecVersion != null) 'offlineSpecVersion': _offlineSpecVersion,
       'gameVersion': GameConstants.VERSION,
+      'appVersion': GameConstants.VERSION,
+      'saveFormatVersion': GameConstants.CURRENT_SAVE_FORMAT_VERSION,
     };
 
     final core = <String, dynamic>{
@@ -683,7 +708,7 @@ class GameState extends ChangeNotifier {
   /// Applique un GameSnapshot sur l'état courant du jeu
   void applySnapshot(GameSnapshot snapshot) {
     final metadata = snapshot.metadata;
-    final core = snapshot.core;
+    final core = GameDataCompat.normalizeSnapshotCore(snapshot.core);
 
     final lastActiveRaw = metadata['lastActiveAt'] as String?;
     _lastActiveAt = lastActiveRaw != null ? DateTime.tryParse(lastActiveRaw) : _lastActiveAt;
@@ -692,6 +717,8 @@ class GameState extends ChangeNotifier {
     _lastOfflineAppliedAt = lastOfflineAppliedRaw != null
         ? DateTime.tryParse(lastOfflineAppliedRaw)
         : _lastOfflineAppliedAt;
+
+    _offlineSpecVersion = metadata['offlineSpecVersion'] as String? ?? _offlineSpecVersion;
 
     _gameName = metadata['gameId'] as String? ?? _gameName;
 
@@ -706,16 +733,6 @@ class GameState extends ChangeNotifier {
 
     if (core['playerManager'] is Map) {
       _playerManager.fromJson(Map<String, dynamic>.from(core['playerManager'] as Map));
-    } else if (core['player'] is Map) {
-      // Fallback snapshot legacy minimal
-      final playerMap = Map<String, dynamic>.from(core['player'] as Map);
-      final money = (playerMap['money'] as num?)?.toDouble();
-      final paperclips = (playerMap['paperclips'] as num?)?.toDouble();
-      final metal = (playerMap['metal'] as num?)?.toDouble();
-
-      if (money != null) _playerManager.updateMoney(money);
-      if (paperclips != null) _playerManager.updatePaperclips(paperclips);
-      if (metal != null) _playerManager.updateMetal(metal);
     }
 
     if (core['marketManager'] is Map) {
@@ -747,29 +764,31 @@ class GameState extends ChangeNotifier {
   }
 
   void _loadGameData(Map<String, dynamic> gameData) {
-    if (gameData['playerManager'] != null) {
-      _playerManager.fromJson(gameData['playerManager']);
+    final normalizedGameData = GameDataCompat.normalizeLegacyGameData(gameData);
+
+    if (normalizedGameData['playerManager'] != null) {
+      _playerManager.fromJson(normalizedGameData['playerManager']);
     }
-    if (gameData['marketManager'] != null) {
-      _marketManager.fromJson(gameData['marketManager']);
+    if (normalizedGameData['marketManager'] != null) {
+      _marketManager.fromJson(normalizedGameData['marketManager']);
     }
-    if (gameData['levelSystem'] != null) {
-      _levelSystem.fromJson(gameData['levelSystem']);
+    if (normalizedGameData['levelSystem'] != null) {
+      _levelSystem.fromJson(normalizedGameData['levelSystem']);
     }
-    if (gameData['missionSystem'] != null) {
-      _missionSystem.fromJson(gameData['missionSystem']);
+    if (normalizedGameData['missionSystem'] != null) {
+      _missionSystem.fromJson(normalizedGameData['missionSystem']);
     }
-    if (gameData['statistics'] != null) {
-      _statistics.fromJson(gameData['statistics']);
+    if (normalizedGameData['statistics'] != null) {
+      _statistics.fromJson(normalizedGameData['statistics']);
     }
 
-    final loadedTime = (gameData['totalTimePlayedInSeconds'] as num?)?.toInt();
+    final loadedTime = (normalizedGameData['totalTimePlayedInSeconds'] as num?)?.toInt();
     if (loadedTime != null) {
       _statistics.setTotalGameTimeSec(loadedTime);
     } else {
       _statistics.setTotalGameTimeSec(_statistics.totalGameTimeSec);
     }
-    final loadedProduced = (gameData['totalPaperclipsProduced'] as num?)?.toInt();
+    final loadedProduced = (normalizedGameData['totalPaperclipsProduced'] as num?)?.toInt();
     if (loadedProduced != null) {
       _statistics.setTotalPaperclipsProduced(loadedProduced);
     }

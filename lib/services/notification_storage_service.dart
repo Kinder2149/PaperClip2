@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import '../models/event_system.dart';
 import '../constants/game_config.dart'; // Ajout pour EventType
+import '../constants/storage_keys.dart';
 import '../utils/icon_helper.dart'; // Pour utiliser des icônes constantes (déplacé depuis utilities)
 
 class NotificationStorageService {
@@ -32,11 +33,11 @@ class NotificationStorageService {
   }
   
   // Clé utilisée pour la rétrocompatibilité
-  static const String _baseStorageKey = 'important_notifications';
+  static const String _baseStorageKey = StorageKeys.legacyImportantNotificationsKey;
   
   // Méthode pour générer une clé unique par sauvegarde
   static String _getStorageKey(String gameName) {
-    return 'notifications_${gameName.trim()}';
+    return StorageKeys.notificationsKey(gameName);
   }
 
   static Future<void> saveImportantNotification(NotificationEvent notification, String gameName) async {

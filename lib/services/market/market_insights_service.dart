@@ -3,6 +3,7 @@ import 'dart:math' show min;
 import '../../managers/market_manager.dart';
 import '../../constants/game_config.dart';
 import '../upgrades/upgrade_effects_calculator.dart';
+import '../units/value_objects.dart';
 
 class MarketInsightsInput {
   final double sellPrice;
@@ -54,13 +55,17 @@ class MarketInsightsService {
     required MarketManager market,
     required MarketInsightsInput input,
   }) {
-    final demandPerTick = market.calculateDemand(input.sellPrice, input.marketingLevel);
-    final demandPerMin = demandPerTick * 60.0;
+    final demandPerSec = market.calculateDemandPerSecond(
+      price: input.sellPrice,
+      marketingLevel: input.marketingLevel,
+    );
+    final demandPerMin = demandPerSec.toPerMinute().value;
 
     double productionPerMin = 0;
     if (input.autoClipperCount > 0) {
-      productionPerMin = input.autoClipperCount *
-          (GameConstants.BASE_AUTOCLIPPER_PRODUCTION * 60.0);
+      productionPerMin = UnitsPerSecond(
+        input.autoClipperCount * GameConstants.BASE_AUTOCLIPPER_PRODUCTION,
+      ).toPerMinute().value;
       final speedBonus = UpgradeEffectsCalculator.speedMultiplier(level: input.speedLevel);
       final bulkBonus = UpgradeEffectsCalculator.bulkMultiplier(level: input.bulkLevel);
       productionPerMin *= speedBonus * bulkBonus;

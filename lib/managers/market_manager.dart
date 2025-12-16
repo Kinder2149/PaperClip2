@@ -7,6 +7,7 @@ import '../models/json_loadable.dart';
 import '../models/statistics_manager.dart';
 import 'player_manager.dart'; // Import de PlayerManager
 import '../services/upgrades/upgrade_effects_calculator.dart';
+import '../services/units/value_objects.dart';
 
 class MarketDynamics {
   double marketVolatility = 1.0;
@@ -148,6 +149,8 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
   List<double> _priceHistory = [];
   bool _autoSellEnabled = true;
 
+  double _salesRemainder = 0.0;
+
   bool get autoSellEnabled => _autoSellEnabled;
 
   set autoSellEnabled(bool value) {
@@ -273,6 +276,7 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
     required int qualityLevel,
     required void Function(double paperclipsDelta) updatePaperclips,
     required void Function(double moneyDelta) updateMoney,
+    double elapsedSeconds = 1.0,
     bool updateMarketState = true,
     bool requireAutoSellEnabled = true,
     bool verboseLogs = false,
@@ -300,7 +304,19 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
       _updateMarketState();
     }
 
-    double demand = calculateDemand(sellPrice, marketingLevel);
+    final elapsed = elapsedSeconds.isFinite && elapsedSeconds > 0
+        ? elapsedSeconds
+        : 1.0;
+
+    final demandPerSecond = calculateDemandPerSecond(
+      price: sellPrice,
+      marketingLevel: marketingLevel,
+    ).value;
+    final desiredUnitsDouble = (demandPerSecond * elapsed) + _salesRemainder;
+    final int demandUnits = max(0, desiredUnitsDouble.floor());
+    _salesRemainder = desiredUnitsDouble - demandUnits;
+
+    final demand = demandUnits.toDouble();
 
     // Log de la demande calculée
     if (kDebugMode && verboseLogs) {
@@ -308,7 +324,6 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
     }
 
     if (playerPaperclips > 0) {
-      final int demandUnits = max(0, demand.floor());
       int potentialSales = min(demandUnits, playerPaperclips.floor());
 
       if (kDebugMode && verboseLogs) {
@@ -475,6 +490,13 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
     return demand * marketConditionEffect;
   }
 
+  UnitsPerSecond calculateDemandPerSecond({
+    required double price,
+    required int marketingLevel,
+  }) {
+    return UnitsPerSecond(calculateDemand(price, marketingLevel));
+  }
+
   void recordSale(int amount, double price) {
     if (amount <= 0) return;
     
@@ -534,6 +556,7 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
     _currentMarketSaturation = GameConstants.DEFAULT_MARKET_SATURATION;
     _lastMetalPriceUpdateTime = DateTime.now();
     _activeEvents.clear();
+    _salesRemainder = 0.0;
     notifyListeners();
   }
   

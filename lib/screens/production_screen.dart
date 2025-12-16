@@ -13,6 +13,7 @@ import '../widgets/save_button.dart';
 import '../services/upgrades/upgrade_effects_calculator.dart';
 import '../services/progression/progression_rules_service.dart';
 import '../services/format/game_format.dart';
+import '../services/metrics/game_metrics_service.dart';
 
 class _ProductionScreenView {
   final bool showMarketInfo;
@@ -153,6 +154,8 @@ class _ProductionScreenView {
 
 class ProductionScreen extends StatelessWidget {
   const ProductionScreen({super.key});
+
+  static const GameMetricsService _metricsService = GameMetricsService();
 
   double _perMinFromPerSec(double perSec) => perSec * 60.0;
 
@@ -304,9 +307,9 @@ class ProductionScreen extends StatelessWidget {
     );
 
     final double effectiveMetalConsumptionPerSec =
-        effectiveProductionPerSec * metalPerPaperclip * (1.0 - metalSavingPercent / 100);
+        effectiveProductionPerSec * metalPerPaperclip;
     final double metalSavedPerSec =
-        effectiveProductionPerSec * metalPerPaperclip * (metalSavingPercent / 100);
+        effectiveProductionPerSec * GameConstants.METAL_PER_PAPERCLIP - effectiveMetalConsumptionPerSec;
 
     showDialog(
       context: context,
@@ -714,36 +717,26 @@ class ProductionScreen extends StatelessWidget {
       selector: (context, gameState) {
         final visibleElements = gameState.getVisibleUiElements();
 
-        final demandPerSecEstimated = gameState.market.calculateDemand(
-          gameState.player.sellPrice,
-          gameState.player.getMarketingLevel(),
-        );
+        final metrics = _metricsService.computeProduction(gameState);
+
+        final demandPerSecEstimated = metrics.demandPerSecondEstimated.value;
 
         final formattedDemandPerSec = _formatUnitsPerSec(demandPerSecEstimated, decimals: 2);
         final formattedDemandPerMinDisplay = _formatUnitsPerMinApprox(demandPerSecEstimated);
         final formattedReputation = GameFormat.number(gameState.market.reputation, decimals: 2);
 
-        final efficiencyLevel = (gameState.player.upgrades['efficiency']?.level ?? 0);
         final speedLevel = (gameState.player.upgrades['speed']?.level ?? 0);
         final bulkLevel = (gameState.player.upgrades['bulk']?.level ?? 0);
 
-        final metalSavingPercent =
-            UpgradeEffectsCalculator.efficiencyReduction(level: efficiencyLevel) * 100;
-        final efficiencyBonus = 1.0 - (metalSavingPercent / 100);
+        final metalSavingPercent = metrics.metalSavingRatio.toPercent();
         final speedBonus = UpgradeEffectsCalculator.speedMultiplier(level: speedLevel);
         final bulkBonus = UpgradeEffectsCalculator.bulkMultiplier(level: bulkLevel);
 
-        final baseProductionPerSecEstimated =
-            gameState.player.autoClipperCount * GameConstants.BASE_AUTOCLIPPER_PRODUCTION;
-        final actualProductionPerSecEstimated =
-            baseProductionPerSecEstimated * speedBonus * bulkBonus;
+        final baseProductionPerSecEstimated = metrics.baseProductionPerSecondEstimated.value;
+        final actualProductionPerSecEstimated = metrics.actualProductionPerSecondEstimated.value;
 
-        final metalUsagePerSecEstimated = actualProductionPerSecEstimated *
-            GameConstants.METAL_PER_PAPERCLIP *
-            efficiencyBonus;
-        final metalSavedPerSecEstimated = actualProductionPerSecEstimated *
-            GameConstants.METAL_PER_PAPERCLIP *
-            (metalSavingPercent / 100);
+        final metalUsagePerSecEstimated = metrics.metalUsagePerSecondEstimated.value;
+        final metalSavedPerSecEstimated = metrics.metalSavedPerSecondEstimated.value;
 
         final roi = gameState.player.calculateAutoclipperROI();
         final paybackSecondsEstimated = roi > 0 ? (6000.0 / roi) : double.infinity;
@@ -777,6 +770,7 @@ class ProductionScreen extends StatelessWidget {
           metalUsagePerSecEstimated: metalUsagePerSecEstimated,
           metalSavedPerSecEstimated: metalSavedPerSecEstimated,
           metalSavingPercent: metalSavingPercent,
+
           speedBonusPercent: ((speedBonus - 1.0) * 100),
           bulkBonusPercent: ((bulkBonus - 1.0) * 100),
 

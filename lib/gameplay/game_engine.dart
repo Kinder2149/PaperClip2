@@ -48,7 +48,7 @@ class GameEngine {
     market.updateMarketState();
 
     if (autoSellEnabled) {
-      _processAutoSales();
+      _processAutoSales(elapsedSeconds: elapsedSeconds);
     }
   }
 
@@ -56,10 +56,10 @@ class GameEngine {
     // Maintien pour compatibilité: tickMarket force une mise à jour du marché
     // puis traite une vente automatique.
     market.updateMarketState();
-    _processAutoSales();
+    _processAutoSales(elapsedSeconds: 1.0);
   }
 
-  void _processAutoSales() {
+  void _processAutoSales({required double elapsedSeconds}) {
     final sale = market.processSales(
       playerPaperclips: player.paperclips,
       sellPrice: player.sellPrice,
@@ -71,6 +71,7 @@ class GameEngine {
       updateMoney: (delta) {
         player.updateMoney(player.money + delta);
       },
+      elapsedSeconds: elapsedSeconds,
       updateMarketState: false,
       requireAutoSellEnabled: true,
     );

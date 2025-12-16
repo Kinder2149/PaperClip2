@@ -450,16 +450,15 @@ class EventManager extends ChangeNotifier implements JsonLoadable {
       final unlockDetails = LevelSystem.getUnlockDetails(
           additionalData!['unlockedFeature'] as UnlockableFeature);
 
-      if (unlockDetails != null) {
-        additionalData = {
-          ...additionalData,
-          'Fonctionnalité': unlockDetails.name,
-          'Comment utiliser': unlockDetails.howToUse,
-          'Avantages': unlockDetails.benefits.join('\n'),
-          'Conseils': unlockDetails.tips.join('\n'),
-        };
+      additionalData = {
+        ...additionalData,
+        'Fonctionnalité': unlockDetails.name,
+        'Comment utiliser': unlockDetails.howToUse,
+        'Avantages': unlockDetails.benefits.join('\n'),
+        'Conseils': unlockDetails.tips.join('\n'),
+      };
 
-        detailedDescription = '''
+      detailedDescription = '''
 ${unlockDetails.description}
 
 📋 Comment utiliser :
@@ -471,7 +470,6 @@ ${unlockDetails.benefits.map((b) => '• $b').join('\n')}
 💡 Conseils :
 ${unlockDetails.tips.map((t) => '• $t').join('\n')}
 ''';
-      }
     }
 
     final notification = NotificationEvent(

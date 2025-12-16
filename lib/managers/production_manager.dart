@@ -6,9 +6,12 @@ import 'player_manager.dart';
 import '../models/statistics_manager.dart';
 // MissionSystem (Option A — mise en pause): aucun événement de gameplay n'est branché ici.
 import '../models/json_loadable.dart';
-import '../models/event_system.dart';
 import '../models/level_system.dart'; // Import pour LevelSystem
 import '../services/upgrades/upgrade_effects_calculator.dart';
+import 'package:paperclip2/domain/events/domain_event.dart';
+import 'package:paperclip2/domain/events/domain_event_type.dart';
+import 'package:paperclip2/domain/ports/domain_event_sink.dart';
+import 'package:paperclip2/domain/ports/no_op_domain_event_sink.dart';
 
 /// Gestionnaire responsable de toute la logique de production de trombones
 /// (production manuelle, automatique, gestion des autoclippeuses, etc.)
@@ -17,6 +20,7 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
   final PlayerManager _playerManager;
   final StatisticsManager _statistics; // Utilise maintenant la version de models/statistics_manager.dart
   final LevelSystem _levelSystem;
+  DomainEventSink _eventSink = const NoOpDomainEventSink();
   // MissionSystem (Option A — mise en pause): non intégré au runtime.
   double _maintenanceCosts = 0.0;
   double _autoProductionRemainder = 0.0;
@@ -31,6 +35,10 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
   // Accesseurs pour faciliter le code
   PlayerManager get player => _playerManager;
   LevelSystem get level => _levelSystem;
+
+  void setDomainEventSink(DomainEventSink sink) {
+    _eventSink = sink;
+  }
 
   // Constructor avec injection de dépendances
   ProductionManager({
@@ -241,11 +249,14 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
       player.updateMoney(player.money - _maintenanceCosts);
     } else {
       player.updateAutoclippers((player.autoclippers * 0.9).floor());
-      EventManager.instance.addEvent(
-          EventType.RESOURCE_DEPLETION,
-          "Maintenance impayée !",
-          description: "Certaines autoclippeuses sont hors service",
-          importance: EventImportance.HIGH
+      _eventSink.publish(
+        const DomainEvent(
+          type: DomainEventType.resourceDepletion,
+          data: <String, Object?>{
+            'title': 'Maintenance impayée !',
+            'description': 'Certaines autoclippeuses sont hors service',
+          },
+        ),
       );
     }
     

@@ -7,6 +7,7 @@ import '../models/json_loadable.dart';
 import '../models/game_state_interfaces.dart';
 import '../models/upgrade.dart';
 import '../services/upgrades/upgrade_effects_calculator.dart';
+import '../services/units/value_objects.dart';
 
 /// Manager pour les ressources et états du joueur
 class PlayerManager extends ChangeNotifier implements JsonLoadable {
@@ -258,8 +259,9 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
   double calculateAutoclipperROI() {
     if (_autoClipperCount == 0) return 0.0;
     double cost = calculateAutoclipperCost();
-    double productionPerMinute =
-        _autoClipperCount * (GameConstants.BASE_AUTOCLIPPER_PRODUCTION * 60.0);
+    final productionPerMinute = UnitsPerSecond(
+      _autoClipperCount * GameConstants.BASE_AUTOCLIPPER_PRODUCTION,
+    ).toPerMinute().value;
     double sellPrice = _sellPrice;
     
     // Si le prix de vente est trop bas, le ROI sera négatif

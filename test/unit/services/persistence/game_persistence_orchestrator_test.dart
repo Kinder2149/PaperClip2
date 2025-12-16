@@ -5,6 +5,8 @@ import 'package:paperclip2/models/game_state.dart';
 import 'package:paperclip2/models/save_game.dart' as model;
 import 'package:paperclip2/models/save_metadata.dart';
 import 'package:paperclip2/services/persistence/game_persistence_orchestrator.dart';
+import 'package:paperclip2/services/persistence/game_snapshot.dart';
+import 'package:paperclip2/services/persistence/local_game_persistence.dart';
 import 'package:paperclip2/services/save_game.dart';
 import 'package:paperclip2/services/save_system/local_save_game_manager.dart';
 import 'package:paperclip2/services/save_system/save_manager_adapter.dart';
@@ -103,6 +105,16 @@ model.SaveGame _makeSave(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  Future<GameSnapshot> _snapshotWithMoney(double money) async {
+    final state = GameState();
+    state.initialize();
+    await state.startNewGame('test-snapshot-money');
+    state.playerManager.updateMoney(money);
+    final snapshot = state.toSnapshot();
+    state.dispose();
+    return snapshot;
+  }
 
   group('GamePersistenceOrchestrator', () {
     late _InMemorySaveGameManager saveManager;
@@ -210,12 +222,8 @@ void main() {
       final backupOld = '$baseName${GameConstants.BACKUP_DELIMITER}111';
       final backupNew = '$baseName${GameConstants.BACKUP_DELIMITER}222';
 
-      // 1) Insérer une sauvegarde principale invalide.
-      // On force un gameData qui fera échouer Map<String, dynamic>.from(...) dans SaveValidator.quickValidate
-      // (clés non-String via cast()) => severity critical.
-      final invalidRaw = <dynamic, dynamic>{1: 'boom'};
-      final invalidGameData = invalidRaw.cast<String, dynamic>();
-      await saveManager.saveGame(_makeSave(baseName, invalidGameData, id: 'base-invalid'));
+      // 1) Insérer une sauvegarde principale invalide: snapshot manquant.
+      await saveManager.saveGame(_makeSave(baseName, <String, dynamic>{}, id: 'base-invalid'));
       await saveManager.updateSaveMetadata(
         'base-invalid',
         SaveMetadata(
@@ -229,13 +237,12 @@ void main() {
         ),
       );
 
-      // 2) Insérer deux backups valides, dont un plus récent.
+      // 2) Insérer deux backups valides (snapshot-only), dont un plus récent.
       await saveManager.saveGame(
         _makeSave(
           backupOld,
           <String, dynamic>{
-            'playerManager': {'money': 10.0, 'metal': 0.0, 'paperclips': 0.0, 'sellPrice': 0.05},
-            'marketManager': {'marketMetalStock': 0.0},
+            LocalGamePersistenceService.snapshotKey: (await _snapshotWithMoney(10.0)).toJson(),
           },
           id: 'backup-old',
         ),
@@ -257,8 +264,7 @@ void main() {
         _makeSave(
           backupNew,
           <String, dynamic>{
-            'playerManager': {'money': 42.0, 'metal': 0.0, 'paperclips': 0.0, 'sellPrice': 0.05},
-            'marketManager': {'marketMetalStock': 0.0},
+            LocalGamePersistenceService.snapshotKey: (await _snapshotWithMoney(42.0)).toJson(),
           },
           id: 'backup-new',
         ),
@@ -280,16 +286,23 @@ void main() {
 
       // La restauration ré-écrit une sauvegarde "baseName" avec les données du backup le plus récent.
       final restored = await SaveManagerAdapter.loadGame(baseName);
-      final restoredPlayer = restored.gameData['playerManager'] as Map<String, dynamic>?;
-      expect(restoredPlayer?['money'], 42.0);
+      final restoredRaw = restored.gameData[LocalGamePersistenceService.snapshotKey];
+      expect(restoredRaw, isNotNull);
+      final restoredSnapshot = switch (restoredRaw) {
+        final Map<String, dynamic> map => GameSnapshot.fromJson(map),
+        final Map map => GameSnapshot.fromJson(Map<String, dynamic>.from(map)),
+        _ => throw StateError(
+            'Snapshot restauré: format inattendu (${restoredRaw.runtimeType})',
+          ),
+      };
+      expect(restoredSnapshot.core['playerManager']['money'], 42.0);
     });
 
     test('checkAndRestoreLastSaveFromBackupIfNeeded: save invalide mais aucun backup => no-op', () async {
       const baseName = 'restore-me-no-backup';
 
-      final invalidRaw = <dynamic, dynamic>{1: 'boom'};
-      final invalidGameData = invalidRaw.cast<String, dynamic>();
-      await saveManager.saveGame(_makeSave(baseName, invalidGameData, id: 'base-invalid'));
+      // Snapshot manquant -> invalide.
+      await saveManager.saveGame(_makeSave(baseName, <String, dynamic>{}, id: 'base-invalid'));
       await saveManager.updateSaveMetadata(
         'base-invalid',
         SaveMetadata(
@@ -309,6 +322,71 @@ void main() {
       // On vérifie juste que la sauvegarde reste "invalid" (loadGame retombe en fallback vide en cas d'erreur).
       final loaded = await SaveManagerAdapter.loadGame(baseName);
       expect(loaded.name, baseName);
+    });
+
+    test('loadGame: snapshot invalide et backup dispo => restaure puis charge; sinon throw',
+        () async {
+      final state = GameState();
+      state.initialize();
+
+      const baseName = 'load-restore';
+      final backupName = '$baseName${GameConstants.BACKUP_DELIMITER}999';
+
+      // Sauvegarde principale invalide: snapshot illisible.
+      await saveManager.saveGame(
+        _makeSave(
+          baseName,
+          <String, dynamic>{
+            LocalGamePersistenceService.snapshotKey: 123,
+          },
+          id: 'base-invalid',
+        ),
+      );
+
+      // Backup valide.
+      await saveManager.saveGame(
+        _makeSave(
+          backupName,
+          <String, dynamic>{
+            LocalGamePersistenceService.snapshotKey: (await _snapshotWithMoney(77.0)).toJson(),
+          },
+          id: 'backup-valid',
+        ),
+      );
+      await saveManager.updateSaveMetadata(
+        'backup-valid',
+        SaveMetadata(
+          id: 'backup-valid',
+          name: backupName,
+          creationDate: DateTime(2025, 1, 1),
+          lastModified: DateTime(2025, 1, 3),
+          version: '1.0.3',
+          gameMode: GameMode.INFINITE,
+          isRestored: false,
+        ),
+      );
+
+      await GamePersistenceOrchestrator.instance.loadGame(state, baseName);
+      expect(state.playerManager.money, closeTo(77.0, 0.001));
+
+      // Cas sans backup -> throw.
+      const baseNameNoBackup = 'load-restore-no-backup';
+      await saveManager.saveGame(
+        _makeSave(
+          baseNameNoBackup,
+          <String, dynamic>{
+            LocalGamePersistenceService.snapshotKey: 123,
+          },
+          id: 'base-invalid-2',
+        ),
+      );
+
+      await expectLater(
+        GamePersistenceOrchestrator.instance.loadGame(state, baseNameNoBackup),
+        throwsA(isA<FormatException>()),
+      );
+
+      state.dispose();
     });
   });
 }

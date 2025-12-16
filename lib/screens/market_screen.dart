@@ -13,7 +13,7 @@ import '../widgets/dialogs/info_dialog.dart';
 import '../services/upgrades/upgrade_effects_calculator.dart';
 import '../services/progression/progression_rules_service.dart';
 import '../services/format/game_format.dart';
-import '../services/market/market_insights_service.dart';
+import '../services/metrics/game_metrics_service.dart';
 
 class _MarketScreenView {
   final VisibleUiElements visibleElements;
@@ -21,11 +21,14 @@ class _MarketScreenView {
   final double sellPrice;
   final int marketingLevel;
   final int autoClipperCount;
+  final int qualityLevel;
+  final int speedLevel;
+  final int bulkLevel;
+
   final double demand;
   final double autoclipperProduction;
   final double effectiveProduction;
   final double profitability;
-  final int qualityLevel;
   final double qualityBonus;
   final double effectiveSellPrice;
   final double reputation;
@@ -58,11 +61,14 @@ class _MarketScreenView {
     required this.sellPrice,
     required this.marketingLevel,
     required this.autoClipperCount,
+    required this.qualityLevel,
+    required this.speedLevel,
+    required this.bulkLevel,
+
     required this.demand,
     required this.autoclipperProduction,
     required this.effectiveProduction,
     required this.profitability,
-    required this.qualityLevel,
     required this.qualityBonus,
     required this.effectiveSellPrice,
     required this.reputation,
@@ -139,9 +145,7 @@ class _MarketScreenView {
 class MarketScreen extends StatelessWidget {
   const MarketScreen({super.key});
 
-  static const MarketInsightsService _insightsService = MarketInsightsService();
-
-  double _perSecFromPerMin(double perMin) => perMin / 60.0;
+  static const GameMetricsService _metricsService = GameMetricsService();
 
   String _formatUnitsPerSec(double value, {int decimals = 2}) {
     return '${GameFormat.number(value, decimals: decimals)}/sec';
@@ -369,22 +373,12 @@ class MarketScreen extends StatelessWidget {
         final speedLevel = gameState.player.upgrades['speed']?.level ?? 0;
         final bulkLevel = gameState.player.upgrades['bulk']?.level ?? 0;
 
-        final insights = _insightsService.compute(
-          market: gameState.market,
-          input: MarketInsightsInput(
-            sellPrice: sellPrice,
-            marketingLevel: marketingLevel,
-            autoClipperCount: autoClipperCount,
-            speedLevel: speedLevel,
-            bulkLevel: bulkLevel,
-            qualityLevel: qualityLevel,
-          ),
-        );
+        final metrics = _metricsService.computeMarket(gameState);
 
-        final demandPerSecEstimated = _perSecFromPerMin(insights.demandPerMin);
-        final productionPerSecEstimated = _perSecFromPerMin(insights.productionPerMin);
-        final salesPerSecEstimated = _perSecFromPerMin(insights.effectiveSalesPerMin);
-        final profitabilityPerSecEstimated = _perSecFromPerMin(insights.profitabilityPerMin);
+        final demandPerSecEstimated = metrics.demandPerSecondEstimated.value;
+        final productionPerSecEstimated = metrics.productionPerSecondEstimated.value;
+        final salesPerSecEstimated = metrics.salesPerSecondEstimated.value;
+        final profitabilityPerSecEstimated = metrics.revenuePerSecondEstimated.value;
 
         final speedBonus = UpgradeEffectsCalculator.speedMultiplier(level: speedLevel);
         final bulkBonus = UpgradeEffectsCalculator.bulkMultiplier(level: bulkLevel);
@@ -438,13 +432,17 @@ class MarketScreen extends StatelessWidget {
           sellPrice: sellPrice,
           marketingLevel: marketingLevel,
           autoClipperCount: autoClipperCount,
+          qualityLevel: qualityLevel,
+          speedLevel: speedLevel,
+          bulkLevel: bulkLevel,
+
           demand: demandPerSecEstimated,
           autoclipperProduction: productionPerSecEstimated,
           effectiveProduction: salesPerSecEstimated,
           profitability: profitabilityPerSecEstimated,
-          qualityLevel: qualityLevel,
-          qualityBonus: insights.qualityBonus,
-          effectiveSellPrice: insights.effectiveSellPrice,
+          qualityBonus: metrics.qualityBonus,
+          effectiveSellPrice: metrics.effectiveSellPrice,
+
           reputation: gameState.marketManager.reputation,
           salesHistory: salesHistory,
           lastSaleTimestampMs: lastSaleTimestampMs,
@@ -469,10 +467,11 @@ class MarketScreen extends StatelessWidget {
             decimals: 1,
           ),
           formattedSellPrice: GameFormat.money(sellPrice, decimals: 2),
-          formattedEffectiveSellPrice: GameFormat.money(insights.effectiveSellPrice, decimals: 2),
+          formattedEffectiveSellPrice: GameFormat.money(metrics.effectiveSellPrice, decimals: 2),
           formattedReputationPercent: GameFormat.percentFromRatio(gameState.marketManager.reputation, decimals: 1),
         );
       },
+
       builder: (context, view, child) {
         final gameState = context.read<GameState>();
 

@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:paperclip2/managers/player_manager.dart';
+import 'package:paperclip2/constants/game_config.dart';
+import 'package:paperclip2/services/units/value_objects.dart';
 
 void main() {
   group('PlayerManager', () {
@@ -103,6 +105,25 @@ void main() {
 
       expect(player.upgrades['storage']!.level, 2);
       expect(player.upgrades['efficiency']!.level, 3);
+    });
+
+    test('calculateAutoclipperROI matches expected formula (per minute conversion)', () {
+      final player = PlayerManager();
+
+      player.updateMoney(1e9);
+      player.setSellPrice(0.2);
+      expect(player.purchaseAutoClipper(), isTrue);
+
+      final cost = player.calculateAutoclipperCost();
+      final productionPerMinute = UnitsPerSecond(
+        player.autoClipperCount * GameConstants.BASE_AUTOCLIPPER_PRODUCTION,
+      ).toPerMinute().value;
+
+      final expectedRoi = (productionPerMinute * player.sellPrice) / cost * 100;
+      final roi = player.calculateAutoclipperROI();
+
+      expect(roi.isFinite, isTrue);
+      expect(roi, closeTo(expectedRoi, 1e-9));
     });
   });
 }

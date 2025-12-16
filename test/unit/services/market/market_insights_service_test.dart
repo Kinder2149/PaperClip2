@@ -21,7 +21,7 @@ void main() {
 
       final insights = service.compute(market: market, input: input);
 
-      // calculateDemand is used as a per-tick quantity; UI insights expose per-minute.
+      // Demand is expressed as units/sec in MarketManager and exposed here as units/min.
       expect(insights.demandPerMin, closeTo(GameConstants.BASE_DEMAND * 60.0, 1e-9));
       expect(insights.productionPerMin, 0.0);
       expect(insights.effectiveSalesPerMin, 0.0);

@@ -5,19 +5,19 @@ import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/game_state.dart';
-import '../controllers/game_session_controller.dart';
 import '../constants/game_config.dart';
+import '../constants/storage_keys.dart';
 import '../screens/main_screen.dart';
 import '../services/save_system/save_manager_adapter.dart';
-import '../services/save_migration_service.dart';
-import '../widgets/cards/info_card.dart';
-import '../widgets/indicators/stat_indicator.dart';
-import '../widgets/dialogs/info_dialog.dart';
-import '../services/notification_storage_service.dart';
+import '../services/notification_manager.dart';
+import '../services/navigation_service.dart';
+import '../services/game_runtime_coordinator.dart';
 import '../widgets/resources/resource_widgets.dart';
+import '../widgets/indicators/stat_indicator.dart';
+import '../services/notification_storage_service.dart';
+import '../services/save_migration_service.dart';
 import '../services/save_game.dart' show SaveGameInfo; // Importer la classe unifiée SaveGameInfo
 import '../widgets/save_button.dart';
-import '../services/notification_manager.dart'; // Ajout de l'import pour NotificationManager
 
 // La classe SaveGameInfo est maintenant importée depuis save_game.dart
 
@@ -96,7 +96,8 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
       print('DIAGNOSTIC SAVE SCREEN: Vérification directe du cache des métadonnées...');
       final sharedPrefs = await SharedPreferences.getInstance();
       final allKeys = sharedPrefs.getKeys();
-      final metadataKeys = allKeys.where((key) => key.startsWith('save_metadata_')).toList();
+      final metadataKeys =
+          allKeys.where((key) => key.startsWith(StorageKeys.saveMetadataPrefix)).toList();
       print('DIAGNOSTIC SAVE SCREEN: Nombre de métadonnées dans SharedPrefs: ${metadataKeys.length}');
       if (metadataKeys.isNotEmpty) {
         print('DIAGNOSTIC SAVE SCREEN: Premières clés trouvées: ${metadataKeys.take(3).join(", ")}');
@@ -190,12 +191,10 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
         return;
       }
 
-      final gameState = context.read<GameState>();
-      final gameSessionController = context.read<GameSessionController>();
-      await gameState.loadGame(name); // Utiliser loadGame directement
+      await context.read<GameRuntimeCoordinator>().loadGameAndStartAutoSave(name);
 
-      // Option A: démarrer la boucle de jeu uniquement quand une partie est active.
-      gameSessionController.startSession();
+      // Boucle de jeu pilotée par le runtime coordinator.
+      context.read<GameRuntimeCoordinator>().startSession();
 
       if (mounted) {
         // Notification de chargement réussi

@@ -1,21 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
-import '../managers/market_manager.dart';
 import '../widgets/charts/chart_widgets.dart';
+import '../services/metrics/game_metrics_service.dart';
 
 class DemandCalculationScreen extends StatelessWidget {
   const DemandCalculationScreen({super.key});
+
+  static const GameMetricsService _metricsService = GameMetricsService();
 
   double _perMinFromPerSec(double perSec) => perSec * 60.0;
 
   @override
   Widget build(BuildContext context) {
     final gameState = context.watch<GameState>();
-    final demandPerSecEstimated = gameState.marketManager.calculateDemand(
-      gameState.player.sellPrice,
-      gameState.player.getMarketingLevel(),
-    );
+    final demandPerSecEstimated =
+        _metricsService.computeProduction(gameState).demandPerSecondEstimated.value;
     final currentDemandPerMinDisplay = _perMinFromPerSec(demandPerSecEstimated);
 
     return Scaffold(

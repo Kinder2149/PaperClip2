@@ -12,10 +12,13 @@ import 'package:logging/logging.dart';
 import '../models/game_state.dart';
 import '../constants/game_config.dart';  // Import des constantes centralisées
 import 'save_game.dart';  // Import du fichier point d'entrée pour le système de sauvegarde
-import '../managers/event_manager.dart';
 import '../constants/storage_constants.dart';  // Chemin corrigé vers les constantes de stockage
 import 'save_system/save_validator.dart';  // Import du nouveau validateur de sauvegarde
 import '../services/persistence/game_persistence_orchestrator.dart';
+import 'package:paperclip2/domain/events/domain_event.dart';
+import 'package:paperclip2/domain/events/domain_event_type.dart';
+import 'package:paperclip2/domain/ports/domain_event_sink.dart';
+import 'package:paperclip2/domain/ports/no_op_domain_event_sink.dart';
 
 typedef AutoSavePostFrameScheduler = void Function(VoidCallback callback);
 
@@ -75,32 +78,6 @@ class _DefaultAutoSaveStoragePort implements AutoSaveStoragePort {
   Future<void> deleteSaveByName(String name) => SaveManagerAdapter.deleteSaveByName(name);
 }
 
-abstract class AutoSaveEventPort {
-  void addEvent(
-    EventType type,
-    String title, {
-    required String description,
-    required EventImportance importance,
-  });
-}
-
-class _DefaultAutoSaveEventPort implements AutoSaveEventPort {
-  @override
-  void addEvent(
-    EventType type,
-    String title, {
-    required String description,
-    required EventImportance importance,
-  }) {
-    EventManager.instance.addEvent(
-      type,
-      title,
-      description: description,
-      importance: importance,
-    );
-  }
-}
-
 class AutoSaveService {
   // Définition du logger (static pour être partagé entre les instances)
   static final Logger _logger = Logger('AutoSaveService');
@@ -109,7 +86,7 @@ class AutoSaveService {
   final GameState _gameState;
   final AutoSaveOrchestratorPort _orchestrator;
   final AutoSaveStoragePort _storage;
-  final AutoSaveEventPort _events;
+  DomainEventSink _eventSink;
   final AutoSavePostFrameScheduler _postFrame;
   final int _maxStorageSizeBytes;
   final int _maxFailedAttempts;
@@ -123,14 +100,14 @@ class AutoSaveService {
     this._gameState, {
     AutoSaveOrchestratorPort? orchestrator,
     AutoSaveStoragePort? storage,
-    AutoSaveEventPort? events,
+    DomainEventSink? eventSink,
     AutoSavePostFrameScheduler? postFrame,
     int? maxStorageSizeBytes,
     int? maxFailedAttempts,
   })  : _orchestrator = orchestrator ??
             _DefaultAutoSaveOrchestratorPort(GamePersistenceOrchestrator.instance),
         _storage = storage ?? _DefaultAutoSaveStoragePort(),
-        _events = events ?? _DefaultAutoSaveEventPort(),
+        _eventSink = eventSink ?? const NoOpDomainEventSink(),
         _postFrame = postFrame ?? ((callback) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             callback();
@@ -138,6 +115,10 @@ class AutoSaveService {
         }),
         _maxStorageSizeBytes = maxStorageSizeBytes ?? GameConstants.MAX_STORAGE_SIZE,
         _maxFailedAttempts = maxFailedAttempts ?? GameConstants.MAX_FAILED_ATTEMPTS;
+
+  void setDomainEventSink(DomainEventSink sink) {
+    _eventSink = sink;
+  }
 
   Future<void> initialize() async {
     if (_isInitialized) return;
@@ -166,6 +147,18 @@ class AutoSaveService {
     print('Auto-sauvegarde relancée');
   }
 
+  Future<void> requestLifecycleSave({String? reason}) async {
+    if (!_gameState.isInitialized || _gameState.gameName == null) {
+      return;
+    }
+
+    await _orchestrator.requestLifecycleSave(
+      _gameState,
+      reason: reason,
+    );
+    _lastAutoSave = DateTime.now();
+  }
+
   void _setupMainTimer() {
     _mainTimer?.cancel();
     _mainTimer = Timer.periodic(GameConstants.AUTO_SAVE_INTERVAL, (_) {
@@ -181,15 +174,6 @@ class AutoSaveService {
 
     try {
       final backupName = '${_gameState.gameName!}${StorageConstants.BACKUP_DELIMITER}${DateTime.now().millisecondsSinceEpoch}';
-
-      // Créer un objet SaveGame pour le backup
-      final saveData = SaveGame(
-        name: backupName,
-        lastSaveTime: DateTime.now(),
-        gameData: _gameState.prepareGameData(),
-        version: GameConstants.VERSION,
-        gameMode: _gameState.gameMode,
-      );
 
       await _orchestrator.requestBackup(
         _gameState,
@@ -240,33 +224,27 @@ class AutoSaveService {
     try {
       _logger.info('Début de la sauvegarde automatique pour: ${_gameState.gameName}');
       
-      // Préparer les données de jeu
-      final gameData = _gameState.prepareGameData();
-      
-      // Validation préalable des données de jeu avec le nouveau validateur
-      final validationResult = SaveValidator.validate(gameData);
-      
+      // PR3: persistance snapshot-only.
+      // On contrôle la taille du payload réellement écrit (snapshot).
+      final snapshot = _gameState.toSnapshot();
+      final savePayload = <String, dynamic>{
+        'version': GameConstants.CURRENT_SAVE_FORMAT_VERSION,
+        'timestamp': DateTime.now().toIso8601String(),
+        'gameData': <String, dynamic>{
+          'gameSnapshot': snapshot.toJson(),
+        },
+      };
+
+      // Validation best-effort (structure conteneur minimale + existence du snapshot)
+      final validationResult = SaveValidator.validate(savePayload, quickMode: true);
       if (!validationResult.isValid) {
-        _logger.warning('Problème de validation avant sauvegarde: ${validationResult.errors.join(", ")}');
-        // Continuer quand même, mais avec les données sanitizées
-        validationResult.sanitizedData?.forEach((key, value) {
-          gameData[key] = value;
-        });
-        _logger.info('Données de jeu corrigées pour la sauvegarde automatique');
+        _logger.warning(
+          'Validation rapide échouée avant sauvegarde snapshot-only: ${validationResult.errors.join(", ")}',
+        );
       }
-      
-      // Créer un objet SaveGame pour la sauvegarde automatique
-      final saveData = SaveGame(
-        id: _gameState.gameId ?? DateTime.now().millisecondsSinceEpoch.toString(),
-        name: _gameState.gameName!,
-        lastSaveTime: DateTime.now(),
-        gameData: gameData,
-        version: GameConstants.VERSION,
-        gameMode: _gameState.gameMode,
-      );
 
       // Vérifier la taille avant de sauvegarder
-      if (!await _checkSaveSize(saveData.toJson())) {
+      if (!await _checkSaveSize(savePayload)) {
         _logger.warning('Sauvegarde automatique trop volumineuse pour: ${_gameState.gameName}');
         await _handleSaveError('Sauvegarde trop volumineuse');
         return;
@@ -314,19 +292,10 @@ class AutoSaveService {
   }
 
   Future<void> _performBackup() async {
-    if (!_gameState.isInitialized || _gameState.gameName == null) return;
+    if (!_isInitialized || _gameState.gameName == null) return;
 
     try {
       final backupName = '${_gameState.gameName!}${StorageConstants.BACKUP_DELIMITER}${DateTime.now().millisecondsSinceEpoch}';
-
-      // Créer un objet SaveGame pour le backup
-      final saveData = SaveGame(
-        name: backupName,
-        lastSaveTime: DateTime.now(),
-        gameData: _gameState.prepareGameData(),
-        version: GameConstants.VERSION,
-        gameMode: _gameState.gameMode,
-      );
 
       await _orchestrator.requestBackup(
         _gameState,
@@ -349,32 +318,24 @@ class AutoSaveService {
     try {
       _logger.info('Début de la sauvegarde à la sortie pour: ${_gameState.gameName}');
       
-      // Préparer les données de jeu
-      final gameData = _gameState.prepareGameData();
-      
-      // Validation rapide des données de jeu (version allégée pour la sortie rapide)
-      final validationResult = SaveValidator.validate(gameData, quickMode: true);
+      // PR3: validation rapide sur le payload snapshot-only réellement écrit.
+      final snapshot = _gameState.toSnapshot();
+      final payload = <String, dynamic>{
+        'version': GameConstants.CURRENT_SAVE_FORMAT_VERSION,
+        'timestamp': DateTime.now().toIso8601String(),
+        'gameData': <String, dynamic>{
+          'gameSnapshot': snapshot.toJson(),
+        },
+      };
+
+      final validationResult = SaveValidator.validate(payload, quickMode: true);
       if (!validationResult.isValid) {
         _logger.warning('Validation rapide échouée lors de la sauvegarde à la sortie');
         // Créer un backup de sécurité avant de continuer
         await _performBackup();
       }
       
-      // Créer un objet SaveGame pour la sauvegarde à la sortie
-      final saveData = SaveGame(
-        name: _gameState.gameName!,
-        lastSaveTime: DateTime.now(),
-        gameData: gameData,
-        version: GameConstants.VERSION,
-        gameMode: _gameState.gameMode,
-        id: _gameState.gameId ?? DateTime.now().millisecondsSinceEpoch.toString(),
-      );
-
-      await _orchestrator.requestLifecycleSave(
-        _gameState,
-        reason: 'autosave_service_save_on_exit',
-      );
-      _lastAutoSave = DateTime.now();
+      await requestLifecycleSave(reason: 'autosave_service_save_on_exit');
       _logger.info('Sauvegarde à la sortie effectuée avec succès pour: ${_gameState.gameName}');
       
     } catch (e) {
@@ -400,22 +361,28 @@ class AutoSaveService {
         await createBackup();
         _failedSaveAttempts = 0;
 
-        _events.addEvent(
-          EventType.RESOURCE_DEPLETION,  // Au lieu de EventType.ERROR
-          "Problème de sauvegarde",
-          description: "Une sauvegarde de secours a été créée automatiquement",
-          importance: EventImportance.HIGH,
+        _eventSink.publish(
+          const DomainEvent(
+            type: DomainEventType.resourceDepletion,
+            data: <String, Object?>{
+              'title': 'Problème de sauvegarde',
+              'description': 'Une sauvegarde de secours a été créée automatiquement',
+            },
+          ),
         );
         
         _logger.info('Sauvegarde de secours créée avec succès');
       } catch (backupError) {
         _logger.severe('Impossible de créer une sauvegarde de secours: $backupError');
-        
-        _events.addEvent(
-          EventType.RESOURCE_DEPLETION, // Utilisation de RESOURCE_DEPLETION au lieu de ERROR
-          "Erreur critique de sauvegarde",
-          description: "Impossible de sauvegarder vos données de jeu",
-          importance: EventImportance.CRITICAL,
+
+        _eventSink.publish(
+          const DomainEvent(
+            type: DomainEventType.resourceDepletion,
+            data: <String, Object?>{
+              'title': 'Erreur critique de sauvegarde',
+              'description': 'Impossible de sauvegarder vos données de jeu',
+            },
+          ),
         );
       }
     }

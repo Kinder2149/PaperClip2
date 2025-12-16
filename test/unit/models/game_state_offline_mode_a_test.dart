@@ -7,9 +7,12 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('GameState - offline Mode A', () {
-    test('applyOfflineModeAOnResume produit des trombones et consomme du métal', () {
+    test('applyOfflineProgressV2 produit des trombones et consomme du métal', () {
       final gameState = GameState();
       gameState.initialize();
+
+      // Offline v2 simule aussi les ventes auto; on désactive pour tester la production seule.
+      gameState.setAutoSellEnabled(false);
 
       gameState.playerManager.updateAutoclippers(1);
       gameState.playerManager.updateMetal(10000.0);
@@ -18,7 +21,7 @@ void main() {
       final metalBefore = gameState.playerManager.metal;
 
       gameState.markLastActiveAt(DateTime.now().subtract(const Duration(minutes: 10)));
-      gameState.applyOfflineModeAOnResume();
+      gameState.applyOfflineProgressV2();
 
       final paperclipsAfter = gameState.playerManager.paperclips;
       final metalAfter = gameState.playerManager.metal;
@@ -32,9 +35,12 @@ void main() {
       gameState.dispose();
     });
 
-    test('applyOfflineModeAOnResume clamp la durée offline à OFFLINE_MAX_DURATION', () {
+    test('applyOfflineProgressV2 clamp la durée offline à OFFLINE_MAX_DURATION', () {
       final gameState = GameState();
       gameState.initialize();
+
+      // Offline v2 simule aussi les ventes auto; on désactive pour tester la production seule.
+      gameState.setAutoSellEnabled(false);
 
       gameState.playerManager.updateAutoclippers(1);
       gameState.playerManager.updateMetal(1000000.0);
@@ -42,7 +48,7 @@ void main() {
       final paperclipsBefore = gameState.playerManager.paperclips;
 
       gameState.markLastActiveAt(DateTime.now().subtract(const Duration(days: 2)));
-      gameState.applyOfflineModeAOnResume();
+      gameState.applyOfflineProgressV2();
 
       final produced = gameState.playerManager.paperclips - paperclipsBefore;
 
@@ -53,19 +59,22 @@ void main() {
       gameState.dispose();
     });
 
-    test('applyOfflineModeAOnResume ne double-crédite pas si appelé deux fois de suite', () {
+    test('applyOfflineProgressV2 ne double-crédite pas si appelé deux fois de suite', () {
       final gameState = GameState();
       gameState.initialize();
+
+      // Offline v2 simule aussi les ventes auto; on désactive pour tester la production seule.
+      gameState.setAutoSellEnabled(false);
 
       gameState.playerManager.updateAutoclippers(1);
       gameState.playerManager.updateMetal(10000.0);
 
       gameState.markLastActiveAt(DateTime.now().subtract(const Duration(minutes: 10)));
-      gameState.applyOfflineModeAOnResume();
+      gameState.applyOfflineProgressV2();
 
       final paperclipsAfterFirst = gameState.playerManager.paperclips;
 
-      gameState.applyOfflineModeAOnResume();
+      gameState.applyOfflineProgressV2();
       final paperclipsAfterSecond = gameState.playerManager.paperclips;
 
       expect(paperclipsAfterSecond, closeTo(paperclipsAfterFirst, 0.0001));

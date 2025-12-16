@@ -84,11 +84,12 @@ class LocalGamePersistenceService implements GamePersistenceService {
     final migratedCore = Map<String, dynamic>.from(snapshot.core);
 
     // v1 minimal: metadata.schemaVersion + lastActiveAt
-    final schemaVersionRaw = migratedMetadata['schemaVersion'];
+    final schemaVersionRaw =
+        migratedMetadata['snapshotSchemaVersion'] ?? migratedMetadata['schemaVersion'];
     final schemaVersion = (schemaVersionRaw is num) ? schemaVersionRaw.toInt() : 0;
 
     // Si on rencontre un snapshot plus récent que ce que l'app sait gérer,
-    // on échoue explicitement pour forcer un fallback legacy (ou une restauration backup).
+    // on échoue explicitement afin de permettre une restauration backup (sinon erreur).
     if (schemaVersion > _latestSupportedSchemaVersion) {
       throw FormatException(
         'GameSnapshot.schemaVersion=$schemaVersion non supporté (max=$_latestSupportedSchemaVersion)',
@@ -97,7 +98,14 @@ class LocalGamePersistenceService implements GamePersistenceService {
 
     if (schemaVersion < 1) {
       migratedMetadata['schemaVersion'] = 1;
+      migratedMetadata['snapshotSchemaVersion'] = 1;
+    } else {
+      migratedMetadata['schemaVersion'] = schemaVersion;
+      migratedMetadata['snapshotSchemaVersion'] = schemaVersion;
     }
+
+    migratedMetadata['appVersion'] ??= GameConstants.VERSION;
+    migratedMetadata['saveFormatVersion'] ??= GameConstants.CURRENT_SAVE_FORMAT_VERSION;
 
     if (migratedMetadata['lastActiveAt'] == null) {
       migratedMetadata['lastActiveAt'] =

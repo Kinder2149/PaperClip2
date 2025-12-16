@@ -12,24 +12,20 @@ import '../models/game_state.dart';
 import '../constants/game_config.dart'; // Importé depuis constants au lieu de models
 import '../models/event_system.dart';
 import '../models/progression_system.dart';
+import '../models/statistics_manager.dart';
+import '../models/level_system.dart';
+
 import '../services/notification_manager.dart';
+import '../services/progression/progression_rules_service.dart';
+import '../services/upgrades/upgrade_effects_calculator.dart';
 
 // Imports des services
-import '../services/save_system/save_manager_adapter.dart';
 import '../services/background_music.dart';
-import '../controllers/game_session_controller.dart';
-import '../models/statistics_manager.dart';
+import '../services/game_runtime_coordinator.dart';
 
 // Imports des widgets
-import '../widgets/indicators/level_widgets.dart';
-import '../widgets/resources/resource_widgets.dart';
 import '../widgets/indicators/notification_widgets.dart';
-import '../widgets/charts/chart_widgets.dart';
-import '../widgets/buttons/production_button.dart';
-import '../widgets/indicators/competitive_mode_indicator.dart';
 import '../widgets/save_button.dart';
-import '../services/upgrades/upgrade_effects_calculator.dart';
-import '../services/progression/progression_rules_service.dart';
 
 // Imports des écrans
 import 'production_screen.dart';
@@ -38,9 +34,7 @@ import 'upgrades_screen.dart';
 import 'event_log_screen.dart';
 import 'save_load_screen.dart';
 import 'start_screen.dart';
-import 'introduction_screen.dart';
 import 'new_metal_production_screen.dart';
-import 'statistics_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -59,7 +53,7 @@ class _MainScreenState extends State<MainScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      context.read<GameSessionController>().startSession();
+      context.read<GameRuntimeCoordinator>().startSession();
     });
     // Corriger l'ordre des écrans
     _screens = [

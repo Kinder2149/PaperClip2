@@ -88,12 +88,42 @@ class GamePersistenceOrchestrator {
 
       ValidationResult validation;
       try {
-        final validatedPayload = <String, dynamic>{
-          'version': SaveManagerAdapter.SAVE_FORMAT_VERSION,
-          'timestamp': DateTime.now().toIso8601String(),
-          'gameData': lastSave.gameData,
-        };
-        validation = SaveValidator.quickValidate(validatedPayload);
+        final data = lastSave.gameData;
+        final snapshotKey = LocalGamePersistenceService.snapshotKey;
+        if (!data.containsKey(snapshotKey)) {
+          validation = ValidationResult(
+            isValid: false,
+            errors: ['Snapshot manquant dans la sauvegarde'],
+            severity: ValidationSeverity.critical,
+          );
+        } else {
+          final rawSnapshot = data[snapshotKey];
+          GameSnapshot? snapshot;
+          if (rawSnapshot is Map<String, dynamic>) {
+            final snapshotMap = rawSnapshot;
+            snapshot = GameSnapshot.fromJson(snapshotMap);
+          } else if (rawSnapshot is Map) {
+            final snapshotMap = Map<String, dynamic>.from(rawSnapshot);
+            snapshot = GameSnapshot.fromJson(snapshotMap);
+          } else if (rawSnapshot is String) {
+            snapshot = GameSnapshot.fromJsonString(rawSnapshot);
+          }
+
+          if (snapshot == null) {
+            validation = ValidationResult(
+              isValid: false,
+              errors: ['Snapshot illisible (format inattendu)'],
+              severity: ValidationSeverity.critical,
+            );
+          } else {
+            await _persistence.migrateSnapshot(snapshot);
+            validation = ValidationResult(
+              isValid: true,
+              errors: const [],
+              severity: ValidationSeverity.none,
+            );
+          }
+        }
       } catch (e) {
         validation = ValidationResult(
           isValid: false,
@@ -367,19 +397,13 @@ class GamePersistenceOrchestrator {
     }
 
     try {
-      final gameData = state.prepareGameData();
-
-      // Snapshot-first (écriture): on injecte le snapshot directement dans gameData
-      // afin d'avoir une écriture unique (évite divergence et lost updates).
-      try {
-        final snapshot = state.toSnapshot();
-        gameData[LocalGamePersistenceService.snapshotKey] = snapshot.toJson();
-      } catch (e) {
-        if (_isDebug) {
-          print(
-              'GamePersistenceOrchestrator.saveGame: erreur lors de la génération du GameSnapshot (écriture legacy seule): $e');
-        }
-      }
+      // PR3 (A2): écriture snapshot-only.
+      // On n'écrit plus le payload legacy complet (prepareGameData) afin d'éviter
+      // les divergences + faciliter l'évolution de schéma.
+      final snapshot = state.toSnapshot();
+      final gameData = <String, dynamic>{
+        LocalGamePersistenceService.snapshotKey: snapshot.toJson(),
+      };
 
       final saveData = SaveGame(
         name: name,
@@ -404,14 +428,11 @@ class GamePersistenceOrchestrator {
   }
 
   /// Chargement complet d'une partie existante.
-  Future<void> loadGame(GameState state, String name) async {
+  Future<void> loadGame(GameState state, String name, {bool allowRestore = true}) async {
     try {
       if (_isDebug) {
         print('GamePersistenceOrchestrator.loadGame: Chargement de la partie: $name');
       }
-
-      // Mission 2: l'orchestration autosave est gérée ici (hors GameState).
-      state.autoSaveService.stop();
 
       final loadedSave = await SaveManagerAdapter.loadGame(name);
 
@@ -419,6 +440,8 @@ class GamePersistenceOrchestrator {
           SaveManagerAdapter.extractGameData(loadedSave);
 
       // Snapshot-first: le GameSnapshot est la source de vérité si présent.
+      // PR3 (B2/X): si snapshot présent mais invalide -> pas de fallback legacy.
+      // On tente une restauration depuis backup, sinon on échoue explicitement.
       final snapshot = await _loadSnapshotIfPresent(state, name, gameData);
 
       if (snapshot != null) {
@@ -429,7 +452,8 @@ class GamePersistenceOrchestrator {
 
         await state.finishLoadGameAfterSnapshot(name, <String, dynamic>{});
 
-        await _applyOfflineBestEffortProduction(state, snapshot);
+        // Offline v2: une seule implémentation (idempotente) utilisée partout.
+        state.applyOfflineProgressV2();
 
         // Persister les timestamps offline (ex: lastOfflineAppliedAt) pour éviter
         // de ré-appliquer l'offline sur le même intervalle lors d'un futur load.
@@ -439,12 +463,11 @@ class GamePersistenceOrchestrator {
           // Best-effort uniquement.
         }
       } else {
-        // Fallback legacy.
+        // Migration depuis legacy (snapshot absent uniquement).
         state.applyLoadedGameDataWithoutSnapshot(name, gameData);
         await state.finishLoadGameAfterSnapshot(name, gameData);
 
-        // Migration lazy vers snapshot-only: si on a chargé en legacy,
-        // on réécrit best-effort pour injecter un GameSnapshot dans la sauvegarde.
+        // PR3: si on a chargé en legacy, on réécrit snapshot-only.
         try {
           await saveGame(state, name);
         } catch (_) {
@@ -452,9 +475,15 @@ class GamePersistenceOrchestrator {
         }
       }
 
-      // Mission 2: démarrer l'autosave après un chargement complet.
-      await state.autoSaveService.start();
     } catch (e) {
+      // PR3 (B2/X): si on échoue à charger à cause d'un snapshot invalide,
+      // on tente une restauration depuis backup. Sinon, on laisse remonter.
+      if (allowRestore && e is FormatException) {
+        final restored = await _tryRestoreFromBackupsAndLoad(state, name);
+        if (restored) {
+          return;
+        }
+      }
       if (_isDebug) {
         print('GamePersistenceOrchestrator.loadGame: ERREUR: $e');
       }
@@ -476,86 +505,86 @@ class GamePersistenceOrchestrator {
       final rawSnapshot = gameData[snapshotKey];
       GameSnapshot? snapshot;
 
-      if (rawSnapshot is Map) {
-        snapshot = GameSnapshot.fromJson(
-            Map<String, dynamic>.from(rawSnapshot as Map));
+      if (rawSnapshot is Map<String, dynamic>) {
+        snapshot = GameSnapshot.fromJson(rawSnapshot);
+      } else if (rawSnapshot is Map) {
+        snapshot = GameSnapshot.fromJson(Map<String, dynamic>.from(rawSnapshot));
       } else if (rawSnapshot is String) {
-        snapshot = GameSnapshot.fromJsonString(rawSnapshot as String);
+        snapshot = GameSnapshot.fromJsonString(rawSnapshot);
       }
 
-      if (snapshot != null) {
-        final migrated = await _persistence.migrateSnapshot(snapshot);
-        if (_isDebug) {
-          print(
-              'GamePersistenceOrchestrator.loadGame: GameSnapshot appliqué avec succès pour la sauvegarde: $name');
-        }
-        return migrated;
+      if (snapshot == null) {
+        throw FormatException(
+          'GameSnapshot illisible: type inattendu (${rawSnapshot.runtimeType})',
+        );
       }
+
+      final migrated = await _persistence.migrateSnapshot(snapshot);
+      if (_isDebug) {
+        print(
+            'GamePersistenceOrchestrator.loadGame: GameSnapshot appliqué avec succès pour la sauvegarde: $name');
+      }
+      return migrated;
     } catch (e) {
       if (_isDebug) {
         print(
             'GamePersistenceOrchestrator.loadGame: erreur lors du chargement du GameSnapshot: $e');
       }
 
-      // Snapshot présent mais invalide: fallback legacy explicite.
-      // On retire la clé du snapshot pour éviter des tentatives répétées et
-      // pour que le chargement legacy voie un gameData "propre".
-      try {
-        final snapshotKey = LocalGamePersistenceService.snapshotKey;
-        gameData.remove(snapshotKey);
-      } catch (_) {
-        // Best-effort uniquement.
+      // PR3 (B2/X): snapshot présent mais invalide -> pas de fallback legacy.
+      // On remonte l'erreur pour déclencher une tentative de restauration depuis backup.
+      if (e is Exception) {
+        rethrow;
       }
     }
 
     return null;
   }
 
-  Future<void> _applyOfflineBestEffortProduction(
-    GameState state,
-    GameSnapshot snapshot,
-  ) async {
+  Future<bool> _tryRestoreFromBackupsAndLoad(GameState state, String baseName) async {
     try {
-      if (!state.isInitialized || state.isPaused) {
-        return;
+      final saves = await SaveManagerAdapter.instance.listSaves();
+      final backups = saves
+          .where((save) => save.name.startsWith('$baseName${GameConstants.BACKUP_DELIMITER}'))
+          .toList();
+
+      if (backups.isEmpty) {
+        return false;
       }
 
-      final lastActiveRaw = snapshot.metadata['lastActiveAt'] as String?;
-      final lastOfflineAppliedRaw = snapshot.metadata['lastOfflineAppliedAt'] as String?;
+      backups.sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
-      final lastActiveAt = lastActiveRaw != null ? DateTime.tryParse(lastActiveRaw) : null;
-      final lastOfflineAppliedAt =
-          lastOfflineAppliedRaw != null ? DateTime.tryParse(lastOfflineAppliedRaw) : null;
+      for (final backup in backups) {
+        try {
+          final backupSave = await SaveManagerAdapter.loadGame(backup.name);
+          final restoredSave = SaveGame(
+            name: baseName,
+            lastSaveTime: DateTime.now(),
+            gameData: backupSave.gameData,
+            version: backupSave.version,
+            gameMode: backupSave.gameMode,
+            isRestored: true,
+          );
 
-      final base = [lastActiveAt, lastOfflineAppliedAt]
-          .whereType<DateTime>()
-          .fold<DateTime?>(null, (acc, v) => acc == null || v.isAfter(acc) ? v : acc);
+          final ok = await SaveManagerAdapter.saveGame(restoredSave);
+          if (!ok) {
+            continue;
+          }
 
-      if (base == null) {
-        return;
+          try {
+            await loadGame(state, baseName, allowRestore: false);
+            return true;
+          } catch (_) {
+            // Snapshot encore invalide après restauration: essayer le backup suivant.
+          }
+        } catch (_) {
+          // On essaie le backup suivant.
+        }
       }
 
-      final now = DateTime.now();
-      var delta = now.difference(base);
-      if (delta.isNegative || delta.inSeconds <= 0) {
-        return;
-      }
-
-      if (delta > GameConstants.OFFLINE_MAX_DURATION) {
-        delta = GameConstants.OFFLINE_MAX_DURATION;
-      }
-
-      // Best-effort: production automatique uniquement (pas de ventes offline).
-      state.productionManager.processProduction(
-        elapsedSeconds: delta.inMilliseconds / 1000.0,
-      );
-
-      state.markLastOfflineAppliedAt(now);
-      state.markLastActiveAt(now);
-    } catch (e) {
-      if (_isDebug) {
-        print('GamePersistenceOrchestrator: erreur offline best-effort: $e');
-      }
+      return false;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -566,7 +595,10 @@ class GamePersistenceOrchestrator {
     try {
       final saves = await SaveManagerAdapter.instance.listSaves();
       final backups = saves
-          .where((save) => save.name.startsWith('${state.gameName!}_backup_'))
+          .where(
+            (save) =>
+                save.name.startsWith('${state.gameName!}${GameConstants.BACKUP_DELIMITER}'),
+          )
           .toList();
 
       if (backups.isEmpty) return;
