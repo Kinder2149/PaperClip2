@@ -1,10 +1,10 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:paperclip2/models/game_state.dart';
 import 'package:paperclip2/screens/production_screen.dart';
+import '../../helpers/test_harness.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -15,12 +15,7 @@ void main() {
     final gameState = GameState();
     gameState.initialize();
 
-    await tester.pumpWidget(
-      ChangeNotifierProvider.value(
-        value: gameState,
-        child: const MaterialApp(home: Scaffold(body: ProductionScreen())),
-      ),
-    );
+    await tester.pumpWidget(TestHarness(child: const ProductionScreen(), gameState: gameState));
 
     expect(find.byType(ProductionScreen), findsOneWidget);
 
@@ -29,18 +24,13 @@ void main() {
     gameState.dispose();
   });
 
-  testWidgets('ProductionScreen - toggle Vente automatique met à jour GameState', (tester) async {
+  testWidgets('ProductionScreen - toggle Vente automatique met Ã  jour GameState', (tester) async {
     SharedPreferences.setMockInitialValues({});
 
     final gameState = GameState();
     gameState.initialize();
 
-    await tester.pumpWidget(
-      ChangeNotifierProvider.value(
-        value: gameState,
-        child: const MaterialApp(home: Scaffold(body: ProductionScreen())),
-      ),
-    );
+    await tester.pumpWidget(TestHarness(child: const ProductionScreen(), gameState: gameState));
 
     final toggle = find.widgetWithText(SwitchListTile, 'Vente automatique');
     expect(toggle, findsOneWidget);
@@ -48,7 +38,7 @@ void main() {
     final before = tester.widget<SwitchListTile>(toggle).value;
 
     await tester.tap(toggle);
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     final after = tester.widget<SwitchListTile>(toggle).value;
     expect(after, isNot(before));

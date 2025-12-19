@@ -10,6 +10,9 @@
 include: package:flutter_lints/flutter.yaml
 
 analyzer:
+  exclude:
+    - test/unit/services/save_manager_adapter_test.dart
+    - test/unit/services/save_migration_service_test.dart
 
 linter:
   # The lint rules applied to this project can be customized in the

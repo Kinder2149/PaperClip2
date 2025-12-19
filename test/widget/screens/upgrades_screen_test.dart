@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:paperclip2/constants/game_config.dart';
 import 'package:paperclip2/models/game_state.dart';
 import 'package:paperclip2/screens/upgrades_screen.dart';
+import 'package:paperclip2/services/game_actions.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -17,11 +18,14 @@ void main() {
     gameState.initialize();
 
     await tester.pumpWidget(
-      ChangeNotifierProvider.value(
-        value: gameState,
-        child: const MaterialApp(home: Scaffold(body: UpgradesScreen())),
-      ),
-    );
+  MultiProvider(
+    providers: [
+      ChangeNotifierProvider.value(value: gameState),
+      Provider<GameActions>(create: (_) => GameActions(gameState: gameState)),
+    ],
+    child: const MaterialApp(home: Scaffold(body: UpgradesScreen())),
+  ),
+);
 
     expect(find.byType(UpgradesScreen), findsOneWidget);
 
@@ -30,7 +34,7 @@ void main() {
     gameState.dispose();
   });
 
-  testWidgets('UpgradesScreen - affiche l\'écran verrouillé au niveau initial', (tester) async {
+  testWidgets('UpgradesScreen - affiche l\'Ã©cran verrouillÃ© au niveau initial', (tester) async {
     SharedPreferences.setMockInitialValues({});
 
     await tester.binding.setSurfaceSize(const Size(1000, 1600));
@@ -42,11 +46,14 @@ void main() {
     gameState.initialize();
 
     await tester.pumpWidget(
-      ChangeNotifierProvider.value(
-        value: gameState,
-        child: const MaterialApp(home: Scaffold(body: UpgradesScreen())),
-      ),
-    );
+  MultiProvider(
+    providers: [
+      ChangeNotifierProvider.value(value: gameState),
+      Provider<GameActions>(create: (_) => GameActions(gameState: gameState)),
+    ],
+    child: const MaterialApp(home: Scaffold(body: UpgradesScreen())),
+  ),
+);
 
     expect(find.text('Améliorations verrouillées'), findsOneWidget);
 
@@ -66,8 +73,8 @@ void main() {
     final gameState = GameState();
     gameState.initialize();
 
-    // Déverrouiller la section upgrades (niveau >= UPGRADES_UNLOCK_LEVEL) sans déclencher
-    // de level-up "réel" (sinon LevelSystem peut créer un timer d'XP boost de 5 minutes).
+    // déverrouiller la section upgrades (niveau >= UPGRADES_UNLOCK_LEVEL) sans dÃ©clencher
+    // de level-up "rÃ©el" (sinon LevelSystem peut crÃ©er un timer d'XP boost de 5 minutes).
     gameState.levelSystem.fromJson(<String, dynamic>{
       'experience': 0,
       'level': GameConstants.UPGRADES_UNLOCK_LEVEL,
@@ -82,7 +89,7 @@ void main() {
     });
 
     // Les changements de LevelSystem ne notifient pas directement GameState; on force
-    // un rebuild via un tick métier (qui appelle notifyListeners).
+    // un rebuild via un tick mÃ©tier (qui appelle notifyListeners).
     gameState.tick(elapsedSeconds: 0.1);
 
     expect(
@@ -94,11 +101,14 @@ void main() {
     gameState.playerManager.updateMoney(100000.0);
 
     await tester.pumpWidget(
-      ChangeNotifierProvider.value(
-        value: gameState,
-        child: const MaterialApp(home: Scaffold(body: UpgradesScreen())),
-      ),
-    );
+  MultiProvider(
+    providers: [
+      ChangeNotifierProvider.value(value: gameState),
+      Provider<GameActions>(create: (_) => GameActions(gameState: gameState)),
+    ],
+    child: const MaterialApp(home: Scaffold(body: UpgradesScreen())),
+  ),
+);
     await tester.pumpAndSettle();
 
     expect(find.text('Améliorations verrouillées'), findsNothing);
@@ -120,7 +130,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Certaines notifications utilisent Future.delayed (3s) via EventManager.
-    // On avance le temps pour vider ces timers et éviter un échec "timersPending".
+    // On avance le temps pour vider ces timers et Ã©viter un Ã©chec "timersPending".
     await tester.pump(const Duration(seconds: 4));
     await tester.pumpAndSettle();
 
