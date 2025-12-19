@@ -114,3 +114,4 @@ GoogleService-Info.plist
 *.tmp
 *.temp
 .temp/
+build_*.txt
