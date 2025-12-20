@@ -3,10 +3,10 @@ import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import '../managers/market_manager.dart';
 import '../constants/game_config.dart'; // Importé depuis constants au lieu de models
-import '../widgets/charts/chart_widgets.dart';
+import '../services/game_actions.dart';
 import '../widgets/resources/resource_widgets.dart';
 import 'demand_calculation_screen.dart';
-import '../screens/sales_history_screen.dart';
+// Removed sales history screen import
 import '../widgets/buttons/action_button.dart';
 import '../widgets/cards/info_card.dart';
 import '../widgets/dialogs/info_dialog.dart';
@@ -32,8 +32,7 @@ class _MarketScreenView {
   final double qualityBonus;
   final double effectiveSellPrice;
   final double reputation;
-  final List<SaleRecord> salesHistory;
-  final int lastSaleTimestampMs;
+  // Historique des ventes supprimé
 
   final List<String> productionBonuses;
   final double baseAutoclipperProductionPerSec;
@@ -72,8 +71,7 @@ class _MarketScreenView {
     required this.qualityBonus,
     required this.effectiveSellPrice,
     required this.reputation,
-    required this.salesHistory,
-    required this.lastSaleTimestampMs,
+    // Historique des ventes supprimé
 
     required this.productionBonuses,
     required this.baseAutoclipperProductionPerSec,
@@ -111,7 +109,6 @@ class _MarketScreenView {
         other.qualityBonus == qualityBonus &&
         other.effectiveSellPrice == effectiveSellPrice &&
         other.reputation == reputation &&
-        other.lastSaleTimestampMs == lastSaleTimestampMs &&
         other.baseAutoclipperProductionPerSec == baseAutoclipperProductionPerSec &&
         other.metalPerClip == metalPerClip &&
         other.currentMetalForClips == currentMetalForClips &&
@@ -133,7 +130,6 @@ class _MarketScreenView {
         qualityBonus,
         effectiveSellPrice,
         reputation,
-        lastSaleTimestampMs,
         baseAutoclipperProductionPerSec,
         metalPerClip,
         currentMetalForClips,
@@ -157,6 +153,10 @@ class MarketScreen extends StatelessWidget {
 
   String _formatMoneyPerSec(double valuePerSec, {int decimals = 2}) {
     return '${GameFormat.money(valuePerSec, decimals: decimals)}/sec';
+  }
+
+  void _setSellPrice(BuildContext context, double value) {
+    context.read<GameState>().setSellPrice(value);
   }
 
   Widget _buildMarketCard({
@@ -329,7 +329,7 @@ class MarketScreen extends StatelessWidget {
                   onPressed: () {
                     double newValue = view.sellPrice - 0.01;
                     if (newValue >= GameConstants.MIN_PRICE) {
-                      context.read<GameState>().setSellPrice(newValue);
+                      _setSellPrice(context, newValue);
                     }
                   },
                 ),
@@ -340,7 +340,7 @@ class MarketScreen extends StatelessWidget {
                     max: GameConstants.MAX_PRICE,
                     divisions: 200,
                     label: view.formattedSellPrice,
-                    onChanged: (value) => context.read<GameState>().setSellPrice(value),
+                    onChanged: (value) => _setSellPrice(context, value),
                   ),
                 ),
                 IconButton(
@@ -348,7 +348,7 @@ class MarketScreen extends StatelessWidget {
                   onPressed: () {
                     double newValue = view.sellPrice + 0.01;
                     if (newValue <= GameConstants.MAX_PRICE) {
-                      context.read<GameState>().setSellPrice(newValue);
+                      _setSellPrice(context, newValue);
                     }
                   },
                 ),
@@ -421,11 +421,6 @@ class MarketScreen extends StatelessWidget {
           productionStatusColor = Colors.black;
         }
 
-        final salesHistory = gameState.market.salesHistory;
-        final lastSaleTimestampMs = salesHistory.isEmpty
-            ? 0
-            : salesHistory.last.timestamp.millisecondsSinceEpoch;
-
         return _MarketScreenView(
           visibleElements: visibleElements,
           showMarketPrice: showMarketPrice,
@@ -444,8 +439,6 @@ class MarketScreen extends StatelessWidget {
           effectiveSellPrice: metrics.effectiveSellPrice,
 
           reputation: gameState.marketManager.reputation,
-          salesHistory: salesHistory,
-          lastSaleTimestampMs: lastSaleTimestampMs,
 
           productionBonuses: productionBonuses,
           baseAutoclipperProductionPerSec: baseAutoclipperProductionPerSec,
@@ -500,40 +493,6 @@ class MarketScreen extends StatelessWidget {
                       if (view.showMarketPrice) ...[
                         // Ajout du contrôle du prix de vente en premier
                         _buildPriceControlCard(context, view),
-                        const SizedBox(height: 12),
-
-                        Card(
-                          elevation: 2,
-                          color: Colors.white,
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Row(
-                                  children: [
-                                    Icon(Icons.show_chart, color: Colors.deepPurple),
-                                    SizedBox(width: 8),
-                                    Text(
-                                      'Historique des ventes',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                SizedBox(
-                                  height: 220,
-                                  child: SalesChartOptimized(
-                                    salesHistory: view.salesHistory,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
                         const SizedBox(height: 12),
 
                         // Affichage de la rentabilité estimée avec plus de détails
@@ -645,20 +604,7 @@ class MarketScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  if (view.showMarketPrice)
-                    Expanded(
-                      child: ActionButton(
-                        onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => const SalesHistoryScreen()),
-                        ),
-                        icon: Icons.history,
-                        label: 'Historique',
-                        backgroundColor: Colors.purple,
-                        textColor: Colors.white,
-                        fullWidth: true,
-                      ),
-                    ),
+                  // Bouton Historique supprimé
                 ],
               ),
               const SizedBox(height: 8),

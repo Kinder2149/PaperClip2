@@ -1,0 +1,26 @@
+name: Services unit tests
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: 'stable'
+      - name: Flutter pub get
+        run: flutter pub get
+      - name: Run extracted services unit tests only
+        run: |
+          flutter test -r expanded \
+            test/unit/services/offline_progress_service_test.dart \
+            test/unit/services/competitive/competitive_result_service_test.dart \
+            test/unit/ui/ui_formatting_utils_test.dart \
+            test/unit/services/pricing/pricing_advice_service_test.dart

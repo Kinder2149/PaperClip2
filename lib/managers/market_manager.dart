@@ -51,18 +51,18 @@ class SaleRecord {
   });
 
   Map<String, dynamic> toJson() => {
-    'timestamp': timestamp.toIso8601String(),
-    'quantity': quantity,
-    'price': price,
-    'revenue': revenue,
-  };
+        'timestamp': timestamp.toIso8601String(),
+        'quantity': quantity,
+        'price': price,
+        'revenue': revenue,
+      };
 
   factory SaleRecord.fromJson(Map<String, dynamic> json) {
     return SaleRecord(
       timestamp: DateTime.parse(json['timestamp']),
-      quantity: json['quantity'],
-      price: json['price'].toDouble(),
-      revenue: json['revenue'].toDouble(),
+      quantity: (json['quantity'] as num).toInt(),
+      price: (json['price'] as num).toDouble(),
+      revenue: (json['revenue'] as num).toDouble(),
     );
   }
 }
@@ -137,7 +137,8 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
   DateTime? _lastMetalPriceUpdateTime;
   List<MarketEvent> _activeEvents = [];
 
-  List<SaleRecord> salesHistory = [];
+  // Historique léger: buffer borné pour éviter la consommation mémoire
+  final List<SaleRecord> salesHistory = [];
   double reputation = 1.0;
   double _currentMarketSaturation = GameConstants.DEFAULT_MARKET_SATURATION;
   double _difficultyMultiplier = GameConstants.BASE_DIFFICULTY;
@@ -145,8 +146,6 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
   double _competitivePressure = 0.0;
   double _marketMetalPrice = GameConstants.MIN_METAL_PRICE;
   double _metalTrend = 0;
-  List<double> _salesHistory = [];
-  List<double> _priceHistory = [];
   bool _autoSellEnabled = true;
 
   double _salesRemainder = 0.0;
@@ -170,6 +169,7 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
   double _averageSalePrice = 0;
   double _highestSalePrice = 0.0;
 
+  // Agrégats d'historique minimalistes (utilisés par l'écran Historique)
   double get totalSalesRevenue => _totalSales;
   int get totalSalesCount => _totalSalesCount;
   double get averageSalePrice => _averageSalePrice;
@@ -344,8 +344,8 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
 
         updatePaperclips(-potentialSales.toDouble());
         updateMoney(revenue);
+        // Enregistre une ligne dans un buffer borné et met à jour les agrégats
         recordSale(potentialSales, salePrice);
-
         _statisticsManager.updateEconomics(
           moneyEarned: revenue,
           // Retrait des paramètres sales et price non supportés
@@ -472,12 +472,19 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
     
     // Bonus de marketing (chaque niveau augmente la demande de 10%)
     double marketingMultiplier = 1.0 + (marketingLevel * GameConstants.MARKETING_BOOST_PER_LEVEL);
+    // Bonus d'upgrade Marketing (cumulatif)
+    final marketingUpgradeLevel = _playerManager?.upgrades['marketing']?.level ?? 0;
+    final extraMarketing = UpgradeEffectsCalculator.marketingBonus(level: marketingUpgradeLevel);
+    marketingMultiplier *= (1.0 + extraMarketing);
     
     // Facteur de saturation du marché
     double saturationFactor = _currentMarketSaturation / GameConstants.DEFAULT_MARKET_SATURATION;
     
     // La demande est fonction de tous ces facteurs
-    final reputationFactor = max(0.0, reputation);
+    // Intègre la réputation et le bonus d'upgrade Réputation
+    final reputationUpgradeLevel = _playerManager?.upgrades['reputation']?.level ?? 0;
+    final reputationExtra = UpgradeEffectsCalculator.reputationBonus(level: reputationUpgradeLevel);
+    final reputationFactor = max(0.0, reputation) * (1.0 + reputationExtra);
     double demand = baselineDemand *
         priceMultiplier *
         marketingMultiplier *
@@ -486,6 +493,10 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
     
     // Utilise la dynamique du marché pour les fluctuations
     double marketConditionEffect = _marketDynamics.getMarketConditionMultiplier();
+    // Réduction de volatilité via Étude de marché
+    final researchLevel = _playerManager?.upgrades['marketResearch']?.level ?? 0;
+    final volReduction = UpgradeEffectsCalculator.volatilityReduction(level: researchLevel);
+    marketConditionEffect *= (1.0 - volReduction);
     
     return demand * marketConditionEffect;
   }
@@ -499,40 +510,34 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
 
   void recordSale(int amount, double price) {
     if (amount <= 0) return;
-    
-    // Créer un enregistrement de vente avec l'horodatage actuel
-    SaleRecord record = SaleRecord(
+
+    final revenue = amount * price;
+    salesHistory.add(SaleRecord(
       timestamp: DateTime.now(),
       quantity: amount,
       price: price,
-      revenue: amount * price,
-    );
-    
-    // Ajouter à l'historique des ventes
-    salesHistory.add(record);
-    
-    // Limiter la taille de l'historique pour éviter une utilisation excessive de mémoire
+      revenue: revenue,
+    ));
+
+    // Buffer borné
     if (salesHistory.length > GameConstants.MAX_SALES_HISTORY) {
-      salesHistory.removeAt(0);  // Supprimer l'entrée la plus ancienne
+      salesHistory.removeAt(0);
     }
-    
-    // Mise à jour des statistiques de vente
-    _totalSales += amount * price;
+
+    // Agrégats minimaux
+    _totalSales += revenue;
     _totalSalesCount += amount;
     _averageSalePrice = _totalSalesCount > 0 ? _totalSales / _totalSalesCount : 0.0;
-    
-    // Mettre à jour le prix de vente le plus élevé si nécessaire
     if (price > _highestSalePrice) {
       _highestSalePrice = price;
     }
-    
-    // Ajuster la saturation du marché après une vente
+
+    // Ajuster légèrement la saturation après une vente
     _currentMarketSaturation -= (amount * GameConstants.SATURATION_IMPACT_PER_SALE);
     if (_currentMarketSaturation < GameConstants.MIN_MARKET_SATURATION) {
       _currentMarketSaturation = GameConstants.MIN_MARKET_SATURATION;
     }
-    
-    // Notifier les écouteurs des changements
+
     notifyListeners();
   }
 

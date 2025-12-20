@@ -10,6 +10,7 @@ import '../widgets/dialogs/info_dialog.dart';
 import '../widgets/indicators/stat_indicator.dart';
 import '../widgets/cards/stats_panel.dart';
 import '../widgets/save_button.dart';
+import '../services/game_actions.dart';
 import '../services/upgrades/upgrade_effects_calculator.dart';
 import '../services/progression/progression_rules_service.dart';
 import '../services/format/game_format.dart';
@@ -278,7 +279,9 @@ class ProductionScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             ActionButton.purchase(
-              onPressed: view.canBuyAutoclipper ? () => gameState.buyAutoclipper() : null,
+              onPressed: view.canBuyAutoclipper
+                  ? () => context.read<GameActions>().buyAutoclipper()
+                  : null,
               label: 'Acheter Autoclipper (${GameFormat.money(view.autoclipperCost, decimals: 1)})',
               showComboMultiplier: true,
             ),
@@ -798,7 +801,7 @@ class ProductionScreen extends StatelessWidget {
                             'Vendre automatiquement selon la demande du marché'),
                         value: view.autoSellEnabled,
                         onChanged: (value) {
-                          context.read<GameState>().setAutoSellEnabled(value);
+                          context.read<GameActions>().setAutoSellEnabled(value);
                         },
                       ),
 
@@ -879,10 +882,14 @@ class ProductionScreen extends StatelessWidget {
                       if (view.showMetalPurchaseButton) ...[
                         ActionButton.purchase(
                           onPressed: _canPurchaseMetal(context.read<GameState>())
-                              ? () => context.read<GameState>().purchaseMetal()
+                              ? () => context.read<GameActions>().purchaseMetal()
                               : null,
-                          label:
-                              'Acheter Métal (${GameFormat.money(context.read<GameState>().market.currentMetalPrice, decimals: 1)})',
+                          label: () {
+                            final unitPrice = context.select((GameState gs) => gs.market.currentMetalPrice);
+                            final pack = GameConstants.METAL_PACK_AMOUNT;
+                            final total = unitPrice * pack;
+                            return 'Acheter Métal (+${GameFormat.number(pack, decimals: 0)}) (${GameFormat.money(total, decimals: 2)})';
+                          }(),
                           showComboMultiplier: true,
                         ),
                         const SizedBox(height: 16),

@@ -47,4 +47,24 @@ class UpgradeEffectsCalculator {
     return GameConstants.INITIAL_STORAGE_CAPACITY *
         (1 + (storageLevel * GameConstants.STORAGE_UPGRADE_MULTIPLIER));
   }
+
+  // --- Marché ---
+  static double marketingBonus({required int level}) {
+    return level * GameConstants.MARKETING_UPGRADE_BONUS;
+  }
+
+  static double reputationBonus({required int level}) {
+    final bonus = level * GameConstants.REPUTATION_BONUS_PER_LEVEL;
+    return min(bonus, GameConstants.REPUTATION_BONUS_CAP);
+  }
+
+  static double volatilityReduction({required int level}) {
+    final red = level * GameConstants.VOLATILITY_REDUCTION_PER_LEVEL;
+    return min(red, GameConstants.VOLATILITY_REDUCTION_CAP);
+  }
+
+  static double metalDiscount({required int level}) {
+    final d = level * GameConstants.METAL_DISCOUNT_PER_LEVEL;
+    return min(d, GameConstants.METAL_DISCOUNT_CAP);
+  }
 }

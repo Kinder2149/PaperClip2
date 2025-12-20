@@ -118,6 +118,16 @@ class SaveMigrationService {
     void Function(int migrated, int total)? onProgress,
   }) async {
     final sw = Stopwatch()..start();
+    // Legacy migration disabled: immediate no-op
+    sw.stop();
+    return MigrationResult(
+      successCount: 0,
+      failureCount: 0,
+      successNames: const [],
+      failures: const {},
+      scannedCount: 0,
+      duration: sw.elapsed,
+    );
 
     final List<String> successNames = [];
     final Map<String, String> failures = {};

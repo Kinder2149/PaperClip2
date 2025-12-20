@@ -18,7 +18,12 @@ import './services/navigation_service.dart';
 import './services/notification_manager.dart';
 import './services/app_bootstrap_controller.dart';
 import './services/game_runtime_coordinator.dart';
+import './services/game_actions.dart';
 import './presentation/adapters/event_manager_domain_event_adapter.dart';
+
+// Adapters UI/Audio (hors domaine)
+import './services/ui/game_ui_event_adapter.dart';
+import './services/audio/audio_event_adapter.dart';
 
 // Services globaux
 final gameState = GameState();
@@ -47,6 +52,19 @@ final _runtimeCoordinator = GameRuntimeCoordinator(
 
 final _domainEventSink = EventManagerDomainEventAdapter(eventManager: eventManager);
 
+// Adapters événementiels (frontière domaine -> présentation)
+final _uiEventAdapter = GameUiEventAdapter.withListeners(
+  addListener: gameState.addEventListener,
+  removeListener: gameState.removeEventListener,
+  ui: _gameUiFacade,
+);
+
+final _audioEventAdapter = AudioEventAdapter.withListeners(
+  addListener: gameState.addEventListener,
+  removeListener: gameState.removeEventListener,
+  audioPort: _gameAudioFacade,
+);
+
 void main() async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
@@ -58,6 +76,13 @@ void main() async {
     gameState.levelSystem.setDomainEventSink(_domainEventSink);
     gameState.productionManager.setDomainEventSink(_domainEventSink);
     gameState.autoSaveService.setDomainEventSink(_domainEventSink);
+
+    // Init audio (chargement asset / loop) avant démarrage des adapters
+    await backgroundMusicService.initialize();
+
+    // Wiring des adapters événementiels (écoute des événements du domaine)
+    _uiEventAdapter.start();
+    _audioEventAdapter.start();
 
     await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     if (kDebugMode) {
@@ -72,6 +97,9 @@ void main() async {
         providers: [
           ChangeNotifierProvider.value(value: gameState),
           ChangeNotifierProvider.value(value: gameSessionController),
+          Provider<GameActions>(
+            create: (_) => GameActions(gameState: gameState),
+          ),
           Provider<GameRuntimeCoordinator>.value(value: _runtimeCoordinator),
           Provider<NavigationService>.value(value: navigationService),
           Provider<BackgroundMusicService>.value(value: backgroundMusicService),
@@ -107,7 +135,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeServiceProvider = Provider.of<ThemeService>(context);
-    
+
     return MaterialApp(
       navigatorKey: navigatorKey,
       scaffoldMessengerKey: scaffoldMessengerKey,

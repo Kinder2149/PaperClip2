@@ -3,9 +3,9 @@ import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:math';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/runtime/domain_ports.dart';
 import '../services/persistence/game_snapshot.dart';
 import '../services/persistence/game_persistence_orchestrator.dart';
-import '../services/persistence/game_data_compat.dart';
 
 import '../constants/game_config.dart';
 import '../managers/player_manager.dart';
@@ -21,14 +21,19 @@ import '../models/upgrade.dart';
 import 'dart:convert';
 import '../services/auto_save_service.dart';
 import '../services/save_game.dart';
-import '../services/ui/game_ui_port.dart';
-import '../services/audio/game_audio_port.dart';
+import '../services/offline_progress_service.dart';
+import '../services/competitive/competitive_result_service.dart';
+import '../ui/utils/ui_formatting_utils.dart';
 import '../services/progression/progression_rules_service.dart';
 import '../services/upgrades/upgrade_effects_calculator.dart';
+import '../services/persistence/game_persistence_mapper.dart';
+import '../services/pricing/pricing_advice_service.dart';
 import '../gameplay/game_engine.dart';
 import '../gameplay/events/bus/game_event_bus.dart';
+import '../gameplay/events/game_event.dart';
+import '../services/runtime/clock.dart';
 
-class GameState extends ChangeNotifier {
+class GameState extends ChangeNotifier implements DomainPorts {
   // Managers coeur de jeu
   late final PlayerManager _playerManager;
   late final MarketManager _marketManager;
@@ -47,10 +52,7 @@ class GameState extends ChangeNotifier {
   // Services auxiliaires
   late final AutoSaveService _autoSaveService;
 
-  // Ports (UI/runtime Flutter) — injectés depuis l'application (hors GameState)
-  GameNotificationPort? _notificationPort;
-  GameNavigationPort? _navigationPort;
-  GameAudioPort? _audioPort;
+  // Ports UI/Navigation retirés du domaine (découplage via GameEventBus)
 
   // État global
   bool _isInCrisisMode = false;
@@ -63,10 +65,11 @@ class GameState extends ChangeNotifier {
   DateTime? _competitiveStartTime;
 
   bool _isInitialized = false;
+  Object? _initializationError;
+  StackTrace? _initializationStackTrace;
   String? _gameName;
 
   // Suivi interne du temps de jeu et des compteurs globaux
-  DateTime _lastUpdateTime = DateTime.now();
   DateTime? _lastSaveTime;
   DateTime? _lastActiveAt;
   DateTime? _lastOfflineAppliedAt;
@@ -85,50 +88,24 @@ class GameState extends ChangeNotifier {
     _lastOfflineAppliedAt = value;
   }
 
+  void markOfflineSpecVersion(String value) {
+    _offlineSpecVersion = value;
+  }
+
   void applyOfflineProgressV2({DateTime? nowOverride}) {
     if (!_isInitialized || isPaused) return;
-
-    final now = nowOverride ?? DateTime.now();
-    final base = [_lastActiveAt, _lastOfflineAppliedAt]
-        .whereType<DateTime>()
-        .fold<DateTime?>(null, (acc, v) => acc == null || v.isAfter(acc) ? v : acc);
-
-    if (base == null) {
-      _lastActiveAt = now;
-      _lastOfflineAppliedAt = now;
-      _offlineSpecVersion ??= 'v2';
-      return;
-    }
-
-    var delta = now.difference(base);
-    if (delta.isNegative || delta.inSeconds <= 0) {
-      _lastActiveAt = now;
-      _offlineSpecVersion ??= 'v2';
-      return;
-    }
-
-    if (delta > GameConstants.OFFLINE_MAX_DURATION) {
-      delta = GameConstants.OFFLINE_MAX_DURATION;
-    }
-
-    // Offline v2: simulation best-effort via la boucle métier officielle.
-    // On exécute en pas de temps (max 10s) pour faire évoluer le marché.
-    double remainingSeconds = delta.inMilliseconds / 1000.0;
-    const double maxStepSeconds = 10.0;
-
-    while (remainingSeconds > 0) {
-      final step = remainingSeconds > maxStepSeconds ? maxStepSeconds : remainingSeconds;
-      _engine.tick(
-        elapsedSeconds: step,
-        autoSellEnabled: autoSellEnabled,
-      );
-      remainingSeconds -= step;
-    }
-
-    _lastOfflineAppliedAt = now;
-    _lastActiveAt = now;
-    _offlineSpecVersion ??= 'v2';
-    notifyListeners();
+    // PR3: déporté vers GameRuntimeCoordinator via événement
+    _eventBus.emit(
+      GameEvent(
+        type: GameEventType.importantEventOccurred,
+        source: 'GameState',
+        severity: GameEventSeverity.info,
+        data: {
+          'reason': 'offline_progress_request',
+          if (nowOverride != null) 'nowOverride': nowOverride.toIso8601String(),
+        },
+      ),
+    );
   }
 
   // Getters complémentaires utilisés par l'UI
@@ -140,6 +117,11 @@ class GameState extends ChangeNotifier {
   ResourceManager get resources => _resourceManager;
   AutoSaveService get autoSaveService => _autoSaveService;
 
+  // Accès lecture aux métadonnées offline (pour Coordinator)
+  DateTime? get lastActiveAt => _lastActiveAt;
+  DateTime? get lastOfflineAppliedAt => _lastOfflineAppliedAt;
+  String? get offlineSpecVersion => _offlineSpecVersion;
+
   // Getters publics
   StatisticsManager get statistics => _statistics;
   bool get isInCrisisMode => _isInCrisisMode;
@@ -147,6 +129,8 @@ class GameState extends ChangeNotifier {
   bool get showingCrisisView => _showingCrisisView;
   DateTime? get crisisStartTime => _crisisStartTime;
   bool get isInitialized => _isInitialized;
+  Object? get initializationError => _initializationError;
+  StackTrace? get initializationStackTrace => _initializationStackTrace;
   String? get gameName => _gameName;
   PlayerManager get playerManager => _playerManager;
   MarketManager get marketManager => _marketManager;
@@ -163,7 +147,7 @@ class GameState extends ChangeNotifier {
     if (_competitiveStartTime == null) {
       return Duration.zero;
     }
-    return DateTime.now().difference(_competitiveStartTime!);
+    return _clock.now().difference(_competitiveStartTime!);
   }
 
   // Alias de compatibilité
@@ -179,37 +163,39 @@ class GameState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setUiPort(GameUiPort port) {
-    _notificationPort = port;
-    _navigationPort = port;
-  }
+  // Méthodes de ports UI retirées; la présentation s'abonne désormais au bus d'événements
 
-  void setNotificationPort(GameNotificationPort port) {
-    _notificationPort = port;
-  }
+  // Audio déporté hors du domaine (Coordinator/AudioFacade)
 
-  void setNavigationPort(GameNavigationPort port) {
-    _navigationPort = port;
-  }
-
-  void setAudioPort(GameAudioPort port) {
-    _audioPort = port;
-  }
+  // Abstraction évènementielle (exposée pour le Coordinator)
+  void addEventListener(GameEventListener listener) => _eventBus.addListener(listener);
+  void removeEventListener(GameEventListener listener) => _eventBus.removeListener(listener);
 
   bool canBuyMetal() => _resourceManager.canPurchaseMetal();
 
   // Alias de compatibilité pour les écrans qui appellent gameState.purchaseMetal()
   bool purchaseMetal() {
-    final success = _resourceManager.purchaseMetal();
+    // Appliquer la remise d'achat métal selon l'upgrade 'procurement'
+    final procurementLevel = _playerManager.upgrades['procurement']?.level ?? 0;
+    final unitPrice = _marketManager.marketMetalPrice;
+    double? discountedUnitPrice;
+    if (procurementLevel > 0) {
+      final discount = UpgradeEffectsCalculator.metalDiscount(level: procurementLevel);
+      discountedUnitPrice = unitPrice * (1.0 - discount);
+    }
+
+    final success = _resourceManager.purchaseMetal(discountedUnitPrice);
     if (success) {
       notifyListeners();
     }
     return success;
   }
 
-  GameState() {
+  final Clock _clock;
+
+  GameState({Clock? clock}) : _clock = clock ?? SystemClock() {
     _initializeManagers();
-    _lastActiveAt = DateTime.now();
+    _lastActiveAt = _clock.now();
   }
 
   // Méthode de compatibilité pour les tests qui appellent initialize()
@@ -218,29 +204,35 @@ class GameState extends ChangeNotifier {
   }
 
   void _initializeManagers() {
+    if (_isInitialized) {
+      return;
+    }
+
+    _initializationError = null;
+    _initializationStackTrace = null;
+
     try {
-      if (!_isInitialized) {
-        if (kDebugMode) {
-          print('GameState: Début de l\'initialisation des managers');
-        }
-        
-        // Étape 1 : Création des managers
-        _createManagers();
-        if (kDebugMode) {
-          print('GameState: Managers créés avec succès');
-        }
-        
-        _isInitialized = true;
-        if (kDebugMode) {
-          print('GameState: Initialisation terminée avec succès');
-        }
+      if (kDebugMode) {
+        print('GameState: Début de l\'initialisation des managers');
       }
-    } catch (e) {
+
+      _createManagers();
+
+      if (kDebugMode) {
+        print('GameState: Managers créés avec succès');
+      }
+
+      _isInitialized = true;
+      if (kDebugMode) {
+        print('GameState: Initialisation terminée avec succès');
+      }
+    } catch (e, st) {
+      _initializationError = e;
+      _initializationStackTrace = st;
       if (kDebugMode) {
         print('GameState: ERREUR CRITIQUE lors de l\'initialisation: $e');
+        print(st);
       }
-      // Marquer comme initialisé même en cas d'erreur pour éviter les boucles infinies
-      _isInitialized = true;
     }
   }
 
@@ -335,6 +327,25 @@ class GameState extends ChangeNotifier {
     notifyListeners();
   }
 
+  @override
+  void applyTick(double elapsedSeconds) {
+    tick(elapsedSeconds: elapsedSeconds);
+  }
+
+  OfflineProgressResult applyOfflineWithService({
+    required DateTime now,
+    DateTime? lastActiveAt,
+    DateTime? lastOfflineAppliedAt,
+  }) {
+    return OfflineProgressService.apply(
+      engine: _engine,
+      autoSellEnabled: autoSellEnabled,
+      lastActiveAt: lastActiveAt,
+      lastOfflineAppliedAt: lastOfflineAppliedAt,
+      nowOverride: now,
+    );
+  }
+
   /// Tick métier pour le marché.
   ///
   /// Appelé par GameSessionController; aucun Timer n'est géré ici.
@@ -352,19 +363,15 @@ class GameState extends ChangeNotifier {
 
   // Prépare une structure de données minimale pour la persistance legacy
   Map<String, dynamic> prepareGameData() {
-    return {
-      'playerManager': _playerManager.toJson(),
-      'marketManager': _marketManager.toJson(),
-      'levelSystem': _levelSystem.toJson(),
-      // MissionSystem (Option A — mise en pause):
-      // - conservé pour compatibilité/persistance (JSON) et future feature
-      // - non initialisé au runtime (pas de timer, pas de callbacks, pas d'événements gameplay)
-      'missionSystem': _missionSystem.toJson(),
-      'statistics': _statistics.toJson(),
-      'gameMode': _gameMode.index,
-      if (_competitiveStartTime != null)
-        'competitiveStartTime': _competitiveStartTime!.toIso8601String(),
-    };
+    return GamePersistenceMapper.prepareGameData(
+      playerManager: _playerManager,
+      marketManager: _marketManager,
+      levelSystem: _levelSystem,
+      missionSystem: _missionSystem,
+      statistics: _statistics,
+      gameMode: _gameMode,
+      competitiveStartTime: _competitiveStartTime,
+    );
   }
 
   // Réinitialisation simple de l'état de jeu
@@ -398,34 +405,19 @@ class GameState extends ChangeNotifier {
 
   // Représentation formatée du temps de jeu total
   String get formattedPlayTime {
-    final int hours = _statistics.totalGameTimeSec ~/ 3600;
-    final int minutes = (_statistics.totalGameTimeSec % 3600) ~/ 60;
-    final int seconds = _statistics.totalGameTimeSec % 60;
-
-    if (hours > 0) {
-      return '${hours}h ${minutes}m ${seconds}s';
-    } else if (minutes > 0) {
-      return '${minutes}m ${seconds}s';
-    }
-    return '${seconds}s';
+    return UiFormattingUtils.formatDurationHms(
+      Duration(seconds: _statistics.totalGameTimeSec),
+    );
   }
 
   int calculateCompetitiveScore() {
-    // Les trombones sont stockés en double dans le PlayerManager, mais
-    // on les ramène ici à un entier pour le score compétitif.
-    final int paperclips = _playerManager.paperclips.round();
-    final double money = _playerManager.money;
-    final int level = _levelSystem.currentLevel;
-    final Duration playTime = competitivePlayTime;
-
-    final int timeSeconds = playTime.inSeconds;
-    final double efficiency = timeSeconds > 0
-        ? paperclips / timeSeconds
-        : paperclips.toDouble();
-
-    final double score =
-        paperclips.toDouble() + money + level * 100 + efficiency * 50;
-    return score.round();
+    final data = CompetitiveResultService.compute(
+      paperclips: _playerManager.paperclips.round(),
+      money: _playerManager.money,
+      level: _levelSystem.currentLevel,
+      playTime: competitivePlayTime,
+    );
+    return data.score;
   }
 
   void handleCompetitiveGameEnd() {
@@ -433,23 +425,27 @@ class GameState extends ChangeNotifier {
       return;
     }
 
-    final int score = calculateCompetitiveScore();
-
-    final Duration playTime = competitivePlayTime;
-    final int paperclips = _playerManager.paperclips.round();
-    final double money = _playerManager.money;
-    final int level = _levelSystem.currentLevel;
-    final int timeSeconds = playTime.inSeconds == 0 ? 1 : playTime.inSeconds;
-    final double efficiency = paperclips / timeSeconds;
-
-    _navigationPort?.showCompetitiveResult(
-      CompetitiveResultData(
-        score: score,
-        paperclips: paperclips,
-        money: money,
-        playTime: playTime,
-        level: level,
-        efficiency: efficiency,
+    final data = CompetitiveResultService.compute(
+      paperclips: _playerManager.paperclips.round(),
+      money: _playerManager.money,
+      level: _levelSystem.currentLevel,
+      playTime: competitivePlayTime,
+    );
+    // Émet un événement UI (navigation) au lieu d'appeler directement la façade Flutter
+    _eventBus.emit(
+      GameEvent(
+        type: GameEventType.importantEventOccurred,
+        source: 'GameState',
+        severity: GameEventSeverity.info,
+        data: {
+          'reason': 'ui_show_competitive_result',
+          'score': data.score,
+          'paperclips': data.paperclips,
+          'money': data.money,
+          'level': data.level,
+          'playTimeSeconds': data.playTime.inSeconds,
+          'efficiency': data.efficiency,
+        },
       ),
     );
   }
@@ -457,7 +453,17 @@ class GameState extends ChangeNotifier {
   void buyAutoclipper() {
     final success = _engine.buyAutoclipper();
     if (success) {
-      saveOnImportantEvent();
+      // Émettre un évènement dédié; l'autosave sera déclenchée côté runtime (post-frame + coalescing)
+      _eventBus.emit(
+        GameEvent(
+          type: GameEventType.autoclipperPurchased,
+          source: 'GameState',
+          severity: GameEventSeverity.info,
+          data: <String, Object?>{
+            'autoclippers': _playerManager.autoClipperCount,
+          },
+        ),
+      );
       notifyListeners();
     }
   }
@@ -481,15 +487,30 @@ class GameState extends ChangeNotifier {
   }
 
   void setSellPrice(double newPrice) {
-    if (market.isPriceExcessive(newPrice)) {
-      _notificationPort?.showPriceExcessiveWarning(
-        title: 'Prix Excessif!',
-        description: 'Ce prix pourrait affecter vos ventes',
-        detailedDescription: market.getPriceRecommendation(),
-      );
-    }
-    player.updateSellPrice(newPrice);  
-    notifyListeners();
+    PricingAdviceService.handleSetSellPrice(
+      market: market,
+      newPrice: newPrice,
+      onAccept: () {
+        player.setSellPrice(newPrice);
+        notifyListeners();
+      },
+      onWarning: ({required String title, required String description, String? detailedDescription}) {
+        // Événement pour UI adapter (au lieu d'un appel direct au port UI)
+        _eventBus.emit(
+          GameEvent(
+            type: GameEventType.importantEventOccurred,
+            source: 'GameState',
+            severity: GameEventSeverity.warning,
+            data: {
+              'reason': 'ui_price_excessive_warning',
+              'title': title,
+              'description': description,
+              if (detailedDescription != null) 'detailedDescription': detailedDescription,
+            },
+          ),
+        );
+      },
+    );
   }
 
   Future<void> startNewGame(String name, {GameMode mode = GameMode.INFINITE}) async {
@@ -502,7 +523,7 @@ class GameState extends ChangeNotifier {
 
       // Définir le mode de jeu et le temps de début pour le mode compétitif
       if (mode == GameMode.COMPETITIVE) {
-        _competitiveStartTime = DateTime.now();
+        _competitiveStartTime = _clock.now();
       } else {
         _competitiveStartTime = null;
       }
@@ -525,89 +546,26 @@ class GameState extends ChangeNotifier {
   void applyLoadedGameDataWithoutSnapshot(String name, Map<String, dynamic> gameData) {
     _resetGameDataOnly();
 
-    final normalizedGameData = GameDataCompat.normalizeLegacyGameData(gameData);
-
     _gameName = name;
 
-    _gameMode = normalizedGameData.containsKey('gameMode')
-        ? GameMode.values[normalizedGameData['gameMode'] as int]
-        : GameMode.INFINITE;
-
-    if (normalizedGameData.containsKey('playerManager')) {
-      _playerManager
-          .fromJson(normalizedGameData['playerManager'] as Map<String, dynamic>);
-    }
-
-    if (normalizedGameData.containsKey('resourceManager')) {
-      _resourceManager
-          .fromJson(normalizedGameData['resourceManager'] as Map<String, dynamic>);
-    }
-
-    if (normalizedGameData.containsKey('marketManager')) {
-      _marketManager
-          .fromJson(normalizedGameData['marketManager'] as Map<String, dynamic>);
-    }
-
-    if (normalizedGameData.containsKey('levelSystem')) {
-      _levelSystem
-          .fromJson(normalizedGameData['levelSystem'] as Map<String, dynamic>);
-    }
-
-    if (normalizedGameData.containsKey('missionSystem')) {
-      _missionSystem
-          .fromJson(normalizedGameData['missionSystem'] as Map<String, dynamic>);
-    }
-
-    if (normalizedGameData.containsKey('statistics')) {
-      _statistics.fromJson(normalizedGameData['statistics'] as Map<String, dynamic>);
-    }
+    _gameMode = GamePersistenceMapper.applyLoadedGameDataWithoutSnapshot(
+      playerManager: _playerManager,
+      resourceManager: _resourceManager,
+      marketManager: _marketManager,
+      levelSystem: _levelSystem,
+      missionSystem: _missionSystem,
+      statistics: _statistics,
+      gameData: gameData,
+    );
   }
 
   Future<void> finishLoadGameAfterSnapshot(String name, Map<String, dynamic> gameData) async {
-    if (gameData.containsKey('progression')) {
-      final progressionData = gameData['progression'] as Map<String, dynamic>;
-      if (progressionData.containsKey('combos')) {
-        final comboData = progressionData['combos'] as Map<String, dynamic>;
-        if (_levelSystem.comboSystem != null) {
-          _levelSystem.comboSystem!.currentCombo =
-              (comboData['currentCombo'] as num).toInt();
-          if (comboData.containsKey('comboMultiplier')) {
-            _levelSystem.comboSystem!.comboMultiplier =
-                (comboData['comboMultiplier'] as num).toDouble();
-          }
-        }
-      }
-      if (progressionData.containsKey('dailyBonus') && _levelSystem.dailyBonus != null) {
-        final bonusData = progressionData['dailyBonus'] as Map<String, dynamic>;
-        _levelSystem.dailyBonus!.hasClaimedToday = bonusData['claimed'] as bool? ?? false;
-        if (bonusData.containsKey('streakDays')) {
-          _levelSystem.dailyBonus!.streakDays = (bonusData['streakDays'] as num).toInt();
-        }
-        if (bonusData.containsKey('lastClaimDate')) {
-          _levelSystem.dailyBonus!.lastClaimDate =
-              DateTime.tryParse(bonusData['lastClaimDate'] as String);
-        }
-      }
-    }
-
-    if (gameData.containsKey('totalPaperclipsProduced')) {
-      _statistics.setTotalPaperclipsProduced(
-        (gameData['totalPaperclipsProduced'] as num).toInt(),
-      );
-    }
-
-    if (gameData.containsKey('totalTimePlayedInSeconds')) {
-      final loadedTime = (gameData['totalTimePlayedInSeconds'] as num?)?.toInt();
-      if (loadedTime != null) {
-        _statistics.setTotalGameTimeSec(loadedTime);
-      } else {
-        _statistics.setTotalGameTimeSec(_statistics.totalGameTimeSec);
-      }
-    }
-
-    if (gameData.containsKey('crisisMode')) {
-      _handleCrisisModeData(gameData['crisisMode'] as Map<String, dynamic>);
-    }
+    await GamePersistenceMapper.finishLoadGameAfterSnapshot(
+      levelSystem: _levelSystem,
+      statistics: _statistics,
+      gameData: gameData,
+      onCrisisMode: (crisisData) => _handleCrisisModeData(crisisData),
+    );
 
     _applyUpgradeEffects();
 
@@ -636,23 +594,56 @@ class GameState extends ChangeNotifier {
   }
 
   void showProductionLeaderboard() async {
-    _notificationPort?.showLeaderboardUnavailable(
-      'Les classements ne sont pas disponibles dans cette version',
+    // Émet un événement pour la façade UI
+    _eventBus.emit(
+      GameEvent(
+        type: GameEventType.importantEventOccurred,
+        source: 'GameState',
+        severity: GameEventSeverity.info,
+        data: {
+          'reason': 'ui_show_production_leaderboard',
+        },
+      ),
     );
   }
 
   void showBankerLeaderboard() async {
-    _notificationPort?.showLeaderboardUnavailable(
-      'Les classements ne sont pas disponibles dans cette version',
+    _eventBus.emit(
+      GameEvent(
+        type: GameEventType.importantEventOccurred,
+        source: 'GameState',
+        severity: GameEventSeverity.info,
+        data: {
+          'reason': 'ui_show_banker_leaderboard',
+        },
+      ),
     );
   }
 
   void showLeaderboard() {
-    // No leaderboards in offline version
+    _eventBus.emit(
+      GameEvent(
+        type: GameEventType.importantEventOccurred,
+        source: 'GameState',
+        severity: GameEventSeverity.info,
+        data: {
+          'reason': 'ui_show_leaderboard',
+        },
+      ),
+    );
   }
 
   void showAchievements() {
-    // No achievements in offline version
+    _eventBus.emit(
+      GameEvent(
+        type: GameEventType.importantEventOccurred,
+        source: 'GameState',
+        severity: GameEventSeverity.info,
+        data: {
+          'reason': 'ui_show_achievements',
+        },
+      ),
+    );
   }
 
   void _applyUpgradeEffects() {
@@ -667,7 +658,7 @@ class GameState extends ChangeNotifier {
 
   /// Crée un snapshot sérialisable de l'état courant du jeu
   GameSnapshot toSnapshot() {
-    final now = DateTime.now();
+    final now = _clock.now();
     final metadata = <String, dynamic>{
       'schemaVersion': 1,
       'snapshotSchemaVersion': 1,
@@ -708,7 +699,7 @@ class GameState extends ChangeNotifier {
   /// Applique un GameSnapshot sur l'état courant du jeu
   void applySnapshot(GameSnapshot snapshot) {
     final metadata = snapshot.metadata;
-    final core = GameDataCompat.normalizeSnapshotCore(snapshot.core);
+    final core = snapshot.core;
 
     final lastActiveRaw = metadata['lastActiveAt'] as String?;
     _lastActiveAt = lastActiveRaw != null ? DateTime.tryParse(lastActiveRaw) : _lastActiveAt;
@@ -764,61 +755,32 @@ class GameState extends ChangeNotifier {
   }
 
   void _loadGameData(Map<String, dynamic> gameData) {
-    final normalizedGameData = GameDataCompat.normalizeLegacyGameData(gameData);
-
-    if (normalizedGameData['playerManager'] != null) {
-      _playerManager.fromJson(normalizedGameData['playerManager']);
-    }
-    if (normalizedGameData['marketManager'] != null) {
-      _marketManager.fromJson(normalizedGameData['marketManager']);
-    }
-    if (normalizedGameData['levelSystem'] != null) {
-      _levelSystem.fromJson(normalizedGameData['levelSystem']);
-    }
-    if (normalizedGameData['missionSystem'] != null) {
-      _missionSystem.fromJson(normalizedGameData['missionSystem']);
-    }
-    if (normalizedGameData['statistics'] != null) {
-      _statistics.fromJson(normalizedGameData['statistics']);
-    }
-
-    final loadedTime = (normalizedGameData['totalTimePlayedInSeconds'] as num?)?.toInt();
-    if (loadedTime != null) {
-      _statistics.setTotalGameTimeSec(loadedTime);
-    } else {
-      _statistics.setTotalGameTimeSec(_statistics.totalGameTimeSec);
-    }
-    final loadedProduced = (normalizedGameData['totalPaperclipsProduced'] as num?)?.toInt();
-    if (loadedProduced != null) {
-      _statistics.setTotalPaperclipsProduced(loadedProduced);
-    }
-  }
-
-  Future<void> saveGame(String name) async {
-    try {
-      await GamePersistenceOrchestrator.instance.requestManualSave(
-        this,
-        slotId: name,
-        reason: 'game_state_saveGame',
-      );
-      _gameName = name;
-      _lastSaveTime = DateTime.now();
-      notifyListeners();
-    } catch (e) {
-      print('Erreur dans GameState.saveGame: $e');
-    }
+    GamePersistenceMapper.loadGameData(
+      playerManager: _playerManager,
+      marketManager: _marketManager,
+      levelSystem: _levelSystem,
+      missionSystem: _missionSystem,
+      statistics: _statistics,
+      gameData: gameData,
+    );
   }
 
   Future<void> saveOnImportantEvent() async {
     try {
-      await GamePersistenceOrchestrator.instance.saveOnImportantEvent(this);
+      // Émission d'un événement pour orchestration externe (autosave, télémétrie, etc.)
+      _eventBus.emit(
+        GameEvent(
+          type: GameEventType.importantEventOccurred,
+          source: 'GameState',
+          severity: GameEventSeverity.info,
+          data: {
+            'reason': 'game_state_saveOnImportantEvent',
+          },
+        ),
+      );
     } catch (e) {
       print('Erreur lors de la sauvegarde événementielle: $e');
     }
-  }
-
-  Future<void> loadGame(String name) async {
-    await GamePersistenceOrchestrator.instance.loadGame(this, name);
   }
 
   Map<String, bool> getVisibleScreenElements() {
@@ -852,13 +814,37 @@ class GameState extends ChangeNotifier {
   }
 
   void _showUnlockNotification(String message) {
-    _notificationPort?.showUnlockNotification(message);
+    // Événement pour la façade UI
+    _eventBus.emit(
+      GameEvent(
+        type: GameEventType.importantEventOccurred,
+        source: 'GameState',
+        severity: GameEventSeverity.info,
+        data: {
+          'reason': 'ui_unlock_notification',
+          'message': message,
+        },
+      ),
+    );
   }
 
   void toggleCrisisInterface() {
     if (!_isInCrisisMode || !_crisisTransitionComplete) return;
 
     _showingCrisisView = !_showingCrisisView;
+    notifyListeners();
+  }
+
+  // Contrôle explicite de la pause par le runtime
+  void pause() {
+    if (_isPaused) return;
+    _isPaused = true;
+    notifyListeners();
+  }
+
+  void resume() {
+    if (!_isPaused) return;
+    _isPaused = false;
     notifyListeners();
   }
 

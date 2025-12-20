@@ -405,7 +405,19 @@ class GamePersistenceOrchestrator {
         LocalGamePersistenceService.snapshotKey: snapshot.toJson(),
       };
 
+      // Réutiliser l'ID existant si une sauvegarde avec ce nom existe déjà
+      String? existingId;
+      try {
+        final metas = await SaveManagerAdapter.instance.listSaves();
+        final sameName = metas.where((m) => m.name == name).toList();
+        if (sameName.isNotEmpty) {
+          sameName.sort((a, b) => b.lastModified.compareTo(a.lastModified));
+          existingId = sameName.first.id;
+        }
+      } catch (_) {}
+
       final saveData = SaveGame(
+        id: existingId,
         name: name,
         lastSaveTime: DateTime.now(),
         gameData: gameData,
@@ -625,5 +637,25 @@ class GamePersistenceOrchestrator {
         print('GamePersistenceOrchestrator.checkAndRestoreFromBackup: erreur: $e');
       }
     }
+  }
+
+  Future<List<SaveGameInfo>> listSaves() {
+    return SaveManagerAdapter.listSaves();
+  }
+
+  Future<void> deleteSaveByName(String name) {
+    return SaveManagerAdapter.deleteSaveByName(name);
+  }
+
+  Future<SaveGame?> getLastSave() {
+    return SaveManagerAdapter.getLastSave();
+  }
+
+  Future<bool> saveExists(String name) {
+    return SaveManagerAdapter.saveExists(name);
+  }
+
+  Future<bool> restoreFromBackup(GameState state, String backupName) {
+    return SaveManagerAdapter.restoreFromBackup(backupName, state);
   }
 }

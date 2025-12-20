@@ -72,7 +72,7 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
 
     if (kDebugMode) {
       print('===== CYCLE DE PRODUCTION AUTOMATIQUE =====');
-      print('[ProductionManager] État initial: ${player.paperclips.toStringAsFixed(1)} trombones, ${player.metal.toStringAsFixed(1)} métal, ${player.autoclippers} autoclippeuses');
+      print('[ProductionManager] État initial: ${player.paperclips.toStringAsFixed(1)} trombones, ${player.metal.toStringAsFixed(1)} métal, ${player.autoClipperCount} autoclippeuses');
     }
 
     // Calcul des bonus (source unique)
@@ -91,11 +91,11 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
     }
 
     // Si joueur a des autoclippeuses
-    if (player.autoclippers > 0) {
+    if (player.autoClipperCount > 0) {
       // Production automatique: calcul en delta-temps, mais production en unités entières.
       // GameConstants.BASE_AUTOCLIPPER_PRODUCTION est interprété comme une production "par seconde".
       double productionRatePerSecond =
-          player.autoclippers * GameConstants.BASE_AUTOCLIPPER_PRODUCTION;
+          player.autoClipperCount * GameConstants.BASE_AUTOCLIPPER_PRODUCTION;
       productionRatePerSecond *= speedBonus;
       productionRatePerSecond *= bulkBonus;
 
@@ -208,7 +208,7 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
     final double cost = calculateAutoclipperCost();
 
     player.updateMoney(player.money - cost);
-    player.updateAutoclippers(player.autoclippers + 1);
+    player.updateAutoclippers(player.autoClipperCount + 1);
     level.addAutoclipperPurchase();
 
     // Mise à jour centralisée des statistiques
@@ -228,7 +228,7 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
   /// Calcule le coût d'achat d'une autoclippeuse supplémentaire
   double calculateAutoclipperCost() {
     return UpgradeEffectsCalculator.autoclipperCost(
-      autoclippersOwned: player.autoclippers,
+      autoclippersOwned: player.autoClipperCount,
       automationLevel: player.upgrades['automation']?.level ?? 0,
     );
   }
@@ -240,15 +240,15 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
 
   /// Applique les coûts de maintenance des autoclippeuses
   void applyMaintenanceCosts() {
-    if (player.autoclippers == 0) return;
+    if (player.autoClipperCount == 0) return;
 
-    _maintenanceCosts = player.autoclippers * GameConstants.STORAGE_MAINTENANCE_RATE;
+    _maintenanceCosts = player.autoClipperCount * GameConstants.STORAGE_MAINTENANCE_RATE;
 
     if (player.money >= _maintenanceCosts) {
       // Coût de maintenance actuellement non enregistré dans les statistiques économiques.
       player.updateMoney(player.money - _maintenanceCosts);
     } else {
-      player.updateAutoclippers((player.autoclippers * 0.9).floor());
+      player.updateAutoclippers((player.autoClipperCount * 0.9).floor());
       _eventSink.publish(
         const DomainEvent(
           type: DomainEventType.resourceDepletion,

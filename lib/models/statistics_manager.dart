@@ -378,6 +378,7 @@ class StatisticsManager with ChangeNotifier {
       case GameEventType.marketTick:
       case GameEventType.autoclipperPurchased:
       case GameEventType.progressionPathChosen:
+      case GameEventType.importantEventOccurred:
         return;
     }
   }

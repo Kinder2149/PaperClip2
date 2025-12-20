@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../models/game_state.dart';
+import '../../services/game_actions.dart';
 import '../../services/upgrades/upgrade_effects_calculator.dart';
 
 class ProductionButton extends StatelessWidget {
@@ -27,7 +28,7 @@ class ProductionButton extends StatelessWidget {
             onPressed: canProduce
                 ? () {
                     HapticFeedback.mediumImpact();
-                    context.read<GameState>().producePaperclip();
+                    context.read<GameActions>().producePaperclip();
                   }
                 : null,
             style: ElevatedButton.styleFrom(

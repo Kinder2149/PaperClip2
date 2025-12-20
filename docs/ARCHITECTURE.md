@@ -73,3 +73,55 @@ La migration est volontairement progressive :
 2. Migrer les systèmes métier (ex: `LevelSystem`) pour publier des `DomainEvent` via port.
 3. Réduire les responsabilités des stores UI (ex: `EventManager`).
 4. Réduire `GameState` vers une façade d’état/commandes.
+
+## GameState — Rôle et Frontières (référence)
+
+### Rôle actuel
+
+- Façade d’état du jeu, point central de lecture/écriture d’état runtime.
+- Initialise et relie les managers coeur (Player/Market/Resource/Level/Production/Statistics), le `GameEngine` et l’`EventBus`.
+- Délègue la logique métier (production, upgrades, marché, progression) au `GameEngine`/managers.
+- Sérialise/désérialise l’état via snapshot (`toSnapshot`/`applySnapshot`).
+- Orchestration: AUCUNE (tick, autosave, offline, UI, audio sont externalisés).
+
+### Ce que GameState ne doit pas faire
+
+- Pas de timers/boucles/scheduling (tick déclenché depuis un contrôleur externe).
+- Pas d’UI/audio: pas de formatage/affichage/navigation ni de contrôle audio (événements uniquement, façades externes).
+- Pas d’I/O direct de persistance (uniquement via l’orchestrateur).
+- Pas de règles métier réimplémentées ici (utiliser `GameEngine`/managers/services spécialisés).
+
+### Points d’extension autorisés
+
+- Nouvelles lectures/écritures d’état simples et documentées.
+- Délégation vers services/engine via méthodes fines (sans logique UI/audio).
+- Évolution du snapshot (clés sous `metadata`/`core`/`stats`) documentée et testée.
+
+### Garde-fous
+
+- Interdiction d’introduire des helpers UI/audio/formatage dans `GameState`.
+- Toute nouvelle méthode doit prouver la délégation métier et l’absence de scheduling/IO.
+- Stratégie “snapshot-first”: le snapshot est la source de vérité; legacy conservé uniquement pour compat/migration.
+
+## Couche Runtime (Application) — Composants clés
+
+- GameSessionController
+  - Pilote la cadence et la boucle de jeu (timers), calcule `elapsedSeconds`.
+  - Publie des métriques de tick (drift/durée) et déclenche le watchdog de dérive.
+
+- GameRuntimeCoordinator
+  - Orchestration runtime: autosave (via GamePersistenceOrchestrator), offline progress, lifecycle (pause/resume), wiring Audio/UI.
+  - Maintient des métadonnées runtime (via `RuntimeMetaRegistry`) et les propage dans `GameState` avant persistance pour garder des snapshots cohérents.
+  - Instrumentation autosave (métriques et watchdog lenteur/erreurs).
+
+- GameUiFacade
+  - Abonnée au bus d’événements de `GameState`; mappe les raisons UI (`ui_show_*`, `ui_unlock_notification`) vers `GameUiPort`/services UI.
+  - Débranche l’UI du domaine.
+
+- RuntimeMetaRegistry
+  - Stocke `lastActiveAt`, `lastOfflineAppliedAt`, `offlineSpecVersion` hors du domaine.
+  - Source de vérité runtime; synchronisée avec `GameState` au moment des saves/loads.
+
+- Observabilité
+  - `RuntimeMetrics`: logs structurés (tick/autosave/offline).
+  - `RuntimeWatchdog`: alertes (tick drift élevé, autosave lente/erreurs consécutives).

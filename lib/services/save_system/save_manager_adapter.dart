@@ -18,6 +18,7 @@ import 'package:paperclip2/services/save_game.dart' show SaveGameInfo;
 ///
 /// Cette classe de transition facilite l'intégration du nouveau système de sauvegarde
 /// tout en minimisant les changements nécessaires dans le code existant.
+@Deprecated('Utiliser GamePersistenceOrchestrator et LocalGamePersistenceService (services/persistence)')
 class SaveManagerAdapter {
   static final SaveManagerAdapter _instance = SaveManagerAdapter._internal();
   factory SaveManagerAdapter() => _instance;
@@ -569,23 +570,36 @@ class SaveManagerAdapter {
                 
                 // Mise à jour des valeurs si playerManager existe
                 try {
-                  if (gameData.containsKey('playerManager')) {
-                    var playerManager = gameData['playerManager'];
-                    if (playerManager is Map) {
-                      saveInfo = SaveGameInfo(
-                        id: metadata.id,
-                        name: metadata.name,
-                        timestamp: metadata.lastModified,
-                        version: metadata.version,
-                        paperclips: playerManager['paperclips'] ?? 0,
-                        money: playerManager['money'] ?? 0,
-                        gameMode: metadata.gameMode,
-                        totalPaperclipsSold: playerManager['totalPaperclipsSold'] ?? 0,
-                        autoClipperCount: playerManager['autoClipperCount'] ?? 0,
-                        isBackup: isBackup,
-                        isRestored: metadata.isRestored,
-                      );
+                  Map<String, dynamic>? playerMap;
+                  // 1) Format legacy: playerManager à la racine
+                  if (gameData.containsKey('playerManager') && gameData['playerManager'] is Map) {
+                    playerMap = Map<String, dynamic>.from(gameData['playerManager'] as Map);
+                  }
+                  // 2) Nouveau format snapshot-only: gameSnapshot.core.playerManager
+                  else if (gameData.containsKey('gameSnapshot')) {
+                    final snap = gameData['gameSnapshot'];
+                    if (snap is Map) {
+                      final core = (snap['core'] is Map) ? Map<String, dynamic>.from(snap['core'] as Map) : null;
+                      if (core != null && core['playerManager'] is Map) {
+                        playerMap = Map<String, dynamic>.from(core['playerManager'] as Map);
+                      }
                     }
+                  }
+
+                  if (playerMap != null) {
+                    saveInfo = SaveGameInfo(
+                      id: metadata.id,
+                      name: metadata.name,
+                      timestamp: metadata.lastModified,
+                      version: metadata.version,
+                      paperclips: (playerMap['paperclips'] as num?)?.toDouble() ?? 0,
+                      money: (playerMap['money'] as num?)?.toDouble() ?? 0,
+                      gameMode: metadata.gameMode,
+                      totalPaperclipsSold: (playerMap['totalPaperclipsSold'] as num?)?.toDouble() ?? 0,
+                      autoClipperCount: (playerMap['autoClipperCount'] as num?)?.toInt() ?? 0,
+                      isBackup: isBackup,
+                      isRestored: metadata.isRestored,
+                    );
                   }
                 } catch (e) {
                   // En cas d'erreur, on garde les valeurs par défaut déjà définies

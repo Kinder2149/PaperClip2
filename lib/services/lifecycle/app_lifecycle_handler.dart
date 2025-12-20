@@ -4,17 +4,31 @@ import 'package:paperclip2/models/game_state.dart';
 
 typedef AppLifecycleNowProvider = DateTime Function();
 typedef AppLifecycleSavePort = Future<void> Function({required String reason});
+typedef AppLifecycleResumePort = void Function();
 
 class AppLifecycleHandler with WidgetsBindingObserver {
   GameState? _gameState;
-  final AppLifecycleSavePort _onLifecycleSave;
+  AppLifecycleSavePort _onLifecycleSave;
+  AppLifecycleResumePort _onLifecycleResume;
   final AppLifecycleNowProvider _now;
 
   AppLifecycleHandler({
     AppLifecycleSavePort? onLifecycleSave,
     AppLifecycleNowProvider? now,
+    AppLifecycleResumePort? onLifecycleResume,
   })  : _onLifecycleSave = onLifecycleSave ?? (({required String reason}) async {}),
-        _now = now ?? DateTime.now;
+        _now = now ?? DateTime.now,
+        _onLifecycleResume = onLifecycleResume ?? (() {});
+
+  void setOnLifecycleResume(AppLifecycleResumePort cb) {
+    _onLifecycleResume = cb;
+  }
+
+  void setOnLifecycleSave(AppLifecycleSavePort cb) {
+    // Permet au Coordinator de gérer la persistance et les métadonnées runtime
+    // sans coupler cette classe au domaine.
+    _onLifecycleSave = cb;
+  }
 
   void register(GameState gameState) {
     _gameState = gameState;
@@ -34,13 +48,12 @@ class AppLifecycleHandler with WidgetsBindingObserver {
     }
 
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
-      gameState.markLastActiveAt(_now());
       _onLifecycleSave(reason: 'app_lifecycle_${state.name}');
       return;
     }
 
     if (state == AppLifecycleState.resumed) {
-      gameState.applyOfflineProgressV2();
+      _onLifecycleResume();
       return;
     }
   }

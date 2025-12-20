@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:math' show min;
 import '../models/game_state.dart';
+import '../services/game_actions.dart';
 import '../constants/game_config.dart'; // Importé depuis constants au lieu de models
 import '../widgets/resources/resource_widgets.dart';
 import '../widgets/cards/stats_panel.dart';
@@ -222,7 +223,7 @@ class UpgradesScreen extends StatelessWidget {
     if (canBuy) {
       actions.add(
         TextButton.icon(
-          onPressed: () => gameState.purchaseUpgrade(id),
+          onPressed: () => context.read<GameActions>().purchaseUpgrade(id),
           icon: const Icon(Icons.shopping_cart, color: Colors.green),
           label: const Text('Acheter', style: TextStyle(color: Colors.green)),
         )
@@ -257,6 +258,10 @@ class UpgradesScreen extends StatelessWidget {
         titleColor = Colors.blue.shade800;
         break;
       case 'quality':
+      case 'marketing':
+      case 'reputation':
+      case 'marketResearch':
+      case 'procurement':
         category = 'Marché';
         backgroundColor = Colors.teal.shade50;
         iconColor = Colors.teal.shade700;
@@ -301,7 +306,7 @@ class UpgradesScreen extends StatelessWidget {
         side: BorderSide(color: borderColor, width: 1),
       ),
       child: InkWell(
-        onTap: canBuy ? () => gameState.purchaseUpgrade(id) : null,
+        onTap: canBuy ? () => context.read<GameActions>().purchaseUpgrade(id) : null,
         borderRadius: BorderRadius.circular(8),
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -406,6 +411,10 @@ class UpgradesScreen extends StatelessWidget {
         accentColor = Colors.blue.shade700;
         break;
       case 'quality':
+      case 'marketing':
+      case 'reputation':
+      case 'marketResearch':
+      case 'procurement':
         backgroundColor = Colors.teal.shade50;
         borderColor = Colors.teal.shade100;
         accentColor = Colors.teal.shade700;
@@ -477,6 +486,43 @@ class UpgradesScreen extends StatelessWidget {
         impacts['Capacité de stockage'] = [
           '${currentStorage.toStringAsFixed(0)}',
           '${nextStorage.toStringAsFixed(0)}'
+        ];
+        break;
+
+      // --- Marché ---
+      case 'marketing':
+        final currBonus = UpgradeEffectsCalculator.marketingBonus(level: upgrade.level) * 100;
+        final nextBonus = UpgradeEffectsCalculator.marketingBonus(level: upgrade.level + 1) * 100;
+        impacts['Demande (bonus marketing)'] = [
+          _formatImpact(currBonus),
+          _formatImpact(nextBonus),
+        ];
+        break;
+
+      case 'reputation':
+        final currBonus = UpgradeEffectsCalculator.reputationBonus(level: upgrade.level) * 100;
+        final nextBonus = UpgradeEffectsCalculator.reputationBonus(level: upgrade.level + 1) * 100;
+        impacts['Réputation (impact sur demande)'] = [
+          _formatImpact(currBonus),
+          _formatImpact(nextBonus),
+        ];
+        break;
+
+      case 'marketResearch':
+        final currRed = UpgradeEffectsCalculator.volatilityReduction(level: upgrade.level) * 100;
+        final nextRed = UpgradeEffectsCalculator.volatilityReduction(level: upgrade.level + 1) * 100;
+        impacts['Volatilité du marché'] = [
+          _formatImpact(-currRed),
+          _formatImpact(-nextRed),
+        ];
+        break;
+
+      case 'procurement':
+        final currDisc = UpgradeEffectsCalculator.metalDiscount(level: upgrade.level) * 100;
+        final nextDisc = UpgradeEffectsCalculator.metalDiscount(level: upgrade.level + 1) * 100;
+        impacts['Rabais sur achat métal'] = [
+          _formatImpact(-currDisc),
+          _formatImpact(-nextDisc),
         ];
         break;
     }

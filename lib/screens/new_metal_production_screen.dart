@@ -6,7 +6,6 @@ import '../widgets/resources/resource_widgets.dart';
 import '../widgets/indicators/level_widgets.dart';
 import '../widgets/charts/chart_widgets.dart';
 import '../widgets/buttons/production_button.dart';
-import '../services/save_system/save_manager_adapter.dart';
 import '../models/event_system.dart';
 import '../utils/notification_manager.dart';
 import '../widgets/indicators/stat_indicator.dart';

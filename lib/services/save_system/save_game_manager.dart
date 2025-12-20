@@ -11,6 +11,7 @@ import 'package:paperclip2/constants/game_config.dart';
 /// Cette interface fournit un contrat standard pour toutes les opérations
 /// liées à la sauvegarde et au chargement des parties, ainsi qu'à la gestion
 /// des métadonnées associées.
+@Deprecated('Utiliser GamePersistenceOrchestrator et GamePersistenceService dans services/persistence')
 abstract class SaveGameManager {
   /// Liste toutes les sauvegardes disponibles avec leurs métadonnées
   Future<List<SaveMetadata>> listSaves();

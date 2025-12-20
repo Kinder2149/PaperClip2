@@ -57,7 +57,7 @@ void main() {
     test('buyAutoclipperOfficial débite l’argent et augmente autoclippers', () {
       player.updateMoney(100000.0);
 
-      final autoclippersBefore = player.autoclippers;
+      final autoclippersBefore = player.autoClipperCount;
       final moneyBefore = player.money;
       final spentBefore = stats.totalMoneySpent;
       final xpBefore = level.experience;
@@ -67,7 +67,7 @@ void main() {
       final ok = production.buyAutoclipperOfficial();
 
       expect(ok, isTrue);
-      expect(player.autoclippers, autoclippersBefore + 1);
+      expect(player.autoClipperCount, autoclippersBefore + 1);
       expect(player.money, closeTo(moneyBefore - cost, 0.0001));
       expect(stats.totalMoneySpent, closeTo(spentBefore + cost, 0.0001));
       expect(level.experience, greaterThanOrEqualTo(xpBefore));
@@ -78,13 +78,13 @@ void main() {
       player.updateAutoclippers(10);
       player.updateMoney(0.0);
 
-      final before = player.autoclippers;
+      final before = player.autoClipperCount;
 
       // WHEN
       production.applyMaintenanceCosts();
 
       // THEN
-      expect(player.autoclippers, lessThan(before));
+      expect(player.autoClipperCount, lessThan(before));
     });
   });
 }

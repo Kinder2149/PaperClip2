@@ -1,4 +1,4 @@
-// lib/services/auto_save_service.dart
+﻿// lib/services/auto_save_service.dart
 
 import 'dart:async';
 import 'dart:convert';
@@ -10,9 +10,9 @@ import 'package:flutter/widgets.dart';
 import 'package:logging/logging.dart';
 
 import '../models/game_state.dart';
-import '../constants/game_config.dart';  // Import des constantes centralisées
-import 'save_game.dart';  // Import du fichier point d'entrée pour le système de sauvegarde
-import '../constants/storage_constants.dart';  // Chemin corrigé vers les constantes de stockage
+import '../constants/game_config.dart';  // Import des constantes centralisÃ©es
+import 'save_game.dart';  // Import du fichier point d'entrÃ©e pour le systÃ¨me de sauvegarde
+import '../constants/storage_constants.dart';  // Chemin corrigÃ© vers les constantes de stockage
 import 'save_system/save_validator.dart';  // Import du nouveau validateur de sauvegarde
 import '../services/persistence/game_persistence_orchestrator.dart';
 import 'package:paperclip2/domain/events/domain_event.dart';
@@ -72,17 +72,17 @@ abstract class AutoSaveStoragePort {
 
 class _DefaultAutoSaveStoragePort implements AutoSaveStoragePort {
   @override
-  Future<List<SaveGameInfo>> listSaves() => SaveManagerAdapter.listSaves();
+  Future<List<SaveGameInfo>> listSaves() => GamePersistenceOrchestrator.instance.listSaves();
 
   @override
-  Future<void> deleteSaveByName(String name) => SaveManagerAdapter.deleteSaveByName(name);
+  Future<void> deleteSaveByName(String name) => GamePersistenceOrchestrator.instance.deleteSaveByName(name);
 }
 
 class AutoSaveService {
-  // Définition du logger (static pour être partagé entre les instances)
+  // DÃ©finition du logger (static pour Ãªtre partagÃ© entre les instances)
   static final Logger _logger = Logger('AutoSaveService');
   
-  // Utilise les constantes centralisées depuis GameConstants
+  // Utilise les constantes centralisÃ©es depuis GameConstants
   final GameState _gameState;
   final AutoSaveOrchestratorPort _orchestrator;
   final AutoSaveStoragePort _storage;
@@ -129,22 +129,22 @@ class AutoSaveService {
     });
   }
 
-  // Méthode start pour compatibilité avec le code existant
+  // MÃ©thode start pour compatibilitÃ© avec le code existant
   Future<void> start() async {
     await initialize();
   }
   
-  // Méthode pour arrêter temporairement l'auto-sauvegarde
+  // MÃ©thode pour arrÃªter temporairement l'auto-sauvegarde
   void stop() {
     _mainTimer?.cancel();
     _mainTimer = null;
-    print('Auto-sauvegarde arrêtée temporairement');
+    print('Auto-sauvegarde arrÃªtÃ©e temporairement');
   }
   
-  // Méthode pour relancer l'auto-sauvegarde après un arrêt
+  // MÃ©thode pour relancer l'auto-sauvegarde aprÃ¨s un arrÃªt
   void restart() {
     _setupMainTimer();
-    print('Auto-sauvegarde relancée');
+    print('Auto-sauvegarde relancÃ©e');
   }
 
   Future<void> requestLifecycleSave({String? reason}) async {
@@ -162,7 +162,7 @@ class AutoSaveService {
   void _setupMainTimer() {
     _mainTimer?.cancel();
     _mainTimer = Timer.periodic(GameConstants.AUTO_SAVE_INTERVAL, (_) {
-      // Vérifier si l'UI n'est pas occupée avant de sauvegarder
+      // VÃ©rifier si l'UI n'est pas occupÃ©e avant de sauvegarder
       _postFrame(() {
         _performAutoSave();
       });
@@ -181,12 +181,12 @@ class AutoSaveService {
         reason: 'autosave_service_create_backup',
       );
       
-      print('Création de backup pour: $backupName');
+      print('CrÃ©ation de backup pour: $backupName');
 
-      // Nettoyer les vieux backups de manière asynchrone
+      // Nettoyer les vieux backups de maniÃ¨re asynchrone
       Future.microtask(() => _cleanupOldBackups());
     } catch (e) {
-      print('Erreur lors de la création du backup: $e');
+      print('Erreur lors de la crÃ©ation du backup: $e');
     }
   }
 
@@ -198,34 +198,34 @@ class AutoSaveService {
 
       // Garder seulement les 3 derniers backups
       if (backups.length > GameConstants.MAX_BACKUPS) {
-        backups.sort((a, b) => b.timestamp.compareTo(a.timestamp)); // Utilisation de timestamp pour compatibilité avec SaveGameInfo
+        backups.sort((a, b) => b.timestamp.compareTo(a.timestamp)); // Utilisation de timestamp pour compatibilitÃ© avec SaveGameInfo
         for (var i = GameConstants.MAX_BACKUPS; i < backups.length; i++) {
           await _storage.deleteSaveByName(backups[i].name);
         }
       }
-      print('Nettoyage des anciens backups terminé');
+      print('Nettoyage des anciens backups terminÃ©');
     } catch (e) {
       print('Erreur lors du nettoyage des backups: $e');
     }
   }
 
   void _setupAppLifecycleSave() {
-    // Mission 2: le lifecycle est orchestré hors AutoSaveService (AppLifecycleHandler).
+    // Mission 2: le lifecycle est orchestrÃ© hors AutoSaveService (AppLifecycleHandler).
   }
 
-  // Le logger est déjà défini comme static au niveau de la classe
+  // Le logger est dÃ©jÃ  dÃ©fini comme static au niveau de la classe
   
   Future<void> _performAutoSave() async {
     if (!_gameState.isInitialized || _gameState.gameName == null) {
-      _logger.warning('Tentative de sauvegarde automatique avec un état de jeu non initialisé ou sans nom');
+      _logger.warning('Tentative de sauvegarde automatique avec un Ã©tat de jeu non initialisÃ© ou sans nom');
       return;
     }
 
     try {
-      _logger.info('Début de la sauvegarde automatique pour: ${_gameState.gameName}');
+      _logger.info('DÃ©but de la sauvegarde automatique pour: ${_gameState.gameName}');
       
       // PR3: persistance snapshot-only.
-      // On contrôle la taille du payload réellement écrit (snapshot).
+      // On contrÃ´le la taille du payload rÃ©ellement Ã©crit (snapshot).
       final snapshot = _gameState.toSnapshot();
       final savePayload = <String, dynamic>{
         'version': GameConstants.CURRENT_SAVE_FORMAT_VERSION,
@@ -239,11 +239,11 @@ class AutoSaveService {
       final validationResult = SaveValidator.validate(savePayload, quickMode: true);
       if (!validationResult.isValid) {
         _logger.warning(
-          'Validation rapide échouée avant sauvegarde snapshot-only: ${validationResult.errors.join(", ")}',
+          'Validation rapide Ã©chouÃ©e avant sauvegarde snapshot-only: ${validationResult.errors.join(", ")}',
         );
       }
 
-      // Vérifier la taille avant de sauvegarder
+      // VÃ©rifier la taille avant de sauvegarder
       if (!await _checkSaveSize(savePayload)) {
         _logger.warning('Sauvegarde automatique trop volumineuse pour: ${_gameState.gameName}');
         await _handleSaveError('Sauvegarde trop volumineuse');
@@ -255,9 +255,9 @@ class AutoSaveService {
         reason: 'autosave_timer',
       );
       
-      _failedSaveAttempts = 0;  // Réinitialiser le compteur en cas de succès
+      _failedSaveAttempts = 0;  // RÃ©initialiser le compteur en cas de succÃ¨s
       _lastAutoSave = DateTime.now();
-      _logger.info('Sauvegarde automatique effectuée avec succès pour: ${_gameState.gameName}');
+      _logger.info('Sauvegarde automatique effectuÃ©e avec succÃ¨s pour: ${_gameState.gameName}');
       
     } catch (e) {
       _logger.severe('Erreur lors de la sauvegarde automatique: $e\nStacktrace: ${StackTrace.current}');
@@ -288,7 +288,7 @@ class AutoSaveService {
         _saveSizes.remove(save.name);
       }
     }
-    print('Nettoyage du stockage terminé');
+    print('Nettoyage du stockage terminÃ©');
   }
 
   Future<void> _performBackup() async {
@@ -302,23 +302,23 @@ class AutoSaveService {
         backupName: backupName,
         reason: 'autosave_service_perform_backup',
       );
-      print('Backup effectué pour: $backupName');
+      print('Backup effectuÃ© pour: $backupName');
       await _cleanupOldBackups();
     } catch (e) {
-      print('Erreur lors de la création du backup: $e');
+      print('Erreur lors de la crÃ©ation du backup: $e');
     }
   }
 
   Future<void> _performSaveOnExit() async {
     if (!_gameState.isInitialized || _gameState.gameName == null) {
-      _logger.warning('Tentative de sauvegarde à la sortie avec un état de jeu non initialisé ou sans nom');
+      _logger.warning('Tentative de sauvegarde Ã  la sortie avec un Ã©tat de jeu non initialisÃ© ou sans nom');
       return;
     }
 
     try {
-      _logger.info('Début de la sauvegarde à la sortie pour: ${_gameState.gameName}');
+      _logger.info('DÃ©but de la sauvegarde Ã  la sortie pour: ${_gameState.gameName}');
       
-      // PR3: validation rapide sur le payload snapshot-only réellement écrit.
+      // PR3: validation rapide sur le payload snapshot-only rÃ©ellement Ã©crit.
       final snapshot = _gameState.toSnapshot();
       final payload = <String, dynamic>{
         'version': GameConstants.CURRENT_SAVE_FORMAT_VERSION,
@@ -330,21 +330,21 @@ class AutoSaveService {
 
       final validationResult = SaveValidator.validate(payload, quickMode: true);
       if (!validationResult.isValid) {
-        _logger.warning('Validation rapide échouée lors de la sauvegarde à la sortie');
-        // Créer un backup de sécurité avant de continuer
+        _logger.warning('Validation rapide Ã©chouÃ©e lors de la sauvegarde Ã  la sortie');
+        // CrÃ©er un backup de sÃ©curitÃ© avant de continuer
         await _performBackup();
       }
       
       await requestLifecycleSave(reason: 'autosave_service_save_on_exit');
-      _logger.info('Sauvegarde à la sortie effectuée avec succès pour: ${_gameState.gameName}');
+      _logger.info('Sauvegarde Ã  la sortie effectuÃ©e avec succÃ¨s pour: ${_gameState.gameName}');
       
     } catch (e) {
       _logger.severe('Erreur lors de la sauvegarde de sortie: $e');
-      // Tenter de créer une sauvegarde de secours même en cas d'erreur
+      // Tenter de crÃ©er une sauvegarde de secours mÃªme en cas d'erreur
       try {
         await _performBackup();
       } catch (_) {
-        _logger.severe('Impossible de créer une sauvegarde de secours à la sortie');
+        _logger.severe('Impossible de crÃ©er une sauvegarde de secours Ã  la sortie');
       }
     }
   }
@@ -352,10 +352,10 @@ class AutoSaveService {
   Future<void> _handleSaveError(dynamic error) async {
     _failedSaveAttempts++;
 
-    _logger.warning('Tentative de sauvegarde échouée ($_failedSaveAttempts/$_maxFailedAttempts): $error');
+    _logger.warning('Tentative de sauvegarde Ã©chouÃ©e ($_failedSaveAttempts/$_maxFailedAttempts): $error');
 
     if (_failedSaveAttempts >= _maxFailedAttempts) {
-      _logger.severe('Nombre maximum d\'erreurs de sauvegarde atteint, création d\'une sauvegarde de secours');
+      _logger.severe('Nombre maximum d\'erreurs de sauvegarde atteint, crÃ©ation d\'une sauvegarde de secours');
       
       try {
         await createBackup();
@@ -365,22 +365,22 @@ class AutoSaveService {
           const DomainEvent(
             type: DomainEventType.resourceDepletion,
             data: <String, Object?>{
-              'title': 'Problème de sauvegarde',
-              'description': 'Une sauvegarde de secours a été créée automatiquement',
+              'title': 'ProblÃ¨me de sauvegarde',
+              'description': 'Une sauvegarde de secours a Ã©tÃ© crÃ©Ã©e automatiquement',
             },
           ),
         );
         
-        _logger.info('Sauvegarde de secours créée avec succès');
+        _logger.info('Sauvegarde de secours crÃ©Ã©e avec succÃ¨s');
       } catch (backupError) {
-        _logger.severe('Impossible de créer une sauvegarde de secours: $backupError');
+        _logger.severe('Impossible de crÃ©er une sauvegarde de secours: $backupError');
 
         _eventSink.publish(
           const DomainEvent(
             type: DomainEventType.resourceDepletion,
             data: <String, Object?>{
               'title': 'Erreur critique de sauvegarde',
-              'description': 'Impossible de sauvegarder vos données de jeu',
+              'description': 'Impossible de sauvegarder vos donnÃ©es de jeu',
             },
           ),
         );
@@ -402,4 +402,4 @@ class AutoSaveService {
   }
 }
 
-// Utilisation de la classe ValidationResult du nouveau système de sauvegarde
+// Utilisation de la classe ValidationResult du nouveau systÃ¨me de sauvegarde

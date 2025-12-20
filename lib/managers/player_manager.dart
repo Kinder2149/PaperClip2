@@ -48,8 +48,6 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
   // Getters
   double get money => _money;
   double get paperclips => _paperclips;
-  // L'ancien getter 'wire' redirige désormais vers 'metal' pour rétrocompatibilité
-  double get wire => _metal;
   double get metal => _metal;
   double get sellPrice => _sellPrice;
   int get marketingLevel => _marketingLevel;
@@ -57,19 +55,13 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
   int get megaClipperCount => _megaClipperCount;
   double get autoClipperCost => _autoClipperCost;
   double get megaClipperCost => _megaClipperCost;
-  // Getter de rétrocompatibilité pour autoclippers
-  int get autoclippers => _autoClipperCount;
-  double get wireCost => _metalCost; // Rétrocompatibilité
   double get metalCost => _metalCost;
-  int get wirePurchaseCount => _metalPurchaseCount; // Rétrocompatibilité
   int get metalPurchaseCount => _metalPurchaseCount;
   int get storageUpgradeLevel => _storageUpgradeLevel;
   int get efficiencyUpgradeLevel => _efficiencyUpgradeLevel;
   double get productionSpeedMultiplier => _productionSpeedMultiplier;
   double get productionBatchSizeMultiplier => _productionBatchSizeMultiplier;
-  bool get autoWireBuyerEnabled => _autoMetalBuyerEnabled; // Rétrocompatibilité
   bool get autoMetalBuyerEnabled => _autoMetalBuyerEnabled;
-  double get wireAutoBuyerLevel => _metalAutoBuyerLevel; // Rétrocompatibilité
   double get metalAutoBuyerLevel => _metalAutoBuyerLevel;
   double get autoClipperLevel => _autoClipperLevel;
   int get trust => _trust;
@@ -146,6 +138,39 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
       maxLevel: 5,
       requiredLevel: GameConstants.UPGRADES_UNLOCK_LEVEL,
     ),
+    // --- Marché ---
+    'marketing': Upgrade(
+      id: 'marketing',
+      name: 'Marketing',
+      description: 'Augmente la demande du marché',
+      baseCost: 60.0,
+      maxLevel: 10,
+      requiredLevel: GameConstants.UPGRADES_UNLOCK_LEVEL,
+    ),
+    'reputation': Upgrade(
+      id: 'reputation',
+      name: 'Réputation',
+      description: 'Améliore la réputation et la demande',
+      baseCost: 45.0,
+      maxLevel: 10,
+      requiredLevel: GameConstants.UPGRADES_UNLOCK_LEVEL,
+    ),
+    'marketResearch': Upgrade(
+      id: 'marketResearch',
+      name: 'Étude de marché',
+      description: 'Réduit la volatilité du marché',
+      baseCost: 70.0,
+      maxLevel: 10,
+      requiredLevel: GameConstants.UPGRADES_UNLOCK_LEVEL,
+    ),
+    'procurement': Upgrade(
+      id: 'procurement',
+      name: 'Négociation',
+      description: 'Réduit le prix d\'achat du métal',
+      baseCost: 55.0,
+      maxLevel: 10,
+      requiredLevel: GameConstants.UPGRADES_UNLOCK_LEVEL,
+    ),
   };
   
   /// Met à jour le montant d'argent du joueur
@@ -198,10 +223,6 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
     return _metal >= amount;
   }
   
-  /// Détermine si le joueur a suffisamment de fil (redirigé vers hasEnoughMetal pour compatibilité)
-  bool hasEnoughWire(double amount) {
-    return hasEnoughMetal(amount);
-  }
   
   /// Reset complet des ressources principales (compatibilité avec l'ancien GameState)
   void resetResources() {
@@ -217,11 +238,6 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
     if (price < 0.01) price = 0.01;
     _sellPrice = price;
     notifyListeners();
-  }
-
-  /// Alias de compatibilité pour l'ancien code qui appelait updateSellPrice
-  void updateSellPrice(double price) {
-    setSellPrice(price);
   }
   
   /// Acheter un autoclip (machine automatique de fabrication)
@@ -240,10 +256,6 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
     return false;
   }
   
-  /// Méthode de rétrocompatibilité qui redirige vers purchaseAutoClipper
-  bool buyAutoClipper() {
-    return purchaseAutoClipper();
-  }
   
   // Méthode supprimée: purchaseAutoclipper() (alias pour buyAutoClipper)
   
@@ -359,7 +371,7 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
     return true;
   }
   
-  /// Méthode de rétrocompatibilité qui redirige vers spendMetal
+  /// Alias de compatibilité: utilisé par la production
   bool consumeMetal(double amount) {
     return spendMetal(amount);
   }
@@ -408,8 +420,6 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
       'sellPrice': _sellPrice,
       'marketingLevel': _marketingLevel,
       'autoClipperCount': _autoClipperCount,
-      // Pour compatibilité avec le validateur de sauvegarde
-      'autoclippers': _autoClipperCount,
       'megaClipperCount': _megaClipperCount,
       'autoClipperCost': _autoClipperCost,
       'megaClipperCost': _megaClipperCost,
@@ -441,14 +451,7 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
       // Chargement des ressources du joueur
       _money = (json['money'] as num?)?.toDouble() ?? GameConstants.INITIAL_MONEY;
       _paperclips = (json['paperclips'] as num?)?.toDouble() ?? 0.0;
-      // Fusionner l'ancien 'wire' avec 'metal' pour assurer la rétrocompatibilité
-      double wireValue = (json['wire'] as num?)?.toDouble() ?? 0.0;
       _metal = (json['metal'] as num?)?.toDouble() ?? GameConstants.INITIAL_METAL;
-      
-      // Si on a des données 'wire' dans la sauvegarde, on les ajoute au metal
-      if (wireValue > 0) {
-        _metal += wireValue;
-      }
       _sellPrice = (json['sellPrice'] as num?)?.toDouble() ?? GameConstants.INITIAL_PRICE;
       _marketingLevel = (json['marketingLevel'] as num?)?.toInt() ?? 0;
       
@@ -458,20 +461,14 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
       _megaClipperCount = (json['megaClipperCount'] as num?)?.toInt() ?? 0;
       _autoClipperCost = (json['autoClipperCost'] as num?)?.toDouble() ?? GameConstants.BASE_AUTOCLIPPER_COST;
       _megaClipperCost = (json['megaClipperCost'] as num?)?.toDouble() ?? 30.0;
-      // Charger metalCost (avec rétrocompatibilité pour wireCost)
-      _metalCost = (json['metalCost'] as num?)?.toDouble() ?? 
-                (json['wireCost'] as num?)?.toDouble() ?? 14.0;
-      _metalPurchaseCount = (json['metalPurchaseCount'] as num?)?.toInt() ?? 
-                       (json['wirePurchaseCount'] as num?)?.toInt() ?? 0;
+      _metalCost = (json['metalCost'] as num?)?.toDouble() ?? 14.0;
+      _metalPurchaseCount = (json['metalPurchaseCount'] as num?)?.toInt() ?? 0;
       _storageUpgradeLevel = (json['storageUpgradeLevel'] as num?)?.toInt() ?? 0;
       _efficiencyUpgradeLevel = (json['efficiencyUpgradeLevel'] as num?)?.toInt() ?? 0;
       _productionSpeedMultiplier = (json['productionSpeedMultiplier'] as num?)?.toDouble() ?? 1.0;
       _productionBatchSizeMultiplier = (json['productionBatchSizeMultiplier'] as num?)?.toDouble() ?? 1.0;
-      // Charger les paramètres d'achat automatique (avec rétrocompatibilité)
-      _autoMetalBuyerEnabled = json['autoMetalBuyerEnabled'] as bool? ?? 
-                         json['autoWireBuyerEnabled'] as bool? ?? false;
-      _metalAutoBuyerLevel = (json['metalAutoBuyerLevel'] as num?)?.toDouble() ?? 
-                        (json['wireAutoBuyerLevel'] as num?)?.toDouble() ?? 0.0;
+      _autoMetalBuyerEnabled = json['autoMetalBuyerEnabled'] as bool? ?? false;
+      _metalAutoBuyerLevel = (json['metalAutoBuyerLevel'] as num?)?.toDouble() ?? 0.0;
       _autoClipperLevel = (json['autoClipperLevel'] as num?)?.toDouble() ?? 0.0;
       _trust = (json['trust'] as num?)?.toInt() ?? 0;
       _processors = (json['processors'] as num?)?.toDouble() ?? 0.0;

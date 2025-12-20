@@ -3,19 +3,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/game_state.dart';
 import '../constants/game_config.dart';
-import '../constants/storage_keys.dart';
 import '../screens/main_screen.dart';
-import '../services/save_system/save_manager_adapter.dart';
+import '../services/persistence/game_persistence_orchestrator.dart';
 import '../services/notification_manager.dart';
 import '../services/navigation_service.dart';
 import '../services/game_runtime_coordinator.dart';
-import '../widgets/resources/resource_widgets.dart';
 import '../widgets/indicators/stat_indicator.dart';
 import '../services/notification_storage_service.dart';
-import '../services/save_migration_service.dart';
 import '../services/save_game.dart' show SaveGameInfo; // Importer la classe unifiée SaveGameInfo
 import '../widgets/save_button.dart';
 
@@ -53,72 +49,14 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
         print('SaveLoadScreen._loadSaves: Chargement des sauvegardes...');
       }
 
-      // Migration lazy: exécuter une migration progressive uniquement au moment où
-      // l'utilisateur accède à l'écran des sauvegardes.
-      final migrationSw = Stopwatch()..start();
-      setState(() {
-        _isMigrating = true;
-        _migrationMigrated = 0;
-        _migrationTotal = 0;
-      });
-
-      final migrationResult = await SaveMigrationService.migrateLegacySavesIfNeeded(
-        maxToMigrate: 10,
-        onProgress: (migrated, total) {
-          if (!mounted) return;
-          setState(() {
-            _migrationMigrated = migrated;
-            _migrationTotal = total;
-          });
-        },
-      );
-      migrationSw.stop();
-
-      if (kDebugMode) {
-        print(
-          'SaveLoadScreen._loadSaves: Migration lazy terminée '
-          '(scannées=${migrationResult.scannedCount}, ok=${migrationResult.successCount}, '
-          'fail=${migrationResult.failureCount}, durée=${migrationSw.elapsed})',
-        );
-      }
-
-      if (mounted) {
-        setState(() {
-          _isMigrating = false;
-        });
-      }
-      
-      // S'assurer que SaveManagerAdapter est correctement initialisé
-      await SaveManagerAdapter.ensureInitialized();
-      print('SaveLoadScreen._loadSaves: SaveManagerAdapter initialisé');
-      
-      // NOUVEAU: Vérifier l'état du cache dans LocalSaveGameManager
-      print('DIAGNOSTIC SAVE SCREEN: Vérification directe du cache des métadonnées...');
-      final sharedPrefs = await SharedPreferences.getInstance();
-      final allKeys = sharedPrefs.getKeys();
-      final metadataKeys =
-          allKeys.where((key) => key.startsWith(StorageKeys.saveMetadataPrefix)).toList();
-      print('DIAGNOSTIC SAVE SCREEN: Nombre de métadonnées dans SharedPrefs: ${metadataKeys.length}');
-      if (metadataKeys.isNotEmpty) {
-        print('DIAGNOSTIC SAVE SCREEN: Premières clés trouvées: ${metadataKeys.take(3).join(", ")}');
-      }
-      
-      // Vérifier s'il existe une dernière sauvegarde (pour diagnostic)
-      final lastSave = await SaveManagerAdapter.getLastSave();
-      if (kDebugMode) {
-        if (lastSave != null) {
-          print('DIAGNOSTIC SAVE SCREEN: getLastSave a trouvé une sauvegarde: "${lastSave.name}", ID: ${lastSave.id}');
-        } else {
-          print('DIAGNOSTIC SAVE SCREEN: getLastSave n\'a trouvé AUCUNE sauvegarde');
-        }
-      }
+      // Suppression de la migration legacy: aucune ancienne sauvegarde à transformer
       
       // Récupérer les sauvegardes
-      print('SaveLoadScreen._loadSaves: Appel de SaveManagerAdapter.listSaves()');
-      final saves = await SaveManagerAdapter.listSaves();
+      print('SaveLoadScreen._loadSaves: Appel de GamePersistenceOrchestrator.instance.listSaves()');
+      final saves = await GamePersistenceOrchestrator.instance.listSaves();
       
       if (kDebugMode) {
-        print('DIAGNOSTIC SAVE SCREEN: ${saves.length} sauvegardes récupérées de SaveManagerAdapter.listSaves()');
+        print('DIAGNOSTIC SAVE SCREEN: ${saves.length} sauvegardes récupérées via GamePersistenceOrchestrator.listSaves()');
         if (saves.isEmpty) {
           print('DIAGNOSTIC SAVE SCREEN: La liste des sauvegardes est VIDE!');
           print('DIAGNOSTIC SAVE SCREEN: Détail complet du retour: $saves');
@@ -166,7 +104,7 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
 
   Future<void> _deleteSave(String saveId) async {
     try {
-      await SaveManagerAdapter.deleteSaveByName(saveId);
+      await GamePersistenceOrchestrator.instance.deleteSaveByName(saveId);
       await _loadSaves();
       if (mounted) {
         NotificationManager.instance.showNotification(
@@ -183,14 +121,6 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
 
   Future<void> _loadGame(BuildContext context, String name) async {
     try {
-      final saveGame = await SaveManagerAdapter.loadGame(name);
-      if (saveGame == null) {
-        if (mounted) {
-          _showError('Impossible de charger la sauvegarde');
-        }
-        return;
-      }
-
       await context.read<GameRuntimeCoordinator>().loadGameAndStartAutoSave(name);
 
       // Boucle de jeu pilotée par le runtime coordinator.
@@ -224,7 +154,7 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
     final gameState = context.read<GameState>();
     
     try {
-      final success = await SaveManagerAdapter.restoreFromBackup(backupName, gameState);
+      final success = await GamePersistenceOrchestrator.instance.restoreFromBackup(gameState, backupName);
       
       if (success) {
         if (mounted) {

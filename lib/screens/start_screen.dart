@@ -1,8 +1,8 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../constants/game_config.dart'; // Importé depuis constants au lieu de models
+import '../constants/game_config.dart'; // ImportÃ© depuis constants au lieu de models
 import '../utils/update_manager.dart';
-import '../services/save_system/save_manager_adapter.dart';
+import '../services/persistence/game_persistence_orchestrator.dart';
 import '../services/notification_manager.dart'; // Ajout de l'import pour NotificationManager
 import '../services/navigation_service.dart';
 import '../services/app_bootstrap_controller.dart';
@@ -29,10 +29,10 @@ class _StartScreenState extends State<StartScreen> {
   }
 
   Future<void> _loadLastSaveInfo() async {
-    final lastSave = await SaveManagerAdapter.getLastSave();
+    final lastSave = await GamePersistenceOrchestrator.instance.getLastSave();
     if (lastSave != null) {
       setState(() {
-        _lastSaveInfo = 'Dernière partie : ${lastSave.name}';
+        _lastSaveInfo = 'DerniÃ¨re partie : ${lastSave.name}';
       });
     }
   }
@@ -41,17 +41,17 @@ class _StartScreenState extends State<StartScreen> {
   Future<void> _continueLastGame() async {
     setState(() => _isLoading = true);
     try {
-      // Boot déterministe: attendre que l'application soit prête.
+      // Boot dÃ©terministe: attendre que l'application soit prÃªte.
       await context.read<AppBootstrapController>().waitUntilReady();
 
-      final lastSave = await SaveManagerAdapter.getLastSave();
+      final lastSave = await GamePersistenceOrchestrator.instance.getLastSave();
       if (lastSave != null) {
         await context
             .read<GameRuntimeCoordinator>()
             .loadGameAndStartAutoSave(lastSave.name);
         
         if (mounted) {
-          // Naviguer vers l'écran principal
+          // Naviguer vers l'Ã©cran principal
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const MainScreen()),
@@ -60,7 +60,7 @@ class _StartScreenState extends State<StartScreen> {
       } else {
         if (mounted) {
           NotificationManager.instance.showNotification(
-            message: 'Aucune sauvegarde trouvée',
+            message: 'Aucune sauvegarde trouvÃ©e',
             level: NotificationLevel.INFO,
             duration: const Duration(seconds: 1),
           );
@@ -86,7 +86,7 @@ class _StartScreenState extends State<StartScreen> {
       text: 'Partie ${DateTime.now().day}/${DateTime.now().month}',
     );
 
-    // Variable pour suivre le mode sélectionné
+    // Variable pour suivre le mode sÃ©lectionnÃ©
     GameMode selectedMode = GameMode.INFINITE;
 
     showDialog(
@@ -117,7 +117,7 @@ class _StartScreenState extends State<StartScreen> {
                 // Option pour le mode infini
                 RadioListTile<GameMode>(
                   title: const Text('Mode Infini'),
-                  subtitle: const Text('Jouez sans limites à votre rythme'),
+                  subtitle: const Text('Jouez sans limites Ã  votre rythme'),
                   value: GameMode.INFINITE,
                   groupValue: selectedMode,
                   onChanged: (value) {
@@ -127,9 +127,9 @@ class _StartScreenState extends State<StartScreen> {
                   contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
                 ),
 
-                // Option pour le mode compétitif
+                // Option pour le mode compÃ©titif
                 RadioListTile<GameMode>(
-                  title: const Text('Mode Compétitif'),
+                  title: const Text('Mode CompÃ©titif'),
                   subtitle: const Text('Obtenez le meilleur score avant la crise'),
                   value: GameMode.COMPETITIVE,
                   groupValue: selectedMode,
@@ -153,7 +153,7 @@ class _StartScreenState extends State<StartScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: const [
                         Text(
-                          '🏆 Mode Compétitif',
+                          'ðŸ† Mode CompÃ©titif',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             color: Colors.amber,
@@ -161,7 +161,7 @@ class _StartScreenState extends State<StartScreen> {
                         ),
                         SizedBox(height: 4),
                         Text(
-                          'Optimisez votre production jusqu à la crise mondiale de métal pour obtenir le meilleur score. Comparez vos résultats avec vos amis !',
+                          'Optimisez votre production jusqu Ã  la crise mondiale de mÃ©tal pour obtenir le meilleur score. Comparez vos rÃ©sultats avec vos amis !',
                           style: TextStyle(fontSize: 12),
                         ),
                       ],
@@ -170,7 +170,7 @@ class _StartScreenState extends State<StartScreen> {
 
                 const SizedBox(height: 8),
                 const Text(
-                  'Cette action créera une nouvelle sauvegarde',
+                  'Cette action crÃ©era une nouvelle sauvegarde',
                   style: TextStyle(fontSize: 12, color: Colors.grey),
                 ),
               ],
@@ -186,18 +186,18 @@ class _StartScreenState extends State<StartScreen> {
                 final gameName = controller.text.trim();
                 if (gameName.isEmpty) {
                   NotificationManager.instance.showNotification(
-                    message: 'Le nom ne peut pas être vide',
+                    message: 'Le nom ne peut pas Ãªtre vide',
                     level: NotificationLevel.INFO,
                     duration: const Duration(seconds: 1),
                   );
                   return;
                 }
 
-                final exists = await SaveManagerAdapter.saveExists(gameName);
+                final exists = await GamePersistenceOrchestrator.instance.saveExists(gameName);
                 if (exists) {
                   if (context.mounted) {
                     NotificationManager.instance.showNotification(
-                      message: 'Une partie avec ce nom existe déjà',
+                      message: 'Une partie avec ce nom existe dÃ©jÃ ',
                       level: NotificationLevel.INFO,
                       duration: const Duration(seconds: 1),
                     );
@@ -206,18 +206,18 @@ class _StartScreenState extends State<StartScreen> {
                 }
 
                 if (context.mounted) {
-                  // D'abord activer le chargement dans l'état de l'écran de démarrage avant de fermer le dialogue
+                  // D'abord activer le chargement dans l'Ã©tat de l'Ã©cran de dÃ©marrage avant de fermer le dialogue
                   this.setState(() => _isLoading = true);
                   // Ensuite fermer le dialogue
                   Navigator.pop(context);
                   try {
-                    // Utiliser le mode sélectionné lors de la création
+                    // Utiliser le mode sÃ©lectionnÃ© lors de la crÃ©ation
                     await context
                         .read<GameRuntimeCoordinator>()
                         .startNewGameAndStartAutoSave(gameName, mode: selectedMode);
 
                     if (context.mounted) {
-                      // Créer une classe intermédiaire pour la navigation
+                      // CrÃ©er une classe intermÃ©diaire pour la navigation
                       final introScreen = IntroductionScreen(
                         showSkipButton: true,
                         isCompetitiveMode: selectedMode == GameMode.COMPETITIVE,
@@ -236,13 +236,13 @@ class _StartScreenState extends State<StartScreen> {
                   } catch (e) {
                     if (context.mounted) {
                       NotificationManager.instance.showNotification(
-                        message: 'Erreur lors de la création: $e',
+                        message: 'Erreur lors de la crÃ©ation: $e',
                         level: NotificationLevel.ERROR,
                       );
                     }
                   } finally {
                     if (mounted) {
-                      // S'assurer que nous modifions l'état de l'écran de démarrage, pas du dialogue
+                      // S'assurer que nous modifions l'Ã©tat de l'Ã©cran de dÃ©marrage, pas du dialogue
                       this.setState(() => _isLoading = false);
                     }
                   }
@@ -277,7 +277,7 @@ class _StartScreenState extends State<StartScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Logo et titre (inchangés)
+                // Logo et titre (inchangÃ©s)
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(

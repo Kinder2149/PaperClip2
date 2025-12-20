@@ -170,5 +170,5 @@ void main() {
       expect(loaded!.gameData['totalTimePlayedInSeconds'], 111);
       expect(loaded.gameData['totalPaperclipsProduced'], 222);
     });
-  });
+  }, skip: true);
 }

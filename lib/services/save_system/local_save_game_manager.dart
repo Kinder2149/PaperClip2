@@ -25,6 +25,7 @@ import 'package:paperclip2/services/save_system/save_validator.dart';
 /// 
 /// Cette classe gère le stockage, le chargement et la gestion des sauvegardes
 /// locales sur l'appareil de l'utilisateur.
+@Deprecated('Utiliser GamePersistenceOrchestrator/LocalGamePersistenceService via services/persistence')
 class LocalSaveGameManager implements SaveGameManager {
   static const String _metadataPrefix = StorageKeys.saveMetadataPrefix;
   static const String _saveDataPrefix = StorageKeys.saveDataPrefix;
@@ -1146,13 +1147,12 @@ class LocalSaveGameManager implements SaveGameManager {
   /// Extrait les données d'affichage à partir des données de jeu
   Map<String, dynamic> _extractDisplayDataFromGameData(Map<String, dynamic> gameData) {
     final Map<String, dynamic> displayData = {};
-    final normalizedGameData = GameDataCompat.normalizeLegacyGameData(gameData);
     
     // Extraire des statistiques pertinentes pour l'affichage dans l'interface
     try {
-      if (normalizedGameData.containsKey('playerManager') &&
-          normalizedGameData['playerManager'] is Map) {
-        final playerManager = normalizedGameData['playerManager'] as Map<String, dynamic>;
+      if (gameData.containsKey('playerManager') &&
+          gameData['playerManager'] is Map) {
+        final playerManager = gameData['playerManager'] as Map<String, dynamic>;
         
         // Paperclips
         if (playerManager.containsKey('paperclips')) {
@@ -1171,9 +1171,9 @@ class LocalSaveGameManager implements SaveGameManager {
       }
       
       // Niveau
-      if (normalizedGameData.containsKey('levelSystem') &&
-          normalizedGameData['levelSystem'] is Map) {
-        final levelSystem = normalizedGameData['levelSystem'] as Map<String, dynamic>;
+      if (gameData.containsKey('levelSystem') &&
+          gameData['levelSystem'] is Map) {
+        final levelSystem = gameData['levelSystem'] as Map<String, dynamic>;
         
         if (levelSystem.containsKey('level')) {
           displayData['level'] = levelSystem['level'];

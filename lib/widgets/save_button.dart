@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/game_state.dart';
+import '../services/game_runtime_coordinator.dart';
 import '../services/notification_manager.dart';
 
 /// Widget réutilisable pour un bouton de sauvegarde standard
@@ -57,7 +58,7 @@ class SaveButton extends StatefulWidget {
     }
 
     try {
-      await gameState.saveGame(gameState.gameName!);
+      await context.read<GameRuntimeCoordinator>().manualSave(gameState.gameName!);
       if (context.mounted) {
         NotificationManager.instance.showNotification(
           message: 'Partie sauvegardée avec succès!',
@@ -100,7 +101,7 @@ class SaveButton extends StatefulWidget {
     }
 
     try {
-      await gameState.saveGame(saveName);
+      await context.read<GameRuntimeCoordinator>().manualSave(saveName);
       if (context.mounted) {
         NotificationManager.instance.showNotification(
           message: 'Partie sauvegardée avec succès!',
@@ -166,7 +167,7 @@ class _SaveButtonState extends State<SaveButton> {
         print('Sauvegarde en cours: $gameName');
       }
       
-      await gameState.saveGame(gameName);
+      await context.read<GameRuntimeCoordinator>().manualSave(gameName);
       
       if (context.mounted) {
         NotificationManager.instance.showNotification(

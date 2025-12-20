@@ -70,7 +70,7 @@ class GameConstants {
   static const double INITIAL_MONEY = 0.0;
   static const double INITIAL_PRICE = 0.25;
   static const double METAL_PER_PAPERCLIP = 0.1;
-  static const double METAL_PACK_AMOUNT = 10.0;
+  static const double METAL_PACK_AMOUNT = 100.0;
   static const double METAL_EFFICIENCY_BASE = 1.0;
   static const double METAL_EFFICIENCY_INCREMENT = 0.1;
   static const double INITIAL_STORAGE_CAPACITY = 1000.0;
@@ -115,12 +115,21 @@ class GameConstants {
   static const double QUALITY_UPGRADE_BASE = 0.1; // Amélioration de base de la qualité
   static const double AUTOMATION_DISCOUNT_BASE = 0.1; // Réduction de base pour l'automatisation
   static const double STORAGE_MULTIPLIER = 1.2; // Multiplicateur pour l'amélioration de stockage
-  static const double BASE_AUTOCLIPPER_PRODUCTION = 0.1; // Production de base des autoclippers
+  static const double BASE_AUTOCLIPPER_PRODUCTION = 1.0; // Production de base des autoclippers
   static const int MAX_EFFICIENCY_LEVEL = 10; // Niveau maximal d'efficacité
   
+  // Améliorations Marché
+  static const double MARKETING_UPGRADE_BONUS = 0.05; // +5% de demande par niveau de marketing (en plus du boost de base si utilisé)
+  static const double REPUTATION_BONUS_PER_LEVEL = 0.02; // +2% de réputation par niveau
+  static const double REPUTATION_BONUS_CAP = 0.5;        // +50% max
+  static const double VOLATILITY_REDUCTION_PER_LEVEL = 0.05; // -5% d'impact de volatilité par niveau
+  static const double VOLATILITY_REDUCTION_CAP = 0.5;        // -50% max
+  static const double METAL_DISCOUNT_PER_LEVEL = 0.02;  // -2% sur le prix d'achat du métal par niveau
+  static const double METAL_DISCOUNT_CAP = 0.2;         // -20% max
+  
   // Prix du métal sur le marché
-  static const double MIN_METAL_PRICE = 10.0; // Prix minimum du métal
-  static const double MAX_METAL_PRICE = 25.0; // Prix maximum du métal
+  static const double MIN_METAL_PRICE = 0.10; // Prix minimum du métal
+  static const double MAX_METAL_PRICE = 0.45; // Prix maximum du métal
 
   // Niveaux de déblocage
   static const int MARKET_UNLOCK_LEVEL = 5; // Niveau requis pour débloquer le marché

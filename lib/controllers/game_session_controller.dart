@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:paperclip2/models/game_state.dart';
 import 'package:paperclip2/constants/game_config.dart';
+import 'package:paperclip2/services/metrics/runtime_metrics.dart';
+import 'package:paperclip2/services/metrics/runtime_watchdog.dart';
+import 'package:paperclip2/services/runtime/clock.dart';
 
 /// Contrôleur de session de jeu.
 ///
@@ -11,6 +14,7 @@ import 'package:paperclip2/constants/game_config.dart';
 /// décharger progressivement `GameState` de ces responsabilités.
 class GameSessionController with ChangeNotifier {
   final GameState gameState;
+  final Clock _clock;
 
   Timer? _gameLoopTimer;
   DateTime? _lastTickTime;
@@ -19,7 +23,7 @@ class GameSessionController with ChangeNotifier {
 
   bool get isRunning => _isRunning;
 
-  GameSessionController(this.gameState);
+  GameSessionController(this.gameState, {Clock? clock}) : _clock = clock ?? SystemClock();
 
   /// Démarre la session de jeu (timers, etc.).
   /// Implémentation détaillée à venir dans des PR ultérieures.
@@ -35,7 +39,7 @@ class GameSessionController with ChangeNotifier {
   void startGameLoop() {
     _gameLoopTimer?.cancel();
 
-    _lastTickTime = DateTime.now();
+    _lastTickTime = _clock.now();
     _gameLoopTimer = Timer.periodic(
       GameConstants.PRODUCTION_INTERVAL,
       (_) => _handleGameTick(),
@@ -50,13 +54,24 @@ class GameSessionController with ChangeNotifier {
     if (!gameState.isInitialized || gameState.isPaused) return;
 
     try {
-      final now = DateTime.now();
-      final elapsedSeconds = _lastTickTime != null
-          ? now.difference(_lastTickTime!).inMilliseconds / 1000
-          : 1.0;
+      final now = _clock.now();
+      final expectedIntervalMs = GameConstants.PRODUCTION_INTERVAL.inMilliseconds;
+      final actualIntervalMs = _lastTickTime != null
+          ? now.difference(_lastTickTime!).inMilliseconds
+          : expectedIntervalMs;
+      final elapsedSeconds = actualIntervalMs / 1000;
       _lastTickTime = now;
 
+      final sw = Stopwatch()..start();
       gameState.tick(elapsedSeconds: elapsedSeconds);
+      sw.stop();
+
+      final driftMs = actualIntervalMs - expectedIntervalMs;
+      RuntimeMetrics.recordTick(
+        driftMs: driftMs,
+        durationMs: sw.elapsedMilliseconds,
+      );
+      RuntimeWatchdog.evaluateTick(driftMs: driftMs);
     } catch (e) {
       if (kDebugMode) {
         print('GameSessionController: Erreur lors du tick unifié: $e');
@@ -71,12 +86,20 @@ class GameSessionController with ChangeNotifier {
 
   /// Met en pause la session de jeu.
   void pauseSession() {
-    // Squelette pour une PR ultérieure.
+    // Annule la boucle de jeu et met en pause le domaine.
+    _gameLoopTimer?.cancel();
+    _gameLoopTimer = null;
+    gameState.pause();
   }
 
   /// Reprend une session en pause.
   void resumeSession() {
-    // Squelette pour une PR ultérieure.
+    // Redémarre la boucle et remet le domaine en exécution.
+    if (!_isRunning) {
+      _isRunning = true;
+    }
+    gameState.resume();
+    startGameLoop();
   }
 
   /// Arrête proprement la session (timers, ressources).

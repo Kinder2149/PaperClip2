@@ -28,6 +28,7 @@ class AppBootstrapController extends ChangeNotifier {
   final ThemeService _themeService;
   final AppLifecycleHandler _lifecycleHandler;
   final GameRuntimeCoordinator? _runtimeCoordinator;
+  
 
   final Future<void> Function()? _envConfigLoad;
   final Future<void> Function()? _persistenceBackupCheck;
@@ -149,8 +150,25 @@ class AppBootstrapController extends ChangeNotifier {
           return;
         }
 
-        _gameState.setUiPort(_uiPort);
-        _gameState.setAudioPort(_audioPort);
+        // Branche le port audio au RuntimeCoordinator pour déporter l'audio hors du domaine
+        final coordinator = _runtimeCoordinator;
+        if (coordinator != null) {
+          coordinator.setAudioPort(_audioPort);
+        }
+      });
+
+      await _step('game_state_healthcheck', () async {
+        if (!_gameState.isInitialized) {
+          final err = _gameState.initializationError;
+          throw StateError(
+            'GameState non initialisé${err != null ? ": $err" : ""}',
+          );
+        }
+
+        final err = _gameState.initializationError;
+        if (err != null) {
+          throw StateError('GameState initialisé avec erreur: $err');
+        }
       });
 
       await _step('register_lifecycle', () async {
@@ -199,10 +217,22 @@ class AppBootstrapController extends ChangeNotifier {
         final prefs = await SharedPreferences.getInstance();
         final isMusicEnabled = prefs.getBool('global_music_enabled');
         if (isMusicEnabled == null) {
-          await _backgroundMusicService.play();
+          // Sur le web, l'autoplay est bloqué sans geste utilisateur.
+          // On évite de tenter un play() qui peut rester bloqué.
+          if (kIsWeb) {
+            await _backgroundMusicService.setPlayingState(false);
+            // L'utilisateur pourra activer la musique via l'UI (MusicControlAction)
+            // Optionnel: persister la préférence par défaut
+            await prefs.setBool('global_music_enabled', false);
+          } else {
+            // Fire-and-forget: on déclenche la lecture sans bloquer le bootstrap
+            unawaited(_backgroundMusicService.play());
+            await prefs.setBool('global_music_enabled', true);
+          }
           return;
         }
-        await _backgroundMusicService.setPlayingState(isMusicEnabled);
+        // Fire-and-forget: on applique la préférence sans bloquer
+        unawaited(_backgroundMusicService.setPlayingState(isMusicEnabled));
       });
 
       _status = AppBootstrapStatus.ready;
