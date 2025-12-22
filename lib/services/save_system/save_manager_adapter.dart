@@ -40,6 +40,52 @@ class SaveManagerAdapter {
     return _instance._saveManager!;
   }
 
+  /// Liste les backups pour un `partieId` donné (ID-first): nom commence par '<partieId>|'.
+  static Future<List<SaveGameInfo>> listBackupsForPartie(String partieId) async {
+    final all = await listSaves();
+    final prefix = '$partieId${GameConstants.BACKUP_DELIMITER}';
+    final backups = all.where((s) => s.isBackup && s.name.startsWith(prefix)).toList()
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    return backups;
+  }
+
+  /// Applique la politique de rétention pour un `partieId` donné: garde au plus N récents et supprime ceux plus vieux que TTL.
+  static Future<int> applyBackupRetention({
+    required String partieId,
+    int? max,
+    Duration? ttl,
+  }) async {
+    await ensureInitialized();
+    final maxKeep = max ?? GameConstants.BACKUP_RETENTION_MAX;
+    final ttlDur = ttl ?? GameConstants.BACKUP_RETENTION_TTL;
+    final now = DateTime.now();
+    final backups = await listBackupsForPartie(partieId);
+
+    int deleted = 0;
+
+    // 1) Supprimer par TTL
+    for (final b in backups) {
+      final age = now.difference(b.timestamp);
+      if (age > ttlDur) {
+        await instance.deleteSave(b.id);
+        deleted++;
+      }
+    }
+
+    // Recharger après TTL purge
+    final remaining = (await listBackupsForPartie(partieId));
+    if (remaining.length > maxKeep) {
+      // Supprimer les plus anciens au-delà du quota
+      final toDelete = remaining.sublist(maxKeep); // déjà triés desc
+      for (final b in toDelete) {
+        await instance.deleteSave(b.id);
+        deleted++;
+      }
+    }
+
+    return deleted;
+  }
+
   static void setSaveManagerForTesting(LocalSaveGameManager manager) {
     _instance._saveManager = manager;
     _instance._isInitialized = true;
@@ -251,9 +297,16 @@ class SaveManagerAdapter {
       final success = await SaveManagerAdapter.saveGame(saveGame);
       
       if (success) {
-        // Nettoyer les anciennes sauvegardes si nécessaire
-        // Limite le nombre de backups à MAX_BACKUPS dans GameConstants
+        // Ancien nettoyage (compat): limite legacy locale
         await _cleanupOldBackups(baseKey, GameConstants.MAX_BACKUPS);
+        // Nouvelle rétention Phase 4: N=10 et TTL=30j par identifiant de partie (ID-first)
+        try {
+          await applyBackupRetention(partieId: baseKey);
+        } catch (e) {
+          if (kDebugMode) {
+            print('Rétention backups (Phase 4) échouée pour $baseKey: $e');
+          }
+        }
       }
       
       return success;

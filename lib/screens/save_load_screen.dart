@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import '../constants/game_config.dart';
 import '../screens/main_screen.dart';
+import '../screens/backups_history_screen.dart';
 import '../services/persistence/game_persistence_orchestrator.dart';
 import '../services/notification_manager.dart';
 import '../services/navigation_service.dart';
@@ -42,6 +43,8 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
   List<SaveEntry> _saves = [];
   // Index des derniers backups par baseName (invisible dans la liste principale)
   final Map<String, SaveEntry> _latestBackups = {};
+  // Compteur de backups par partieId (ID-first)
+  final Map<String, int> _backupCounts = {};
   // gameId présent dans le slot cloud (si disponible)
   String? _cloudGameIdAvailable;
   // date savedAt du cloud si disponible
@@ -68,6 +71,30 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
         await _loadSaves();
       } catch (_) {}
     });
+  }
+
+  Future<void> _applyRetentionAll() async {
+    try {
+      // Récupère toutes les sauvegardes et identifie les partieId présents dans les backups
+      final all = await SaveManagerAdapter.listSaves();
+      final ids = <String>{};
+      for (final s in all.where((e) => e.isBackup)) {
+        final base = s.name.split(GameConstants.BACKUP_DELIMITER).first;
+        if (base.isNotEmpty) ids.add(base);
+      }
+      int totalDeleted = 0;
+      for (final id in ids) {
+        totalDeleted += await SaveManagerAdapter.applyBackupRetention(partieId: id);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Rétention appliquée: $totalDeleted backups supprimés')),
+        );
+      }
+      await _loadSaves();
+    } catch (e) {
+      _showError('Erreur rétention globale: $e');
+    }
   }
 
   Future<void> _showBackupsFor(SaveEntry save) async {
@@ -446,12 +473,14 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
 
       // Construire un index des derniers backups par baseName
       _latestBackups.clear();
+      _backupCounts.clear();
       for (final s in all.where((e) => e.isBackup)) {
         final base = s.name.split(GameConstants.BACKUP_DELIMITER).first;
         final existing = _latestBackups[base];
         if (existing == null || (s.lastModified ?? DateTime.fromMillisecondsSinceEpoch(0)).isAfter(existing.lastModified ?? DateTime.fromMillisecondsSinceEpoch(0))) {
           _latestBackups[base] = s;
         }
+        _backupCounts.update(base, (v) => v + 1, ifAbsent: () => 1);
       }
 
       // Filtrer: n'afficher que les parties locales régulières (pas backups, pas cloud)
@@ -697,6 +726,20 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
               onPressed: _showSaveDialog,
               tooltip: 'Nouvelle sauvegarde',
             ),
+          IconButton(
+            icon: Icon(Icons.history),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const BackupsHistoryScreen()),
+              );
+            },
+            tooltip: 'Historique Backups',
+          ),
+          IconButton(
+            icon: const Icon(Icons.cleaning_services),
+            onPressed: _applyRetentionAll,
+            tooltip: 'Nettoyer (rétention N=10, TTL=30j)',
+          ),
           IconButton(
             icon: Icon(Icons.refresh),
             onPressed: _loadSaves,

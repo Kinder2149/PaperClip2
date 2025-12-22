@@ -36,6 +36,9 @@ class GameConstants {
   static const String CURRENT_SAVE_FORMAT_VERSION = '2.0';  // Depuis StorageConstants
   static const int MAX_BACKUPS = 3;                        // Depuis StorageConstants
   static const String BACKUP_DELIMITER = StorageKeys.backupDelimiter;        // Depuis StorageConstants
+  // Rétention backups (Phase 4)
+  static const int BACKUP_RETENTION_MAX = 10;              // N = 10 backups par partieId
+  static const Duration BACKUP_RETENTION_TTL = Duration(days: 30); // TTL = 30 jours
   static const int MAX_STORAGE_SIZE = 50 * 1024 * 1024;    // Depuis AutoSaveService
   static const Duration MAX_SAVE_AGE = Duration(days: 30); // Depuis AutoSaveService
   static const int MAX_TOTAL_SAVES = 10;                   // Depuis AutoSaveService
