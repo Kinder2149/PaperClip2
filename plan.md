@@ -2,6 +2,77 @@
 
 Ce document suit l'avancement des phases de refactor définies après l'audit.
 
+## Mission — Identité unifiée Supabase (en cours)
+
+### 🎯 Objectif
+
+- Unifier l’identité joueur autour de `auth.users.id` (Supabase).
+- Traiter les comptes anonymes sans créer d’orphelins visibles côté UX.
+- Rendre Google/Email interchangeables (providers non sources de vérité).
+- Garantir la persistance cross-device via RLS et métadonnées (`linked_provider_ids`, `migration_done_at`).
+
+### 🔎 Audit (terminé)
+
+- Cloud Save (Supabase):
+  - Écrit avec `user_id = Supabase.instance.client.auth.currentUser!.id`.
+  - Le payload embarque `owner { provider: 'google', playerId }` utilisé pour filtrage client dans `listByOwner(playerId)`.
+  - Risque: si `playerId` absent/différent (provider switch), filtrage masque des révisions pourtant accessibles via RLS par `user_id`.
+- Sessions anonymes:
+  - Si Sync opt-out: session anonyme créée et des lignes cloud associées à un `auth.users.id` anonyme.
+  - Après OAuth Google: nouvel `auth.users.id` → anciennes lignes restent légitimes mais plus visibles pour l’utilisateur (RLS), perçues comme « orphelines » UX.
+- Friends:
+  - `friends` repose sur `auth.currentUser.id` (canonique), nécessite OAuth actif.
+- Email: flux non présent (à intégrer).
+- Métadonnées: pas de `linked_provider_ids` / `migration_done_at` encore gérés.
+
+### 🧱 Décisions
+
+- Identité canonique = `auth.users.id` Supabase.
+- Providers (Google/Email/…) = identités liées, stockées dans `user_metadata.linked_provider_ids`.
+- Pas de ré-attribution UPDATE server-side des anciennes lignes anonymes (append-only conservé).
+- Migration « invisible » = ré-exporter la dernière sauvegarde locale sous le nouvel `user_id` lors du premier OAuth validé, puis marquer `migration_done_at`.
+
+### 🛠️ Modifs prévues (prochaines PR)
+
+1) IdentityManager (nouveau)
+   - Fichier: `lib/services/identity/identity_manager.dart` (création)
+   - Rôle: exposer `getCanonicalUserId()`, `syncLinkedProviders()`, `markMigrationDone()`, `isMigrationDone()`.
+   - Écrit/lecture `user_metadata.linked_provider_ids` et `migration_done_at` via Supabase Auth API.
+
+2) Migration Anonyme → Compte (orchestration)
+   - Déclenchée par l’orchestrateur de sync à la première session OAuth.
+   - Action: reconstruire un CloudSaveRecord depuis la sauvegarde locale et uploader sous le nouvel `user_id`.
+   - Marquer `migration_done_at` pour éviter répétition.
+
+3) CloudSaveAdapter — lecture
+   - Assouplir `listByOwner(playerId)` côté client: ne pas masquer les révisions quand `playerId` manque.
+   - Stratégie: d’abord lister par `user_id` (RLS suffit), puis filtrage optionnel par `owner.playerId` si fourni.
+
+4) Intégration Email/password
+   - Ajouter un service d’auth Email (Supabase) et le brancher à `IdentityManager.syncLinkedProviders()`.
+
+5) UX invisible
+   - Préparer silent sign-in et retirer/automatiser les toggles visibles si possible (GoogleControlCenter/StartScreen).
+
+6) Gouvernance Supabase (SQL/policies)
+   - Ajouter dans `docs/cloudsave/supabase_migration.sql` les policies RLS et l’usage de `user_metadata`.
+
+### ✅ Résultat attendu
+
+- Unicité identitaire par `auth.users.id` sur tous devices.
+- Aucune donnée cloud perçue comme orpheline après migration (nouvelle révision exportée).
+- Providers interchangeables; social (friends) basé sur identité canonique.
+- Métadonnées traçables (`linked_provider_ids`, `migration_done_at`).
+
+### 🧾 Livraisons effectuées (cette itération)
+
+- IdentityManager (créé): `lib/services/identity/identity_manager.dart`
+  - `getCanonicalUserId`, `syncLinkedProviders`, `markMigrationDone`, `isMigrationDone`.
+- CloudSaveAdapter (lecture): `listByOwner('')` retourne toutes les révisions visibles via RLS (provider-agnostic), filtrage par `playerId` seulement si fourni.
+- GoogleControlCenter: migration Anonyme→Compte déclenchée après sign-in si Sync activée; upload d’une révision locale puis `migration_done_at`.
+- Service Email (sans UI): `lib/services/identity/email_identity_service.dart` (signUp/signIn/out) + sync des providers (email) via IdentityManager.
+- Documentation Supabase: notes de gouvernance et durabilité ajoutées à `docs/cloudsave/supabase_migration.sql` (sections 8–9, commentaires).
+
 ## Phase 1 — Persistance (GameSnapshot + GamePersistenceService)
 
 ### Étape P1-PR1 — GameSnapshot + GamePersistenceService (brouillon)

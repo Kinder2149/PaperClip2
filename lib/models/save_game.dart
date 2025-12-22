@@ -9,6 +9,7 @@ class SaveGame {
   final GameMode gameMode;
   final DateTime lastSaveTime;
   final String version;
+  final bool isRestored;
   
   SaveGame({
     String? id,
@@ -20,7 +21,8 @@ class SaveGame {
     bool isRestored = false,
   }) : 
     this.id = id ?? const Uuid().v4(),
-    this.version = version ?? GameConstants.VERSION;
+    this.version = version ?? GameConstants.VERSION,
+    this.isRestored = isRestored;
   
   // Factory pour créer une sauvegarde à partir d'un JSON
   factory SaveGame.fromJson(Map<String, dynamic> json) {
@@ -32,6 +34,7 @@ class SaveGame {
         gameMode: _gameModefromString(json['gameMode'] as String),
         lastSaveTime: DateTime.parse(json['lastSaveTime'] as String),
         version: json['version'] as String?,
+        isRestored: json['isRestored'] as bool? ?? false,
       );
     } catch (e) {
       print('Erreur lors de la création de SaveGame à partir de JSON: $e');
@@ -48,6 +51,7 @@ class SaveGame {
       'gameMode': gameMode.toString().split('.').last,
       'lastSaveTime': lastSaveTime.toIso8601String(),
       'version': version,
+      'isRestored': isRestored,
     };
   }
   
@@ -64,6 +68,7 @@ class SaveGame {
     GameMode? gameMode,
     DateTime? lastSaveTime,
     String? version,
+    bool? isRestored,
   }) {
     return SaveGame(
       id: id ?? this.id,
@@ -72,6 +77,7 @@ class SaveGame {
       gameMode: gameMode ?? this.gameMode,
       lastSaveTime: lastSaveTime ?? this.lastSaveTime,
       version: version ?? this.version,
+      isRestored: isRestored ?? this.isRestored,
     );
   }
   

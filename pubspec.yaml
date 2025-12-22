@@ -33,6 +33,8 @@ dependencies:
   # Configuration
   flutter_dotenv: ^5.1.0
   package_info_plus: ^4.2.0
+  games_services: ^4.1.1
+  supabase_flutter: ^2.6.0
 
 dev_dependencies:
   flutter_test:

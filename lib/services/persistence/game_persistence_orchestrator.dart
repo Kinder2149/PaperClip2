@@ -9,6 +9,7 @@ import 'package:paperclip2/constants/game_config.dart';
 import 'package:paperclip2/models/game_state.dart';
 import 'package:paperclip2/models/save_game.dart';
 import 'package:paperclip2/services/save_system/save_manager_adapter.dart';
+import 'package:paperclip2/services/cloud/cloud_persistence_port.dart';
 import 'package:paperclip2/services/persistence/game_persistence_service.dart';
 import 'package:paperclip2/services/persistence/game_snapshot.dart';
 import 'package:paperclip2/services/persistence/local_game_persistence.dart';
@@ -57,6 +58,8 @@ class GamePersistenceOrchestrator {
   static final GamePersistenceOrchestrator instance = GamePersistenceOrchestrator._();
 
   final GamePersistenceService _persistence = const LocalGamePersistenceService();
+  // Port cloud optionnel (injecté depuis le bootstrap ou un service)
+  CloudPersistencePort? _cloudPort;
 
   static const Duration _backupCooldown = Duration(minutes: 10);
   static const Duration _importantEventCoalesceWindow = Duration(seconds: 2);
@@ -73,6 +76,11 @@ class GamePersistenceOrchestrator {
     _lastImportantEventEnqueuedAt = null;
   }
 
+  // Injection du port cloud (GPG, HTTP, etc.)
+  void setCloudPort(CloudPersistencePort port) {
+    _cloudPort = port;
+  }
+
   /// Boot: vérifie la dernière sauvegarde (si elle existe) et tente une restauration
   /// depuis le backup le plus récent si la sauvegarde semble invalide.
   ///
@@ -84,7 +92,9 @@ class GamePersistenceOrchestrator {
       if (lastSave == null) {
         return;
       }
-      final baseName = lastSave.name;
+      
+      // Utiliser l'ID unique comme base key pour les backups (ID-first)
+      final baseKey = lastSave.id;
 
       ValidationResult validation;
       try {
@@ -139,21 +149,21 @@ class GamePersistenceOrchestrator {
       if (_isDebug) {
         print(
           'GamePersistenceOrchestrator.checkAndRestoreLastSaveFromBackupIfNeeded: '
-          'Sauvegarde "$baseName" invalide (${validation.errors.length} erreurs). '
+          'Sauvegarde "${lastSave.name}" invalide (${validation.errors.length} erreurs). '
           'Tentative de restauration depuis un backup...',
         );
       }
 
       final saves = await SaveManagerAdapter.instance.listSaves();
       final backups = saves
-          .where((save) => save.name.startsWith('$baseName${GameConstants.BACKUP_DELIMITER}'))
+          .where((save) => save.name.startsWith('$baseKey${GameConstants.BACKUP_DELIMITER}'))
           .toList();
 
       if (backups.isEmpty) {
         if (_isDebug) {
           print(
             'GamePersistenceOrchestrator.checkAndRestoreLastSaveFromBackupIfNeeded: '
-            'Aucun backup trouvé pour "$baseName"',
+            'Aucun backup trouvé pour baseKey=$baseKey',
           );
         }
         return;
@@ -166,7 +176,8 @@ class GamePersistenceOrchestrator {
         final backupSave = await SaveManagerAdapter.loadGame(latestBackupName);
 
         final restoredSave = SaveGame(
-          name: baseName,
+          // On restaure sous le même ID (conservé par l'adapter via metadata)
+          name: lastSave.name,
           lastSaveTime: DateTime.now(),
           gameData: backupSave.gameData,
           version: backupSave.version,
@@ -273,8 +284,8 @@ class GamePersistenceOrchestrator {
     final lastBackup = _lastBackupAt;
     final shouldBackup = lastBackup == null || now.difference(lastBackup) >= _backupCooldown;
     if (shouldBackup) {
-      final backupName =
-          '${state.gameName!}${GameConstants.BACKUP_DELIMITER}${now.millisecondsSinceEpoch}';
+      final baseKey = state.partieId ?? (state.gameName ?? 'default');
+      final backupName = '$baseKey${GameConstants.BACKUP_DELIMITER}${now.millisecondsSinceEpoch}';
       _lastBackupAt = now;
       await _enqueue(
         state,
@@ -376,8 +387,9 @@ class GamePersistenceOrchestrator {
           if (next.trigger == SaveTrigger.lifecycle) {
             try {
               final now = DateTime.now();
+              final baseKey = state.partieId ?? (state.gameName ?? 'default');
               final backupName =
-                  '${state.gameName!}${GameConstants.BACKUP_DELIMITER}${now.millisecondsSinceEpoch}';
+                  '$baseKey${GameConstants.BACKUP_DELIMITER}${now.millisecondsSinceEpoch}';
               await saveGame(state, backupName);
             } catch (_) {
               // Best-effort seulement.
@@ -390,7 +402,8 @@ class GamePersistenceOrchestrator {
     }
   }
 
-  /// Sauvegarde complète de l'état de jeu courant sous le nom [name].
+  /// Sauvegarde complète de l'état de jeu courant.
+  /// ID-first: utilise `state.partieId` si présent; sinon fallback legacy par nom.
   Future<void> saveGame(GameState state, String name) async {
     if (!state.isInitialized) {
       throw SaveError('NOT_INITIALIZED', "Le jeu n'est pas initialisé");
@@ -405,16 +418,19 @@ class GamePersistenceOrchestrator {
         LocalGamePersistenceService.snapshotKey: snapshot.toJson(),
       };
 
-      // Réutiliser l'ID existant si une sauvegarde avec ce nom existe déjà
-      String? existingId;
-      try {
-        final metas = await SaveManagerAdapter.instance.listSaves();
-        final sameName = metas.where((m) => m.name == name).toList();
-        if (sameName.isNotEmpty) {
-          sameName.sort((a, b) => b.lastModified.compareTo(a.lastModified));
-          existingId = sameName.first.id;
-        }
-      } catch (_) {}
+      // ID-first: utiliser l'ID technique de la partie si disponible
+      String? existingId = state.partieId;
+      // Fallback legacy: si l'ID n'est pas encore disponible, résoudre par nom
+      if (existingId == null) {
+        try {
+          final metas = await SaveManagerAdapter.instance.listSaves();
+          final sameName = metas.where((m) => m.name == name).toList();
+          if (sameName.isNotEmpty) {
+            sameName.sort((a, b) => b.lastModified.compareTo(a.lastModified));
+            existingId = sameName.first.id;
+          }
+        } catch (_) {}
+      }
 
       final saveData = SaveGame(
         id: existingId,
@@ -556,8 +572,10 @@ class GamePersistenceOrchestrator {
   Future<bool> _tryRestoreFromBackupsAndLoad(GameState state, String baseName) async {
     try {
       final saves = await SaveManagerAdapter.instance.listSaves();
+      // ID-first: utiliser partieId si disponible comme base de filtre
+      final baseKey = state.partieId ?? baseName;
       final backups = saves
-          .where((save) => save.name.startsWith('$baseName${GameConstants.BACKUP_DELIMITER}'))
+          .where((save) => save.name.startsWith('$baseKey${GameConstants.BACKUP_DELIMITER}'))
           .toList();
 
       if (backups.isEmpty) {
@@ -570,7 +588,7 @@ class GamePersistenceOrchestrator {
         try {
           final backupSave = await SaveManagerAdapter.loadGame(backup.name);
           final restoredSave = SaveGame(
-            name: baseName,
+            name: state.gameName ?? baseName,
             lastSaveTime: DateTime.now(),
             gameData: backupSave.gameData,
             version: backupSave.version,
@@ -584,7 +602,7 @@ class GamePersistenceOrchestrator {
           }
 
           try {
-            await loadGame(state, baseName, allowRestore: false);
+            await loadGame(state, state.gameName ?? baseName, allowRestore: false);
             return true;
           } catch (_) {
             // Snapshot encore invalide après restauration: essayer le backup suivant.
@@ -647,6 +665,23 @@ class GamePersistenceOrchestrator {
     return SaveManagerAdapter.deleteSaveByName(name);
   }
 
+  // --- ID-first wrappers (compatibilité ascendante conservée) ---
+  Future<void> deleteSaveById(String id) {
+    return SaveManagerAdapter.deleteSaveById(id);
+  }
+
+  Future<SaveGame?> loadSaveById(String id) {
+    return SaveManagerAdapter.loadGameById(id);
+  }
+
+  Future<SaveMetadata?> getSaveMetadataById(String id) {
+    return SaveManagerAdapter.getSaveMetadataById(id);
+  }
+
+  Future<bool> updateSaveMetadataById(String id, SaveMetadata metadata) {
+    return SaveManagerAdapter.updateSaveMetadataById(id, metadata);
+  }
+
   Future<SaveGame?> getLastSave() {
     return SaveManagerAdapter.getLastSave();
   }
@@ -657,5 +692,127 @@ class GamePersistenceOrchestrator {
 
   Future<bool> restoreFromBackup(GameState state, String backupName) {
     return SaveManagerAdapter.restoreFromBackup(backupName, state);
+  }
+
+  // --- Cloud (Option A: cloud par partie) ---
+  Future<void> pushCloudById({
+    required String partieId,
+    required GameState state,
+  }) async {
+    final port = _cloudPort;
+    if (port == null) {
+      throw StateError('Cloud port not configured');
+    }
+    // Construire snapshot et métadonnées minimales
+    final snap = state.toSnapshot().toJson();
+    final meta = <String, dynamic>{
+      'partieId': partieId,
+      'gameMode': state.gameMode == GameMode.COMPETITIVE ? 'COMPETITIVE' : 'INFINITE',
+      'gameVersion': GameConstants.VERSION,
+      'savedAt': DateTime.now().toIso8601String(),
+      'name': state.gameName,
+    };
+    await port.pushById(partieId: partieId, snapshot: snap, metadata: meta);
+  }
+
+  Future<Map<String, dynamic>?> pullCloudById({
+    required String partieId,
+  }) async {
+    final port = _cloudPort;
+    if (port == null) {
+      throw StateError('Cloud port not configured');
+    }
+    return port.pullById(partieId: partieId);
+  }
+
+  Future<CloudStatus> cloudStatusById({
+    required String partieId,
+  }) async {
+    final port = _cloudPort;
+    if (port == null) {
+      throw StateError('Cloud port not configured');
+    }
+    return port.statusById(partieId: partieId);
+  }
+
+  /// Mission 7: Contrôles d'intégrité non-intrusifs (debug-only)
+  /// - Détecte les noms en doublon pointant vers des IDs différents
+  /// - Vérifie la présence du snapshot (clé LocalGamePersistenceService.snapshotKey)
+  ///   et un format minimalement lisible (Map<String,dynamic> ou String JSON)
+  Future<void> runIntegrityChecks() async {
+    if (!_isDebug) return;
+    try {
+      final metas = await SaveManagerAdapter.instance.listSaves();
+      // 1) Doublons de noms -> IDs différents
+      final Map<String, Set<String>> nameToIds = {};
+      for (final m in metas) {
+        nameToIds.putIfAbsent(m.name, () => <String>{}).add(m.id);
+      }
+      final duplicates = nameToIds.entries.where((e) => e.value.length > 1).toList();
+      if (duplicates.isNotEmpty) {
+        print('INTEGRITY WARNING: Noms en doublon sur IDs différents (${duplicates.length})');
+        for (final d in duplicates) {
+          print('  - "${d.key}": ${d.value.join(', ')}');
+        }
+      }
+
+      // 2) Snapshot présent et lisible (à minima)
+      for (final m in metas) {
+        try {
+          final save = await SaveManagerAdapter.loadGameById(m.id);
+          if (save == null) {
+            print('INTEGRITY ERROR: Sauvegarde introuvable pour id=${m.id} ("${m.name}")');
+            continue;
+          }
+          // 2.a) Harmonisation SaveGame vs Metadata (name, version, gameMode)
+          try {
+            final meta = await SaveManagerAdapter.getSaveMetadataById(m.id);
+            if (meta == null) {
+              print('INTEGRITY WARNING: Métadonnées manquantes pour id=${m.id} ("${m.name}")');
+            } else {
+              if (meta.name != save.name) {
+                print('INTEGRITY WARNING: Désalignement name meta="${meta.name}" vs save="${save.name}" pour id=${m.id}');
+              }
+              if (meta.version != save.version) {
+                print('INTEGRITY WARNING: Version meta=${meta.version} vs save=${save.version} pour id=${m.id}');
+              }
+              if (meta.gameMode != save.gameMode) {
+                print('INTEGRITY WARNING: GameMode meta=${meta.gameMode} vs save=${save.gameMode} pour id=${m.id}');
+              }
+            }
+          } catch (e) {
+            print('INTEGRITY ERROR: Lecture metadata échouée pour id=${m.id}: $e');
+          }
+          final data = save.gameData;
+          final key = LocalGamePersistenceService.snapshotKey;
+          if (!data.containsKey(key)) {
+            print('INTEGRITY ERROR: Snapshot manquant pour id=${m.id} ("${m.name}")');
+            continue;
+          }
+          final raw = data[key];
+          if (raw is Map<String, dynamic>) {
+            // ok
+          } else if (raw is Map) {
+            // ok-ish
+          } else if (raw is String) {
+            try {
+              // Valider au moins que c'est un JSON objet
+              final decoded = GameSnapshot.fromJsonString(raw);
+              if (decoded == null) {
+                print('INTEGRITY ERROR: Snapshot JSON invalide (null) pour id=${m.id}');
+              }
+            } catch (e) {
+              print('INTEGRITY ERROR: Snapshot JSON illisible pour id=${m.id}: $e');
+            }
+          } else {
+            print('INTEGRITY ERROR: Snapshot type inattendu (${raw.runtimeType}) pour id=${m.id}');
+          }
+        } catch (e) {
+          print('INTEGRITY ERROR: Exception lors du check pour id=${m.id}: $e');
+        }
+      }
+    } catch (e) {
+      print('INTEGRITY CHECKS FAILED: $e');
+    }
   }
 }

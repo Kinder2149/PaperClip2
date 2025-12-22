@@ -1,5 +1,6 @@
 // lib/models/game_state.dart
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 import 'dart:async';
 import 'dart:math';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -68,6 +69,7 @@ class GameState extends ChangeNotifier implements DomainPorts {
   Object? _initializationError;
   StackTrace? _initializationStackTrace;
   String? _gameName;
+  String? _partieId; // ID technique unique (UUID v4)
 
   // Suivi interne du temps de jeu et des compteurs globaux
   DateTime? _lastSaveTime;
@@ -75,9 +77,15 @@ class GameState extends ChangeNotifier implements DomainPorts {
   DateTime? _lastOfflineAppliedAt;
   String? _offlineSpecVersion;
   bool _isPaused = false;
+  String _storageMode = 'local'; // 'local' | 'cloud'
 
   void markLastSaveTime(DateTime value) {
     _lastSaveTime = value;
+  }
+
+  // Défini explicitement l'identifiant technique de la partie (utilisé lors du chargement)
+  void setPartieId(String id) {
+    _partieId = id;
   }
 
   void markLastActiveAt(DateTime value) {
@@ -132,6 +140,8 @@ class GameState extends ChangeNotifier implements DomainPorts {
   Object? get initializationError => _initializationError;
   StackTrace? get initializationStackTrace => _initializationStackTrace;
   String? get gameName => _gameName;
+  String? get partieId => _partieId;
+  String get storageMode => _storageMode;
   PlayerManager get playerManager => _playerManager;
   MarketManager get marketManager => _marketManager;
   ResourceManager get resourceManager => _resourceManager;
@@ -516,6 +526,8 @@ class GameState extends ChangeNotifier implements DomainPorts {
   Future<void> startNewGame(String name, {GameMode mode = GameMode.INFINITE}) async {
     try {
       _gameName = name;
+      // Générer un identifiant unique de partie s'il n'existe pas encore (ID-first)
+      _partieId ??= const Uuid().v4();
       // Réinitialiser l'état de jeu
       reset();
 
@@ -593,6 +605,12 @@ class GameState extends ChangeNotifier implements DomainPorts {
     // No leaderboards in offline version
   }
 
+  void setStorageMode(String mode) {
+    if (mode != 'local' && mode != 'cloud') return;
+    _storageMode = mode;
+    notifyListeners();
+  }
+
   void showProductionLeaderboard() async {
     // Émet un événement pour la façade UI
     _eventBus.emit(
@@ -663,7 +681,9 @@ class GameState extends ChangeNotifier implements DomainPorts {
       'schemaVersion': 1,
       'snapshotSchemaVersion': 1,
       'gameId': _gameName,
+      'partieId': _partieId,
       'gameMode': _gameMode.toString(),
+      'storageMode': _storageMode,
       'savedAt': now.toIso8601String(),
       'lastActiveAt': (_lastActiveAt ?? now).toIso8601String(),
       if (_lastOfflineAppliedAt != null)
@@ -711,7 +731,16 @@ class GameState extends ChangeNotifier implements DomainPorts {
 
     _offlineSpecVersion = metadata['offlineSpecVersion'] as String? ?? _offlineSpecVersion;
 
-    _gameName = metadata['gameId'] as String? ?? _gameName;
+    final metaName = metadata['gameId'] as String?;
+    if (_gameName == null && metaName != null && metaName.isNotEmpty) {
+      _gameName = metaName;
+    }
+
+    // ID technique (UUID) si présent dans les métadonnées du snapshot
+    final metaPartieId = metadata['partieId'] as String?;
+    if (_partieId == null && metaPartieId != null && metaPartieId.isNotEmpty) {
+      _partieId = metaPartieId;
+    }
 
     final modeString = metadata['gameMode'] as String?;
     if (modeString != null) {

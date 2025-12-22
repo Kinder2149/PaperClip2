@@ -152,7 +152,17 @@ class SaveManagerAdapter {
       if (kDebugMode) {
         print('SaveManagerAdapter.saveGame: Sauvegarde de "${saveGame.name}" (ID: ${saveGame.id})');
       }
-      
+      // Invariant: si des métadonnées existent déjà pour cet ID, leur nom fait foi (éviter d'écraser un renommage par erreur)
+      try {
+        final existingMeta = await instance.getSaveMetadata(saveGame.id);
+        if (existingMeta != null && existingMeta.name != saveGame.name) {
+          if (kDebugMode) {
+            print('SaveManagerAdapter.saveGame: Harmonisation du nom (meta="${existingMeta.name}" vs save="${saveGame.name}")');
+          }
+          saveGame = saveGame.copyWith(name: existingMeta.name);
+        }
+      } catch (_) {}
+
       // Adapter la structure pour la nouvelle implementation
       final metadata = SaveMetadata(
         id: saveGame.id,
@@ -216,7 +226,8 @@ class SaveManagerAdapter {
   static Future<bool> createBackup(GameState gameState) async {
     try {
       final currentTime = DateTime.now();
-      final backupName = '${gameState.gameName}${GameConstants.BACKUP_DELIMITER}${currentTime.millisecondsSinceEpoch}';
+      final baseKey = gameState.partieId ?? (gameState.gameName ?? 'default');
+      final backupName = '$baseKey${GameConstants.BACKUP_DELIMITER}${currentTime.millisecondsSinceEpoch}';
 
       // Créer un objet SaveGame pour compatibilité
       Map<String, dynamic> gameData = {
@@ -242,7 +253,7 @@ class SaveManagerAdapter {
       if (success) {
         // Nettoyer les anciennes sauvegardes si nécessaire
         // Limite le nombre de backups à MAX_BACKUPS dans GameConstants
-        await _cleanupOldBackups(gameState.gameName ?? 'default', GameConstants.MAX_BACKUPS);
+        await _cleanupOldBackups(baseKey, GameConstants.MAX_BACKUPS);
       }
       
       return success;
@@ -434,6 +445,40 @@ class SaveManagerAdapter {
     }
   }
 
+  /// Charge une sauvegarde à partir de son identifiant unique
+  static Future<SaveGame?> loadGameById(String id) async {
+    try {
+      await ensureInitialized();
+      final game = await instance.loadSave(id);
+      if (game == null) return null;
+
+      final meta = await instance.getSaveMetadata(id);
+      if (meta == null) {
+        return SaveGame(
+          id: id,
+          name: game.name,
+          lastSaveTime: DateTime.now(),
+          gameData: game.gameData,
+          version: GameConstants.VERSION,
+          gameMode: game.gameMode,
+        );
+      }
+
+      return SaveGame(
+        id: id,
+        name: meta.name,
+        lastSaveTime: meta.lastModified,
+        gameData: game.gameData,
+        version: meta.version,
+        gameMode: meta.gameMode,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('SaveManagerAdapter.loadGameById: ERREUR: $e');
+      }
+      return null;
+    }
+  }
   /// Restaure une sauvegarde à partir d'un backup
   static Future<bool> restoreFromBackup(String backupName, GameState gameState) async {
     try {
@@ -600,6 +645,28 @@ class SaveManagerAdapter {
                       isBackup: isBackup,
                       isRestored: metadata.isRestored,
                     );
+                  } else if (gameData.containsKey('gameSnapshot') && gameData['gameSnapshot'] is Map) {
+                    // Fallback: extraire depuis snapshot core/stats (nouveau format sans playerManager)
+                    final snap = Map<String, dynamic>.from(gameData['gameSnapshot'] as Map);
+                    final core = (snap['core'] is Map) ? Map<String, dynamic>.from(snap['core'] as Map) : const <String, dynamic>{};
+                    final stats = (snap['stats'] is Map) ? Map<String, dynamic>.from(snap['stats'] as Map) : const <String, dynamic>{};
+                    final money = (core['money'] as num?)?.toDouble() ?? 0.0;
+                    final clips = (stats['paperclips'] as num?)?.toDouble() ?? 0.0;
+                    final sold = (stats['totalPaperclipsSold'] as num?)?.toDouble() ?? 0.0;
+                    final auto = (core['autoClipperCount'] as num?)?.toInt() ?? 0;
+                    saveInfo = SaveGameInfo(
+                      id: metadata.id,
+                      name: metadata.name,
+                      timestamp: metadata.lastModified,
+                      version: metadata.version,
+                      paperclips: clips,
+                      money: money,
+                      gameMode: metadata.gameMode,
+                      totalPaperclipsSold: sold,
+                      autoClipperCount: auto,
+                      isBackup: isBackup,
+                      isRestored: metadata.isRestored,
+                    );
                   }
                 } catch (e) {
                   // En cas d'erreur, on garde les valeurs par défaut déjà définies
@@ -699,6 +766,45 @@ class SaveManagerAdapter {
   /// Décompresse les données de sauvegarde (pour compatibilité)
   static String decompressSaveData(String compressed) {
     return instance.decompressData(compressed);
+  }
+
+  /// Supprime une sauvegarde par identifiant unique
+  static Future<void> deleteSaveById(String id) async {
+    try {
+      await ensureInitialized();
+      await instance.deleteSave(id);
+    } catch (e) {
+      if (kDebugMode) {
+        print('Erreur lors de la suppression (par id): $e');
+      }
+      rethrow;
+    }
+  }
+
+  /// Récupère les métadonnées d'une sauvegarde par identifiant
+  static Future<SaveMetadata?> getSaveMetadataById(String id) async {
+    try {
+      await ensureInitialized();
+      return await instance.getSaveMetadata(id);
+    } catch (e) {
+      if (kDebugMode) {
+        print('SaveManagerAdapter.getSaveMetadataById: ERREUR: $e');
+      }
+      return null;
+    }
+  }
+
+  /// Met à jour les métadonnées d'une sauvegarde par identifiant
+  static Future<bool> updateSaveMetadataById(String id, SaveMetadata metadata) async {
+    try {
+      await ensureInitialized();
+      return await instance.updateSaveMetadata(id, metadata);
+    } catch (e) {
+      if (kDebugMode) {
+        print('SaveManagerAdapter.updateSaveMetadataById: ERREUR: $e');
+      }
+      return false;
+    }
   }
 
   /// Nettoie les anciennes sauvegardes automatiques

@@ -48,4 +48,6 @@ flutter {
 dependencies {
     // Support multidex pour Android
     implementation "androidx.multidex:multidex:2.0.1"
+    // Google Play Games (v2) pour Saved Games / Snapshots
+    implementation "com.google.android.gms:play-services-games-v2:20.0.0"
 }

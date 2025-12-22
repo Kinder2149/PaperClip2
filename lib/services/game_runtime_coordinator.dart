@@ -141,6 +141,21 @@ class GameRuntimeCoordinator implements RuntimeOrchestrator {
     }
   }
 
+  Future<void> loadGameByIdAndStartAutoSave(String id) async {
+    _autoSaveService.stop();
+    final meta = await GamePersistenceOrchestrator.instance.getSaveMetadataById(id);
+    if (meta == null) {
+      throw Exception('Sauvegarde introuvable pour id=$id');
+    }
+    final name = meta.name;
+    await GamePersistenceOrchestrator.instance.loadGame(_gameState, name);
+    await _autoSaveService.start();
+    final audio = _audioPort;
+    if (audio != null) {
+      unawaited(audio.loadGameMusicState(name));
+    }
+  }
+
   Future<void> startNewGameAndStartAutoSave(
     String name, {
     GameMode mode = GameMode.INFINITE,

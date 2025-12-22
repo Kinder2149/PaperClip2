@@ -68,11 +68,21 @@ class StatIndicator extends StatelessWidget {
       content = Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: iconSize, color: iconColor),
             SizedBox(width: spaceBetween),
-            Text(label, style: labelStyle ?? defaultLabelStyle),
-            const Spacer(),
+            Flexible(
+              fit: FlexFit.loose,
+              child: Text(
+                label,
+                style: labelStyle ?? defaultLabelStyle,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                softWrap: false,
+              ),
+            ),
+            SizedBox(width: spaceBetween),
             Text(value, style: valueStyle ?? defaultValueStyle),
           ],
         ),
