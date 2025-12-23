@@ -67,15 +67,11 @@ class _DefaultAutoSaveOrchestratorPort implements AutoSaveOrchestratorPort {
 
 abstract class AutoSaveStoragePort {
   Future<List<SaveGameInfo>> listSaves();
-  Future<void> deleteSaveByName(String name);
 }
 
 class _DefaultAutoSaveStoragePort implements AutoSaveStoragePort {
   @override
   Future<List<SaveGameInfo>> listSaves() => GamePersistenceOrchestrator.instance.listSaves();
-
-  @override
-  Future<void> deleteSaveByName(String name) => GamePersistenceOrchestrator.instance.deleteSaveByName(name);
 }
 
 class AutoSaveService {
@@ -173,7 +169,11 @@ class AutoSaveService {
     if (!_isInitialized || _gameState.gameName == null) return;
 
     try {
-      final backupName = '${_gameState.gameName!}${StorageConstants.BACKUP_DELIMITER}${DateTime.now().millisecondsSinceEpoch}';
+      final baseKey = _gameState.partieId;
+      if (baseKey == null || baseKey.isEmpty) {
+        return;
+      }
+      final backupName = '$baseKey${StorageConstants.BACKUP_DELIMITER}${DateTime.now().millisecondsSinceEpoch}';
 
       await _orchestrator.requestBackup(
         _gameState,
@@ -193,17 +193,22 @@ class AutoSaveService {
   Future<void> _cleanupOldBackups() async {
     try {
       final saves = await _storage.listSaves();
-      final backups = saves.where((save) =>
-          save.name.contains(GameConstants.BACKUP_DELIMITER)).toList();
-
-      // Garder seulement les 3 derniers backups
-      if (backups.length > GameConstants.MAX_BACKUPS) {
-        backups.sort((a, b) => b.timestamp.compareTo(a.timestamp)); // Utilisation de timestamp pour compatibilitÃ© avec SaveGameInfo
-        for (var i = GameConstants.MAX_BACKUPS; i < backups.length; i++) {
-          await _storage.deleteSaveByName(backups[i].name);
+      // Regrouper par partieId (base avant le délimiteur)
+      final bases = <String>{};
+      for (final s in saves.where((e) => e.name.contains(GameConstants.BACKUP_DELIMITER))) {
+        final base = s.name.split(GameConstants.BACKUP_DELIMITER).first;
+        if (base.isNotEmpty) bases.add(base);
+      }
+      int totalDeleted = 0;
+      for (final base in bases) {
+        try {
+          final deleted = await SaveManagerAdapter.applyBackupRetention(partieId: base);
+          totalDeleted += deleted;
+        } catch (e) {
+          print('Rétention backups échouée pour $base: $e');
         }
       }
-      print('Nettoyage des anciens backups terminÃ©');
+      print('Nettoyage des anciens backups terminé (supprimés=$totalDeleted)');
     } catch (e) {
       print('Erreur lors du nettoyage des backups: $e');
     }
@@ -284,7 +289,7 @@ class AutoSaveService {
     for (var save in saves) {
       if (now.difference(save.lastModified) > GameConstants.MAX_SAVE_AGE &&
           !save.name.contains(GameConstants.BACKUP_DELIMITER)) {
-        await _storage.deleteSaveByName(save.name);
+        await GamePersistenceOrchestrator.instance.deleteSaveById(save.id);
         _saveSizes.remove(save.name);
       }
     }
@@ -295,7 +300,11 @@ class AutoSaveService {
     if (!_isInitialized || _gameState.gameName == null) return;
 
     try {
-      final backupName = '${_gameState.gameName!}${StorageConstants.BACKUP_DELIMITER}${DateTime.now().millisecondsSinceEpoch}';
+      final baseKey = _gameState.partieId;
+      if (baseKey == null || baseKey.isEmpty) {
+        return;
+      }
+      final backupName = '$baseKey${StorageConstants.BACKUP_DELIMITER}${DateTime.now().millisecondsSinceEpoch}';
 
       await _orchestrator.requestBackup(
         _gameState,

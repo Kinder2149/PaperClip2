@@ -141,7 +141,7 @@ void main() {
       state.dispose();
     });
 
-    test('saveGame puis loadGame fonctionne (roundtrip minimal)', () async {
+    test('saveGame puis loadGameById fonctionne (roundtrip minimal, ID-first)', () async {
       final original = GameState();
       original.initialize();
 
@@ -152,12 +152,15 @@ void main() {
 
       const name = 'orchestrator-roundtrip';
 
-      await GamePersistenceOrchestrator.instance.saveGame(original, name);
+      // ID-first: créer une partie pour obtenir un partieId stable
+      await original.startNewGame(name);
+      await GamePersistenceOrchestrator.instance.saveGameById(original);
 
       final restored = GameState();
       restored.initialize();
 
-      await GamePersistenceOrchestrator.instance.loadGame(restored, name);
+      final id = original.partieId!;
+      await GamePersistenceOrchestrator.instance.loadGameById(restored, id);
 
       expect(restored.playerManager.money, closeTo(123.0, 0.001));
       expect(restored.playerManager.metal, closeTo(10.0, 0.001));
@@ -180,7 +183,7 @@ void main() {
 
       final saves = await SaveManagerAdapter.listSaves();
       final backups = saves
-          .where((s) => s.isBackup && s.name.startsWith('$gameName${GameConstants.BACKUP_DELIMITER}'))
+          .where((s) => s.isBackup)
           .toList();
       final regular = saves.where((s) => !s.isBackup && s.name == gameName).toList();
 
@@ -219,8 +222,9 @@ void main() {
     test('checkAndRestoreLastSaveFromBackupIfNeeded: save invalide => restore depuis le backup le plus récent',
         () async {
       const baseName = 'restore-me';
-      final backupOld = '$baseName${GameConstants.BACKUP_DELIMITER}111';
-      final backupNew = '$baseName${GameConstants.BACKUP_DELIMITER}222';
+      // Orchestrateur ID-first: baseKey = id de la sauvegarde invalide
+      final backupOld = 'base-invalid${GameConstants.BACKUP_DELIMITER}111';
+      final backupNew = 'base-invalid${GameConstants.BACKUP_DELIMITER}222';
 
       // 1) Insérer une sauvegarde principale invalide: snapshot manquant.
       await saveManager.saveGame(_makeSave(baseName, <String, dynamic>{}, id: 'base-invalid'));
@@ -284,9 +288,9 @@ void main() {
 
       await GamePersistenceOrchestrator.instance.checkAndRestoreLastSaveFromBackupIfNeeded();
 
-      // La restauration ré-écrit une sauvegarde "baseName" avec les données du backup le plus récent.
-      final restored = await SaveManagerAdapter.loadGame(baseName);
-      final restoredRaw = restored.gameData[LocalGamePersistenceService.snapshotKey];
+      // La restauration ré-écrit la sauvegarde sous le même id (ID-first)
+      final restored = await SaveManagerAdapter.loadGameById('base-invalid');
+      final restoredRaw = restored!.gameData[LocalGamePersistenceService.snapshotKey];
       expect(restoredRaw, isNotNull);
       final restoredSnapshot = switch (restoredRaw) {
         final Map<String, dynamic> map => GameSnapshot.fromJson(map),
@@ -319,12 +323,12 @@ void main() {
       await GamePersistenceOrchestrator.instance.checkAndRestoreLastSaveFromBackupIfNeeded();
 
       // Il n'y a pas de backup, donc aucun nouveau save "restauré" n'est créé.
-      // On vérifie juste que la sauvegarde reste "invalid" (loadGame retombe en fallback vide en cas d'erreur).
-      final loaded = await SaveManagerAdapter.loadGame(baseName);
-      expect(loaded.name, baseName);
+      // Vérifier que la sauvegarde reste accessible par ID et conserve le nom attendu.
+      final loaded = await SaveManagerAdapter.loadGameById('base-invalid');
+      expect(loaded?.name, baseName);
     });
 
-    test('loadGame: snapshot invalide et backup dispo => restaure puis charge; sinon throw',
+    test('loadGameById: snapshot invalide et backup dispo => restaure puis charge; sinon throw',
         () async {
       final state = GameState();
       state.initialize();
@@ -366,7 +370,8 @@ void main() {
         ),
       );
 
-      await GamePersistenceOrchestrator.instance.loadGame(state, baseName);
+      // Charger par identifiant technique de la sauvegarde invalide
+      await GamePersistenceOrchestrator.instance.loadGameById(state, 'base-invalid');
       expect(state.playerManager.money, closeTo(77.0, 0.001));
 
       // Cas sans backup -> throw.
@@ -382,8 +387,8 @@ void main() {
       );
 
       await expectLater(
-        GamePersistenceOrchestrator.instance.loadGame(state, baseNameNoBackup),
-        throwsA(isA<FormatException>()),
+        GamePersistenceOrchestrator.instance.loadGameById(state, 'base-invalid-2'),
+        throwsA(isA<StateError>()),
       );
 
       state.dispose();

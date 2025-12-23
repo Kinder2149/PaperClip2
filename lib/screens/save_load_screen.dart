@@ -8,7 +8,7 @@ import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import '../constants/game_config.dart';
 import '../screens/main_screen.dart';
-import '../screens/backups_history_screen.dart';
+// import '../screens/backups_history_screen.dart';
 import '../services/persistence/game_persistence_orchestrator.dart';
 import '../services/notification_manager.dart';
 import '../services/navigation_service.dart';
@@ -19,13 +19,13 @@ import '../services/save_game.dart' show SaveGameInfo; // legacy type (pour comp
 import '../services/persistence/save_aggregator.dart';
 import '../widgets/save_button.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:paperclip2/services/save_system/local_save_game_manager.dart';
 import 'package:paperclip2/models/save_metadata.dart';
-import '../services/google/google_bootstrap.dart';
-import '../services/google/snapshots/snapshots_cloud_save.dart';
 import 'package:paperclip2/models/save_game.dart';
 import 'package:paperclip2/services/save_system/save_manager_adapter.dart';
 import 'package:flutter/services.dart';
+import '../services/google/google_bootstrap.dart';
 
 // La classe SaveGameInfo est maintenant importée depuis save_game.dart
 
@@ -45,10 +45,6 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
   final Map<String, SaveEntry> _latestBackups = {};
   // Compteur de backups par partieId (ID-first)
   final Map<String, int> _backupCounts = {};
-  // gameId présent dans le slot cloud (si disponible)
-  String? _cloudGameIdAvailable;
-  // date savedAt du cloud si disponible
-  DateTime? _cloudSavedAt;
   // Messages diagnostics (debug)
   List<String> _diagnostics = [];
   List<Map<String, dynamic>> _dupGroups = [];
@@ -58,19 +54,43 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
   int _migrationTotal = 0;
   final _nameController = TextEditingController();
   Timer? _cloudProbeTimer;
+  bool _showTechnicalId = false;
+  bool _filterLocalOnly = false;
+  // IDs marqués en attente de push cloud (pending)
+  final Set<String> _pendingCloudPushIds = <String>{};
 
   @override
   void initState() {
     super.initState();
     _loadSaves();
-    // Auto-refresh périodique: permet de refléter un upload cloud initié ailleurs
+    _maybeRunDailyRetention();
+    // Mission 3: suppression du sondage cloud global (slot unique)
     _cloudProbeTimer?.cancel();
-    _cloudProbeTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
-      if (!mounted) return;
+    // Charger la préférence d'affichage de l'ID technique
+    () async {
       try {
-        await _loadSaves();
+        final prefs = await SharedPreferences.getInstance();
+        setState(() {
+          _showTechnicalId = prefs.getBool('show_technical_id') ?? false;
+        });
       } catch (_) {}
-    });
+    }();
+  }
+
+  // Flux cloud global supprimé
+
+  Future<void> _maybeRunDailyRetention() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      const key = 'backup_retention_last_run';
+      final last = prefs.getInt(key);
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      final oneDayMs = const Duration(days: 1).inMilliseconds;
+      if (last == null || (nowMs - last) > oneDayMs) {
+        await _applyRetentionAll();
+        await prefs.setInt(key, nowMs);
+      }
+    } catch (_) {}
   }
 
   Future<void> _applyRetentionAll() async {
@@ -115,18 +135,47 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                     itemBuilder: (ctx, i) {
                       final b = backups[i];
                       final ts = (b.lastModified ?? DateTime.fromMillisecondsSinceEpoch(0)).toLocal().toString().split('.')[0];
-                      return ListTile(
-                        dense: true,
-                        title: Text(b.name.split(GameConstants.BACKUP_DELIMITER).last),
-                        subtitle: Text('Créé le: $ts'),
-                        trailing: TextButton.icon(
-                          onPressed: () async {
-                            Navigator.of(ctx).pop();
-                            await _restoreFromBackup(context, b.name);
-                          },
-                          icon: const Icon(Icons.restore),
-                          label: const Text('Restaurer'),
-                        ),
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          ListTile(
+                            dense: true,
+                            title: Text(b.name.split(GameConstants.BACKUP_DELIMITER).last),
+                            subtitle: Text('Créé le: $ts'),
+                            trailing: TextButton.icon(
+                              onPressed: () async {
+                                Navigator.of(ctx).pop();
+                                await _restoreFromBackup(context, b.name);
+                              },
+                              icon: const Icon(Icons.restore),
+                              label: const Text('Restaurer'),
+                            ),
+                          ),
+                          // Barre d'options (afficher/masquer ID technique) — masquée sauf flag FEATURE_TECHNICAL_IDS
+                          if ((dotenv.env['FEATURE_TECHNICAL_IDS'] ?? 'false').toLowerCase() == 'true')
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  Icon(Icons.badge_outlined, size: 18, color: Colors.grey.shade700),
+                                  const SizedBox(width: 6),
+                                  Text('Afficher ID technique', style: TextStyle(color: Colors.grey.shade800)),
+                                  const SizedBox(width: 8),
+                                  Switch(
+                                    value: _showTechnicalId,
+                                    onChanged: (val) async {
+                                      setState(() { _showTechnicalId = val; });
+                                      try {
+                                        final prefs = await SharedPreferences.getInstance();
+                                        await prefs.setBool('show_technical_id', val);
+                                      } catch (_) {}
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
                       );
                     },
                   ),
@@ -144,42 +193,7 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
     }
   }
 
-  Future<void> _createLocalFromCloud(Map<String, dynamic> json, {String? preferredName}) async {
-    try {
-      final snapshot = json['snapshot'];
-      if (snapshot == null || snapshot is! Map) {
-        _showError('Snapshot cloud absent ou invalide');
-        return;
-      }
-      final meta = (json['metadata'] as Map?)?.cast<String, dynamic>() ?? const <String, dynamic>{};
-      final version = (meta['gameVersion']?.toString()) ?? '1.0.0';
-      final gm = (meta['gameMode']?.toString() ?? 'INFINITE').toUpperCase();
-      final gameMode = gm == 'COMPETITIVE' ? GameMode.COMPETITIVE : GameMode.INFINITE;
-      final name = preferredName ?? 'Partie (cloud)';
-
-      final local = SaveGame(
-        name: name,
-        lastSaveTime: DateTime.now(),
-        gameData: { 'gameSnapshot': Map<String, dynamic>.from(snapshot as Map) },
-        version: version,
-        gameMode: gameMode,
-      );
-      final ok = await SaveManagerAdapter.saveGame(local);
-      if (!ok) {
-        _showError('Création locale depuis cloud échouée');
-        return;
-      }
-      await _loadSaves();
-      if (mounted) {
-        NotificationManager.instance.showNotification(
-          message: 'Partie locale créée depuis le cloud',
-          level: NotificationLevel.SUCCESS,
-        );
-      }
-    } catch (e) {
-      if (mounted) _showError('Erreur création locale depuis cloud: $e');
-    }
-  }
+  // Mission 4: suppression du flux de création locale depuis le cloud
 
   Future<void> _restoreLatestBackupFor(BuildContext context, String baseName) async {
     final latest = _latestBackups[baseName];
@@ -190,180 +204,37 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
     await _restoreFromBackup(context, latest.name);
   }
 
-  Future<void> _uploadPartyToCloud(SaveEntry save) async {
-    try {
-      final enableGpg = (dotenv.env['FEATURE_CLOUD_SAVES_GPG'] ?? 'false').toLowerCase() == 'true';
-      if (!enableGpg) {
-        _showError('Cloud désactivé');
-        return;
-      }
-      final google = context.read<GoogleServicesBundle>();
-      if (google.identity.status.name != 'signedIn') {
-        _showError('Connexion Google requise');
-        return;
-      }
-
-      final loaded = await GamePersistenceOrchestrator.instance.loadSaveById(save.id);
-      if (loaded == null) {
-        _showError('Partie introuvable localement');
-        return;
-      }
-
-      final Map<String, dynamic> data = loaded.gameData;
-      Map<String, dynamic>? snapshot;
-      if (data.containsKey('gameSnapshot')) {
-        final raw = data['gameSnapshot'];
-        if (raw is Map) {
-          snapshot = Map<String, dynamic>.from(raw as Map);
-        } else if (raw is String) {
-          try {
-            snapshot = Map<String, dynamic>.from(jsonDecode(raw) as Map);
-          } catch (_) {}
-        }
-      }
-
-      if (snapshot == null) {
-        _showError('Aucun snapshot à envoyer');
-        return;
-      }
-
-      // Extraire sections utiles pour l’aperçu cloud
-      Map<String, dynamic> core = {};
-      Map<String, dynamic> stats = {};
-      if (snapshot['core'] is Map) core = Map<String, dynamic>.from(snapshot['core'] as Map);
-      if (snapshot['stats'] is Map) stats = Map<String, dynamic>.from(snapshot['stats'] as Map);
-
-      final svc = createSnapshotsCloudSave(identity: google.identity);
-      final payload = <String, dynamic>{
-        'metadata': {
-          'gameId': save.id,
-          'savedAt': DateTime.now().toIso8601String(),
-          'gameMode': save.gameMode == GameMode.COMPETITIVE ? 'COMPETITIVE' : 'INFINITE',
-          'gameVersion': save.version,
-        },
-        'core': core,
-        'stats': stats,
-        'snapshot': snapshot,
-      };
-
-      await svc.saveJson(payload);
-      // Recharger le slot cloud et rafraîchir l'UI (badge/état)
-      try {
-        if (kDebugMode) {
-          print('[GPG] saveJson() terminé. Relecture du slot via loadJson()...');
-        }
-        final __t0 = DateTime.now();
-        final back = await svc.loadJson();
-        final __dt = DateTime.now().difference(__t0).inMilliseconds;
-        if (kDebugMode) {
-          print('[GPG] loadJson() après upload: ${back != null ? 'OK' : 'null'} (' + __dt.toString() + 'ms)');
-        }
-        if (back != null) {
-          final meta = (back['metadata'] as Map?)?.cast<String, dynamic>() ?? const <String, dynamic>{};
-          final cloudGameId = meta['gameId'] as String?;
-          final savedAtStr = meta['savedAt'] as String?;
-          setState(() {
-            _cloudGameIdAvailable = cloudGameId;
-            _cloudSavedAt = savedAtStr != null ? DateTime.tryParse(savedAtStr) : null;
-          });
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          print('[GPG] Erreur lors de la relecture du slot après upload: ' + e.toString());
-        }
-      }
-      await _loadSaves();
-      if (mounted) {
-        NotificationManager.instance.showNotification(
-          message: 'Partie envoyée au cloud',
-          level: NotificationLevel.SUCCESS,
-        );
-      }
-    } catch (e) {
-      if (mounted) _showError('Erreur upload cloud: $e');
+  String _cloudLabel(String state) {
+    switch (state) {
+      case 'in_sync':
+        return 'Cloud à jour';
+      case 'ahead_local':
+        return 'Local en avance';
+      case 'ahead_remote':
+        return 'Cloud en avance';
+      case 'diverged':
+        return 'Divergé';
+      default:
+        return 'Cloud';
     }
   }
 
-  Future<void> _restorePartyFromCloud(SaveEntry save) async {
-    try {
-      final enableGpg = (dotenv.env['FEATURE_CLOUD_SAVES_GPG'] ?? 'false').toLowerCase() == 'true';
-      if (!enableGpg) {
-        _showError('Cloud désactivé');
-        return;
-      }
-      final google = context.read<GoogleServicesBundle>();
-      if (google.identity.status.name != 'signedIn') {
-        _showError('Connexion Google requise');
-        return;
-      }
-
-      final svc = createSnapshotsCloudSave(identity: google.identity);
-      final json = await svc.loadJson();
-      if (json == null) {
-        _showError('Aucune sauvegarde cloud');
-        return;
-      }
-      final meta = (json['metadata'] as Map?)?.cast<String, dynamic>() ?? const <String, dynamic>{};
-      final cloudGameId = meta['gameId'] as String?;
-      if (cloudGameId == null || cloudGameId != save.id) {
-        _showError('Le cloud ne correspond pas à cette partie');
-        return;
-      }
-      // Alerte si cloud plus ancien que local
-      try {
-        final savedAtStr = meta['savedAt'] as String?;
-        if (savedAtStr != null) {
-          final cloudAt = DateTime.parse(savedAtStr);
-          final localAt = save.lastModified ?? DateTime.fromMillisecondsSinceEpoch(0);
-          final older = localAt.difference(cloudAt).inSeconds;
-          if (older > 60) {
-            final proceed = await showDialog<bool>(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                title: const Text('Restauration cloud plus ancien'),
-                content: Text('Le cloud (${cloudAt.toIso8601String()}) est plus ancien que votre sauvegarde locale (${localAt.toIso8601String()}).\nVoulez-vous vraiment écraser le local ?'),
-                actions: [
-                  TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Annuler')),
-                  ElevatedButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Continuer')),
-                ],
-              ),
-            );
-            if (proceed != true) {
-              return;
-            }
-          }
-        }
-      } catch (_) {}
-      final snapshot = json['snapshot'];
-      if (snapshot == null || snapshot is! Map) {
-        _showError('Snapshot cloud absent ou invalide');
-        return;
-      }
-
-      final restored = SaveGame(
-        id: save.id,
-        name: save.name,
-        lastSaveTime: DateTime.now(),
-        gameData: { 'gameSnapshot': Map<String, dynamic>.from(snapshot as Map) },
-        version: save.version,
-        gameMode: save.gameMode,
-      );
-      final ok = await SaveManagerAdapter.saveGame(restored);
-      if (!ok) {
-        _showError('Échec de la restauration cloud');
-        return;
-      }
-      await _loadSaves();
-      if (mounted) {
-        NotificationManager.instance.showNotification(
-          message: 'Restauration cloud appliquée',
-          level: NotificationLevel.SUCCESS,
-        );
-      }
-    } catch (e) {
-      if (mounted) _showError('Erreur restauration cloud: $e');
+  Color _cloudColor(String state) {
+    switch (state) {
+      case 'in_sync':
+        return Colors.green.shade100;
+      case 'ahead_local':
+        return Colors.orange.shade100;
+      case 'ahead_remote':
+        return Colors.blue.shade100;
+      case 'diverged':
+        return Colors.red.shade100;
+      default:
+        return Colors.lightBlue.shade50;
     }
   }
+
+  // Flux cloud global supprimé: upload/restore globaux retirés
 
   Future<void> _renameSave(SaveEntry save) async {
     final controller = TextEditingController(text: save.name);
@@ -430,46 +301,7 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
         await GamePersistenceOrchestrator.instance.runIntegrityChecks();
       }
 
-      // Détecter la présence d'une sauvegarde cloud liée à un gameId
-      _cloudGameIdAvailable = null;
-      _cloudSavedAt = null;
-      try {
-        final enableGpg = (dotenv.env['FEATURE_CLOUD_SAVES_GPG'] ?? 'false').toLowerCase() == 'true';
-        if (enableGpg) {
-          final google = context.read<GoogleServicesBundle>();
-          if (kDebugMode) {
-            print('[GPG] Feature flag actif. Status=' + google.identity.status.name + ', playerId=' + (google.identity.playerId ?? '-'));
-          }
-          if (google.identity.status.name == 'signedIn') {
-            final svc = createSnapshotsCloudSave(identity: google.identity);
-            if (kDebugMode) {
-              print('[GPG] _loadSaves: appel loadJson() pour sonder le slot cloud');
-            }
-            final __t1 = DateTime.now();
-            final json = await svc.loadJson();
-            final __dt1 = DateTime.now().difference(__t1).inMilliseconds;
-            if (kDebugMode) {
-              print('[GPG] _loadSaves: loadJson -> ' + (json != null ? 'OK' : 'null') + ' (' + __dt1.toString() + 'ms)');
-            }
-            if (json != null) {
-              final meta = (json['metadata'] as Map?)?.cast<String, dynamic>() ?? const <String, dynamic>{};
-              final cloudGameId = meta['gameId'] as String?;
-              if (cloudGameId != null && cloudGameId.isNotEmpty) {
-                _cloudGameIdAvailable = cloudGameId;
-              }
-              final savedAtStr = meta['savedAt'] as String?;
-              if (savedAtStr != null) {
-                try { _cloudSavedAt = DateTime.parse(savedAtStr); } catch (_) {}
-              }
-            }
-          }
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          print('[GPG] _loadSaves: erreur lors du sondage cloud: ' + e.toString());
-        }
-        // No-op: si indisponible, on n'affiche pas le badge cloud
-      }
+      // Mission 3: suppression du sondage du slot cloud global
 
       // Construire un index des derniers backups par baseName
       _latestBackups.clear();
@@ -485,6 +317,16 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
 
       // Filtrer: n'afficher que les parties locales régulières (pas backups, pas cloud)
       final saves = all.where((e) => !e.isBackup && e.source != SaveSource.cloud).toList();
+
+      // Charger les indicateurs de pending push (SharedPreferences)
+      _pendingCloudPushIds.clear();
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        for (final s in saves) {
+          final pending = prefs.getBool('pending_cloud_push_'+s.id) ?? false;
+          if (pending) _pendingCloudPushIds.add(s.id);
+        }
+      } catch (_) {}
       
       if (kDebugMode) {
         print('DIAGNOSTIC SAVE SCREEN: ${saves.length} sauvegardes récupérées via GamePersistenceOrchestrator.listSaves()');
@@ -540,12 +382,7 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
             listed++;
           }
 
-          // Cloud: état
-          if (_cloudGameIdAvailable != null) {
-            diag.add('Cloud: gameId=$_cloudGameIdAvailable, savedAt=${_cloudSavedAt?.toIso8601String() ?? 'n/a'}');
-          } else {
-            diag.add('Cloud: aucun gameId associé au slot courant');
-          }
+          // Mission 3: pas de diagnostic cloud global
         } catch (e) {
           diag.add('Erreur génération diagnostics: $e');
         }
@@ -559,6 +396,43 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
         });
         // Nouveau log après setState pour confirmer que _saves a été mis à jour
         print('DIAGNOSTIC SAVE SCREEN: État mis à jour, _saves contient ${_saves.length} sauvegardes');
+
+        // Retry automatique: push cloud pour les parties marquées pending si identité disponible
+        try {
+          final enableCloudPerPartie = (dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true';
+          if (enableCloudPerPartie) {
+            String? playerId;
+            try {
+              final google = context.read<GoogleServicesBundle>();
+              playerId = google.identity.playerId;
+            } catch (_) {}
+            if (playerId != null && playerId.isNotEmpty) {
+              final prefs = await SharedPreferences.getInstance();
+              for (final s in _saves) {
+                final key = 'pending_cloud_push_'+s.id;
+                final pending = prefs.getBool(key) ?? false;
+                if (pending) {
+                  try {
+                    await GamePersistenceOrchestrator.instance.pushCloudFromSaveId(partieId: s.id, playerId: playerId);
+                    await prefs.remove(key);
+                    NotificationManager.instance.showNotification(
+                      message: 'Synchronisation cloud effectuée pour "${s.name}"',
+                      level: NotificationLevel.SUCCESS,
+                      duration: const Duration(seconds: 2),
+                    );
+                  } catch (e) {
+                    // conserver le flag pending; signaler clairement l'échec
+                    NotificationManager.instance.showNotification(
+                      message: 'Échec de la synchronisation cloud pour "${s.name}" — une resynchronisation est nécessaire',
+                      level: NotificationLevel.ERROR,
+                      duration: const Duration(seconds: 3),
+                    );
+                  }
+                }
+              }
+            }
+          }
+        } catch (_) {}
       }
     } catch (e) {
       if (kDebugMode) {
@@ -720,26 +594,24 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
       appBar: AppBar(
         title: Text('Sauvegardes'),
         actions: [
+          if ((dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true' && (dotenv.env['FEATURE_ADVANCED_CLOUD_UI'] ?? 'false').toLowerCase() == 'true' && !kReleaseMode)
+            IconButton(
+              icon: Icon(_filterLocalOnly ? Icons.filter_alt : Icons.filter_alt_outlined),
+              onPressed: () => setState(() => _filterLocalOnly = !_filterLocalOnly),
+              tooltip: _filterLocalOnly ? 'Afficher toutes les parties' : 'Sauvegardes locales uniquement',
+            ),
           if (!widget.isStartScreen)
             IconButton(
               icon: Icon(Icons.save),
               onPressed: _showSaveDialog,
               tooltip: 'Nouvelle sauvegarde',
             ),
-          IconButton(
-            icon: Icon(Icons.history),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const BackupsHistoryScreen()),
-              );
-            },
-            tooltip: 'Historique Backups',
-          ),
-          IconButton(
-            icon: const Icon(Icons.cleaning_services),
-            onPressed: _applyRetentionAll,
-            tooltip: 'Nettoyer (rétention N=10, TTL=30j)',
-          ),
+          if (kDebugMode)
+            IconButton(
+              icon: const Icon(Icons.cleaning_services),
+              onPressed: _applyRetentionAll,
+              tooltip: 'Nettoyer (rétention N=10, TTL=30j)',
+            ),
           IconButton(
             icon: Icon(Icons.refresh),
             onPressed: _loadSaves,
@@ -768,7 +640,6 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
           : _saves.isEmpty
               ? Center(child: Text('Aucune sauvegarde disponible'))
               : Builder(builder: (context) {
-                  final enableGpg = (dotenv.env['FEATURE_CLOUD_SAVES_GPG'] ?? 'false').toLowerCase() == 'true';
                   return Column(
                     children: [
                       if (kDebugMode)
@@ -857,131 +728,17 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                             ),
                           ),
                         ),
-                      if (enableGpg)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                          child: FutureBuilder<Map<String, dynamic>?>(
-                            future: () async {
-                              final google = context.read<GoogleServicesBundle>();
-                              final svc = createSnapshotsCloudSave(identity: google.identity);
-                              try {
-                                return await svc.loadJson().timeout(const Duration(seconds: 3));
-                              } catch (_) {
-                                return null;
-                              }
-                            }(),
-                            builder: (ctx, snap) {
-                              final hasCloud = snap.connectionState == ConnectionState.done && snap.data != null;
-                              return Card(
-                                color: Colors.lightBlue.shade50,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12.0),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          const Icon(Icons.cloud, color: Colors.blue),
-                                          const SizedBox(width: 12),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  hasCloud ? 'Cloud: sauvegarde disponible' : 'Cloud: aucune sauvegarde',
-                                                  style: const TextStyle(fontWeight: FontWeight.w600),
-                                                ),
-                                                const SizedBox(height: 2),
-                                                const Text('Slot: paperclip2_main_save (GPG)'),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 8),
-                                      OverflowBar(
-                                        alignment: MainAxisAlignment.start,
-                                        spacing: 8,
-                                        overflowSpacing: 4,
-                                        children: [
-                                          TextButton.icon(
-                                            onPressed: () async {
-                                              final google = context.read<GoogleServicesBundle>();
-                                              final svc = createSnapshotsCloudSave(identity: google.identity);
-                                              final data = await svc.loadJson();
-                                              if (data == null) {
-                                                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aucune sauvegarde cloud')));
-                                                return;
-                                              }
-                                              final meta = (data['metadata'] as Map?)?.cast<String, dynamic>() ?? const <String, dynamic>{};
-                                              final cloudId = meta['gameId'] as String?;
-                                              if (cloudId != null) {
-                                                final idx = _saves.indexWhere((s) => s.id == cloudId);
-                                                if (idx != -1) {
-                                                  final match = _saves[idx];
-                                                  await _restorePartyFromCloud(match);
-                                                  return;
-                                                }
-                                              }
-                                              // Orphelin: créer locale depuis cloud
-                                              await _createLocalFromCloud(data);
-                                            },
-                                            icon: const Icon(Icons.download),
-                                            label: const Text('Restaurer'),
-                                          ),
-                                          TextButton.icon(
-                                            onPressed: () async {
-                                              try {
-                                                final google = context.read<GoogleServicesBundle>();
-                                                final svc = createSnapshotsCloudSave(identity: google.identity);
-                                                await svc.deleteCloudSlot();
-                                                if (mounted) {
-                                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cloud supprimé')));
-                                                  setState(() {});
-                                                }
-                                              } catch (e) {
-                                                if (mounted) {
-                                                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur suppression cloud: $e')));
-                                                }
-                                              }
-                                            },
-                                            icon: const Icon(Icons.cloud_off),
-                                            label: const Text('Supprimer'),
-                                          ),
-                                          if (hasCloud)
-                                            Builder(builder: (ctx) {
-                                              try {
-                                                final meta = (snap.data?['metadata'] as Map?)?.cast<String, dynamic>() ?? const <String, dynamic>{};
-                                                final cloudId = meta['gameId'] as String?;
-                                                final orphan = cloudId == null || !_saves.any((s) => s.id == cloudId);
-                                                if (orphan) {
-                                                  return TextButton.icon(
-                                                    onPressed: () async {
-                                                      final data = snap.data!;
-                                                      await _createLocalFromCloud(data);
-                                                    },
-                                                    icon: const Icon(Icons.add),
-                                                    label: const Text('Créer locale depuis cloud'),
-                                                  );
-                                                }
-                                              } catch (_) {}
-                                              return const SizedBox.shrink();
-                                            }),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
+                      // Bloc GPG cloud global supprimé
                       Expanded(
-                        child: ListView.builder(
-                          itemCount: _saves.length,
-                          itemBuilder: (context, index) {
-                            final save = _saves[index];
+                        child: Builder(builder: (context) {
+                          final enableCloud = (dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true';
+                          final List<SaveEntry> visible = (!_filterLocalOnly || !enableCloud)
+                              ? _saves
+                              : _saves.where((s) => s.remoteVersion == null).toList();
+                          return ListView.builder(
+                            itemCount: visible.length,
+                            itemBuilder: (context, index) {
+                              final save = visible[index];
                             final isBackup = save.isBackup;
                             final isCloud = save.source == SaveSource.cloud;
                             return Card(
@@ -1012,12 +769,28 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                                                 'Dernière modification: ${(save.lastModified ?? DateTime.now()).toLocal().toString().split('.')[0]}',
                                                 style: TextStyle(fontSize: 12.0, color: Colors.grey),
                                               ),
+                                              if ((dotenv.env['FEATURE_TECHNICAL_IDS'] ?? 'false').toLowerCase() == 'true' && _showTechnicalId) ...[
+                                                SizedBox(height: 2.0),
+                                                Text(
+                                                  'ID: ${save.id}',
+                                                  style: TextStyle(fontSize: 11.0, color: Colors.grey.shade600),
+                                                ),
+                                              ],
                                             ],
                                           ),
                                         ),
                                         if (!isBackup && !isCloud)
                                           Row(
                                             children: [
+                                              if ((dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true' && (dotenv.env['FEATURE_ADVANCED_CLOUD_UI'] ?? 'false').toLowerCase() == 'true' && !kReleaseMode && save.cloudSyncState != null)
+                                                Padding(
+                                                  padding: const EdgeInsets.only(right: 8.0),
+                                                  child: Chip(
+                                                    avatar: const Icon(Icons.cloud, size: 16),
+                                                    label: Text(_cloudLabel(save.cloudSyncState!)),
+                                                    backgroundColor: _cloudColor(save.cloudSyncState!),
+                                                  ),
+                                                ),
                                               IconButton(
                                                 icon: const Icon(Icons.edit, color: Colors.blueGrey),
                                                 onPressed: () => _renameSave(save),
@@ -1028,20 +801,37 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                                                 onPressed: () => _showBackupsFor(save),
                                                 tooltip: 'Backups de cette partie',
                                               ),
-                                              // Cloud par partie (Option A) via orchestrateur
-                                              if ((dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true') ...[
+                                              // Cloud par partie (Option A) via orchestrateur — UI avancée uniquement
+                                              if ((dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true' && (dotenv.env['FEATURE_ADVANCED_CLOUD_UI'] ?? 'false').toLowerCase() == 'true' && !kReleaseMode) ...[
                                                 IconButton(
                                                   icon: const Icon(Icons.cloud_upload, color: Colors.blue),
                                                   tooltip: 'Push (Cloud par partie)',
                                                   onPressed: () async {
+                                                    final confirm = await showDialog<bool>(
+                                                      context: context,
+                                                      builder: (ctx) => AlertDialog(
+                                                        title: const Text('Envoyer au cloud ?'),
+                                                        content: Text('Cette action publiera l\'état courant de "${save.name}" (ID: ${save.id}) vers le cloud.'),
+                                                        actions: [
+                                                          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Annuler')),
+                                                          ElevatedButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Confirmer')),
+                                                        ],
+                                                      ),
+                                                    );
+                                                    if (confirm != true) return;
                                                     try {
-                                                      final gs = context.read<GameState>();
-                                                      await GamePersistenceOrchestrator.instance.pushCloudById(partieId: save.id, state: gs);
+                                                      String? playerId;
+                                                      try {
+                                                        final google = context.read<GoogleServicesBundle>();
+                                                        playerId = google.identity.playerId;
+                                                      } catch (_) {}
+                                                      await GamePersistenceOrchestrator.instance.pushCloudFromSaveId(partieId: save.id, playerId: playerId);
                                                       if (mounted) {
                                                         NotificationManager.instance.showNotification(
                                                           message: 'Envoyé au cloud (par partie)',
                                                           level: NotificationLevel.SUCCESS,
                                                         );
+                                                        await _loadSaves();
                                                       }
                                                     } catch (e) {
                                                       if (mounted) _showError('Erreur push cloud: $e');
@@ -1051,14 +841,27 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                                                 IconButton(
                                                   icon: const Icon(Icons.cloud_download, color: Colors.indigo),
                                                   tooltip: 'Pull (Cloud par partie)',
-                                                  onPressed: () async {
+                                                  onPressed: (save.remoteVersion == null)
+                                                      ? null
+                                                      : () async {
+                                                    final confirm = await showDialog<bool>(
+                                                      context: context,
+                                                      builder: (ctx) => AlertDialog(
+                                                        title: const Text('Remplacer depuis le cloud ?'),
+                                                        content: Text('Cette action écrasera la sauvegarde locale de "${save.name}" avec la version cloud.'),
+                                                        actions: [
+                                                          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Annuler')),
+                                                          ElevatedButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Remplacer')),
+                                                        ],
+                                                      ),
+                                                    );
+                                                    if (confirm != true) return;
                                                     try {
                                                       final data = await GamePersistenceOrchestrator.instance.pullCloudById(partieId: save.id);
                                                       if (data == null) {
                                                         if (mounted) _showError('Aucune donnée cloud pour cette partie');
                                                         return;
                                                       }
-                                                      // data devrait contenir {'snapshot': ..., 'metadata': ...}
                                                       final snap = data['snapshot'];
                                                       if (snap is! Map) {
                                                         if (mounted) _showError('Snapshot cloud invalide');
@@ -1090,23 +893,20 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                                                   },
                                                 ),
                                               ],
-                                              if ((dotenv.env['FEATURE_CLOUD_SAVES_GPG'] ?? 'false').toLowerCase() == 'true' && context.read<GoogleServicesBundle>().identity.status.name == 'signedIn') ...[
-                                                IconButton(
-                                                  icon: const Icon(Icons.cloud_upload, color: Colors.blue),
-                                                  onPressed: () => _uploadPartyToCloud(save),
-                                                  tooltip: 'Sauver au cloud',
-                                                ),
-                                                IconButton(
-                                                  icon: const Icon(Icons.cloud_download, color: Colors.indigo),
-                                                  onPressed: () => _restorePartyFromCloud(save),
-                                                  tooltip: 'Restaurer du cloud',
-                                                ),
-                                              ],
+                                              // Mission 3: suppression des contrôles GPG cloud globaux
                                               IconButton(
                                                 icon: const Icon(Icons.restore, color: Colors.blue),
-                                                onPressed: () => _restoreLatestBackupFor(context, save.name),
+                                                onPressed: () => _restoreLatestBackupFor(context, save.id),
                                                 tooltip: 'Restaurer dernier backup',
                                               ),
+                                              if (_backupCounts.containsKey(save.id))
+                                                Padding(
+                                                  padding: const EdgeInsets.only(left: 4.0),
+                                                  child: Chip(
+                                                    label: Text('Backups: ${_backupCounts[save.id]}'),
+                                                    avatar: const Icon(Icons.inventory_2, size: 16),
+                                                  ),
+                                                ),
                                               IconButton(
                                                 icon: Icon(Icons.delete, color: Colors.red),
                                                 onPressed: () => _deleteSave(save.id),
@@ -1114,9 +914,49 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                                               ),
                                               IconButton(
                                                 icon: Icon(Icons.play_arrow, color: Colors.green),
-                                                onPressed: () => _loadGame(context, save.id),
-                                                tooltip: 'Charger',
+                                                onPressed: save.canLoad ? () => _loadGame(context, save.id) : null,
+                                                tooltip: save.canLoad ? 'Charger' : 'Indisponible (restaurer un backup)',
                                               ),
+                                            ],
+                                          ),
+                                        if (!isBackup && isCloud)
+                                          Row(
+                                            children: [
+                                              if ((dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true')
+                                                IconButton(
+                                                  icon: const Icon(Icons.cloud_download, color: Colors.indigo),
+                                                  tooltip: 'Matérialiser depuis le cloud',
+                                                  onPressed: () async {
+                                                    final confirm = await showDialog<bool>(
+                                                      context: context,
+                                                      builder: (ctx) => AlertDialog(
+                                                        title: const Text('Créer cette partie en local ?'),
+                                                        content: Text('Cette action créera localement la partie "${save.name}" (ID: ${save.id}) à partir du cloud.'),
+                                                        actions: [
+                                                          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Annuler')),
+                                                          ElevatedButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Créer')),
+                                                        ],
+                                                      ),
+                                                    );
+                                                    if (confirm != true) return;
+                                                    try {
+                                                      final ok = await GamePersistenceOrchestrator.instance.materializeFromCloud(partieId: save.id);
+                                                      if (!ok) {
+                                                        if (mounted) _showError('Échec de création locale');
+                                                        return;
+                                                      }
+                                                      await _loadSaves();
+                                                      if (mounted) {
+                                                        NotificationManager.instance.showNotification(
+                                                          message: 'Partie matérialisée depuis le cloud',
+                                                          level: NotificationLevel.SUCCESS,
+                                                        );
+                                                      }
+                                                    } catch (e) {
+                                                      if (mounted) _showError('Erreur de matérialisation: $e');
+                                                    }
+                                                  },
+                                                ),
                                             ],
                                           ),
                                       ],
@@ -1159,69 +999,62 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                                               ? Colors.orange 
                                               : Colors.blue,
                                         ),
+                                        // États globaux visibles pour le joueur (uniformisés)
+                                        if (save.integrityStatus == GamePersistenceOrchestrator.integrityCorrupt)
+                                          Chip(
+                                            label: const Text('Erreur'),
+                                            backgroundColor: Colors.red,
+                                            labelStyle: const TextStyle(color: Colors.white),
+                                          ),
+                                        if (save.integrityStatus == GamePersistenceOrchestrator.integrityMigratable)
+                                          Chip(
+                                            label: const Text('À migrer'),
+                                            backgroundColor: Colors.orange,
+                                            labelStyle: const TextStyle(color: Colors.white),
+                                          ),
                                         if (save.isRestored)
                                           Chip(
-                                            label: Text('Restauré', style: TextStyle(color: Colors.white)),
+                                            label: const Text('Restauré'),
                                             backgroundColor: Colors.purple,
+                                            labelStyle: const TextStyle(color: Colors.white),
                                           ),
                                         Chip(
                                           label: Text('v${save.version}'),
                                           backgroundColor: Colors.grey[300],
                                         ),
                                         const SizedBox(width: 8),
-                                        // Badges de source: Local toujours, Cloud si le slot correspond à ce gameId
-                                        Chip(
-                                          label: const Text('Local'),
-                                          backgroundColor: Colors.teal.shade50,
-                                        ),
-                                        // Badge Cloud (Option A) par partie — version minimale: présent si status disponible
-                                        if ((dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true')
-                                          FutureBuilder(
-                                            future: GamePersistenceOrchestrator.instance.cloudStatusById(partieId: save.id),
-                                            builder: (ctx, snap) {
-                                              if (snap.connectionState != ConnectionState.done) {
-                                                return const SizedBox.shrink();
-                                              }
-                                              final status = snap.data;
-                                              if (status == null || status.remoteVersion == null) {
-                                                return const SizedBox.shrink();
-                                              }
-                                              return Chip(
-                                                label: const Text('Cloud'),
-                                                backgroundColor: Colors.lightBlue.shade50,
-                                              );
-                                            },
+                                        // Visibilité source/statut
+                                        if ((dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true') ...[
+                                          Chip(
+                                            label: const Text('Local'),
+                                            backgroundColor: Colors.teal.shade50,
                                           ),
-                                        if (_cloudGameIdAvailable != null && _cloudGameIdAvailable == save.id)
-                                          (() {
-                                            final local = save.lastModified ?? DateTime.fromMillisecondsSinceEpoch(0);
-                                            final cloud = _cloudSavedAt;
-                                            String label = 'Cloud';
-                                            Color bg = Colors.lightBlue.shade50;
-                                            if (cloud != null) {
-                                              final diff = cloud.difference(local).inSeconds;
-                                              if (diff > 60) {
-                                                label = 'Cloud plus récent';
-                                                bg = Colors.blue.shade100;
-                                              } else if (diff.abs() <= 60) {
-                                                label = 'Cloud à jour';
-                                                bg = Colors.green.shade100;
-                                              } else {
-                                                label = 'Cloud ancien';
-                                                bg = Colors.orange.shade100;
-                                              }
-                                            }
-                                            final tooltip = cloud != null
-                                                ? 'Cloud savedAt: ${cloud.toIso8601String()}\nLocal lastModified: ${local.toIso8601String()}'
-                                                : 'Cloud présent (dates indisponibles)';
-                                            return Tooltip(
-                                              message: tooltip,
-                                              child: Chip(
-                                                label: Text(label),
-                                                backgroundColor: bg,
-                                              ),
-                                            );
-                                          }()),
+                                          if (_pendingCloudPushIds.contains(save.id))
+                                            Chip(
+                                              label: const Text('À synchroniser'),
+                                              backgroundColor: Colors.orange.shade100,
+                                            )
+                                          else if (save.cloudSyncState != null) ...[
+                                            if (save.cloudSyncState == 'in_sync')
+                                              Chip(label: const Text('Synchronisée'), backgroundColor: Colors.green.shade100)
+                                            else if (save.cloudSyncState == 'ahead_local')
+                                              Chip(label: const Text('À synchroniser'), backgroundColor: Colors.orange.shade100)
+                                            else if (save.cloudSyncState == 'ahead_remote')
+                                              Chip(label: const Text('Mise à jour requise'), backgroundColor: Colors.blue.shade100)
+                                            else if (save.cloudSyncState == 'diverged')
+                                              Chip(label: const Text('Conflit'), backgroundColor: Colors.red.shade100),
+                                          ]
+                                          else
+                                            Chip(
+                                              label: const Text('Cloud'),
+                                              backgroundColor: Colors.blueGrey.shade50,
+                                            ),
+                                        ] else ...[
+                                          Chip(
+                                            label: const Text('Local uniquement'),
+                                            backgroundColor: Colors.teal.shade50,
+                                          ),
+                                        ],
                                       ],
                                     ),
                                   ],
@@ -1229,7 +1062,8 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                               ),
                             );
                           },
-                        ),
+                          );
+                        }),
                       ),
                     ],
                   );

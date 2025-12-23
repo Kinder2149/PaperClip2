@@ -29,6 +29,46 @@ class HttpCloudPersistencePort implements CloudPersistencePort {
   }
 
   @override
+  Future<List<CloudIndexEntry>> listParties() async {
+    final client = HttpClient();
+    try {
+      final uri = _uri('/api/cloud/parties');
+      final req = await client.getUrl(uri);
+      final headers = await _buildHeaders();
+      headers.forEach(req.headers.set);
+      final resp = await req.close();
+      if (resp.statusCode == 404) return <CloudIndexEntry>[];
+      if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        final text = await resp.transform(utf8.decoder).join();
+        throw HttpException('HTTP ${resp.statusCode}: $text', uri: uri);
+      }
+      final text = await resp.transform(utf8.decoder).join();
+      final json = jsonDecode(text);
+      final List<CloudIndexEntry> list = [];
+      if (json is List) {
+        for (final item in json) {
+          if (item is Map<String, dynamic>) {
+            list.add(CloudIndexEntry(
+              partieId: item['partieId']?.toString() ?? '',
+              name: item['name']?.toString(),
+              gameVersion: item['gameVersion']?.toString(),
+              remoteVersion: item['remoteVersion'] is int
+                  ? item['remoteVersion'] as int
+                  : int.tryParse(item['remoteVersion']?.toString() ?? ''),
+              lastPushAt: _parseDate(item['lastPushAt']),
+              lastPullAt: _parseDate(item['lastPullAt']),
+              playerId: item['playerId']?.toString(),
+            ));
+          }
+        }
+      }
+      return list;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  @override
   Future<void> pushById({
     required String partieId,
     required Map<String, dynamic> snapshot,
@@ -106,6 +146,7 @@ class HttpCloudPersistencePort implements CloudPersistencePort {
           remoteVersion: obj['remoteVersion'] is int ? obj['remoteVersion'] as int : int.tryParse(obj['remoteVersion']?.toString() ?? ''),
           lastPushAt: _parseDate(obj['lastPushAt']),
           lastPullAt: _parseDate(obj['lastPullAt']),
+          playerId: obj['playerId']?.toString(),
         );
       }
       return CloudStatus(partieId: partieId, syncState: 'unknown');

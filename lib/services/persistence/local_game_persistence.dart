@@ -25,7 +25,8 @@ class LocalGamePersistenceService implements GamePersistenceService {
 
     SaveGame? existing;
     try {
-      existing = await SaveManagerAdapter.loadGame(slotId);
+      // ID-first: slotId correspond à l'identifiant technique (partieId)
+      existing = await SaveManagerAdapter.loadGameById(slotId);
     } catch (_) {
       // Si la sauvegarde n'existe pas encore, on en créera une nouvelle.
       existing = null;
@@ -38,7 +39,8 @@ class LocalGamePersistenceService implements GamePersistenceService {
     gameData[snapshotKey] = snapshot.toJson();
 
     final saveGame = SaveGame(
-      id: existing?.id,
+      // ID-first strict: l'identifiant persistant doit être le partieId (slotId)
+      id: existing?.id ?? slotId,
       name: slotId,
       gameData: gameData,
       gameMode: existing?.gameMode ?? GameMode.INFINITE,
@@ -49,19 +51,28 @@ class LocalGamePersistenceService implements GamePersistenceService {
     await SaveManagerAdapter.saveGame(saveGame);
   }
 
+  /// Variante ID-first: sauvegarder un snapshot pour une partie identifiée par `partieId`.
+  Future<void> saveSnapshotById(GameSnapshot snapshot, {required String partieId}) async {
+    await saveSnapshot(snapshot, slotId: partieId);
+  }
+
   @override
   Future<GameSnapshot?> loadSnapshot({required String slotId}) async {
     await SaveManagerAdapter.ensureInitialized();
 
     SaveGame? saveGame;
     try {
-      saveGame = await SaveManagerAdapter.loadGame(slotId);
+      // ID-first: resolver par identifiant unique
+      saveGame = await SaveManagerAdapter.loadGameById(slotId);
     } catch (_) {
       // Aucune sauvegarde disponible pour ce slot
       return null;
     }
 
-    final data = saveGame.gameData;
+    final data = saveGame?.gameData;
+    if (data == null) {
+      return null;
+    }
     if (!data.containsKey(snapshotKey)) {
       return null;
     }
@@ -76,6 +87,11 @@ class LocalGamePersistenceService implements GamePersistenceService {
 
     // Format inattendu
     return null;
+  }
+
+  /// Variante ID-first: charger un snapshot pour une partie identifiée par `partieId`.
+  Future<GameSnapshot?> loadSnapshotById({required String partieId}) async {
+    return loadSnapshot(slotId: partieId);
   }
 
   @override

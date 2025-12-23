@@ -11,7 +11,8 @@ class PricingAdviceService {
       String? detailedDescription,
     })? onWarning,
   }) {
-    if (market.isPriceExcessive(newPrice)) {
+    // Ne déclencher un avertissement que pour des valeurs manifestement absurdes
+    if (newPrice > 1e8) {
       onWarning?.call(
         title: 'Prix Excessif!',
         description: 'Ce prix pourrait affecter vos ventes',

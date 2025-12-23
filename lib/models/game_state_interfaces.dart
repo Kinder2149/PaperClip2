@@ -88,7 +88,6 @@ mixin GameStateSave on ChangeNotifier {
         final gameState = this as GameState;
         await GamePersistenceOrchestrator.instance.requestManualSave(
           gameState,
-          slotId: gameState.gameName,
           reason: 'game_state_interfaces_saveGame',
         );
       }
@@ -101,11 +100,11 @@ mixin GameStateSave on ChangeNotifier {
     try {
       if (this is GameState) {
         final gameState = this as GameState;
-        final name = gameState.gameName;
-        if (name == null) {
+        final pid = gameState.partieId;
+        if (pid == null || pid.isEmpty) {
           return;
         }
-        await GamePersistenceOrchestrator.instance.loadGame(gameState, name);
+        await GamePersistenceOrchestrator.instance.loadGameById(gameState, pid);
       }
     } catch (e) {
       print('Error loading game: $e');

@@ -11,29 +11,23 @@ import '../services/game_runtime_coordinator.dart';
 import 'save_load_screen.dart';
 import 'introduction_screen.dart';
 import 'package:paperclip2/screens/main_screen.dart';
-import 'package:package_info_plus/package_info_plus.dart';
-import 'dart:io' show Platform;
-import '../presentation/google/google_control_center.dart';
 import '../services/google/google_bootstrap.dart';
-import '../services/google/cloudsave/cloud_save_service.dart';
-import '../services/google/cloudsave/cloud_save_models.dart';
 import '../services/persistence/local_game_persistence.dart';
 import '../services/persistence/game_snapshot.dart';
-import '../services/google/sync/sync_orchestrator.dart';
 import '../services/google/sync/sync_readiness_port.dart';
 import '../services/google/identity/identity_status.dart';
 import '../models/game_state.dart';
-import '../services/supabase/supabase_auth_linker.dart';
 import '../services/google/identity/google_identity_service.dart';
-import '../services/google/sync/sync_opt_in.dart';
-import '../services/identity/identity_manager.dart';
 import 'auth_choice_screen.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import '../services/google/snapshots/snapshots_cloud_save.dart';
-import '../services/persistence/local_game_persistence.dart';
-import '../services/persistence/game_snapshot.dart';
 import '../widgets/google/google_account_button.dart';
 import 'google_profile_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:paperclip2/services/cloud/http_cloud_persistence_port.dart';
+import 'package:paperclip2/services/cloud/local_cloud_persistence_port.dart';
+import 'package:paperclip2/services/cloud/snapshots_cloud_persistence_port.dart';
+import 'package:paperclip2/services/save_system/save_manager_adapter.dart';
+// Cloud global GPG snapshots retiré (cloud par partie uniquement)
 
 /// Implémentation minimale inline de SyncReadinessPort (top-level)
 /// - Sync autorisée si l'utilisateur est connecté ET si l'opt-in est activé
@@ -75,73 +69,7 @@ class _StartScreenState extends State<StartScreen> {
     });
   }
 
-  Future<void> _openGoogleControlCenter() async {
-    final google = context.read<GoogleServicesBundle>();
-    final cloud = context.read<CloudSaveService>();
-    final state = context.read<GameState>();
-
-    // Option B: tenter d'établir une session OAuth Supabase Google (silencieux)
-    try {
-      await SupabaseAuthLinker.ensureGoogleSession();
-    } catch (_) {
-      // fallback: on reste en session anonyme si échec
-    }
-
-    final syncEnabled = ValueNotifier<bool>(false);
-    final readiness = _InlineReadiness(identity: google.identity, enabled: syncEnabled);
-    final orchestrator = GoogleSyncOrchestrator(
-      achievements: google.achievements,
-      leaderboards: google.leaderboards,
-      cloud: cloud,
-      readiness: readiness,
-    );
-
-    if (!mounted) return;
-    Navigator.push(context, MaterialPageRoute(builder: (_) {
-      return GoogleControlCenter(
-        identity: google.identity,
-        achievements: google.achievements,
-        leaderboards: google.leaderboards,
-        cloud: cloud,
-        orchestrator: orchestrator,
-        readiness: readiness,
-        syncEnabled: syncEnabled,
-        buildLocalRecord: () async {
-          if (google.identity.playerId == null) {
-            throw StateError('Non connecté à Google Play Games');
-          }
-          final snapshot = state.toSnapshot().toJson();
-          final info = await PackageInfo.fromPlatform();
-          final device = CloudSaveDeviceInfo(
-            model: '?',
-            platform: Platform.isAndroid ? 'android' : 'other',
-            locale: 'fr-FR',
-          );
-          final display = CloudSaveDisplayData(
-            money: 0,
-            paperclips: 0,
-            autoClipperCount: 0,
-            netProfit: 0,
-          );
-          return cloud.buildRecord(
-            playerId: google.identity.playerId!,
-            appVersion: '${info.version}+${info.buildNumber}',
-            gameSnapshot: snapshot,
-            displayData: display,
-            device: device,
-          );
-        },
-        applyCloudImport: (rec) async {
-          final snap = GameSnapshot.fromJson(rec.payload.snapshot);
-          final currentName = state.gameName ?? 'CloudImport';
-          state.applyLoadedGameDataWithoutSnapshot(currentName, <String, dynamic>{});
-          state.applySnapshot(snap);
-          await state.finishLoadGameAfterSnapshot(currentName, <String, dynamic>{});
-          await GamePersistenceOrchestrator.instance.saveGame(state, currentName);
-        },
-      );
-    }));
-  }
+  // Flux Control Center (cloud global) supprimé
 
   Future<void> _prepareCloudSessionSilently() async {
     try {
@@ -178,8 +106,42 @@ class _StartScreenState extends State<StartScreen> {
         if (mounted) {
           if (newStatus == IdentityStatus.signedIn) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Connecté à Google Play Games${pid.isNotEmpty ? ' ($pid)' : ''}')),
+              const SnackBar(content: Text('Connecté à Google Play Games')),
             );
+            try {
+              final enableCloudPerPartie = (dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true';
+              if (enableCloudPerPartie) {
+                final enableHttp = (dotenv.env['FEATURE_CLOUD_PER_PARTIE_HTTP'] ?? 'false').toLowerCase() == 'true';
+                if (enableHttp) {
+                  final base = (dotenv.env['CLOUD_BACKEND_BASE_URL'] ?? '').trim();
+                  if (base.isEmpty) {
+                    GamePersistenceOrchestrator.instance.setCloudPort(LocalCloudPersistencePort());
+                  } else {
+                    final bearer = (dotenv.env['CLOUD_API_BEARER'] ?? '').trim();
+                    GamePersistenceOrchestrator.instance.setCloudPort(
+                      HttpCloudPersistencePort(
+                        baseUrl: base,
+                        authHeaderProvider: () async {
+                          if (bearer.isEmpty) return null;
+                          return {'Authorization': 'Bearer ' + bearer};
+                        },
+                      ),
+                    );
+                  }
+                } else {
+                  GamePersistenceOrchestrator.instance.setCloudPort(SnapshotsCloudPersistencePort());
+                }
+                final playerId = google.identity.playerId;
+                if (playerId != null && playerId.isNotEmpty) {
+                  final saves = await SaveManagerAdapter.listSaves();
+                  for (final s in saves.where((e) => !e.isBackup)) {
+                    try {
+                      await GamePersistenceOrchestrator.instance.pushCloudFromSaveId(partieId: s.id, playerId: playerId);
+                    } catch (_) {}
+                  }
+                }
+              }
+            } catch (_) {}
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Connexion Google non effectuée')),
@@ -279,21 +241,7 @@ class _StartScreenState extends State<StartScreen> {
       final saveName = 'cloud_$pid';
       await GamePersistenceOrchestrator.instance.saveGame(state, saveName);
 
-      // Optionnel: sauvegarde cloud via Snapshots (flag)
-      final enableGpgCloud =
-          (dotenv.env['FEATURE_CLOUD_SAVES_GPG'] ?? 'false').toLowerCase() == 'true';
-      if (enableGpgCloud) {
-        try {
-          final snap = state.toSnapshot();
-          final svc = createSnapshotsCloudSave(identity: google.identity);
-          await svc.saveJson(snap.toJson());
-          if (mounted) {
-            debugPrint('[AccountButton] Sauvegarde cloud (GPG snapshots) OK for $pid');
-          }
-        } catch (e) {
-          debugPrint('[AccountButton] ERREUR sauvegarde cloud: $e');
-        }
-      }
+      // Cloud global GPG supprimé: cloud-first par partie uniquement
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Sauvegarde liée au compte enregistrée ($saveName)')),
@@ -315,36 +263,18 @@ class _StartScreenState extends State<StartScreen> {
       if (pid == null || pid.isEmpty) {
         throw StateError('Aucun playerId Google');
       }
-      final saveName = 'cloud_$pid';
-      // Optionnel: tenter d'abord la restauration cloud si flag activé.
-      final enableGpgCloud =
-          (dotenv.env['FEATURE_CLOUD_SAVES_GPG'] ?? 'false').toLowerCase() == 'true';
-      if (enableGpgCloud) {
-        try {
-          final svc = createSnapshotsCloudSave(identity: google.identity);
-          final json = await svc.loadJson();
-          if (json != null) {
-            final snapshot = GameSnapshot.fromJson(json);
-            final local = const LocalGamePersistenceService();
-            await local.saveSnapshot(snapshot, slotId: saveName);
-          }
-        } catch (e) {
-          debugPrint('[AccountButton] ERREUR restauration cloud: $e');
-        }
-      }
-      final exists = await GamePersistenceOrchestrator.instance.saveExists(saveName);
-      if (!exists) {
-        throw StateError('Aucune sauvegarde trouvée pour ce compte');
-      }
-      final coordinator = context.read<GameRuntimeCoordinator>();
-      await coordinator.loadGameAndStartAutoSave(saveName);
+      // Mission 4 (Cloud passif, ID-first):
+      // Ne pas créer/charger de partie par un nom synthétique (cloud_$playerId).
+      // La restauration cloud doit être initiée par partie existante (partieId)
+      // depuis l'écran Sauvegardes via push/pull par ID.
       if (mounted) {
         NotificationManager.instance.showNotification(
-          message: 'Sauvegarde restaurée: $saveName',
+          message: 'Restauration cloud par partie uniquement. Ouvrez "Sauvegardes" et utilisez Pull par ID.',
           level: NotificationLevel.INFO,
-          duration: const Duration(seconds: 1),
+          duration: const Duration(seconds: 2),
         );
       }
+      return;
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -372,9 +302,10 @@ class _StartScreenState extends State<StartScreen> {
 
       final lastSave = await GamePersistenceOrchestrator.instance.getLastSave();
       if (lastSave != null) {
+        // PHASE 2: ID-first pour la reprise de la dernière partie
         await context
             .read<GameRuntimeCoordinator>()
-            .loadGameAndStartAutoSave(lastSave.name);
+            .loadGameByIdAndStartAutoSave(lastSave.id);
         
         if (mounted) {
           // Naviguer vers l'Ã©cran principal
@@ -544,17 +475,7 @@ class _StartScreenState extends State<StartScreen> {
                   return;
                 }
 
-                final exists = await GamePersistenceOrchestrator.instance.saveExists(gameName);
-                if (exists) {
-                  if (context.mounted) {
-                    NotificationManager.instance.showNotification(
-                      message: 'Une partie avec ce nom existe dÃ©jÃ ',
-                      level: NotificationLevel.INFO,
-                      duration: const Duration(seconds: 1),
-                    );
-                  }
-                  return;
-                }
+                // ID-first: le nom est cosmétique, aucune vérification d'unicité par nom
 
                 if (context.mounted) {
                   // D'abord activer le chargement dans l'Ã©tat de l'Ã©cran de dÃ©marrage avant de fermer le dialogue
@@ -570,16 +491,41 @@ class _StartScreenState extends State<StartScreen> {
                         .read<GameRuntimeCoordinator>()
                         .startNewGameAndStartAutoSave(gameName, mode: selectedMode);
 
-                    if (context.mounted) {
-                      // Si l'utilisateur a choisi le cloud, tenter une poussée initiale vers le slot GPG
-                      if (selectedStorage == 'cloud' &&
-                          (dotenv.env['FEATURE_CLOUD_SAVES_GPG'] ?? 'false').toLowerCase() == 'true') {
-                        try {
-                          final google = context.read<GoogleServicesBundle>();
-                          final svc = createSnapshotsCloudSave(identity: google.identity);
-                          await svc.saveJson(gs.toSnapshot().toJson());
-                        } catch (_) {}
+                    // Déclencher automatiquement un push cloud initial si joueur connecté et cloud par partie activé
+                    try {
+                      final enableCloudPerPartie = (dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true';
+                      if (enableCloudPerPartie) {
+                        final google = context.read<GoogleServicesBundle>();
+                        final signedIn = google.identity.status == IdentityStatus.signedIn;
+                        final playerId = google.identity.playerId;
+                        final gs = context.read<GameState>();
+                        final partieId = gs.partieId ?? '';
+                        if (signedIn && (playerId != null && playerId.isNotEmpty) && partieId.isNotEmpty) {
+                          try {
+                            await GamePersistenceOrchestrator.instance.pushCloudFromSaveId(
+                              partieId: partieId,
+                              playerId: playerId,
+                            );
+                          } catch (e) {
+                            // Marquer l'état "pending" pour retry ultérieur et informer discrètement
+                            try {
+                              final prefs = await SharedPreferences.getInstance();
+                              await prefs.setBool('pending_cloud_push_'+partieId, true);
+                            } catch (_) {}
+                            if (context.mounted) {
+                              NotificationManager.instance.showNotification(
+                                message: 'Échec de synchronisation cloud: une resynchronisation est nécessaire (réseau ou service indisponible).',
+                                level: NotificationLevel.ERROR,
+                                duration: const Duration(seconds: 3),
+                              );
+                            }
+                          }
+                        }
                       }
+                    } catch (_) {}
+
+                    if (context.mounted) {
+                      // Tentative GPG supprimée (cloud global)
                       // CrÃ©er une classe intermÃ©diaire pour la navigation
                       final introScreen = IntroductionScreen(
                         showSkipButton: true,
@@ -756,21 +702,22 @@ class _StartScreenState extends State<StartScreen> {
                 ),
 
                 const SizedBox(height: 8),
-                Builder(builder: (context) {
-                  final google = context.watch<GoogleServicesBundle>();
-                  final status = google.identity.status;
-                  final pid = google.identity.playerId ?? '';
-                  return Text(
-                    'État GPG: ${status.name}${pid.isNotEmpty ? ' · pid=$pid' : ''}',
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
-                  );
-                }),
+                if (kDebugMode)
+                  Builder(builder: (context) {
+                    final google = context.watch<GoogleServicesBundle>();
+                    final status = google.identity.status;
+                    return Text(
+                      'État GPG (debug): ${status.name}',
+                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                    );
+                  }),
 
                 const SizedBox(height: 8),
-                TextButton(
-                  onPressed: _refreshGpgStatus,
-                  child: const Text('Rafraîchir état GPG'),
-                ),
+                if (kDebugMode)
+                  TextButton(
+                    onPressed: _refreshGpgStatus,
+                    child: const Text('Rafraîchir état GPG'),
+                  ),
 
                 if (_isLoading) ...[
                   const SizedBox(height: 24),

@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../models/game_state.dart';
 import '../services/game_runtime_coordinator.dart';
 import '../services/notification_manager.dart';
+import '../services/persistence/game_persistence_orchestrator.dart';
 
 /// Widget réutilisable pour un bouton de sauvegarde standard
 /// 
@@ -49,16 +50,19 @@ class SaveButton extends StatefulWidget {
   /// sans avoir à instancier le widget
   static Future<void> saveGame(BuildContext context) async {
     final gameState = Provider.of<GameState>(context, listen: false);
-    if (!gameState.isInitialized || gameState.gameName == null) {
+    if (!gameState.isInitialized || gameState.partieId == null || gameState.partieId!.isEmpty) {
       NotificationManager.instance.showNotification(
-        message: 'Erreur: Jeu non initialisé ou sans nom',
+        message: 'Erreur: Jeu non initialisé ou ID de partie manquant',
         level: NotificationLevel.ERROR,
       );
       return;
     }
 
     try {
-      await context.read<GameRuntimeCoordinator>().manualSave(gameState.gameName!);
+      await GamePersistenceOrchestrator.instance.requestManualSave(
+        gameState,
+        reason: 'ui_save_button',
+      );
       if (context.mounted) {
         NotificationManager.instance.showNotification(
           message: 'Partie sauvegardée avec succès!',
@@ -83,25 +87,21 @@ class SaveButton extends StatefulWidget {
   /// sans avoir à instancier le widget
   /// Retourne true en cas de succès, false en cas d'échec
   static Future<bool> saveGameWithName(BuildContext context, String saveName) async {
-    if (saveName.isEmpty) {
-      NotificationManager.instance.showNotification(
-        message: 'Erreur: Nom de sauvegarde vide',
-        level: NotificationLevel.ERROR,
-      );
-      return false;
-    }
-
     final gameState = Provider.of<GameState>(context, listen: false);
-    if (!gameState.isInitialized) {
+    if (!gameState.isInitialized || gameState.partieId == null || gameState.partieId!.isEmpty) {
       NotificationManager.instance.showNotification(
-        message: 'Erreur: Jeu non initialisé',
+        message: 'Erreur: Jeu non initialisé ou ID de partie manquant',
         level: NotificationLevel.ERROR,
       );
       return false;
     }
 
     try {
-      await context.read<GameRuntimeCoordinator>().manualSave(saveName);
+      // ID-first: ignorer le nom fourni et sauvegarder par identifiant de partie
+      await GamePersistenceOrchestrator.instance.requestManualSave(
+        gameState,
+        reason: 'ui_save_button_with_name',
+      );
       if (context.mounted) {
         NotificationManager.instance.showNotification(
           message: 'Partie sauvegardée avec succès!',
@@ -156,7 +156,6 @@ class _SaveButtonState extends State<SaveButton> {
     if (_isSaving) return; // Éviter les sauvegardes multiples
     
     final gameState = context.read<GameState>();
-    final String gameName = gameState.gameName ?? 'DefaultGame';
     
     setState(() {
       _isSaving = true;
@@ -164,10 +163,12 @@ class _SaveButtonState extends State<SaveButton> {
     
     try {
       if (kDebugMode) {
-        print('Sauvegarde en cours: $gameName');
+        print('Sauvegarde en cours (ID-first)');
       }
-      
-      await context.read<GameRuntimeCoordinator>().manualSave(gameName);
+      await GamePersistenceOrchestrator.instance.requestManualSave(
+        gameState,
+        reason: 'ui_save_button',
+      );
       
       if (context.mounted) {
         NotificationManager.instance.showNotification(

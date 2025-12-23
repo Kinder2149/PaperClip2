@@ -1,6 +1,84 @@
+## Mission — Cloud-first multi-parties (Terra Nova) — Avancement du 2025-12-23
+
+### Changements livrés (client Flutter)
+
+- Suppression des ambiguïtés de chargement
+  - Méthode `GamePersistenceOrchestrator.loadGame(state, name)` supprimée.
+  - Usage strict de `loadGameById(state, id)` (ID-first).
+  - Tests adaptés: roundtrip et restauration s'appuient sur `startNewGame` + `saveGameById` + `loadGameById`.
+
+- Backups normalisés snapshot-only
+  - `SaveManagerAdapter.createBackup` écrit uniquement `gameSnapshot` (clé `gameSnapshot`).
+  - Rétention N=10, TTL=30j conservées.
+
+- Retrait cloud global GPG résiduel dans l'UI
+  - `StartScreen`: suppression de l'import et des appels au slot global Snapshots (cloud par partie uniquement).
+
+- Listing des parties cloud (cloud-only) et matérialisation
+  - Ajout `CloudIndexEntry` et `CloudPersistencePort.listParties()`.
+  - Implémentations:
+    - `LocalCloudPersistencePort.listParties()` (cache en mémoire).
+    - `HttpCloudPersistencePort.listParties()` (GET `/api/cloud/parties`).
+    - `SnapshotsCloudPersistencePort.listParties()` (POC: lit les métadonnées des slots connus via `_metaById`).
+  - Orchestrateur:
+    - `listCloudParties()` (proxy vers le port).
+    - `materializeFromCloud(partieId)`: crée localement une partie à partir du snapshot cloud (snapshot-only sous l'ID).
+  - Agrégateur `SaveAggregator`:
+    - Fusionne locales enrichies + cloud-only (quand `FEATURE_CLOUD_PER_PARTIE=true`).
+  - UI `SaveLoadScreen`:
+    - Affiche les entrées `source=cloud` (cloud-only) et propose une action « Matérialiser depuis le cloud ».
+
+### Endpoints / Contrat API (côté backend, attendus)
+
+- `GET /api/cloud/parties` → `200 OK` avec `[{ partieId, name?, gameVersion?, remoteVersion?, lastPushAt?, lastPullAt?, playerId? }]`.
+- `PUT /api/cloud/parties/{partieId}` → push snapshot + metadata (déjà implémenté côté client HTTP).
+- `GET /api/cloud/parties/{partieId}` → pull snapshot + metadata (déjà implémenté côté client HTTP).
+- `GET /api/cloud/parties/{partieId}/status` → statut de sync (déjà implémenté côté client HTTP).
+
+### Flags / Configuration
+
+- `FEATURE_CLOUD_PER_PARTIE=true` active l'affichage des statuts cloud et l'agrégation cloud-only.
+- `FEATURE_ADVANCED_CLOUD_UI` (dev): affiche les boutons push/pull par partie.
+- `CLOUD_BACKEND_BASE_URL`, `CLOUD_API_BEARER` configurent `HttpCloudPersistencePort`.
+
+### À faire (prochaines étapes)
+
+- UI: badges source explicites (Local / Cloud-only) et filtres dédiés si nécessaire.
+- Tests E2E multi-parties et changement d'appareil (cloud-only → matérialisation).
+- Vérification intégrité post-matérialisation (ID/snapshot/metadata) et TTL/N backups.
+
+### Fichiers modifiés (principaux)
+
+- `lib/services/persistence/game_persistence_orchestrator.dart` (suppression load par nom, listCloudParties, materializeFromCloud)
+- `lib/services/save_system/save_manager_adapter.dart` (backups snapshot-only)
+- `lib/screens/start_screen.dart` (retrait cloud global GPG)
+- `lib/services/cloud/cloud_persistence_port.dart` (CloudIndexEntry + listParties)
+- `lib/services/cloud/http_cloud_persistence_port.dart` (listParties HTTP)
+- `lib/services/cloud/local_cloud_persistence_port.dart` (listParties local)
+- `lib/services/cloud/snapshots_cloud_persistence_port.dart` (listParties POC)
+- `lib/services/persistence/save_aggregator.dart` (fusion local + cloud-only)
+- `lib/screens/save_load_screen.dart` (UI matérialisation cloud-only)
+- `test/unit/services/persistence/game_persistence_orchestrator_test.dart` (tests ID-first)
+
 # Plan de refactorisation PaperClip2
 
 Ce document suit l'avancement des phases de refactor définies après l'audit.
+
+## Addendum — Cloud par partie (POC) + Traçabilité playerId (livré)
+
+- Cloud par partie activé via `FEATURE_CLOUD_PER_PARTIE=true` (POC local: `FEATURE_CLOUD_PER_PARTIE_HTTP=false`).
+- Orchestrateur:
+  - `pushCloudById` et `pushCloudFromSaveId` transmettent un `playerId` optionnel dans les métadonnées cloud.
+  - Push best-effort après création de partie tente d’inclure `playerId` (si identité Google disponible).
+- Port POC `SnapshotsCloudPersistencePort`:
+  - Stocke `playerId` dans son cache de métadonnées et le ré-expose via `statusById`.
+- Agrégateur `SaveAggregator`:
+  - Expose `playerId` dans chaque `SaveEntry` (non mis en cache strict pour rester à jour).
+- UI `SaveLoadScreen`:
+  - Bouton Push Cloud par partie → envoie `playerId` si connecté.
+  - Badge statut cloud par partie (in_sync/ahead_remote/unknown).
+
+Livrables correspondants: Étapes planifiées « UI actionnable cloud » et « Traçabilité playerId ↔ cloud » complétées.
 
 ## Mission — Identité unifiée Supabase (en cours)
 

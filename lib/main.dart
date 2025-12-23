@@ -30,6 +30,7 @@ import './screens/auth_choice_screen.dart';
 import 'services/persistence/game_persistence_orchestrator.dart';
 import 'services/cloud/local_cloud_persistence_port.dart';
 import 'services/cloud/http_cloud_persistence_port.dart';
+import 'services/cloud/snapshots_cloud_persistence_port.dart';
 
 // Adapters UI/Audio (hors domaine)
 import './services/ui/game_ui_event_adapter.dart';
@@ -131,9 +132,10 @@ void main() async {
             }
           }
         } else {
-          GamePersistenceOrchestrator.instance.setCloudPort(LocalCloudPersistencePort());
+          // POC local/offline basé sur SnapshotsCloudSave: 1 slot par partieId (adapter GPG/Local)
+          GamePersistenceOrchestrator.instance.setCloudPort(SnapshotsCloudPersistencePort());
           if (kDebugMode) {
-            print('[Bootstrap] Cloud per partie activé (LocalCloudPersistencePort)');
+            print('[Bootstrap] Cloud per partie activé (SnapshotsCloudPersistencePort POC)');
           }
         }
       }

@@ -16,7 +16,7 @@ void main() {
       // Préparer un état achetable
       player.updateMoney(100000.0);
 
-      final autoclippersBefore = player.autoclippers;
+      final autoclippersBefore = player.autoClipperCount;
       final moneyBefore = player.money;
       final moneySpentBefore = stats.totalMoneySpent;
       final xpBefore = level.experience;
@@ -25,7 +25,7 @@ void main() {
 
       gameState.buyAutoclipper();
 
-      expect(player.autoclippers, autoclippersBefore + 1);
+      expect(player.autoClipperCount, autoclippersBefore + 1);
       expect(player.money, closeTo(moneyBefore - expectedCost, 0.0001));
 
       expect(stats.totalMoneySpent, closeTo(moneySpentBefore + expectedCost, 0.0001));

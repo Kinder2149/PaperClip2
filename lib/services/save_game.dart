@@ -61,14 +61,32 @@ class SaveGameInfo {
     bool isBackup = false,
   }) {
     // Cast sécurisé qui accepte Map<dynamic, dynamic>
-    Map<dynamic, dynamic> playerManager = {};
-    if (gameData != null && gameData.containsKey('playerManager')) {
-      var pm = gameData['playerManager'];
-      if (pm is Map) {
-        playerManager = pm;
+    num money = 0;
+    num paperclips = 0;
+    num totalSold = 0;
+    num auto = 0;
+
+    if (gameData != null) {
+      // 1) Format legacy: playerManager à la racine
+      if (gameData.containsKey('playerManager') && gameData['playerManager'] is Map) {
+        final pm = Map<dynamic, dynamic>.from(gameData['playerManager'] as Map);
+        money = (pm['money'] as num?) ?? money;
+        paperclips = (pm['paperclips'] as num?) ?? paperclips;
+        totalSold = (pm['totalPaperclipsSold'] as num?) ?? totalSold;
+        auto = (pm['autoClipperCount'] as num?) ?? auto;
+      }
+      // 2) Nouveau format snapshot-only: gameSnapshot.core/stats
+      else if (gameData.containsKey('gameSnapshot') && gameData['gameSnapshot'] is Map) {
+        final snap = Map<String, dynamic>.from(gameData['gameSnapshot'] as Map);
+        final core = (snap['core'] is Map) ? Map<String, dynamic>.from(snap['core'] as Map) : const <String, dynamic>{};
+        final stats = (snap['stats'] is Map) ? Map<String, dynamic>.from(snap['stats'] as Map) : const <String, dynamic>{};
+        money = (core['money'] as num?) ?? money;
+        paperclips = (stats['paperclips'] as num?) ?? paperclips;
+        totalSold = (stats['totalPaperclipsSold'] as num?) ?? totalSold;
+        auto = (core['autoClipperCount'] as num?) ?? auto;
       }
     }
-    
+
     return SaveGameInfo(
       id: metadata.id,
       name: metadata.name,
@@ -77,11 +95,10 @@ class SaveGameInfo {
       gameMode: metadata.gameMode,
       isRestored: metadata.isRestored,
       isBackup: isBackup,
-      // Extraire les données de jeu avec des valeurs par défaut sécurisées
-      paperclips: playerManager['paperclips'] ?? 0,
-      money: playerManager['money'] ?? 0,
-      totalPaperclipsSold: playerManager['totalPaperclipsSold'] ?? 0,
-      autoClipperCount: playerManager['autoClipperCount'] ?? 0,
+      paperclips: paperclips,
+      money: money,
+      totalPaperclipsSold: totalSold,
+      autoClipperCount: auto,
     );
   }
   

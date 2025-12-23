@@ -51,13 +51,61 @@ class LocalCloudPersistencePort implements CloudPersistencePort {
   }) async {
     final meta = _metaById[partieId];
     final exists = _snapshotsById.containsKey(partieId);
+    // Heuristique locale testable:
+    // - Pas de données: unknown
+    // - Si une donnée existe:
+    //   * ahead_remote si lastPushAt > lastPullAt (remote plus récent que le dernier pull local)
+    //   * in_sync si lastPullAt != null et (lastPushAt == null ou lastPullAt >= lastPushAt)
+    //   * sinon unknown
+    String state = 'unknown';
+    if (exists) {
+      final lp = meta?.lastPushAt;
+      final lr = meta?.lastPullAt;
+      if (lp != null && (lr == null || lr.isBefore(lp))) {
+        state = 'ahead_remote';
+      } else if (lr != null && (lp == null || !lr.isBefore(lp))) {
+        state = 'in_sync';
+      }
+    }
     return CloudStatus(
       partieId: partieId,
-      syncState: exists ? 'unknown' : 'unknown',
+      syncState: state,
       remoteVersion: meta?.remoteVersion,
       lastPushAt: meta?.lastPushAt,
       lastPullAt: meta?.lastPullAt,
     );
+  }
+
+  @override
+  Future<List<CloudIndexEntry>> listParties() async {
+    final List<CloudIndexEntry> result = [];
+    for (final entry in _snapshotsById.entries) {
+      final pid = entry.key;
+      final data = entry.value;
+      final meta = _metaById[pid];
+      String? name;
+      String? gameVersion;
+      int? remoteVersion = meta?.remoteVersion;
+      DateTime? lastPushAt = meta?.lastPushAt;
+      DateTime? lastPullAt = meta?.lastPullAt;
+      try {
+        if (data['metadata'] is Map) {
+          final m = Map<String, dynamic>.from(data['metadata'] as Map);
+          name = m['name']?.toString();
+          gameVersion = m['gameVersion']?.toString();
+        }
+      } catch (_) {}
+    
+      result.add(CloudIndexEntry(
+        partieId: pid,
+        name: name,
+        gameVersion: gameVersion,
+        remoteVersion: remoteVersion,
+        lastPushAt: lastPushAt,
+        lastPullAt: lastPullAt,
+      ));
+    }
+    return result;
   }
 }
 

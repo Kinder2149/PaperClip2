@@ -4,7 +4,7 @@ import 'package:paperclip2/services/google/google_bootstrap.dart';
 import 'package:paperclip2/services/google/identity/google_identity_service.dart';
 import 'package:paperclip2/services/save_system/save_manager_adapter.dart';
 import 'package:paperclip2/constants/game_config.dart';
-import 'package:paperclip2/services/google/snapshots/snapshots_cloud_save.dart';
+// import 'package:paperclip2/services/google/snapshots/snapshots_cloud_save.dart';
 
 class GoogleProfileScreen extends StatelessWidget {
   const GoogleProfileScreen({super.key});
@@ -83,22 +83,7 @@ class GoogleProfileScreen extends StatelessWidget {
         }
       }
 
-      // Cloud: 0 ou 1 selon présence d'un snapshot
-      try {
-        final google = context.read<GoogleServicesBundle>();
-        final svc = createSnapshotsCloudSave(identity: google.identity);
-        final json = await svc.loadJson();
-        if (json != null) {
-          // Heuristique: si snapshot existe, il appartient au player connecté → incrémenter le mode si présent
-          final meta = json['metadata'] as Map<String, dynamic>?;
-          final gm = (meta?['gameMode'] as String?) ?? '';
-          if (gm.contains('COMPETITIVE')) {
-            competitive += 1;
-          } else {
-            infinite += 1;
-          }
-        }
-      } catch (_) {}
+      // Cloud GPG global désactivé (PHASE 1): ne pas compter le slot GPG global
 
       return _ProfileStats(infiniteCount: infinite, competitiveCount: competitive);
     } catch (_) {

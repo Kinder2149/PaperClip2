@@ -14,6 +14,7 @@ Objectif: rendre contractuel le traitement des conflits entre l'état local et u
 
 - `snapshot.meta.timestamps.lastSavedAt` est OBLIGATOIRE pour toute révision candidate à l'upload.
 - Le format est ISO-8601 compatible `DateTime.parse`.
+- `metadata.playerId` est INCLUS si connu (ex: identité Google présente au moment du push). Il sert à la traçabilité et au filtrage client, jamais comme clé d'autorité serveur.
 
 ## Règles de recommandation (client)
 
@@ -33,6 +34,7 @@ Objectif: rendre contractuel le traitement des conflits entre l'état local et u
 
 - Multi-device: décision basée sur timestamps; pas de merge.
 - Offline → online: pas d'upload sans identité conforme; à la reconnexion, on réapplique les règles ci-dessus.
+  - Si l'identité est absente (anonyme), l'upload peut se faire sans `playerId` (append-only); dès qu'un `playerId` est présent, il est inclus aux uploads suivants.
 - Uploads multiples rapides: append-only, l'ordre temporel reste la source pour la recommandation.
 
 ## Non-objectifs

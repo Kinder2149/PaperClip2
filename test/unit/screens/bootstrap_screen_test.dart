@@ -32,6 +32,12 @@ class _FakeUiPort implements GameUiPort {
 class _FakeAudioPort implements GameAudioPort {
   @override
   Future<void> loadGameMusicState(String gameName) async {}
+  @override
+  Future<void> setBgmEnabled(bool enabled) async {}
+  @override
+  Future<void> playSfx(String cue) async {}
+  @override
+  Future<void> setVolume(double volume) async {}
 }
 
 void main() {

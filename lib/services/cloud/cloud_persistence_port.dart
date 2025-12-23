@@ -9,6 +9,7 @@ class CloudStatus {
   final int? remoteVersion;
   final DateTime? lastPushAt;
   final DateTime? lastPullAt;
+  final String? playerId;
 
   const CloudStatus({
     required this.partieId,
@@ -16,6 +17,28 @@ class CloudStatus {
     this.remoteVersion,
     this.lastPushAt,
     this.lastPullAt,
+    this.playerId,
+  });
+}
+
+/// Entrée d'index cloud pour une partie disponible côté distant.
+class CloudIndexEntry {
+  final String partieId;
+  final String? name;
+  final String? gameVersion;
+  final int? remoteVersion;
+  final DateTime? lastPushAt;
+  final DateTime? lastPullAt;
+  final String? playerId;
+
+  const CloudIndexEntry({
+    required this.partieId,
+    this.name,
+    this.gameVersion,
+    this.remoteVersion,
+    this.lastPushAt,
+    this.lastPullAt,
+    this.playerId,
   });
 }
 
@@ -38,4 +61,7 @@ abstract class CloudPersistencePort {
   Future<CloudStatus> statusById({
     required String partieId,
   });
+
+  /// Liste les parties présentes côté cloud pour l'utilisateur courant (si applicable)
+  Future<List<CloudIndexEntry>> listParties();
 }

@@ -1,5 +1,6 @@
 import 'dart:async' show unawaited;
 import 'package:flutter/widgets.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../models/game_state.dart';
 import '../constants/game_config.dart';
 import 'auto_save_service.dart';
@@ -130,29 +131,19 @@ class GameRuntimeCoordinator implements RuntimeOrchestrator {
     _autoSaveService.stop();
   }
 
-  Future<void> loadGameAndStartAutoSave(String name) async {
-    _autoSaveService.stop();
-    await GamePersistenceOrchestrator.instance.loadGame(_gameState, name);
-    await _autoSaveService.start();
-    // Charger l'état audio associé à la partie
-    final audio = _audioPort;
-    if (audio != null) {
-      unawaited(audio.loadGameMusicState(name));
-    }
-  }
+  // Legacy supprimé: loadGameAndStartAutoSave(name) retiré (ID-first uniquement)
 
   Future<void> loadGameByIdAndStartAutoSave(String id) async {
     _autoSaveService.stop();
-    final meta = await GamePersistenceOrchestrator.instance.getSaveMetadataById(id);
-    if (meta == null) {
-      throw Exception('Sauvegarde introuvable pour id=$id');
-    }
-    final name = meta.name;
-    await GamePersistenceOrchestrator.instance.loadGame(_gameState, name);
+    await GamePersistenceOrchestrator.instance.loadGameById(_gameState, id);
     await _autoSaveService.start();
     final audio = _audioPort;
     if (audio != null) {
-      unawaited(audio.loadGameMusicState(name));
+      // Charger l'état audio associé à la partie (utiliser le nom résolu après chargement)
+      final name = _gameState.gameName ?? '';
+      if (name.isNotEmpty) {
+        unawaited(audio.loadGameMusicState(name));
+      }
     }
   }
 
@@ -167,16 +158,29 @@ class GameRuntimeCoordinator implements RuntimeOrchestrator {
     if (audio != null) {
       unawaited(audio.loadGameMusicState(name));
     }
+
+    // Mission 4: Cloud obligatoire si connecté (sous drapeau)
+    try {
+      final enableCloud = (dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true';
+      final partieId = _gameState.partieId;
+      if (enableCloud && partieId != null && partieId.isNotEmpty) {
+        // Forcer une première sauvegarde par ID pour garantir un snapshot à pousser
+        try {
+          await GamePersistenceOrchestrator.instance.saveGameById(_gameState);
+        } catch (_) {}
+        // Push best-effort, non bloquant pour l'UI (sans playerId ici)
+        unawaited(
+          GamePersistenceOrchestrator.instance
+              .pushCloudFromSaveId(partieId: partieId)
+              .catchError((_) {}),
+        );
+      }
+    } catch (_) {
+      // Best-effort: ne pas perturber le flux de création si le cloud n'est pas prêt
+    }
   }
 
-  /// Sauvegarde manuelle explicite, déclenchée par l'UI
-  Future<void> manualSave(String name) async {
-    await GamePersistenceOrchestrator.instance.requestManualSave(
-      _gameState,
-      slotId: name,
-      reason: 'manual_save_from_ui',
-    );
-  }
+  // Legacy supprimé: manualSave(name) retiré (ID-first uniquement)
 
   void _attachEventListeners() {
     _eventListener ??= (event) => _onGameEvent(event);
@@ -241,6 +245,18 @@ class GameRuntimeCoordinator implements RuntimeOrchestrator {
   void _onAppResumed() {
     // Applique d'abord l'offline, puis reprend la session
     unawaited(recoverOffline());
+    try {
+      final enableCloud = (dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true';
+      final pid = _gameState.partieId;
+      if (enableCloud && pid != null && pid.isNotEmpty) {
+        unawaited(
+          GamePersistenceOrchestrator.instance.checkCloudAndPullIfNeeded(
+            state: _gameState,
+            partieId: pid,
+          ),
+        );
+      }
+    } catch (_) {}
     _gameSessionController.resumeSession();
   }
 

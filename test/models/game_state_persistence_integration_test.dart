@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:paperclip2/constants/game_config.dart';
 import 'package:paperclip2/models/game_state.dart';
+import 'package:paperclip2/services/persistence/game_persistence_orchestrator.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -22,12 +23,12 @@ void main() {
       );
 
       // Sauvegarde
-      await original.saveGame(saveName);
+      await GamePersistenceOrchestrator.instance.saveGame(original, saveName);
 
       // Nouveau GameState pour le chargement
       final restored = GameState();
       restored.initialize();
-      await restored.loadGame(saveName);
+      await GamePersistenceOrchestrator.instance.loadGame(restored, saveName);
 
       expect(restored.playerManager.money, closeTo(123.45, 0.001));
       expect(restored.playerManager.paperclips, 250);

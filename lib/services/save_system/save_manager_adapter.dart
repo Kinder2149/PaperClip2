@@ -198,16 +198,7 @@ class SaveManagerAdapter {
       if (kDebugMode) {
         print('SaveManagerAdapter.saveGame: Sauvegarde de "${saveGame.name}" (ID: ${saveGame.id})');
       }
-      // Invariant: si des métadonnées existent déjà pour cet ID, leur nom fait foi (éviter d'écraser un renommage par erreur)
-      try {
-        final existingMeta = await instance.getSaveMetadata(saveGame.id);
-        if (existingMeta != null && existingMeta.name != saveGame.name) {
-          if (kDebugMode) {
-            print('SaveManagerAdapter.saveGame: Harmonisation du nom (meta="${existingMeta.name}" vs save="${saveGame.name}")');
-          }
-          saveGame = saveGame.copyWith(name: existingMeta.name);
-        }
-      } catch (_) {}
+      
 
       // Adapter la structure pour la nouvelle implementation
       final metadata = SaveMetadata(
@@ -237,53 +228,25 @@ class SaveManagerAdapter {
     }
   }
 
-  /// Crée une sauvegarde à partir de l'état du jeu actuel
-  static Future<void> saveGameState(GameState gameState, String name) async {
-    try {
-      // Créer un objet SaveGame pour compatibilité
-      Map<String, dynamic> gameData = {
-        'playerManager': gameState.playerManager.toJson(),
-        'levelSystem': gameState.levelSystem.toJson(),
-        'gameMode': gameState.gameMode.index,
-        'isInCrisisMode': gameState.isInCrisisMode,
-        'crisisTransitionComplete': gameState.isCrisisTransitionComplete,
-        'competitiveStartTime': gameState.competitiveStartTime?.toIso8601String(),
-        'crisisStartTime': gameState.crisisStartTime?.toIso8601String(),
-      };
-      
-      SaveGame saveGame = SaveGame(
-        name: name,
-        lastSaveTime: DateTime.now(),
-        gameData: gameData,
-        version: GameConstants.VERSION,
-        gameMode: gameState.gameMode,
-      );
-
-      await SaveManagerAdapter.saveGame(saveGame);
-    } catch (e) {
-      if (kDebugMode) {
-        print('Erreur lors de la sauvegarde de l\'état du jeu: $e');
-      }
-      rethrow;
-    }
-  }
+  // Méthode legacy saveGameState(name) supprimée (ID-first uniquement)
 
   /// Crée une sauvegarde de secours
   static Future<bool> createBackup(GameState gameState) async {
     try {
       final currentTime = DateTime.now();
-      final baseKey = gameState.partieId ?? (gameState.gameName ?? 'default');
+      // Mission 5: Backups internes indexés uniquement par partieId; refuser si absent
+      final baseKey = gameState.partieId;
+      if (baseKey == null || baseKey.isEmpty) {
+        if (kDebugMode) {
+          print('SaveManagerAdapter.createBackup: partieId manquant – backup refusé');
+        }
+        return false;
+      }
       final backupName = '$baseKey${GameConstants.BACKUP_DELIMITER}${currentTime.millisecondsSinceEpoch}';
-
-      // Créer un objet SaveGame pour compatibilité
+      // Backups snapshot-only: stocker strictement le GameSnapshot sérialisé
+      final snapshotJson = gameState.toSnapshot().toJson();
       Map<String, dynamic> gameData = {
-        'playerManager': gameState.playerManager.toJson(),
-        'levelSystem': gameState.levelSystem.toJson(),
-        'gameMode': gameState.gameMode.index,
-        'isInCrisisMode': gameState.isInCrisisMode,
-        'crisisTransitionComplete': gameState.isCrisisTransitionComplete,
-        'competitiveStartTime': gameState.competitiveStartTime?.toIso8601String(),
-        'crisisStartTime': gameState.crisisStartTime?.toIso8601String(),
+        'gameSnapshot': snapshotJson,
       };
       
       SaveGame saveGame = SaveGame(
@@ -318,18 +281,7 @@ class SaveManagerAdapter {
     }
   }
 
-  /// Vérifie si une sauvegarde existe
-  static Future<bool> saveExists(String name) async {
-    try {
-      final saves = await instance.listSaves();
-      return saves.any((save) => save.name == name);
-    } catch (e) {
-      if (kDebugMode) {
-        print('Erreur lors de la vérification de l\'existence de la sauvegarde: $e');
-      }
-      return false;
-    }
-  }
+  // Méthode legacy saveExists(name) supprimée (ID-first uniquement)
 
   /// Récupère la dernière sauvegarde
   static Future<SaveGame?> getLastSave() async {
@@ -406,97 +358,7 @@ class SaveManagerAdapter {
     }
   }
 
-  /// Charge une sauvegarde
-  /// Charge une sauvegarde à partir de son nom
-  static Future<SaveGame> loadGame(String name) async {
-    if (kDebugMode) {
-      print('SaveManagerAdapter.loadGame: Tentative de chargement de la sauvegarde "$name"');
-    }
-    try {
-      // Récupérer toutes les métadonnées pour trouver l'ID correspondant au nom
-      final allMetadatas = await instance.listSaves();
-      final matchingMetadata = allMetadatas.where((m) => m.name == name).toList();
-      
-      if (matchingMetadata.isEmpty) {
-        if (kDebugMode) {
-          print('SaveManagerAdapter.loadGame: Aucune sauvegarde trouvée avec le nom "$name"');
-        }
-        throw SaveError('load_error', 'Sauvegarde introuvable');
-      }
-
-      // Si plusieurs entrées ont le même nom, prendre la plus récente.
-      matchingMetadata.sort((a, b) => b.lastModified.compareTo(a.lastModified));
-      
-      // Utiliser l'ID pour charger les données
-      final saveId = matchingMetadata.first.id;
-      if (kDebugMode) {
-        print('SaveManagerAdapter.loadGame: Sauvegarde trouvée avec ID "$saveId"');
-      }
-      
-      // Charger les données de sauvegarde et les métadonnées avec l'ID
-      final gameData = await instance.loadSave(saveId);
-      final metadata = matchingMetadata.first;
-
-      if (metadata == null) {
-        throw SaveError('load_error', 'Métadonnées de sauvegarde non trouvées');
-      }
-
-      // Créer un objet SaveGame pour compatibilité
-      // Initialiser avec un objet vide par défaut pour éviter les problèmes de null
-      final Map<String, dynamic> extractedGameData = {};
-      
-      // Si gameData est non-null, traiter selon son type
-      if (gameData != null) {
-        // Si gameData est déjà un SaveGame, extraire ses données
-        if (gameData is SaveGame) {
-          // Copier les données une par une pour éviter les problèmes de type
-          final gameDataMap = gameData.gameData;
-          if (gameDataMap != null) {
-            for (var entry in gameDataMap.entries) {
-              extractedGameData[entry.key] = entry.value;
-            }
-          }
-        } 
-        // Sinon si c'est déjà une Map, l'utiliser
-        else if (gameData is Map<String, dynamic>) {
-          // Cast explicite et copie de chaque entrée
-          final Map<String, dynamic> mapData = gameData as Map<String, dynamic>;
-          for (var entry in mapData.entries) {
-            extractedGameData[entry.key] = entry.value;
-          }
-        }
-        // Pour tout autre type, on affiche un message de debug
-        else {
-          if (kDebugMode) {
-            print('Type de gameData non reconnu: ${gameData.runtimeType}');
-          }
-        }
-      }
-      
-      return SaveGame(
-        id: metadata.id,
-        name: metadata.name,
-        lastSaveTime: metadata.lastModified,
-        gameData: extractedGameData,
-        version: metadata.version,
-        gameMode: metadata.gameMode,
-      );
-    } catch (e) {
-      if (kDebugMode) {
-        print('Erreur lors du chargement de la sauvegarde: $e');
-      }
-      
-      // En cas d'erreur, créer une nouvelle sauvegarde vide
-      // (comportement compatible avec l'ancien système)
-      return SaveGame(
-        name: name,
-        lastSaveTime: DateTime.now(),
-        gameData: {},
-        version: GameConstants.VERSION,
-        gameMode: GameMode.INFINITE,
-      );
-    }
-  }
+  // Méthode legacy loadGame(name) supprimée (ID-first uniquement)
 
   /// Charge une sauvegarde à partir de son identifiant unique
   static Future<SaveGame?> loadGameById(String id) async {
@@ -548,9 +410,6 @@ class SaveManagerAdapter {
       final backupMeta = matchingBackup.first;
       final backupId = backupMeta.id;
 
-      // Extraire le nom de la sauvegarde originale
-      final originalName = backupName.split(GameConstants.BACKUP_DELIMITER).first;
-      
       // Extraire les données du jeu de la sauvegarde de backup
       final backupSave = await instance.loadSave(backupId);
       if (backupSave == null) return false;
@@ -558,26 +417,36 @@ class SaveManagerAdapter {
       // Utilisez une assertion non-null pour gameData, car backupSave n'est pas null
       final Map<String, dynamic> extractedGameData = backupSave.gameData;
 
-      // Tenter de restaurer dans l'ID de la sauvegarde originale si elle existe.
-      String? originalId;
-      final matchingOriginal = allMetadatas.where((m) => m.name == originalName).toList();
-      if (matchingOriginal.isNotEmpty) {
-        matchingOriginal.sort((a, b) => b.lastModified.compareTo(a.lastModified));
-        originalId = matchingOriginal.first.id;
+      // Mission 5: Restore sans création – on exige un partieId cible existant
+      final targetId = gameState.partieId;
+      if (targetId == null || targetId.isEmpty) {
+        if (kDebugMode) {
+          print('SaveManagerAdapter.restoreFromBackup: partieId manquant – restauration refusée');
+        }
+        return false;
       }
-      
-      // Créer une nouvelle sauvegarde avec les données du backup
-      SaveGame newSave = SaveGame(
-        id: originalId,
-        name: originalName,
+      // Récupérer les métadonnées de la sauvegarde cible (ID-first)
+      final targetMeta = await instance.getSaveMetadata(targetId);
+      if (targetMeta == null) {
+        // Pas de création implicite: on refuse la restauration si la cible n'existe pas
+        if (kDebugMode) {
+          print('SaveManagerAdapter.restoreFromBackup: cible introuvable pour ID=$targetId – aucune création');
+        }
+        return false;
+      }
+
+      // Construire une sauvegarde avec l'ID cible et conserver le nom existant de la cible
+      final SaveGame newSave = SaveGame(
+        id: targetId,
+        name: targetMeta.name,
         lastSaveTime: DateTime.now(),
         gameData: extractedGameData,
         version: backupMeta.version,
         gameMode: backupMeta.gameMode,
         isRestored: true,
       );
-      
-      // Sauvegarder
+
+      // Sauvegarder (overwrite strict de l'ID cible)
       return await saveGame(newSave);
     } catch (e) {
       if (kDebugMode) {
@@ -770,44 +639,9 @@ class SaveManagerAdapter {
     }
   }
 
-  /// Supprime une sauvegarde
-  static Future<void> deleteSave(String name) async {
-    try {
-      // deleteSave() du manager attend un ID; ici l'API publique expose un name.
-      await deleteSaveByName(name);
-    } catch (e) {
-      if (kDebugMode) {
-        print('Erreur lors de la suppression: $e');
-      }
-      rethrow;
-    }
-  }
+  // Méthode legacy deleteSave(name) supprimée (ID-first uniquement)
 
-  /// Supprime une sauvegarde à partir de son nom (name) plutôt que de son id.
-  ///
-  /// Utile pour les écrans UI où le concept manipulé est le nom de sauvegarde.
-  static Future<void> deleteSaveByName(String name) async {
-    try {
-      await ensureInitialized();
-
-      final metadatas = await instance.listSaves();
-      final matching = metadatas.where((m) => m.name == name).toList();
-      if (matching.isEmpty) {
-        throw SaveError('delete_error', 'Sauvegarde introuvable');
-      }
-
-      // Si plusieurs entrées ont le même nom, on supprime la plus récente.
-      matching.sort((a, b) => b.lastModified.compareTo(a.lastModified));
-      final id = matching.first.id;
-
-      await instance.deleteSave(id);
-    } catch (e) {
-      if (kDebugMode) {
-        print('Erreur lors de la suppression (par name): $e');
-      }
-      rethrow;
-    }
-  }
+  // Méthode legacy deleteSaveByName(name) supprimée (ID-first uniquement)
 
   /// Compresse les données de sauvegarde (pour compatibilité)
   static Future<String> compressSaveData(Map<String, dynamic> data) async {
@@ -877,7 +711,7 @@ class SaveManagerAdapter {
       // Supprimer les backups excédentaires
       if (relatedBackups.length > maxBackups) {
         for (var i = maxBackups; i < relatedBackups.length; i++) {
-          await deleteSave(relatedBackups[i].name);
+          await deleteSaveById(relatedBackups[i].id);
           if (kDebugMode) {
             print('Backup supprimé: ${relatedBackups[i].name}');
           }

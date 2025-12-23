@@ -1150,6 +1150,43 @@ class LocalSaveGameManager implements SaveGameManager {
     
     // Extraire des statistiques pertinentes pour l'affichage dans l'interface
     try {
+      // Nouveau format snapshot-first: gameSnapshot.core / gameSnapshot.stats
+      if (gameData.containsKey('gameSnapshot')) {
+        final snapRaw = gameData['gameSnapshot'];
+        if (snapRaw is Map) {
+          final snap = Map<String, dynamic>.from(snapRaw as Map);
+          final core = (snap['core'] is Map) ? Map<String, dynamic>.from(snap['core'] as Map) : const <String, dynamic>{};
+          final stats = (snap['stats'] is Map) ? Map<String, dynamic>.from(snap['stats'] as Map) : const <String, dynamic>{};
+          // Money (si exposé dans core)
+          final money = core['money'];
+          if (money is num) {
+            displayData['money'] = money;
+          }
+          // Paperclips / total vendus (stats)
+          final paperclips = stats['paperclips'];
+          if (paperclips is num) {
+            displayData['paperclips'] = paperclips;
+          }
+          final totalSold = stats['totalPaperclipsSold'];
+          if (totalSold is num) {
+            displayData['totalPaperclipsSold'] = totalSold;
+          }
+          // AutoClippers (si exposés dans core)
+          final auto = core['autoClipperCount'];
+          if (auto is num) {
+            displayData['autoClippers'] = auto;
+          }
+          // Level (si exposé dans core.levelSystem)
+          if (core['levelSystem'] is Map) {
+            final ls = Map<String, dynamic>.from(core['levelSystem'] as Map);
+            final level = ls['level'];
+            if (level is num) {
+              displayData['level'] = level;
+            }
+          }
+        }
+      }
+
       if (gameData.containsKey('playerManager') &&
           gameData['playerManager'] is Map) {
         final playerManager = gameData['playerManager'] as Map<String, dynamic>;

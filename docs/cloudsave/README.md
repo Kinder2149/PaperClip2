@@ -1,4 +1,4 @@
-# Paperclip2 - Cloud Save (Supabase)
+# Paperclip2 - Cloud Save (Supabase / FastAPI HTTP)
 
 Objectif: sauvegarde cloud append-only avec RLS Supabase, invisible pour l'utilisateur.
 
@@ -16,6 +16,13 @@ Exécuter le script avec un rôle service dans votre projet Supabase.
 ```
 SUPABASE_URL=https://YOUR-PROJECT.supabase.co
 SUPABASE_ANON_KEY=eyJ...
+
+# Cloud par partie (POC/HTTP)
+FEATURE_CLOUD_PER_PARTIE=true
+# POC local (SnapshotsCloudPersistencePort) = false, HTTP FastAPI = true
+FEATURE_CLOUD_PER_PARTIE_HTTP=true
+CLOUD_BACKEND_BASE_URL=https://your-cloud-backend.example.com
+CLOUD_API_BEARER=Bearer your-token
 ```
 
 `pubspec.yaml` inclut déjà `flutter_dotenv` et `supabase_flutter`.
@@ -32,7 +39,7 @@ final cloud = createCloudSaveService(identity: google.identity);
 
 Passez `cloud` à votre `GoogleControlCenter`.
 
-## Utilisation
+## Utilisation (Supabase)
 
 - Construire un `CloudSaveRecord` depuis l'état local (SAVE_SCHEMA_V1) via `CloudSaveService.buildRecord(...)`.
 - `upload(record)` insère une nouvelle révision (append-only).
@@ -49,3 +56,52 @@ Passez `cloud` à votre `GoogleControlCenter`.
 
 - Le cœur de jeu reste local; les actions cloud sont opt-in et explicites.
 - Aucune écriture automatique; pas de logique métier côté serveur.
+
+---
+
+## Adapter HTTP (FastAPI) — Contrat minimal
+
+Endpoints attendus (côté serveur):
+
+- PUT `/api/cloud/parties/{partieId}`
+  - Body JSON:
+    ```json
+    {
+      "snapshot": { /* GameSnapshot JSON */ },
+      "metadata": {
+        "partieId": "...",
+        "playerId": "optional-if-known",
+        "gameMode": "INFINITE|COMPETITIVE",
+        "gameVersion": "...",
+        "savedAt": "ISO-8601",
+        "name": "..."
+      }
+    }
+    ```
+  - Auth: header `Authorization: Bearer ...`
+  - Réponse: 2xx si OK
+
+- GET `/api/cloud/parties/{partieId}`
+  - Réponse 200:
+    ```json
+    { "snapshot": { ... }, "metadata": { ... } }
+    ```
+  - 404 si aucune révision
+
+- GET `/api/cloud/parties/{partieId}/status`
+  - Réponse 200:
+    ```json
+    {
+      "partieId": "...",
+      "syncState": "in_sync|ahead_remote|unknown",
+      "remoteVersion": 1,
+      "lastPushAt": "ISO-8601",
+      "lastPullAt": "ISO-8601",
+      "playerId": "optional-if-known"
+    }
+    ```
+  - 404 si aucune révision
+
+Notes:
+- Le client inclut `playerId` dans `metadata` si une identité Google est disponible; sinon champ omis.
+- `HttpCloudPersistencePort` parse `playerId` depuis `status` pour l’UI (traçabilité).
