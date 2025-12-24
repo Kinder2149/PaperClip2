@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import 'cloud_persistence_port.dart';
+import '../auth/jwt_auth_service.dart';
 
 typedef AuthHeaderProvider = FutureOr<Map<String, String>?> Function();
 typedef PlayerIdProvider = FutureOr<String?> Function();
@@ -40,10 +41,24 @@ class HttpCloudPersistencePort implements CloudPersistencePort {
       ..connectionTimeout = const Duration(seconds: 15);
     try {
       final uri = _uri('/api/cloud/parties/$partieId');
-      final req = await client.deleteUrl(uri);
-      final headers = await _buildHeaders();
-      headers.forEach(req.headers.set);
-      final resp = await req.close().timeout(const Duration(seconds: 30));
+      Future<HttpClientResponse> _send() async {
+        final req = await client.deleteUrl(uri);
+        final headers = await _buildHeaders();
+        headers.forEach(req.headers.set);
+        return await req.close().timeout(const Duration(seconds: 30));
+      }
+      var resp = await _send();
+      if (resp.statusCode == 401) {
+        try {
+          final pid = await playerIdProvider?.call();
+          if (pid != null && pid.isNotEmpty) {
+            final ok = await JwtAuthService.instance.loginWithPlayerId(pid);
+            if (ok) {
+              resp = await _send();
+            }
+          }
+        } catch (_) {}
+      }
       if (resp.statusCode == 404) return; // déjà supprimé
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         final text = await resp.transform(utf8.decoder).join();
@@ -88,10 +103,21 @@ class HttpCloudPersistencePort implements CloudPersistencePort {
         return <CloudIndexEntry>[];
       }
       final uri = _uri('/api/cloud/parties', query: {'playerId': pid});
-      final req = await client.getUrl(uri);
-      final headers = await _buildHeaders();
-      headers.forEach(req.headers.set);
-      final resp = await req.close().timeout(const Duration(seconds: 30));
+      Future<HttpClientResponse> _send() async {
+        final req = await client.getUrl(uri);
+        final headers = await _buildHeaders();
+        headers.forEach(req.headers.set);
+        return await req.close().timeout(const Duration(seconds: 30));
+      }
+      var resp = await _send();
+      if (resp.statusCode == 401) {
+        try {
+          final ok = await JwtAuthService.instance.loginWithPlayerId(pid);
+          if (ok) {
+            resp = await _send();
+          }
+        } catch (_) {}
+      }
       if (resp.statusCode == 404) return <CloudIndexEntry>[];
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         final text = await resp.transform(utf8.decoder).join();
@@ -133,9 +159,6 @@ class HttpCloudPersistencePort implements CloudPersistencePort {
       ..connectionTimeout = const Duration(seconds: 15);
     try {
       final uri = _uri('/api/cloud/parties/$partieId');
-      final req = await client.putUrl(uri);
-      final headers = await _buildHeaders();
-      headers.forEach(req.headers.set);
       final metaToSend = Map<String, dynamic>.from(metadata);
       try {
         if (!metaToSend.containsKey('playerId')) {
@@ -149,8 +172,25 @@ class HttpCloudPersistencePort implements CloudPersistencePort {
         'snapshot': snapshot,
         'metadata': metaToSend,
       });
-      req.add(utf8.encode(body));
-      final resp = await req.close().timeout(const Duration(seconds: 30));
+      Future<HttpClientResponse> _send() async {
+        final req = await client.putUrl(uri);
+        final headers = await _buildHeaders();
+        headers.forEach(req.headers.set);
+        req.add(utf8.encode(body));
+        return await req.close().timeout(const Duration(seconds: 30));
+      }
+      var resp = await _send();
+      if (resp.statusCode == 401) {
+        try {
+          final pid = await playerIdProvider?.call();
+          if (pid != null && pid.isNotEmpty) {
+            final ok = await JwtAuthService.instance.loginWithPlayerId(pid);
+            if (ok) {
+              resp = await _send();
+            }
+          }
+        } catch (_) {}
+      }
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         final text = await resp.transform(utf8.decoder).join();
         throw HttpException('HTTP ${resp.statusCode}: $text', uri: uri);
@@ -169,10 +209,24 @@ class HttpCloudPersistencePort implements CloudPersistencePort {
       ..connectionTimeout = const Duration(seconds: 15);
     try {
       final uri = _uri('/api/cloud/parties/$partieId');
-      final req = await client.getUrl(uri);
-      final headers = await _buildHeaders();
-      headers.forEach(req.headers.set);
-      final resp = await req.close().timeout(const Duration(seconds: 30));
+      Future<HttpClientResponse> _send() async {
+        final req = await client.getUrl(uri);
+        final headers = await _buildHeaders();
+        headers.forEach(req.headers.set);
+        return await req.close().timeout(const Duration(seconds: 30));
+      }
+      var resp = await _send();
+      if (resp.statusCode == 401) {
+        try {
+          final pid = await playerIdProvider?.call();
+          if (pid != null && pid.isNotEmpty) {
+            final ok = await JwtAuthService.instance.loginWithPlayerId(pid);
+            if (ok) {
+              resp = await _send();
+            }
+          }
+        } catch (_) {}
+      }
       if (resp.statusCode == 404) return null;
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         final text = await resp.transform(utf8.decoder).join();
@@ -193,10 +247,24 @@ class HttpCloudPersistencePort implements CloudPersistencePort {
       ..connectionTimeout = const Duration(seconds: 15);
     try {
       final uri = _uri('/api/cloud/parties/$partieId/status');
-      final req = await client.getUrl(uri);
-      final headers = await _buildHeaders();
-      headers.forEach(req.headers.set);
-      final resp = await req.close().timeout(const Duration(seconds: 30));
+      Future<HttpClientResponse> _send() async {
+        final req = await client.getUrl(uri);
+        final headers = await _buildHeaders();
+        headers.forEach(req.headers.set);
+        return await req.close().timeout(const Duration(seconds: 30));
+      }
+      var resp = await _send();
+      if (resp.statusCode == 401) {
+        try {
+          final pid = await playerIdProvider?.call();
+          if (pid != null && pid.isNotEmpty) {
+            final ok = await JwtAuthService.instance.loginWithPlayerId(pid);
+            if (ok) {
+              resp = await _send();
+            }
+          }
+        } catch (_) {}
+      }
       if (resp.statusCode == 404) {
         return CloudStatus(partieId: partieId, syncState: 'unknown');
       }

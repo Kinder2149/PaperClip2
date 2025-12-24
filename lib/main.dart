@@ -28,6 +28,7 @@ import './services/google/cloudsave/cloud_save_service.dart';
 import './services/google/cloudsave/cloud_save_bootstrap.dart';
 import './screens/auth_choice_screen.dart';
 import 'services/persistence/game_persistence_orchestrator.dart';
+import 'services/auth/jwt_auth_service.dart';
 import 'services/cloud/local_cloud_persistence_port.dart';
 import 'services/cloud/http_cloud_persistence_port.dart';
 import 'services/cloud/snapshots_cloud_persistence_port.dart';
@@ -119,18 +120,18 @@ void main() async {
               return _googleServices.identity.playerId;
             });
           } else {
-            final bearer = (dotenv.env['CLOUD_API_BEARER'] ?? '').trim();
             GamePersistenceOrchestrator.instance.setCloudPort(
               HttpCloudPersistencePort(
                 baseUrl: base,
                 authHeaderProvider: () async {
+                  // JWT dynamique si présent, sinon fallback API key via .env
+                  final headers = await JwtAuthService.instance.buildAuthHeaders();
+                  if (headers != null) return headers;
+                  final bearer = (dotenv.env['CLOUD_API_BEARER'] ?? '').trim();
                   if (bearer.isEmpty) return null;
-                  return {
-                    'Authorization': 'Bearer ' + bearer,
-                  };
+                  return {'Authorization': 'Bearer ' + bearer};
                 },
                 playerIdProvider: () async {
-                  // Utilise l'identité Google si disponible
                   return _googleServices.identity.playerId;
                 },
               ),

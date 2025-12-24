@@ -12,6 +12,7 @@ import 'save_load_screen.dart';
 import 'introduction_screen.dart';
 import 'package:paperclip2/screens/main_screen.dart';
 import '../services/google/google_bootstrap.dart';
+import '../services/auth/jwt_auth_service.dart';
 import '../services/persistence/local_game_persistence.dart';
 import '../services/persistence/game_snapshot.dart';
 import '../services/google/sync/sync_readiness_port.dart';
@@ -121,11 +122,14 @@ class _StartScreenState extends State<StartScreen> {
                       return google.identity.playerId;
                     });
                   } else {
-                    final bearer = (dotenv.env['CLOUD_API_BEARER'] ?? '').trim();
                     GamePersistenceOrchestrator.instance.setCloudPort(
                       HttpCloudPersistencePort(
                         baseUrl: base,
                         authHeaderProvider: () async {
+                          // JWT dynamique si présent, sinon fallback API key via .env
+                          final headers = await JwtAuthService.instance.buildAuthHeaders();
+                          if (headers != null) return headers;
+                          final bearer = (dotenv.env['CLOUD_API_BEARER'] ?? '').trim();
                           if (bearer.isEmpty) return null;
                           return {'Authorization': 'Bearer ' + bearer};
                         },
@@ -138,6 +142,11 @@ class _StartScreenState extends State<StartScreen> {
                     GamePersistenceOrchestrator.instance.setPlayerIdProvider(() async {
                       return google.identity.playerId;
                     });
+                    // Proactif: si playerId dispo, tenter d'obtenir un JWT maintenant
+                    final pidNow = google.identity.playerId;
+                    if (pidNow != null && pidNow.isNotEmpty) {
+                      try { await JwtAuthService.instance.loginWithPlayerId(pidNow); } catch (_) {}
+                    }
                   }
                 } else {
                   GamePersistenceOrchestrator.instance.setCloudPort(SnapshotsCloudPersistencePort());

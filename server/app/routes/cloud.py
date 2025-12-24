@@ -41,14 +41,39 @@ def _path(partie_id: str) -> str:
     safe = partie_id.replace("/", "_")
     return os.path.join(CLOUD_ROOT, f"{safe}.json")
 
-def _auth(x_authorization: Optional[str] = Header(default=None)):
+def _auth(
+    authorization: Optional[str] = Header(default=None),
+    x_authorization: Optional[str] = Header(default=None),
+):
+    """
+    Authentification hybride:
+    - Préférence: JWT via header Authorization: Bearer <jwt> (routes.auth.verify_jwt)
+    - Fallback DEV: API_KEY via header X-Authorization: Bearer <API_KEY>
+    """
+    # 1) JWT si présent
+    try:
+        from .auth import verify_jwt  # import local pour éviter cycles au démarrage
+        if authorization:
+            verify_jwt(authorization)
+            return True
+    except HTTPException:
+        raise
+    except Exception:
+        # Si Authorization présent mais invalide, on renvoie 401
+        if authorization:
+            raise HTTPException(status_code=401, detail="Invalid Authorization")
+
+    # 2) Fallback API_KEY (DEV)
     if API_KEY:
         if not x_authorization:
             raise HTTPException(status_code=401, detail="Missing Authorization")
         token = x_authorization.replace("Bearer ", "").strip()
         if token != API_KEY:
             raise HTTPException(status_code=403, detail="Invalid token")
-    return True
+        return True
+
+    # 3) Rien fourni
+    raise HTTPException(status_code=401, detail="Missing Authorization")
 
 def _safe_read_json(path: str) -> Optional[Dict[str, Any]]:
     try:
