@@ -814,7 +814,9 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                                           ),
                                         ),
                                         if (!isBackup && !isCloud)
-                                          Row(
+                                          Wrap(
+                                            spacing: 8,
+                                            runSpacing: 4,
                                             children: [
                                               if ((dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true' && (dotenv.env['FEATURE_ADVANCED_CLOUD_UI'] ?? 'false').toLowerCase() == 'true' && !kReleaseMode && save.cloudSyncState != null)
                                                 Padding(
@@ -934,12 +936,9 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                                                 tooltip: 'Restaurer dernier backup',
                                               ),
                                               if (_backupCounts.containsKey(save.id))
-                                                Padding(
-                                                  padding: const EdgeInsets.only(left: 4.0),
-                                                  child: Chip(
-                                                    label: Text('Backups: ${_backupCounts[save.id]}'),
-                                                    avatar: const Icon(Icons.inventory_2, size: 16),
-                                                  ),
+                                                Chip(
+                                                  label: Text('Backups: ${_backupCounts[save.id]}'),
+                                                  avatar: const Icon(Icons.inventory_2, size: 16),
                                                 ),
                                               IconButton(
                                                 icon: Icon(Icons.delete, color: Colors.red),
@@ -954,7 +953,9 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                                             ],
                                           ),
                                         if (!isBackup && isCloud)
-                                          Row(
+                                          Wrap(
+                                            spacing: 8,
+                                            runSpacing: 4,
                                             children: [
                                               if ((dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true')
                                                 IconButton(

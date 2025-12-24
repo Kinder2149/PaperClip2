@@ -67,6 +67,13 @@ class HttpCloudPersistencePort implements CloudPersistencePort {
         headers['X-Authorization'] = extra['Authorization']!;
       }
     }
+    if (kDebugMode) {
+      try {
+        final hasAuth = headers.containsKey('Authorization');
+        final hasXAuth = headers.containsKey('X-Authorization');
+        print('[DEBUG_AUTH_HEADER] Authorization present=${hasAuth}, X-Authorization present=${hasXAuth}');
+      } catch (_) {}
+    }
     return headers;
   }
 
