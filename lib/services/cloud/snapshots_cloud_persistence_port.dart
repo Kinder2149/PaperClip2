@@ -152,6 +152,14 @@ class SnapshotsCloudPersistencePort implements CloudPersistencePort {
     }
     return out;
   }
+
+  @override
+  Future<void> deleteById({required String partieId}) async {
+    // POC: on supprime uniquement les métadonnées connues pour ne plus exposer l'entrée
+    _metaById.remove(partieId);
+    // Note: l'adapter ne fournit pas d'API de suppression; en l'absence de meta,
+    // l'entrée ne sera plus listée et pullById retournera null si le slot n'est plus accessible.
+  }
 }
 
 class _CloudMeta {

@@ -9,14 +9,50 @@ import 'package:flutter/foundation.dart';
 import 'cloud_persistence_port.dart';
 
 typedef AuthHeaderProvider = FutureOr<Map<String, String>?> Function();
+typedef PlayerIdProvider = FutureOr<String?> Function();
 
 class HttpCloudPersistencePort implements CloudPersistencePort {
   final String baseUrl;
   final AuthHeaderProvider? authHeaderProvider;
+  final PlayerIdProvider? playerIdProvider;
 
-  HttpCloudPersistencePort({required this.baseUrl, this.authHeaderProvider});
+  HttpCloudPersistencePort({
+    required this.baseUrl,
+    this.authHeaderProvider,
+    this.playerIdProvider,
+  });
 
-  Uri _uri(String path) => Uri.parse(baseUrl + path);
+  Uri _uri(String path, {Map<String, String>? query}) {
+    final base = Uri.parse(baseUrl);
+    final merged = Uri(
+      scheme: base.scheme,
+      host: base.host,
+      port: base.hasPort ? base.port : null,
+      path: base.path.endsWith('/') ? (base.path + path.replaceFirst('/', '')) : (base.path + path),
+      queryParameters: query,
+    );
+    return merged;
+  }
+
+  @override
+  Future<void> deleteById({required String partieId}) async {
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15);
+    try {
+      final uri = _uri('/api/cloud/parties/$partieId');
+      final req = await client.deleteUrl(uri);
+      final headers = await _buildHeaders();
+      headers.forEach(req.headers.set);
+      final resp = await req.close().timeout(const Duration(seconds: 30));
+      if (resp.statusCode == 404) return; // déjà supprimé
+      if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        final text = await resp.transform(utf8.decoder).join();
+        throw HttpException('HTTP ${resp.statusCode}: $text', uri: uri);
+      }
+    } finally {
+      client.close(force: true);
+    }
+  }
 
   Future<Map<String, String>> _buildHeaders() async {
     final headers = <String, String>{
@@ -24,19 +60,31 @@ class HttpCloudPersistencePort implements CloudPersistencePort {
       HttpHeaders.acceptHeader: 'application/json',
     };
     final extra = await authHeaderProvider?.call();
-    if (extra != null) headers.addAll(extra);
+    if (extra != null) {
+      headers.addAll(extra);
+      // Compat backend: si Authorization est fourni mais pas X-Authorization, duplique pour l'API key simple
+      if (extra.containsKey('Authorization') && !extra.containsKey('X-Authorization')) {
+        headers['X-Authorization'] = extra['Authorization']!;
+      }
+    }
     return headers;
   }
 
   @override
   Future<List<CloudIndexEntry>> listParties() async {
-    final client = HttpClient();
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15);
     try {
-      final uri = _uri('/api/cloud/parties');
+      final pid = await playerIdProvider?.call();
+      if (pid == null || pid.isEmpty) {
+        // Sans playerId, l'endpoint contractuel ne peut pas répondre.
+        return <CloudIndexEntry>[];
+      }
+      final uri = _uri('/api/cloud/parties', query: {'playerId': pid});
       final req = await client.getUrl(uri);
       final headers = await _buildHeaders();
       headers.forEach(req.headers.set);
-      final resp = await req.close();
+      final resp = await req.close().timeout(const Duration(seconds: 30));
       if (resp.statusCode == 404) return <CloudIndexEntry>[];
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         final text = await resp.transform(utf8.decoder).join();
@@ -74,18 +122,28 @@ class HttpCloudPersistencePort implements CloudPersistencePort {
     required Map<String, dynamic> snapshot,
     required Map<String, dynamic> metadata,
   }) async {
-    final client = HttpClient();
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15);
     try {
       final uri = _uri('/api/cloud/parties/$partieId');
       final req = await client.putUrl(uri);
       final headers = await _buildHeaders();
       headers.forEach(req.headers.set);
+      final metaToSend = Map<String, dynamic>.from(metadata);
+      try {
+        if (!metaToSend.containsKey('playerId')) {
+          final pid = await playerIdProvider?.call();
+          if (pid != null && pid.isNotEmpty) {
+            metaToSend['playerId'] = pid;
+          }
+        }
+      } catch (_) {}
       final body = jsonEncode({
         'snapshot': snapshot,
-        'metadata': metadata,
+        'metadata': metaToSend,
       });
       req.add(utf8.encode(body));
-      final resp = await req.close();
+      final resp = await req.close().timeout(const Duration(seconds: 30));
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         final text = await resp.transform(utf8.decoder).join();
         throw HttpException('HTTP ${resp.statusCode}: $text', uri: uri);
@@ -100,13 +158,14 @@ class HttpCloudPersistencePort implements CloudPersistencePort {
 
   @override
   Future<Map<String, dynamic>?> pullById({required String partieId}) async {
-    final client = HttpClient();
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15);
     try {
       final uri = _uri('/api/cloud/parties/$partieId');
       final req = await client.getUrl(uri);
       final headers = await _buildHeaders();
       headers.forEach(req.headers.set);
-      final resp = await req.close();
+      final resp = await req.close().timeout(const Duration(seconds: 30));
       if (resp.statusCode == 404) return null;
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         final text = await resp.transform(utf8.decoder).join();
@@ -123,13 +182,14 @@ class HttpCloudPersistencePort implements CloudPersistencePort {
 
   @override
   Future<CloudStatus> statusById({required String partieId}) async {
-    final client = HttpClient();
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15);
     try {
       final uri = _uri('/api/cloud/parties/$partieId/status');
       final req = await client.getUrl(uri);
       final headers = await _buildHeaders();
       headers.forEach(req.headers.set);
-      final resp = await req.close();
+      final resp = await req.close().timeout(const Duration(seconds: 30));
       if (resp.statusCode == 404) {
         return CloudStatus(partieId: partieId, syncState: 'unknown');
       }

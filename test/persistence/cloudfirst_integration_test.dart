@@ -29,12 +29,25 @@ class _MemoryPort implements CloudPersistencePort {
   Future<CloudStatus> statusById({required String partieId}) async {
     return status;
   }
+
+  @override
+  Future<List<CloudIndexEntry>> listParties() async {
+    return <CloudIndexEntry>[];
+  }
+
+  @override
+  Future<void> deleteById({required String partieId}) async {
+    pushes = pushes.where((e) => e['id'] != partieId).toList();
+    pulls.remove(partieId);
+  }
 }
 
 void main() {
   group('Cloud-first integration (local ⇄ cloud)', () {
     setUp(() async {
       GamePersistenceOrchestrator.instance.resetForTesting();
+      // Fournir un playerId pour les pushes orchestrés
+      GamePersistenceOrchestrator.instance.setPlayerIdProvider(() async => 'player-test');
     });
 
     test('Push aligne metadata.name sur le nom local', () async {
@@ -58,7 +71,7 @@ void main() {
 
       final port = _MemoryPort();
       GamePersistenceOrchestrator.instance.setCloudPort(port);
-      await GamePersistenceOrchestrator.instance.pushCloudFromSaveId(partieId: id);
+      await GamePersistenceOrchestrator.instance.pushCloudFromSaveId(partieId: id, playerId: 'player-test');
 
       expect(port.pushes.length, 1);
       final meta = port.pushes.first['metadata'] as Map<String, dynamic>;
@@ -88,7 +101,7 @@ void main() {
       final port = _MemoryPort();
       GamePersistenceOrchestrator.instance.setCloudPort(port);
 
-      await GamePersistenceOrchestrator.instance.pushCloudFromSaveId(partieId: id);
+      await GamePersistenceOrchestrator.instance.pushCloudFromSaveId(partieId: id, playerId: 'player-test');
       expect(port.pushes.isNotEmpty, isTrue);
       var lastMeta = port.pushes.last['metadata'] as Map<String, dynamic>;
       expect(lastMeta['name'], name1);
@@ -108,7 +121,7 @@ void main() {
       );
       expect(await SaveManagerAdapter.updateSaveMetadataById(id, updated), isTrue);
 
-      await GamePersistenceOrchestrator.instance.pushCloudFromSaveId(partieId: id);
+      await GamePersistenceOrchestrator.instance.pushCloudFromSaveId(partieId: id, playerId: 'player-test');
       lastMeta = port.pushes.last['metadata'] as Map<String, dynamic>;
       expect(lastMeta['name'], name2);
     });

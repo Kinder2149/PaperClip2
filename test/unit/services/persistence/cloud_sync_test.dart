@@ -39,6 +39,18 @@ class _FakeCloudPort implements CloudPersistencePort {
   Future<CloudStatus> statusById({required String partieId}) async {
     return _status[partieId] ?? CloudStatus(partieId: partieId, syncState: 'unknown');
   }
+
+  @override
+  Future<List<CloudIndexEntry>> listParties() async {
+    // Non utilisé dans ces tests
+    return <CloudIndexEntry>[];
+  }
+
+  @override
+  Future<void> deleteById({required String partieId}) async {
+    _store.remove(partieId);
+    _status.remove(partieId);
+  }
 }
 
 void main() {
@@ -51,6 +63,8 @@ void main() {
       mem = InMemorySaveGameManager();
       SaveManagerAdapter.setSaveManagerForTesting(mem);
       GamePersistenceOrchestrator.instance.resetForTesting();
+      // Fournir un playerId pour permettre les pushes cloud
+      GamePersistenceOrchestrator.instance.setPlayerIdProvider(() async => 'player-test');
     });
 
     tearDown(() {
@@ -72,7 +86,7 @@ void main() {
       GamePersistenceOrchestrator.instance.setCloudPort(fake);
 
       final id = state.partieId!;
-      await GamePersistenceOrchestrator.instance.pushCloudFromSaveId(partieId: id);
+      await GamePersistenceOrchestrator.instance.pushCloudFromSaveId(partieId: id, playerId: 'player-test');
 
       final pulled = await fake.pullById(partieId: id);
       expect(pulled, isNotNull);

@@ -50,9 +50,7 @@ class SaveEntry {
 }
 
 class SaveAggregator {
-  // Mission 6: cache simple pour le statut cloud (TTL court)
-  static const Duration _cloudStatusTtl = Duration(seconds: 10);
-  static final Map<String, _CloudCacheEntry> _statusCache = {};
+  // Cache supprimé: plus de dépendance au statut cloud technique
 
   Future<List<SaveEntry>> listAll(BuildContext context) async {
     final List<SaveEntry> result = [];
@@ -61,6 +59,16 @@ class SaveAggregator {
     final localInfos = await SaveManagerAdapter.listSaves();
     final enableCloudPerPartie = (dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true';
     final Set<String> localIds = localInfos.map((e) => e.id).toSet();
+    // Précharger l'index cloud une seule fois pour enrichir les entrées locales
+    Map<String, CloudIndexEntry> cloudIndex = {};
+    if (enableCloudPerPartie) {
+      try {
+        final cloud = await GamePersistenceOrchestrator.instance.listCloudParties();
+        for (final c in cloud) {
+          cloudIndex[c.partieId] = c;
+        }
+      } catch (_) {}
+    }
     for (final s in localInfos) {
       // Mission 5: la liste principale ne doit pas afficher les backups
       if (s.isBackup) continue;
@@ -80,39 +88,12 @@ class SaveAggregator {
           canLoad = false; // bloquer le chargement
         }
       } catch (_) {}
-      String? cloudState;
       int? remoteVersion;
-      if (enableCloudPerPartie) {
-        try {
-          final now = DateTime.now();
-          final cached = _statusCache[s.id];
-          if (cached != null && now.difference(cached.storedAt) < _cloudStatusTtl) {
-            cloudState = cached.syncState;
-            remoteVersion = cached.remoteVersion;
-          } else {
-            final status = await GamePersistenceOrchestrator.instance.cloudStatusById(partieId: s.id);
-            cloudState = status.syncState;
-            remoteVersion = status.remoteVersion;
-            _statusCache[s.id] = _CloudCacheEntry(syncState: cloudState!, remoteVersion: remoteVersion, storedAt: now);
-            // Inject playerId into SaveEntry (non mis en cache pour garder la fraicheur si session évolue)
-            // On l'appliquera plus bas lors de la construction de SaveEntry
-            final playerId = status.playerId;
-            // Stocker temporairement dans une variable locale via closure
-            // (pas besoin d'un cache séparé puisque stateless au build)
-            // Utiliser un map local serait lourd; on passe via champ optionnel ci-dessous
-            // en réutilisant la variable localement.
-          }
-        } catch (_) {
-          cloudState = null;
-        }
-      }
-      // Note: playerId non mis en cache; on refait une lecture status à TTL pour obtenir sa dernière valeur
       String? playerId;
       if (enableCloudPerPartie) {
-        try {
-          final status = await GamePersistenceOrchestrator.instance.cloudStatusById(partieId: s.id);
-          playerId = status.playerId;
-        } catch (_) {}
+        final entry = cloudIndex[s.id];
+        remoteVersion = entry?.remoteVersion;
+        playerId = entry?.playerId;
       }
       result.add(SaveEntry(
         source: SaveSource.local,
@@ -127,7 +108,7 @@ class SaveAggregator {
         paperclips: s.paperclips.toInt(),
         totalPaperclipsSold: s.totalPaperclipsSold.toInt(),
         playerId: playerId,
-        cloudSyncState: cloudState,
+        cloudSyncState: null,
         remoteVersion: remoteVersion,
         integrityStatus: integrity,
         canLoad: canLoad,
@@ -137,8 +118,7 @@ class SaveAggregator {
     // Cloud-only (par partie): ajouter les entrées distantes qui n'existent pas en local
     if (enableCloudPerPartie) {
       try {
-        final cloud = await GamePersistenceOrchestrator.instance.listCloudParties();
-        for (final c in cloud) {
+        for (final c in cloudIndex.values) {
           if (localIds.contains(c.partieId)) continue; // déjà reflété par l'entrée locale enrichie
           result.add(SaveEntry(
             source: SaveSource.cloud,
@@ -153,7 +133,7 @@ class SaveAggregator {
             paperclips: 0,
             totalPaperclipsSold: 0,
             playerId: c.playerId,
-            cloudSyncState: 'unknown',
+            cloudSyncState: null,
             remoteVersion: c.remoteVersion,
             integrityStatus: null,
             canLoad: false,
@@ -180,11 +160,4 @@ class SaveAggregator {
       return null;
     }
   }
-}
-
-class _CloudCacheEntry {
-  final String syncState;
-  final int? remoteVersion;
-  final DateTime storedAt;
-  const _CloudCacheEntry({required this.syncState, required this.remoteVersion, required this.storedAt});
 }

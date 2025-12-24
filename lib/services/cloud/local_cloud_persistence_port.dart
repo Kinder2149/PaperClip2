@@ -107,6 +107,13 @@ class LocalCloudPersistencePort implements CloudPersistencePort {
     }
     return result;
   }
+
+  @override
+  Future<void> deleteById({required String partieId}) async {
+    // Suppression locale en mémoire (POC): retirer snapshot et métadonnées
+    _snapshotsById.remove(partieId);
+    _metaById.remove(partieId);
+  }
 }
 
 class _CloudMeta {

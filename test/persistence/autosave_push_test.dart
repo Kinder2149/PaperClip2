@@ -21,12 +21,20 @@ class _SpyPort implements CloudPersistencePort {
 
   @override
   Future<CloudStatus> statusById({required String partieId}) async => CloudStatus(partieId: partieId, syncState: 'in_sync');
+
+  @override
+  Future<List<CloudIndexEntry>> listParties() async => <CloudIndexEntry>[];
+
+  @override
+  Future<void> deleteById({required String partieId}) async {}
 }
 
 void main() {
   group('Autosave triggers cloud push', () {
     setUp(() {
       GamePersistenceOrchestrator.instance.resetForTesting();
+      // Fournir un playerId pour activer le push auto
+      GamePersistenceOrchestrator.instance.setPlayerIdProvider(() async => 'player-test');
     });
 
     test('requestAutoSave → push once for non-backup save', () async {

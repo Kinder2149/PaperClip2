@@ -55,7 +55,7 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
   final _nameController = TextEditingController();
   Timer? _cloudProbeTimer;
   bool _showTechnicalId = false;
-  bool _filterLocalOnly = false;
+  int _filterMode = 0; // 0=Tous, 1=Local, 2=Cloud
   // IDs marqués en attente de push cloud (pending)
   final Set<String> _pendingCloudPushIds = <String>{};
 
@@ -241,7 +241,7 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
     final newName = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Renommer la sauvegarde'),
+        title: const Text('Renommer la partie'),
         content: TextField(
           controller: controller,
           decoration: const InputDecoration(labelText: 'Nouveau nom'),
@@ -273,6 +273,18 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
         return;
       }
       await _loadSaves();
+      // Mission 3: déclencher un push immédiat après renommage (cloud gagne sur le nom)
+      try {
+        final enableCloudPerPartie = (dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true';
+        if (enableCloudPerPartie) {
+          String? playerId;
+          try {
+            final google = context.read<GoogleServicesBundle>();
+            playerId = google.identity.playerId;
+          } catch (_) {}
+          await GamePersistenceOrchestrator.instance.pushCloudFromSaveId(partieId: save.id, playerId: playerId);
+        }
+      } catch (_) {}
       if (mounted) {
         NotificationManager.instance.showNotification(
           message: 'Nom mis à jour',
@@ -594,11 +606,28 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
       appBar: AppBar(
         title: Text('Sauvegardes'),
         actions: [
-          if ((dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true' && (dotenv.env['FEATURE_ADVANCED_CLOUD_UI'] ?? 'false').toLowerCase() == 'true' && !kReleaseMode)
-            IconButton(
-              icon: Icon(_filterLocalOnly ? Icons.filter_alt : Icons.filter_alt_outlined),
-              onPressed: () => setState(() => _filterLocalOnly = !_filterLocalOnly),
-              tooltip: _filterLocalOnly ? 'Afficher toutes les parties' : 'Sauvegardes locales uniquement',
+          if ((dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true')
+            PopupMenuButton<int>(
+              icon: const Icon(Icons.filter_list),
+              tooltip: 'Filtrer',
+              onSelected: (v) => setState(() => _filterMode = v),
+              itemBuilder: (ctx) => [
+                CheckedPopupMenuItem<int>(
+                  value: 0,
+                  checked: _filterMode == 0,
+                  child: const Text('Tous'),
+                ),
+                CheckedPopupMenuItem<int>(
+                  value: 1,
+                  checked: _filterMode == 1,
+                  child: const Text('Local'),
+                ),
+                CheckedPopupMenuItem<int>(
+                  value: 2,
+                  checked: _filterMode == 2,
+                  child: const Text('Cloud'),
+                ),
+              ],
             ),
           if (!widget.isStartScreen)
             IconButton(
@@ -732,9 +761,14 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                       Expanded(
                         child: Builder(builder: (context) {
                           final enableCloud = (dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true';
-                          final List<SaveEntry> visible = (!_filterLocalOnly || !enableCloud)
-                              ? _saves
-                              : _saves.where((s) => s.remoteVersion == null).toList();
+                          List<SaveEntry> visible = _saves;
+                          if (enableCloud) {
+                            if (_filterMode == 1) {
+                              visible = _saves.where((s) => s.source != SaveSource.cloud).toList();
+                            } else if (_filterMode == 2) {
+                              visible = _saves.where((s) => s.source == SaveSource.cloud).toList();
+                            }
+                          }
                           return ListView.builder(
                             itemCount: visible.length,
                             itemBuilder: (context, index) {
@@ -957,6 +991,37 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                                                     }
                                                   },
                                                 ),
+                                              if ((dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true')
+                                                IconButton(
+                                                  icon: const Icon(Icons.delete_forever, color: Colors.red),
+                                                  tooltip: 'Supprimer du cloud',
+                                                  onPressed: () async {
+                                                    final confirm = await showDialog<bool>(
+                                                      context: context,
+                                                      builder: (ctx) => AlertDialog(
+                                                        title: const Text('Supprimer cette sauvegarde cloud ?'),
+                                                        content: Text('Cette action supprimera définitivement l\'entrée cloud "${save.name}" (ID: ${save.id}). Les backups locaux ne sont pas affectés.'),
+                                                        actions: [
+                                                          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Annuler')),
+                                                          ElevatedButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Supprimer')),
+                                                        ],
+                                                      ),
+                                                    );
+                                                    if (confirm != true) return;
+                                                    try {
+                                                      await GamePersistenceOrchestrator.instance.deleteCloudById(partieId: save.id);
+                                                      await _loadSaves();
+                                                      if (mounted) {
+                                                        NotificationManager.instance.showNotification(
+                                                          message: 'Sauvegarde cloud supprimée',
+                                                          level: NotificationLevel.SUCCESS,
+                                                        );
+                                                      }
+                                                    } catch (e) {
+                                                      if (mounted) _showError('Échec de la suppression cloud: $e');
+                                                    }
+                                                  },
+                                                ),
                                             ],
                                           ),
                                       ],
@@ -1046,7 +1111,7 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                                           ]
                                           else
                                             Chip(
-                                              label: const Text('Cloud'),
+                                              label: const Text('Cloud uniquement'),
                                               backgroundColor: Colors.blueGrey.shade50,
                                             ),
                                         ] else ...[
@@ -1057,6 +1122,13 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                                         ],
                                       ],
                                     ),
+                                    if (!isBackup && !isCloud && save.cloudSyncState == 'diverged') ...[
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Conflit détecté. Vous pouvez soit envoyer votre version locale au cloud (Push), soit importer la version cloud (Pull).',
+                                        style: TextStyle(color: Colors.red.shade700, fontSize: 12),
+                                      ),
+                                    ]
                                   ],
                                 ),
                               ),

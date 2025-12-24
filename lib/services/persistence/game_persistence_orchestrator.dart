@@ -1,4 +1,5 @@
 // lib/services/persistence/game_persistence_orchestrator.dart
+import 'dart:async';
 // Service d'orchestration de la persistance de l'état de jeu.
 //
 // Ce service centralise la logique de sauvegarde/chargement/backup
@@ -15,6 +16,8 @@ import 'package:paperclip2/services/persistence/game_snapshot.dart';
 import 'package:paperclip2/services/persistence/local_game_persistence.dart';
 import 'package:paperclip2/services/save_game.dart';
 import 'package:paperclip2/services/save_system/save_validator.dart';
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 enum SaveTrigger {
   autosave,
@@ -60,6 +63,8 @@ class GamePersistenceOrchestrator {
   final GamePersistenceService _persistence = const LocalGamePersistenceService();
   // Port cloud optionnel (injecté depuis le bootstrap ou un service)
   CloudPersistencePort? _cloudPort;
+  // Fournisseur d'identité joueur (Google playerId) pour les pushes automatiques
+  FutureOr<String?> Function()? _playerIdProvider;
 
   static const Duration _backupCooldown = Duration(minutes: 10);
   static const Duration _importantEventCoalesceWindow = Duration(seconds: 2);
@@ -69,6 +74,10 @@ class GamePersistenceOrchestrator {
   DateTime? _lastBackupAt;
   DateTime? _lastImportantEventEnqueuedAt;
 
+  // Etat de synchronisation applicatif
+  // 'ready' | 'syncing' | 'error'
+  final ValueNotifier<String> syncState = ValueNotifier<String>('ready');
+
   void resetForTesting() {
     _queue.clear();
     _isPumping = false;
@@ -76,9 +85,25 @@ class GamePersistenceOrchestrator {
     _lastImportantEventEnqueuedAt = null;
   }
 
+  /// Supprime l'entrée cloud pour une partie (cloud-only ou non)
+  Future<void> deleteCloudById({
+    required String partieId,
+  }) async {
+    final port = _cloudPort;
+    if (port == null) {
+      throw StateError('Cloud port not configured');
+    }
+    await port.deleteById(partieId: partieId);
+  }
+
   // Injection du port cloud (GPG, HTTP, etc.)
   void setCloudPort(CloudPersistencePort port) {
     _cloudPort = port;
+  }
+
+  // Injection du provider de playerId (ex: GoogleIdentityService.playerId)
+  void setPlayerIdProvider(FutureOr<String?> Function() provider) {
+    _playerIdProvider = provider;
   }
 
   /// Boot: vérifie la dernière sauvegarde (si elle existe) et tente une restauration
@@ -377,7 +402,8 @@ class GamePersistenceOrchestrator {
       );
     }
 
-    await _pump(state);
+    // Ne pas bloquer le thread appelant: lancer la pompe en tâche de fond
+    Future.microtask(() => _pump(state));
   }
 
   SaveRequest _pickNext() {
@@ -394,6 +420,7 @@ class GamePersistenceOrchestrator {
     if (_isPumping) return;
     _isPumping = true;
     try {
+      syncState.value = 'syncing';
       while (_queue.isNotEmpty) {
         final next = _pickNext();
         try {
@@ -413,7 +440,21 @@ class GamePersistenceOrchestrator {
               final pid = state.partieId;
               final port = _cloudPort;
               if (pid != null && pid.isNotEmpty && port != null) {
-                await pushCloudById(partieId: pid, state: state);
+                // Si un playerId est disponible, pousser immédiatement vers le cloud.
+                final playerId = await _playerIdProvider?.call();
+                if (playerId != null && playerId.isNotEmpty) {
+                  try {
+                    await pushCloudById(partieId: pid, state: state, playerId: playerId);
+                  } catch (e) {
+                    // Marquer un push en attente si le cloud est indisponible
+                    try {
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setBool('pending_cloud_push_'+pid, true);
+                    } catch (_) {}
+                    rethrow;
+                  }
+                }
+                // Sinon: hors ligne ou non connecté → sauvegarde locale; la sync sera faite plus tard (post-login).
               }
             } catch (_) {}
           }
@@ -437,6 +478,11 @@ class GamePersistenceOrchestrator {
       }
     } finally {
       _isPumping = false;
+      // Revenir en état prêt si file vidée
+      if (_queue.isEmpty) {
+        // Si une erreur globale est détectée précédemment on ne la conserve pas bloquante
+        syncState.value = 'ready';
+      }
     }
   }
 
@@ -812,6 +858,10 @@ class GamePersistenceOrchestrator {
     if (port == null) {
       throw StateError('Cloud port not configured');
     }
+    // Source de vérité cloud: chaque push doit être rattaché à un joueur
+    if (playerId == null || playerId.isEmpty) {
+      throw StateError('playerId requis pour le push cloud');
+    }
     // Construire snapshot et métadonnées minimales
     final snap = state.toSnapshot().toJson();
     String displayName = state.gameName ?? '';
@@ -828,7 +878,8 @@ class GamePersistenceOrchestrator {
       'gameVersion': GameConstants.VERSION,
       'savedAt': DateTime.now().toIso8601String(),
       'name': displayName,
-      if (playerId != null) 'playerId': playerId,
+      // Attachement obligatoire au joueur cloud
+      'playerId': playerId,
     };
     await port.pushById(partieId: partieId, snapshot: snap, metadata: meta);
   }
@@ -862,6 +913,64 @@ class GamePersistenceOrchestrator {
     return port.listParties();
   }
 
+  /// Hook public simple pour déclencher la synchronisation post-connexion
+  Future<void> onPlayerConnected({required String playerId}) {
+    return postLoginSync(playerId: playerId).then((_) => retryPendingCloudPushes());
+  }
+
+  /// Synchronisation post-connexion (cloud gagne toujours).
+  /// - Inventorie cloud et local (hors backups)
+  /// - Pour chaque partieId:
+  ///   * local ∧ cloud → importer du cloud (overwrite local)
+  ///   * local seul → push immédiat au cloud
+  ///   * cloud seul → matérialiser localement
+  Future<void> postLoginSync({String? playerId}) async {
+    final port = _cloudPort;
+    if (port == null) {
+      // Pas de port cloud configuré → rien à faire
+      return;
+    }
+    try {
+      // 1) Inventaires
+      final cloudEntries = await listCloudParties();
+      final Map<String, CloudIndexEntry> cloudIndex = {
+        for (final e in cloudEntries) e.partieId: e,
+      };
+
+      final localMetas = await SaveManagerAdapter.listSaves();
+      final Set<String> localIds = localMetas
+          .where((m) => !m.isBackup)
+          .map((m) => m.id)
+          .toSet();
+
+      // 2) Union des IDs
+      final Set<String> unionIds = {...localIds, ...cloudIndex.keys};
+
+      // 3) Arbitrage déterministe par ID
+      for (final id in unionIds) {
+        final hasLocal = localIds.contains(id);
+        final hasCloud = cloudIndex.containsKey(id);
+
+        try {
+          if (hasLocal && hasCloud) {
+            // Cloud gagne: importer snapshot cloud et écraser local
+            await materializeFromCloud(partieId: id);
+          } else if (hasLocal && !hasCloud) {
+            // Partie locale seulement → push de création
+            await pushCloudFromSaveId(partieId: id, playerId: playerId);
+          } else if (!hasLocal && hasCloud) {
+            // Cloud-only → matérialiser local
+            await materializeFromCloud(partieId: id);
+          }
+        } catch (_) {
+          // Best-effort: continuer les autres ids
+        }
+      }
+    } catch (_) {
+      // Best-effort global
+    }
+  }
+
   /// Vérifie l'état cloud et applique un pull si le cloud est en avance.
   Future<void> checkCloudAndPullIfNeeded({
     required GameState state,
@@ -870,22 +979,38 @@ class GamePersistenceOrchestrator {
     try {
       final port = _cloudPort;
       if (port == null) return;
-      final status = await port.statusById(partieId: partieId);
-      if (status.syncState == 'ahead_remote') {
-        final obj = await port.pullById(partieId: partieId);
-        if (obj == null) return;
-        final raw = obj['snapshot'];
-        if (raw is Map) {
-          final snap = GameSnapshot.fromJson(Map<String, dynamic>.from(raw));
-          state.applyLoadedGameDataWithoutSnapshot(state.gameName ?? partieId, <String, dynamic>{});
-          state.applySnapshot(snap);
-          await state.finishLoadGameAfterSnapshot(state.gameName ?? partieId, <String, dynamic>{});
-          try {
-            await saveGameById(state);
-          } catch (_) {}
-        }
+      final obj = await port.pullById(partieId: partieId);
+      if (obj == null) return;
+      // Source de vérité cloud: importer systématiquement si une version cloud existe
+      final raw = obj['snapshot'];
+      if (raw is Map) {
+        final snap = GameSnapshot.fromJson(Map<String, dynamic>.from(raw));
+        // Mettre à jour le nom local d'après le cloud avant d'appliquer le snapshot
+        try {
+          if (obj['metadata'] is Map) {
+            final m = Map<String, dynamic>.from(obj['metadata'] as Map);
+            final cloudName = (m['name']?.toString() ?? '').trim();
+            if (cloudName.isNotEmpty) {
+              final metaLocal = await SaveManagerAdapter.getSaveMetadataById(partieId);
+              if (metaLocal != null && metaLocal.name != cloudName) {
+                await SaveManagerAdapter.updateSaveMetadataById(partieId, metaLocal.copyWith(name: cloudName));
+              }
+            }
+          }
+        } catch (_) {}
+        state.applyLoadedGameDataWithoutSnapshot(state.gameName ?? partieId, <String, dynamic>{});
+        state.applySnapshot(snap);
+        await state.finishLoadGameAfterSnapshot(state.gameName ?? partieId, <String, dynamic>{});
+        try {
+          await saveGameById(state);
+        } catch (_) {}
       }
-    } catch (_) {}
+    } catch (e) {
+      // Erreur réseau non bloquante
+      try {
+        syncState.value = 'error';
+      } catch (_) {}
+    }
   }
 
   /// Pousse au cloud le snapshot stocké pour une sauvegarde identifiée, sans charger l'UI
@@ -899,6 +1024,10 @@ class GamePersistenceOrchestrator {
     final port = _cloudPort;
     if (port == null) {
       throw StateError('Cloud port not configured');
+    }
+    // Source de vérité cloud: push exige un playerId pour rattacher la partie
+    if (playerId == null || playerId.isEmpty) {
+      throw StateError('playerId requis pour le push cloud');
     }
     final save = await SaveManagerAdapter.loadGameById(partieId);
     if (save == null) {
@@ -926,9 +1055,19 @@ class GamePersistenceOrchestrator {
       'gameVersion': save.version,
       'savedAt': DateTime.now().toIso8601String(),
       'name': save.name,
-      if (playerId != null) 'playerId': playerId,
+      // Attachement obligatoire au joueur cloud
+      'playerId': playerId,
     };
-    await port.pushById(partieId: partieId, snapshot: snapshot, metadata: meta);
+    try {
+      await port.pushById(partieId: partieId, snapshot: snapshot, metadata: meta);
+    } catch (e) {
+      // En cas d'échec, marquer pour retry ultérieur
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('pending_cloud_push_'+partieId, true);
+      } catch (_) {}
+      rethrow;
+    }
   }
 
   /// Matérialise localement une partie à partir du cloud (écrit snapshot-only sous l'ID)
@@ -968,6 +1107,27 @@ class GamePersistenceOrchestrator {
       gameMode: mode,
     );
     return await SaveManagerAdapter.saveGame(save);
+  }
+
+  /// Retente les pushes cloud marqués en attente (backend dormant ou offline)
+  Future<void> retryPendingCloudPushes() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final playerId = await _playerIdProvider?.call();
+      if (playerId == null || playerId.isEmpty) return;
+      final metas = await SaveManagerAdapter.listSaves();
+      for (final m in metas.where((e) => !e.isBackup)) {
+        final key = 'pending_cloud_push_'+m.id;
+        final pending = prefs.getBool(key) ?? false;
+        if (!pending) continue;
+        try {
+          await pushCloudFromSaveId(partieId: m.id, playerId: playerId);
+          await prefs.remove(key);
+        } catch (_) {
+          // laisser pour prochaine tentative
+        }
+      }
+    } catch (_) {}
   }
 
   /// Mission 7: Contrôles d'intégrité non-intrusifs (debug-only)

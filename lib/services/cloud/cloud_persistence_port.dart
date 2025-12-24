@@ -64,4 +64,9 @@ abstract class CloudPersistencePort {
 
   /// Liste les parties présentes côté cloud pour l'utilisateur courant (si applicable)
   Future<List<CloudIndexEntry>> listParties();
+
+  /// Supprime l'entrée cloud pour une partie.
+  Future<void> deleteById({
+    required String partieId,
+  });
 }

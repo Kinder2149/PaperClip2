@@ -116,6 +116,10 @@ class _StartScreenState extends State<StartScreen> {
                   final base = (dotenv.env['CLOUD_BACKEND_BASE_URL'] ?? '').trim();
                   if (base.isEmpty) {
                     GamePersistenceOrchestrator.instance.setCloudPort(LocalCloudPersistencePort());
+                    // Fournir également le provider playerId à l'orchestrateur
+                    GamePersistenceOrchestrator.instance.setPlayerIdProvider(() async {
+                      return google.identity.playerId;
+                    });
                   } else {
                     final bearer = (dotenv.env['CLOUD_API_BEARER'] ?? '').trim();
                     GamePersistenceOrchestrator.instance.setCloudPort(
@@ -125,20 +129,26 @@ class _StartScreenState extends State<StartScreen> {
                           if (bearer.isEmpty) return null;
                           return {'Authorization': 'Bearer ' + bearer};
                         },
+                        playerIdProvider: () async {
+                          return google.identity.playerId;
+                        },
                       ),
                     );
+                    // Injecter aussi côté orchestrateur (auto-push dans la pompe)
+                    GamePersistenceOrchestrator.instance.setPlayerIdProvider(() async {
+                      return google.identity.playerId;
+                    });
                   }
                 } else {
                   GamePersistenceOrchestrator.instance.setCloudPort(SnapshotsCloudPersistencePort());
+                  // Fournir également le provider playerId à l'orchestrateur
+                  GamePersistenceOrchestrator.instance.setPlayerIdProvider(() async {
+                    return google.identity.playerId;
+                  });
                 }
                 final playerId = google.identity.playerId;
                 if (playerId != null && playerId.isNotEmpty) {
-                  final saves = await SaveManagerAdapter.listSaves();
-                  for (final s in saves.where((e) => !e.isBackup)) {
-                    try {
-                      await GamePersistenceOrchestrator.instance.pushCloudFromSaveId(partieId: s.id, playerId: playerId);
-                    } catch (_) {}
-                  }
+                  await GamePersistenceOrchestrator.instance.onPlayerConnected(playerId: playerId);
                 }
               }
             } catch (_) {}

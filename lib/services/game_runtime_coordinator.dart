@@ -255,6 +255,13 @@ class GameRuntimeCoordinator implements RuntimeOrchestrator {
             partieId: pid,
           ),
         );
+        // Tentative de sync montante si une sauvegarde locale a eu lieu en mode avion
+        unawaited(
+          GamePersistenceOrchestrator.instance.pushCloudById(
+            partieId: pid,
+            state: _gameState,
+          ),
+        );
       }
     } catch (_) {}
     _gameSessionController.resumeSession();

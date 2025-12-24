@@ -114,6 +114,10 @@ void main() async {
               print('[Bootstrap] FEATURE_CLOUD_PER_PARTIE_HTTP=true mais CLOUD_BACKEND_BASE_URL est vide. Fallback LocalCloudPersistencePort');
             }
             GamePersistenceOrchestrator.instance.setCloudPort(LocalCloudPersistencePort());
+            // Injecter le provider playerId pour l'auto-push après sauvegardes
+            GamePersistenceOrchestrator.instance.setPlayerIdProvider(() async {
+              return _googleServices.identity.playerId;
+            });
           } else {
             final bearer = (dotenv.env['CLOUD_API_BEARER'] ?? '').trim();
             GamePersistenceOrchestrator.instance.setCloudPort(
@@ -125,11 +129,19 @@ void main() async {
                     'Authorization': 'Bearer ' + bearer,
                   };
                 },
+                playerIdProvider: () async {
+                  // Utilise l'identité Google si disponible
+                  return _googleServices.identity.playerId;
+                },
               ),
             );
             if (kDebugMode) {
               print('[Bootstrap] Cloud per partie activé (HttpCloudPersistencePort) base=' + base);
             }
+            // Injecter aussi côté orchestrateur (auto-push dans la pompe)
+            GamePersistenceOrchestrator.instance.setPlayerIdProvider(() async {
+              return _googleServices.identity.playerId;
+            });
           }
         } else {
           // POC local/offline basé sur SnapshotsCloudSave: 1 slot par partieId (adapter GPG/Local)
@@ -137,6 +149,10 @@ void main() async {
           if (kDebugMode) {
             print('[Bootstrap] Cloud per partie activé (SnapshotsCloudPersistencePort POC)');
           }
+          // Même hors HTTP, fournir le provider playerId pour une future connexion
+          GamePersistenceOrchestrator.instance.setPlayerIdProvider(() async {
+            return _googleServices.identity.playerId;
+          });
         }
       }
     } catch (_) {}
