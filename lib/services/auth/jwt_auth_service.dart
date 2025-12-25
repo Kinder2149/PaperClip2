@@ -7,14 +7,52 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
+/// Minimal storage adapter to decouple from FlutterSecureStorage in tests.
+abstract class SecureStorageAdapter {
+  Future<String?> read({required String key});
+  Future<void> write({required String key, required String value});
+  Future<void> delete({required String key});
+}
+
+class DefaultSecureStorageAdapter implements SecureStorageAdapter {
+  const DefaultSecureStorageAdapter(this._inner);
+  final FlutterSecureStorage _inner;
+
+  @override
+  Future<void> delete({required String key}) => _inner.delete(key: key);
+
+  @override
+  Future<String?> read({required String key}) => _inner.read(key: key);
+
+  @override
+  Future<void> write({required String key, required String value}) =>
+      _inner.write(key: key, value: value);
+}
+
 class JwtAuthService {
   static final JwtAuthService instance = JwtAuthService._();
-  JwtAuthService._();
+  JwtAuthService._()
+      : _client = http.Client(),
+        _storage = const DefaultSecureStorageAdapter(FlutterSecureStorage());
 
   static const _kJwtKey = 'jwt_token';
   static const _kJwtExp = 'jwt_expires_at'; // millisSinceEpoch (UTC)
 
-  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  // Injectable dependencies for testability
+  http.Client _client;
+  SecureStorageAdapter _storage;
+
+  /// Testing hooks: inject a custom HTTP client
+  @visibleForTesting
+  void setHttpClientForTesting(http.Client client) {
+    _client = client;
+  }
+
+  /// Testing hooks: inject a custom storage adapter
+  @visibleForTesting
+  void setStorageAdapterForTesting(SecureStorageAdapter adapter) {
+    _storage = adapter;
+  }
 
   Future<bool> _isJwtValid() async {
     try {
@@ -57,7 +95,7 @@ class JwtAuthService {
     }
     final uri = Uri.parse(base + '/auth/login');
     try {
-      final resp = await http
+      final resp = await _client
           .post(
             uri,
             headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},

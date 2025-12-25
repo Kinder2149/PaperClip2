@@ -7,16 +7,19 @@ import os
 import json
 import hashlib
 
-CLOUD_ROOT = os.getenv("CLOUD_STORAGE_DIR", "cloud_data")
-
-os.makedirs(CLOUD_ROOT, exist_ok=True)
+def _cloud_root() -> str:
+    root = os.getenv("CLOUD_STORAGE_DIR", "cloud_data")
+    os.makedirs(root, exist_ok=True)
+    return root
 
 router = APIRouter(prefix="/api/cloud/parties", tags=["cloud"]) 
 
 # Garde-fous configurables
 MAX_SNAPSHOT_BYTES = int(os.getenv("MAX_SNAPSHOT_BYTES", str(256 * 1024)))  # 256 KiB par défaut
-# Enum fermée optionnelle pour gameMode, via env "GAME_MODE_ENUM" = "classic,zen"; si vide => pas de contrainte
-GAME_MODE_ENUM = [m.strip() for m in os.getenv("GAME_MODE_ENUM", "").split(",") if m.strip()]
+
+def _game_mode_enum() -> list[str]:
+    raw = os.getenv("GAME_MODE_ENUM", "")
+    return [m.strip() for m in raw.split(",") if m.strip()]
 # Version de schéma attendue pour les snapshots
 CURRENT_SNAPSHOT_SCHEMA_VERSION = int(os.getenv("SNAPSHOT_SCHEMA_VERSION", "1"))
 # Concurrence: activation de l'écriture conditionnelle (évaluée dynamiquement)
@@ -49,7 +52,7 @@ class PartiesListItem(BaseModel):
 
 def _path(partie_id: str) -> str:
     safe = partie_id.replace("/", "_")
-    return os.path.join(CLOUD_ROOT, f"{safe}.json")
+    return os.path.join(_cloud_root(), f"{safe}.json")
 
 def _auth(
     authorization: Optional[str] = Header(default=None),
@@ -126,7 +129,8 @@ def put_partie(
     meta["gameVersion"] = meta["gameVersion"].strip()
     meta["playerId"] = meta["playerId"].strip()
     # Enums fermées optionnelles
-    if GAME_MODE_ENUM and meta["gameMode"] not in GAME_MODE_ENUM:
+    enum_vals = _game_mode_enum()
+    if enum_vals and meta["gameMode"] not in enum_vals:
         raise HTTPException(status_code=422, detail=f"Invalid gameMode: {meta['gameMode']}")
     # Longueurs raisonnables
     if len(meta["name"]) > 100 or len(meta["gameMode"]) > 50 or len(meta["gameVersion"]) > 20:
@@ -281,10 +285,10 @@ def list_parties(playerId: str = Query(..., description="Identifiant joueur (Goo
     # Pour la consultation d'index, la visibilité est basée sur playerId uniquement.
     # L'ownership (owner_uid) est contrôlé strictement sur PUT/DELETE.
     # Parcours des fichiers JSON dans CLOUD_ROOT
-    for filename in os.listdir(CLOUD_ROOT):
+    for filename in os.listdir(_cloud_root()):
         if not filename.endswith(".json"):
             continue
-        path = os.path.join(CLOUD_ROOT, filename)
+        path = os.path.join(_cloud_root(), filename)
         data = _safe_read_json(path)
         if not data:
             continue
