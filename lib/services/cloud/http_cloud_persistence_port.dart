@@ -326,7 +326,11 @@ class HttpCloudPersistencePort implements CloudPersistencePort {
           }
         } catch (_) {}
       }
-      if (resp.statusCode == 404) return null;
+      if (resp.statusCode == 404) {
+        // La ressource n'existe pas (ou plus) côté serveur: purger l'ETag pour forcer une création (If-None-Match: *) au prochain push
+        _etagCache.remove(partieId);
+        return null;
+      }
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         final text = await resp.transform(utf8.decoder).join();
         if (kDebugMode) {
@@ -387,6 +391,8 @@ class HttpCloudPersistencePort implements CloudPersistencePort {
         } catch (_) {}
       }
       if (resp.statusCode == 404) {
+        // Invalider tout ETag connu afin que le prochain PUT parte en création
+        _etagCache.remove(partieId);
         return CloudStatus(partieId: partieId, syncState: 'unknown');
       }
       if (resp.statusCode < 200 || resp.statusCode >= 300) {

@@ -58,6 +58,17 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
   int _filterMode = 0; // 0=Tous, 1=Local, 2=Cloud
   // IDs marqués en attente de push cloud (pending)
   final Set<String> _pendingCloudPushIds = <String>{};
+  
+  void _onSyncStateChanged() {
+    if (!mounted) return;
+    try {
+      final v = GamePersistenceOrchestrator.instance.syncState.value;
+      if (v == 'ready') {
+        // Après une synchronisation/push terminé, recharger la liste pour refléter l'état cloud/local
+        _loadSaves();
+      }
+    } catch (_) {}
+  }
 
   @override
   void initState() {
@@ -75,6 +86,8 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
         });
       } catch (_) {}
     }();
+    // Rafraîchissement automatique post-sync (push/pull terminés)
+    GamePersistenceOrchestrator.instance.syncState.addListener(_onSyncStateChanged);
   }
 
   // Flux cloud global supprimé
@@ -327,8 +340,9 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
         _backupCounts.update(base, (v) => v + 1, ifAbsent: () => 1);
       }
 
-      // Filtrer: n'afficher que les parties locales régulières (pas backups, pas cloud)
-      final saves = all.where((e) => !e.isBackup && e.source != SaveSource.cloud).toList();
+      // Conserver toutes les parties non-backup (locales et cloud). Le filtrage (Tous/Local/Cloud)
+      // est appliqué dynamiquement au rendu selon _filterMode.
+      final saves = all.where((e) => !e.isBackup).toList();
 
       // Charger les indicateurs de pending push (SharedPreferences)
       _pendingCloudPushIds.clear();
@@ -597,6 +611,9 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
   void dispose() {
     _cloudProbeTimer?.cancel();
     _nameController.dispose();
+    try {
+      GamePersistenceOrchestrator.instance.syncState.removeListener(_onSyncStateChanged);
+    } catch (_) {}
     super.dispose();
   }
 
@@ -764,9 +781,12 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                           List<SaveEntry> visible = _saves;
                           if (enableCloud) {
                             if (_filterMode == 1) {
-                              visible = _saves.where((s) => s.source != SaveSource.cloud).toList();
+                              // Vue Local: entrées locales pures ou locales avec présence cloud, mais catégorisées côté local
+                              visible = _saves.where((s) => s.source != SaveSource.cloud && s.isBackup == false).toList();
                             } else if (_filterMode == 2) {
-                              visible = _saves.where((s) => s.source == SaveSource.cloud).toList();
+                              // Vue Cloud: inclure les entrées dont la source est cloud OU ayant des indices de présence distante
+                              // (état cloud connu OU remoteVersion présent via l'index cloud)
+                              visible = _saves.where((s) => s.source == SaveSource.cloud || s.cloudSyncState != null || s.remoteVersion != null).toList();
                             }
                           }
                           return ListView.builder(
@@ -1051,8 +1071,9 @@ class _SaveLoadScreenState extends State<SaveLoadScreen> {
                                     SizedBox(height: 8.0),
                                     Divider(),
                                     SizedBox(height: 8.0),
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    Wrap(
+                                      spacing: 8.0,
+                                      runSpacing: 8.0,
                                       children: [
                                         Chip(
                                           label: Text(
