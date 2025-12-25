@@ -18,6 +18,7 @@ import 'package:paperclip2/services/save_game.dart';
 import 'package:paperclip2/services/save_system/save_validator.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:paperclip2/services/auth/jwt_auth_service.dart';
 
 enum SaveTrigger {
   autosave,
@@ -455,6 +456,11 @@ class GamePersistenceOrchestrator {
                 if (playerId != null && playerId.isNotEmpty) {
                   try {
                     await pushCloudById(partieId: pid, state: state, playerId: playerId);
+                    // Nettoyage du pending si succès
+                    try {
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.remove('pending_cloud_push_'+pid);
+                    } catch (_) {}
                   } catch (e) {
                     // Marquer un push en attente si le cloud est indisponible
                     try {
@@ -463,6 +469,28 @@ class GamePersistenceOrchestrator {
                     } catch (_) {}
                     rethrow;
                   }
+                } else {
+                  // Pas de playerId pour l'instant: marquer en attente et planifier une reprise légère
+                  try {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setBool('pending_cloud_push_'+pid, true);
+                  } catch (_) {}
+                  // Essai différé: si le JWT devient disponible rapidement, tenter un push automatique
+                  Future.delayed(const Duration(seconds: 3), () async {
+                    try {
+                      final headers = await JwtAuthService.instance.buildAuthHeaders();
+                      if (headers != null && headers.isNotEmpty) {
+                        final freshPlayerId = await _playerIdProvider?.call();
+                        if (freshPlayerId != null && freshPlayerId.isNotEmpty) {
+                          await pushCloudById(partieId: pid, state: state, playerId: freshPlayerId);
+                          try {
+                            final prefs = await SharedPreferences.getInstance();
+                            await prefs.remove('pending_cloud_push_'+pid);
+                          } catch (_) {}
+                        }
+                      }
+                    } catch (_) {}
+                  });
                 }
                 // Sinon: hors ligne ou non connecté → sauvegarde locale; la sync sera faite plus tard (post-login).
               }

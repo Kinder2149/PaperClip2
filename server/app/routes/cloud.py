@@ -33,6 +33,7 @@ class CloudStatusResponse(BaseModel):
     remoteVersion: Optional[int] = None
     lastPushAt: Optional[datetime] = None
     lastPullAt: Optional[datetime] = None
+    etag: Optional[str] = None
 
 class PartiesListItem(BaseModel):
     # Champs du contrat minimal. Certains proviennent de metadata.
@@ -218,6 +219,8 @@ def put_partie(
         if response is not None:
             response.headers["ETag"] = data.get("hash", "")
             response.headers["X-Remote-Version"] = str(data.get("remoteVersion", ""))
+            # Header alternatif non-strip par certains proxies
+            response.headers["X-Entity-Tag"] = data.get("hash", "")
     except Exception:
         pass
     return {"ok": True}
@@ -238,6 +241,7 @@ def get_partie(partie_id: str, _=Depends(_auth), response: Response = None):
         if response is not None:
             response.headers["ETag"] = data.get("hash", "")
             response.headers["X-Remote-Version"] = str(data.get("remoteVersion", ""))
+            response.headers["X-Entity-Tag"] = data.get("hash", "")
     except Exception:
         pass
     return {"snapshot": data.get("snapshot", {}), "metadata": data.get("metadata", {})}
@@ -253,6 +257,7 @@ def get_status(partie_id: str, _=Depends(_auth), response: Response = None):
         if response is not None:
             response.headers["ETag"] = data.get("hash", "")
             response.headers["X-Remote-Version"] = str(data.get("remoteVersion", ""))
+            response.headers["X-Entity-Tag"] = data.get("hash", "")
     except Exception:
         pass
     return CloudStatusResponse(
@@ -261,6 +266,7 @@ def get_status(partie_id: str, _=Depends(_auth), response: Response = None):
         remoteVersion=data.get("remoteVersion"),
         lastPushAt=data.get("lastPushAt"),
         lastPullAt=data.get("lastPullAt"),
+        etag=data.get("hash"),
     )
 
 @router.get("", response_model=List[PartiesListItem])
