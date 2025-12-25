@@ -1,5 +1,9 @@
 # Persistance — Stratégie Snapshot-First
 
+Document canonique — fait foi
+Dernière mise à jour: 2025-12-25
+Voir aussi: `identity/INVARIANTS_IDENTITE_PERSISTENCE.md` • `Glossaire.md`
+
 Ce document décrit la stratégie de persistance adoptée pour PaperClip2 après la refonte de `GameState`.
 
 ## Objectifs

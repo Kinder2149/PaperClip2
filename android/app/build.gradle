@@ -5,6 +5,13 @@ plugins {
     id "dev.flutter.flutter-gradle-plugin"
 }
 
+// Chargement optionnel des propriétés de signature depuis key.properties (non versionné)
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file('key.properties')
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "com.kinder2149.paperclip2"
     compileSdk = flutter.compileSdkVersion
@@ -32,11 +39,22 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        release {
+            // Si key.properties est présent, on configure la signature release
+            if (keystoreProperties.containsKey('storeFile')) {
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.debug
+            // Utiliser la signature release si disponible, sinon fallback debug pour le run local
+            signingConfig = signingConfigs.release
         }
     }
 }

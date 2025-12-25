@@ -244,6 +244,16 @@ class GamePersistenceOrchestrator {
     }
   }
 
+  /// Parse un horodatage ISO8601 en DateTime (ou null si invalide)
+  DateTime? _parseIso(String v) {
+    if (v.isEmpty) return null;
+    try {
+      return DateTime.parse(v);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> requestAutoSave(GameState state, {String? reason}) async {
     if (!state.isInitialized) return;
     // ID-first: utiliser l'identité technique de la partie pour le keying/coalescing
@@ -946,15 +956,18 @@ class GamePersistenceOrchestrator {
       // 2) Union des IDs
       final Set<String> unionIds = {...localIds, ...cloudIndex.keys};
 
-      // 3) Arbitrage déterministe par ID
+      // 3) Arbitrage déterministe par ID (fraîcheur obligatoire)
       for (final id in unionIds) {
         final hasLocal = localIds.contains(id);
         final hasCloud = cloudIndex.containsKey(id);
 
         try {
           if (hasLocal && hasCloud) {
-            // Cloud gagne: importer snapshot cloud et écraser local
-            await materializeFromCloud(partieId: id);
+            // Règle fraîcheur: comparer cloud vs local et décider
+            await _arbitrateFreshnessAndSync(
+              partieId: id,
+              playerId: playerId,
+            );
           } else if (hasLocal && !hasCloud) {
             // Partie locale seulement → push de création
             await pushCloudFromSaveId(partieId: id, playerId: playerId);
@@ -979,37 +992,144 @@ class GamePersistenceOrchestrator {
     try {
       final port = _cloudPort;
       if (port == null) return;
-      final obj = await port.pullById(partieId: partieId);
-      if (obj == null) return;
-      // Source de vérité cloud: importer systématiquement si une version cloud existe
-      final raw = obj['snapshot'];
-      if (raw is Map) {
-        final snap = GameSnapshot.fromJson(Map<String, dynamic>.from(raw));
-        // Mettre à jour le nom local d'après le cloud avant d'appliquer le snapshot
-        try {
-          if (obj['metadata'] is Map) {
-            final m = Map<String, dynamic>.from(obj['metadata'] as Map);
-            final cloudName = (m['name']?.toString() ?? '').trim();
-            if (cloudName.isNotEmpty) {
-              final metaLocal = await SaveManagerAdapter.getSaveMetadataById(partieId);
-              if (metaLocal != null && metaLocal.name != cloudName) {
-                await SaveManagerAdapter.updateSaveMetadataById(partieId, metaLocal.copyWith(name: cloudName));
-              }
-            }
-          }
-        } catch (_) {}
-        state.applyLoadedGameDataWithoutSnapshot(state.gameName ?? partieId, <String, dynamic>{});
-        state.applySnapshot(snap);
-        await state.finishLoadGameAfterSnapshot(state.gameName ?? partieId, <String, dynamic>{});
-        try {
-          await saveGameById(state);
-        } catch (_) {}
-      }
+      // Appliquer la règle d'arbitrage fraîcheur
+      await _arbitrateFreshnessAndSync(
+        partieId: partieId,
+        state: state,
+      );
     } catch (e) {
       // Erreur réseau non bloquante
       try {
         syncState.value = 'error';
       } catch (_) {}
+    }
+  }
+
+  /// Compare la fraîcheur cloud vs local et applique l'action sûre:
+  /// - Cloud plus récent → importer cloud
+  /// - Local plus récent → pousser au cloud
+  /// - Égal → no-op
+  /// Si `state` est fourni, applique directement; sinon agit au niveau stockage.
+  Future<void> _arbitrateFreshnessAndSync({
+    required String partieId,
+    GameState? state,
+    String? playerId,
+  }) async {
+    final port = _cloudPort;
+    if (port == null) return;
+    Map<String, dynamic>? obj;
+    try {
+      obj = await port.pullById(partieId: partieId);
+    } catch (_) {
+      obj = null;
+    }
+
+    // Récupérer fraîcheur locale
+    final localMeta = await SaveManagerAdapter.getSaveMetadataById(partieId);
+    final localTs = localMeta?.lastModified;
+
+    // Récupérer fraîcheur cloud
+    DateTime? cloudTs;
+    String? cloudName;
+    if (obj != null && obj['metadata'] is Map) {
+      final m = Map<String, dynamic>.from(obj['metadata'] as Map);
+      final savedAt = (m['savedAt']?.toString() ?? '').trim();
+      cloudTs = _parseIso(savedAt);
+      cloudName = (m['name']?.toString() ?? '').trim();
+    }
+
+    // Journalisation technique
+    if (_isDebug) {
+      print('[SYNC-ARBITER] id='+partieId+' localTs='+(localTs?.toIso8601String() ?? 'null')+' cloudTs='+(cloudTs?.toIso8601String() ?? 'null'));
+    }
+
+    if (obj == null) {
+      // Aucun cloud → rien à importer; si local existe et playerId dispo, on pourra pousser ailleurs
+      final pid = playerId ?? await _playerIdProvider?.call();
+      if (localTs != null && pid != null && pid.isNotEmpty) {
+        try {
+          await pushCloudFromSaveId(partieId: partieId, playerId: pid);
+          if (_isDebug) print('[SYNC-ARBITER] push (cloud absent)');
+        } catch (_) {}
+      }
+      return;
+    }
+
+    // Comparaison
+    if (cloudTs != null && localTs != null) {
+      if (cloudTs.isAfter(localTs)) {
+        // Importer cloud
+        await _importCloudObject(partieId: partieId, obj: obj, state: state, cloudName: cloudName);
+        if (_isDebug) print('[SYNC-ARBITER] action=import-cloud');
+      } else if (localTs.isAfter(cloudTs)) {
+        // Pousser local
+        final pid = playerId ?? await _playerIdProvider?.call();
+        if (pid != null && pid.isNotEmpty) {
+          try {
+            await pushCloudFromSaveId(partieId: partieId, playerId: pid);
+            if (_isDebug) print('[SYNC-ARBITER] action=push-local');
+          } catch (_) {}
+        }
+      } else {
+        if (_isDebug) print('[SYNC-ARBITER] action=no-op (equal)');
+      }
+      return;
+    }
+
+    // Cas dégradés: privilégier la sécurité (pas d'écrasement aveugle)
+    if (cloudTs != null && localTs == null) {
+      await _importCloudObject(partieId: partieId, obj: obj, state: state, cloudName: cloudName);
+      if (_isDebug) print('[SYNC-ARBITER] action=import-cloud (no localTs)');
+      return;
+    }
+    if (localTs != null && cloudTs == null) {
+      final pid = playerId ?? await _playerIdProvider?.call();
+      if (pid != null && pid.isNotEmpty) {
+        try {
+          await pushCloudFromSaveId(partieId: partieId, playerId: pid);
+          if (_isDebug) print('[SYNC-ARBITER] action=push-local (no cloudTs)');
+        } catch (_) {}
+      }
+      return;
+    }
+    // Aucun timestamp disponible → no-op sécurisé
+    if (_isDebug) print('[SYNC-ARBITER] action=no-op (no timestamps)');
+  }
+
+  Future<void> _importCloudObject({
+    required String partieId,
+    required Map<String, dynamic> obj,
+    GameState? state,
+    String? cloudName,
+  }) async {
+    final raw = obj['snapshot'];
+    if (raw is! Map) return;
+    final snap = GameSnapshot.fromJson(Map<String, dynamic>.from(raw));
+    // Harmoniser le nom local d'après le cloud avant d'appliquer
+    try {
+      final metaLocal = await SaveManagerAdapter.getSaveMetadataById(partieId);
+      if (cloudName != null && cloudName.isNotEmpty && metaLocal != null && metaLocal.name != cloudName) {
+        await SaveManagerAdapter.updateSaveMetadataById(partieId, metaLocal.copyWith(name: cloudName));
+      }
+    } catch (_) {}
+    if (state != null) {
+      state.applyLoadedGameDataWithoutSnapshot(state.gameName ?? partieId, <String, dynamic>{});
+      state.applySnapshot(snap);
+      await state.finishLoadGameAfterSnapshot(state.gameName ?? partieId, <String, dynamic>{});
+      try {
+        await saveGameById(state);
+      } catch (_) {}
+    } else {
+      // matérialisation silencieuse via SaveManagerAdapter
+      final save = SaveGame(
+        id: partieId,
+        name: cloudName ?? partieId,
+        lastSaveTime: DateTime.now(),
+        gameData: { LocalGamePersistenceService.snapshotKey: snap.toJson() },
+        version: GameConstants.VERSION,
+        gameMode: GameMode.INFINITE,
+      );
+      await SaveManagerAdapter.saveGame(save);
     }
   }
 

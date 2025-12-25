@@ -1,5 +1,9 @@
 # Backups — Politique de Rétention (PaperClip2)
 
+Document canonique — fait foi
+Dernière mise à jour: 2025-12-25
+Voir aussi: `Glossaire.md` • `identity/INVARIANTS_IDENTITE_PERSISTENCE.md`
+
 ## 1) Format & portée
 - Nom de backup: `partieId|timestamp` (timestamp en millisecondes)
 - Backups internes uniquement: exclus de la liste principale dans l’UI

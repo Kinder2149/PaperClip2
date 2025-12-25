@@ -22,6 +22,7 @@ import '../services/google/identity/google_identity_service.dart';
 import 'auth_choice_screen.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../widgets/google/google_account_button.dart';
+import '../widgets/sync_status_chip.dart';
 import 'google_profile_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:paperclip2/services/cloud/http_cloud_persistence_port.dart';
@@ -66,6 +67,7 @@ class _StartScreenState extends State<StartScreen> {
     super.initState();
     _loadLastSaveInfo();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _wirePlayerIdProvider();
       _prepareCloudSessionSilently();
     });
   }
@@ -77,6 +79,23 @@ class _StartScreenState extends State<StartScreen> {
       // Google-only: tentative silencieuse d'actualiser l'identité GPG
       final google = context.read<GoogleServicesBundle>();
       await google.identity.refresh();
+    } catch (_) {}
+  }
+
+  void _wirePlayerIdProvider() {
+    try {
+      final google = context.read<GoogleServicesBundle>();
+      // Injection non bloquante du provider playerId pour la pompe de persistance
+      GamePersistenceOrchestrator.instance.setPlayerIdProvider(() async {
+        // Utilise l'identité actuelle si disponible, sinon dernier playerId connu (cache)
+        final current = google.identity.playerId;
+        if (current != null && current.isNotEmpty) return current;
+        try {
+          final cached = await GoogleIdentityService.readLastKnownPlayerId();
+          if (cached != null && cached.isNotEmpty) return cached;
+        } catch (_) {}
+        return null;
+      });
     } catch (_) {}
   }
 
@@ -357,231 +376,81 @@ class _StartScreenState extends State<StartScreen> {
     }
   }
 
-  void _showNewGameDialog(BuildContext context) {
-    final controller = TextEditingController(
-      text: 'Partie ${DateTime.now().day}/${DateTime.now().month}',
-    );
+  Future<void> _startNewGameAuto() async {
+    setState(() => _isLoading = true);
+    try {
+      await context.read<AppBootstrapController>().waitUntilReady();
 
-    // Variable pour suivre le mode sÃ©lectionnÃ©
-    GameMode selectedMode = GameMode.INFINITE;
-    // Choix explicite du mode de sauvegarde
-    String selectedStorage = 'local'; // 'local' | 'cloud'
+      // Décision automatique: cloud si playerId dispo, sinon local
+      final google = context.read<GoogleServicesBundle>();
+      final playerId = google.identity.playerId;
+      final signedIn = google.identity.status == IdentityStatus.signedIn && (playerId != null && playerId.isNotEmpty);
+      final selectedStorage = signedIn ? 'cloud' : 'local';
 
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Text('Nouvelle Partie'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: controller,
-                  decoration: const InputDecoration(
-                    labelText: 'Nom de la partie',
-                    hintText: 'Entrez un nom pour votre partie',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                const Text(
-                  'Mode de jeu',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                const SizedBox(height: 8),
+      // Enregistrer le mode de sauvegarde choisi dans le GameState
+      final gs = context.read<GameState>();
+      gs.setStorageMode(selectedStorage);
 
-                // Option pour le mode infini
-                RadioListTile<GameMode>(
-                  title: const Text('Mode Infini'),
-                  subtitle: const Text('Jouez sans limites Ã  votre rythme'),
-                  value: GameMode.INFINITE,
-                  groupValue: selectedMode,
-                  onChanged: (value) {
-                    setState(() => selectedMode = value!);
-                  },
-                  activeColor: Colors.deepPurple,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
-                ),
+      // Nom cosmétique par défaut (ID-first: aucune contrainte d’unicité par nom)
+      final defaultName = 'Partie ${DateTime.now().day}/${DateTime.now().month}';
 
-                // Option pour le mode compÃ©titif
-                RadioListTile<GameMode>(
-                  title: const Text('Mode CompÃ©titif'),
-                  subtitle: const Text('Obtenez le meilleur score avant la crise'),
-                  value: GameMode.COMPETITIVE,
-                  groupValue: selectedMode,
-                  onChanged: (value) {
-                    setState(() => selectedMode = value!);
-                  },
-                  activeColor: Colors.deepPurple,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
-                ),
+      // Démarrer en mode par défaut (INFINITE) sans modal
+      await context.read<GameRuntimeCoordinator>().startNewGameAndStartAutoSave(defaultName, mode: GameMode.INFINITE);
 
-                if (selectedMode == GameMode.COMPETITIVE)
-                  Container(
-                    margin: const EdgeInsets.only(top: 8),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.amber, width: 1),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Text(
-                          'ðŸ† Mode CompÃ©titif',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.amber,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'Optimisez votre production jusqu Ã  la crise mondiale de mÃ©tal pour obtenir le meilleur score. Comparez vos rÃ©sultats avec vos amis !',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
+      // Déclencher automatiquement un push cloud initial si cloud par partie activé et identité valide
+      try {
+        final enableCloudPerPartie = (dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true';
+        if (enableCloudPerPartie && signedIn) {
+          final partieId = gs.partieId ?? '';
+          if (partieId.isNotEmpty && playerId != null && playerId.isNotEmpty) {
+            try {
+              await GamePersistenceOrchestrator.instance.pushCloudFromSaveId(
+                partieId: partieId,
+                playerId: playerId,
+              );
+            } catch (e) {
+              // Marquer l'état pending pour retry ultérieur et informer discrètement
+              try {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setBool('pending_cloud_push_'+partieId, true);
+              } catch (_) {}
+              if (context.mounted) {
+                NotificationManager.instance.showNotification(
+                  message: 'Échec de synchronisation cloud: une resynchronisation est nécessaire (réseau ou service indisponible).',
+                  level: NotificationLevel.ERROR,
+                  duration: const Duration(seconds: 3),
+                );
+              }
+            }
+          }
+        }
+      } catch (_) {}
 
-                const SizedBox(height: 8),
-                const Text(
-                  'Mode de sauvegarde',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                const SizedBox(height: 8),
-                RadioListTile<String>(
-                  title: const Text('Sauvegarde locale'),
-                  value: 'local',
-                  groupValue: selectedStorage,
-                  onChanged: (v) => setState(() => selectedStorage = v!),
-                  activeColor: Colors.deepPurple,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
-                ),
-                RadioListTile<String>(
-                  title: const Text('Sauvegarde cloud (Google Play Games)'),
-                  subtitle: const Text('Nécessite la connexion à Google Play Games'),
-                  value: 'cloud',
-                  groupValue: selectedStorage,
-                  onChanged: (v) => setState(() => selectedStorage = v!),
-                  activeColor: Colors.deepPurple,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Cette action crÃ©era une nouvelle sauvegarde',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Annuler'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final gameName = controller.text.trim();
-                if (gameName.isEmpty) {
-                  NotificationManager.instance.showNotification(
-                    message: 'Le nom ne peut pas Ãªtre vide',
-                    level: NotificationLevel.INFO,
-                    duration: const Duration(seconds: 1),
-                  );
-                  return;
-                }
-
-                // ID-first: le nom est cosmétique, aucune vérification d'unicité par nom
-
-                if (context.mounted) {
-                  // D'abord activer le chargement dans l'Ã©tat de l'Ã©cran de dÃ©marrage avant de fermer le dialogue
-                  this.setState(() => _isLoading = true);
-                  // Ensuite fermer le dialogue
-                  Navigator.pop(context);
-                  try {
-                    // Enregistrer le mode de sauvegarde choisi dans le GameState
-                    final gs = context.read<GameState>();
-                    gs.setStorageMode(selectedStorage);
-                    // Utiliser le mode sÃ©lectionnÃ© lors de la crÃ©ation
-                    await context
-                        .read<GameRuntimeCoordinator>()
-                        .startNewGameAndStartAutoSave(gameName, mode: selectedMode);
-
-                    // Déclencher automatiquement un push cloud initial si joueur connecté et cloud par partie activé
-                    try {
-                      final enableCloudPerPartie = (dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true';
-                      if (enableCloudPerPartie) {
-                        final google = context.read<GoogleServicesBundle>();
-                        final signedIn = google.identity.status == IdentityStatus.signedIn;
-                        final playerId = google.identity.playerId;
-                        final gs = context.read<GameState>();
-                        final partieId = gs.partieId ?? '';
-                        if (signedIn && (playerId != null && playerId.isNotEmpty) && partieId.isNotEmpty) {
-                          try {
-                            await GamePersistenceOrchestrator.instance.pushCloudFromSaveId(
-                              partieId: partieId,
-                              playerId: playerId,
-                            );
-                          } catch (e) {
-                            // Marquer l'état "pending" pour retry ultérieur et informer discrètement
-                            try {
-                              final prefs = await SharedPreferences.getInstance();
-                              await prefs.setBool('pending_cloud_push_'+partieId, true);
-                            } catch (_) {}
-                            if (context.mounted) {
-                              NotificationManager.instance.showNotification(
-                                message: 'Échec de synchronisation cloud: une resynchronisation est nécessaire (réseau ou service indisponible).',
-                                level: NotificationLevel.ERROR,
-                                duration: const Duration(seconds: 3),
-                              );
-                            }
-                          }
-                        }
-                      }
-                    } catch (_) {}
-
-                    if (context.mounted) {
-                      // Tentative GPG supprimée (cloud global)
-                      // CrÃ©er une classe intermÃ©diaire pour la navigation
-                      final introScreen = IntroductionScreen(
-                        showSkipButton: true,
-                        isCompetitiveMode: selectedMode == GameMode.COMPETITIVE,
-                        onStart: () {
-                          context.read<NavigationService>().pushReplacement(
-                            MaterialPageRoute(builder: (_) => const MainScreen()),
-                          );
-                        },
-                      );
-
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(builder: (_) => introScreen),
-                      );
-                    }
-                  } catch (e) {
-                    if (context.mounted) {
-                      NotificationManager.instance.showNotification(
-                        message: 'Erreur lors de la crÃ©ation: $e',
-                        level: NotificationLevel.ERROR,
-                      );
-                    }
-                  } finally {
-                    if (mounted) {
-                      // S'assurer que nous modifions l'Ã©tat de l'Ã©cran de dÃ©marrage, pas du dialogue
-                      this.setState(() => _isLoading = false);
-                    }
-                  }
-                }
-              },
-              child: const Text('Commencer'),
-            ),
-          ],
-        ),
-      ),
-    );
+      if (mounted) {
+        final introScreen = IntroductionScreen(
+          showSkipButton: true,
+          isCompetitiveMode: false,
+          onStart: () {
+            context.read<NavigationService>().pushReplacement(
+              MaterialPageRoute(builder: (_) => const MainScreen()),
+            );
+          },
+        );
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => introScreen),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        NotificationManager.instance.showNotification(
+          message: 'Erreur lors de la création: $e',
+          level: NotificationLevel.ERROR,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -659,7 +528,7 @@ class _StartScreenState extends State<StartScreen> {
 
                 // Boutons du menu (avec ajouts pour le cloud)
                 _buildMenuButton(
-                  onPressed: () => _showNewGameDialog(context),
+                  onPressed: _isLoading ? null : _startNewGameAuto,
                   icon: Icons.add,
                   label: 'Nouvelle Partie',
                   color: Colors.white,
@@ -719,6 +588,9 @@ class _StartScreenState extends State<StartScreen> {
                   textColor: Colors.white,
                   showAvatar: true,
                 ),
+
+                // Indicateur discret d'état de synchronisation (non bloquant)
+                const SyncStatusChip(),
 
                 const SizedBox(height: 8),
                 if (kDebugMode)

@@ -153,6 +153,12 @@ class GameRuntimeCoordinator implements RuntimeOrchestrator {
   }) async {
     _autoSaveService.stop();
     await _gameState.startNewGame(name, mode: mode);
+    // Invariant identité: une partie doit posséder un partieId unique dès sa création
+    final newPartieId = _gameState.partieId;
+    if (newPartieId == null || newPartieId.isEmpty) {
+      // Verrouillage strict: interdire toute suite (autosave/sync) sans identité
+      throw StateError('[IdentityInvariant] partieId manquant après startNewGame("'+name+'"): création invalide');
+    }
     await _autoSaveService.start();
     final audio = _audioPort;
     if (audio != null) {
