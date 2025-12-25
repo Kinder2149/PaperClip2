@@ -278,10 +278,8 @@ def list_parties(playerId: str = Query(..., description="Identifiant joueur (Goo
     - Retourne aussi les parties cloud-only
     """
     items: List[PartiesListItem] = []
-    requester_uid: Optional[str] = None
-    if isinstance(auth_ctx, dict):
-        requester_uid = auth_ctx.get("player_uid") or auth_ctx.get("sub")
-    # si JWT dispo, on réduit la visibilité aux parties dont owner_uid == requester
+    # Pour la consultation d'index, la visibilité est basée sur playerId uniquement.
+    # L'ownership (owner_uid) est contrôlé strictement sur PUT/DELETE.
     # Parcours des fichiers JSON dans CLOUD_ROOT
     for filename in os.listdir(CLOUD_ROOT):
         if not filename.endswith(".json"):
@@ -293,10 +291,8 @@ def list_parties(playerId: str = Query(..., description="Identifiant joueur (Goo
         meta = data.get("metadata", {}) or {}
         if meta.get("playerId") != playerId:
             continue
-        if requester_uid:
-            owner = data.get("owner_uid")
-            if owner != requester_uid:
-                continue
+        # Ne pas filtrer par owner_uid ici, pour permettre l'accès aux parties du même playerId
+        # sur plusieurs appareils/sessions.
         partie_id = data.get("partieId") or filename[:-5]
         items.append(
             PartiesListItem(

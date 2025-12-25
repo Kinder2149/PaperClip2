@@ -11,8 +11,21 @@ class GamesServicesPlayGamesIdentityAdapter implements PlayGamesIdentityAdapter 
   Future<bool> signIn() async {
     try {
       await _facade.signIn();
-      return await _facade.isSignedIn();
-    } catch (_) {
+      final signed = await _facade.isSignedIn();
+      // Log technique minimal pour diagnostiquer des échecs silencieux
+      // ignore: avoid_print
+      print('[GoogleIdentity] signIn() completed, isSignedIn=$signed');
+      if (signed) {
+        try {
+          final pid = await _facade.getPlayerId();
+          // ignore: avoid_print
+          print('[GoogleIdentity] playerId=' + (pid ?? 'null'));
+        } catch (_) {}
+      }
+      return signed;
+    } catch (e) {
+      // ignore: avoid_print
+      print('[GoogleIdentity][ERR] signIn exception: ' + e.toString());
       return false;
     }
   }

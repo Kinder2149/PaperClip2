@@ -90,10 +90,15 @@ class SaveAggregator {
       } catch (_) {}
       int? remoteVersion;
       String? playerId;
+      String? cloudState;
       if (enableCloudPerPartie) {
         final entry = cloudIndex[s.id];
         remoteVersion = entry?.remoteVersion;
         playerId = entry?.playerId;
+        // Si l'ID existe côté cloud (même sans remoteVersion), marquer une présence distante
+        if (entry != null) {
+          cloudState = 'unknown';
+        }
       }
       result.add(SaveEntry(
         source: SaveSource.local,
@@ -108,7 +113,7 @@ class SaveAggregator {
         paperclips: s.paperclips.toInt(),
         totalPaperclipsSold: s.totalPaperclipsSold.toInt(),
         playerId: playerId,
-        cloudSyncState: null,
+        cloudSyncState: cloudState,
         remoteVersion: remoteVersion,
         integrityStatus: integrity,
         canLoad: canLoad,
