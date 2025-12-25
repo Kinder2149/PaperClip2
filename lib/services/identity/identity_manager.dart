@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class IdentityManager {
@@ -41,8 +42,18 @@ class IdentityManager {
     if (email != null && email.isNotEmpty) {
       linked['email'] = email;
     }
-    metadata['linked_provider_ids'] = linked;
-    await client.auth.updateUser(UserAttributes(data: metadata));
+    // Construire le nouveau metadata proposé
+    final nextMetadata = Map<String, dynamic>.from(metadata);
+    nextMetadata['linked_provider_ids'] = linked;
+
+    // Guard: no-op si rien n'a changé
+    final before = jsonEncode(metadata);
+    final after = jsonEncode(nextMetadata);
+    if (before == after) {
+      return;
+    }
+
+    await client.auth.updateUser(UserAttributes(data: nextMetadata));
   }
 
   Future<void> markMigrationDone({DateTime? at}) async {

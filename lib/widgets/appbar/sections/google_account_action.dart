@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:paperclip2/services/google/google_bootstrap.dart';
 import 'package:paperclip2/services/google/identity/google_identity_service.dart';
+import 'package:paperclip2/services/google/identity/identity_status.dart';
 import 'package:paperclip2/widgets/google/google_account_button.dart';
 
 class GoogleAccountAction extends StatelessWidget {
@@ -14,7 +15,8 @@ class GoogleAccountAction extends StatelessWidget {
       child: GoogleAccountButton(
         fullWidth: false,
         compact: true,
-        showAvatar: true,
+        showLabel: false, // icon-only en AppBar pour gagner de la place
+        showAvatar: false,
         backgroundColor: Colors.transparent,
         textColor: Theme.of(context).colorScheme.onPrimary,
         onPressed: () async {

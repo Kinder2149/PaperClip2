@@ -1,12 +1,8 @@
 // lib/widgets/appbar/appbar_actions.dart
 import 'package:flutter/material.dart';
 import '../../constants/game_config.dart'; // Importé depuis constants au lieu de models
-import '../indicators/competitive_mode_indicator.dart';
-import 'sections/notification_action.dart';
-import 'sections/music_control_action.dart';
-import 'sections/theme_mode_action.dart';
 import 'sections/settings_action.dart';
-import 'sections/google_account_action.dart';
+// Les autres actions (notif/musique/thème/google) sont déplacées dans le menu Paramètres.
 
 class AppBarActions {
   final GameMode gameMode;
@@ -21,39 +17,11 @@ class AppBarActions {
   
   List<Widget> buildActions(BuildContext context) {
     final List<Widget> actions = [];
-    
-    // Ajouter l'indicateur de mode compétitif si nécessaire
-    if (gameMode == GameMode.COMPETITIVE) {
-      actions.add(
-        const Padding(
-          padding: EdgeInsets.only(right: 8.0),
-          child: CompetitiveModeIndicator(),
-        ),
-      );
-    }
-    
-    // Ajouter le bouton de notification
-    actions.add(const NotificationAction());
-    
-    // Ajouter le contrôle de musique
-    actions.add(const MusicControlAction());
-
-    // Ajouter le bouton de basculement de thème
-    actions.add(const ThemeModeAction());
-
-    // Ajouter le bouton de compte Google (réutilisé de la Start Screen)
-    actions.add(const GoogleAccountAction());
-    
-    // Ajouter le bouton de paramètres
-    actions.add(SettingsAction(
-      onPressed: onSettingsPressed,
-    ));
-    
-    // Ajouter des actions supplémentaires si fournies
+    // Bouton Paramètres unique (le menu contiendra la connexion et autres)
+    actions.add(SettingsAction(onPressed: onSettingsPressed));
     if (additionalActions != null && additionalActions!.isNotEmpty) {
       actions.addAll(additionalActions!);
     }
-    
     return actions;
   }
 }

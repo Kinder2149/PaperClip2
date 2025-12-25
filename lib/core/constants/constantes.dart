@@ -1,6 +1,8 @@
 // Point central de constantes et enums de l'application
 // Réexporte les constantes existantes et expose les types nécessaires.
 
+import 'package:paperclip2/constants/game_config.dart';
+
 export 'package:paperclip2/constants/game_config.dart'
     show GameConstants, GameMode, UnlockableFeature, ProgressionPath;
 

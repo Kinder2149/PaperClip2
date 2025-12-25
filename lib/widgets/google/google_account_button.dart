@@ -10,6 +10,7 @@ class GoogleAccountButton extends StatelessWidget {
   final Color? textColor;
   final bool fullWidth;
   final bool compact;
+  final bool showLabel;
 
   const GoogleAccountButton({
     super.key,
@@ -19,6 +20,7 @@ class GoogleAccountButton extends StatelessWidget {
     this.textColor,
     this.fullWidth = true,
     this.compact = false,
+    this.showLabel = true,
   });
 
   @override
@@ -48,6 +50,12 @@ class GoogleAccountButton extends StatelessWidget {
           elevation: enabled ? 3 : 0,
           disabledBackgroundColor: (backgroundColor ?? Colors.grey)
               .withOpacity(0.6),
+          minimumSize: compact ? const Size(0, 32) : const Size(0, 40),
+          tapTargetSize: compact
+              ? MaterialTapTargetSize.shrinkWrap
+              : MaterialTapTargetSize.padded,
+          visualDensity:
+              compact ? VisualDensity.compact : VisualDensity.standard,
         ),
         child: Row(
           children: [
@@ -59,19 +67,18 @@ class GoogleAccountButton extends StatelessWidget {
               ),
               child: const Icon(Icons.account_circle),
             ),
-            SizedBox(width: compact ? 8 : 16),
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                softWrap: false,
-                style: TextStyle(
-                  fontSize: compact ? 14 : 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
+            if (showLabel) ...[
+              SizedBox(width: compact ? 8 : 16),
+              // En contexte compact (AppBar), éviter Expanded qui casse la mise en page
+              (fullWidth
+                  ? Expanded(
+                      child: _buildLabelText(label, compact),
+                    )
+                  : Flexible(
+                      fit: FlexFit.loose,
+                      child: _buildLabelText(label, compact),
+                    )),
+            ],
             if (trailing != null) Flexible(child: trailing),
           ],
         ),
@@ -80,7 +87,24 @@ class GoogleAccountButton extends StatelessWidget {
     if (fullWidth) {
       return SizedBox(width: double.infinity, child: button);
     }
-    return button;
+    // En AppBar, contraindre la largeur pour éviter les erreurs de layout
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: showLabel ? 220 : 56),
+      child: button,
+    );
+  }
+
+  Widget _buildLabelText(String label, bool compact) {
+    return Text(
+      label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      softWrap: false,
+      style: TextStyle(
+        fontSize: compact ? 14 : 16,
+        fontWeight: FontWeight.w600,
+      ),
+    );
   }
 
   String _buildLabel(GoogleIdentityService identity) {

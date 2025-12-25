@@ -5,6 +5,8 @@ import '../../models/game_state.dart';
 import '../../services/background_music.dart';
 import '../../constants/game_config.dart'; // Importé depuis constants au lieu de models
 import 'appbar_title.dart';
+import 'package:paperclip2/services/google/google_bootstrap.dart';
+import '../indicators/competitive_mode_indicator.dart';
 import 'appbar_level_indicator.dart';
 import 'appbar_actions.dart';
 
@@ -65,12 +67,40 @@ class GameAppBar extends StatelessWidget implements PreferredSizeWidget {
                 ? theme.colorScheme.surface
                 : const Color(0xFF673AB7)); // Colors.deepPurple[700]
 
+        // Récupération du surnom utilisateur via l'identité Google
+        final google = context.read<GoogleServicesBundle>();
+        final displayName = (google.identity.displayName ?? '').trim();
+        final String nickname = displayName.isNotEmpty ? displayName : 'Utilisateur';
+
+        final bool isCompetitive = view.gameMode == GameMode.COMPETITIVE;
+
         return AppBar(
-          title: AppBarTitle(
-            isInCrisisMode: view.isInCrisisMode,
-            selectedIndex: selectedIndex,
+          title: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                nickname,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+              if (isCompetitive) ...[
+                const SizedBox(height: 2),
+                // Chrono compact sous le pseudo
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 0),
+                    child: CompetitiveModeIndicator(),
+                  ),
+                ),
+              ],
+            ],
           ),
-          centerTitle: centerTitle,
+          centerTitle: true,
           backgroundColor: appBarColor,
           leading: Padding(
             padding: const EdgeInsets.all(8.0),
