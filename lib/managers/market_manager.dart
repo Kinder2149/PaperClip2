@@ -469,10 +469,9 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
     
     // Réduction de la demande si le prix est trop élevé
     double priceMultiplier = max(0.1, 1.0 - (price / GameConstants.MAX_PRICE_THRESHOLD));
-    
-    // Bonus de marketing (chaque niveau augmente la demande de 10%)
-    double marketingMultiplier = 1.0 + (marketingLevel * GameConstants.MARKETING_BOOST_PER_LEVEL);
-    // Bonus d'upgrade Marketing (cumulatif)
+
+    // Unification Marketing: ignorer le marketingLevel legacy et utiliser uniquement l'upgrade
+    double marketingMultiplier = 1.0;
     final marketingUpgradeLevel = _playerManager?.upgrades['marketing']?.level ?? 0;
     final extraMarketing = UpgradeEffectsCalculator.marketingBonus(level: marketingUpgradeLevel);
     marketingMultiplier *= (1.0 + extraMarketing);

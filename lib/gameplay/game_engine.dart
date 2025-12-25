@@ -129,7 +129,21 @@ class GameEngine {
   }
 
   bool buyAutoclipper() {
-    return production.buyAutoclipperOfficial();
+    // Calculer le coût avant l'achat
+    final double cost = production.calculateAutoclipperCost();
+    final success = production.buyAutoclipperOfficial();
+    if (success) {
+      eventBus.emit(
+        GameEvent(
+          type: GameEventType.autoclipperPurchased,
+          data: {
+            'autoclippersBought': 1,
+            'moneySpent': cost,
+          },
+        ),
+      );
+    }
+    return success;
   }
 
   void producePaperclip() {

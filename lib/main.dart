@@ -36,6 +36,9 @@ import 'services/cloud/snapshots_cloud_persistence_port.dart';
 // Adapters UI/Audio (hors domaine)
 import './services/ui/game_ui_event_adapter.dart';
 import './services/audio/audio_event_adapter.dart';
+import './services/analytics/analytics_event_adapter.dart';
+import './services/analytics/analytics_port.dart';
+import './services/analytics/http_analytics_port.dart';
 
 // Services globaux
 final gameState = GameState();
@@ -75,6 +78,35 @@ final _audioEventAdapter = AudioEventAdapter.withListeners(
   addListener: gameState.addEventListener,
   removeListener: gameState.removeEventListener,
   audioPort: _gameAudioFacade,
+);
+
+// Analytics wiring (adapter bus -> analytics port)
+AnalyticsPort _buildAnalyticsPort() {
+  try {
+    final enableHttp = (dotenv.env['FEATURE_ANALYTICS_HTTP'] ?? 'false').toLowerCase() == 'true';
+    if (enableHttp) {
+      final base = (dotenv.env['CLOUD_BACKEND_BASE_URL'] ?? '').trim();
+      if (base.isNotEmpty) {
+        return HttpAnalyticsPort(
+          baseUrl: base,
+          authHeaderProvider: () async {
+            final headers = await JwtAuthService.instance.buildAuthHeaders();
+            if (headers != null) return headers;
+            final bearer = (dotenv.env['CLOUD_API_BEARER'] ?? '').trim();
+            if (bearer.isEmpty) return null;
+            return {'Authorization': 'Bearer ' + bearer};
+          },
+        );
+      }
+    }
+  } catch (_) {}
+  return const NoOpAnalyticsPort();
+}
+
+final _analyticsEventAdapter = AnalyticsEventAdapter.withListeners(
+  addListener: gameState.addEventListener,
+  removeListener: gameState.removeEventListener,
+  port: _buildAnalyticsPort(),
 );
 
 // Google Services wiring (identité, succès, classements) + adapters événementiels
@@ -164,6 +196,7 @@ void main() async {
     // Wiring des adapters événementiels (écoute des événements du domaine)
     _uiEventAdapter.start();
     _audioEventAdapter.start();
+    _analyticsEventAdapter.start();
     // Désactivation des adapters événements Achievements/Leaderboards (non utilisés actuellement)
 
     await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);

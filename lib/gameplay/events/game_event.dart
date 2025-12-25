@@ -4,6 +4,7 @@ enum GameEventType {
   saleProcessed,
   upgradePurchased,
   autoclipperPurchased,
+  metalPurchased,
   progressionPathChosen,
   importantEventOccurred,
 }

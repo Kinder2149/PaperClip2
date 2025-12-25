@@ -6,6 +6,7 @@ import '../models/json_loadable.dart';
 import 'player_manager.dart';
 import 'market_manager.dart';
 import '../models/statistics_manager.dart';
+import '../services/upgrades/upgrade_effects_calculator.dart';
 
 /// Manager responsable de la gestion des ressources et des actions liées à ces ressources
 class ResourceManager extends ChangeNotifier implements JsonLoadable {
@@ -66,9 +67,12 @@ class ResourceManager extends ChangeNotifier implements JsonLoadable {
   }
 
   bool canPurchaseMetal([double? customPrice]) {
-    final double metalPrice = _marketManager.marketMetalPrice;
     final double amount = GameConstants.METAL_PACK_AMOUNT;
-    final double price = customPrice ?? (amount * metalPrice);
+    // Appliquer le rabais d'approvisionnement (procurement)
+    final int procurementLevel = _playerManager.upgrades['procurement']?.level ?? 0;
+    final double discount = UpgradeEffectsCalculator.metalDiscount(level: procurementLevel);
+    final double unitPrice = _marketManager.marketMetalPrice * (1.0 - discount);
+    final double price = customPrice ?? (amount * unitPrice);
 
     if (_playerManager.money < price) {
       return false;
@@ -87,9 +91,12 @@ class ResourceManager extends ChangeNotifier implements JsonLoadable {
   
   /// Acheter du métal (anciennement buyWire)
   bool purchaseMetal([double? customPrice]) {
-    final double metalPrice = _marketManager.marketMetalPrice;
     final double amount = GameConstants.METAL_PACK_AMOUNT;
-    final double price = customPrice ?? (amount * metalPrice);
+    // Appliquer le rabais d'approvisionnement (procurement)
+    final int procurementLevel = _playerManager.upgrades['procurement']?.level ?? 0;
+    final double discount = UpgradeEffectsCalculator.metalDiscount(level: procurementLevel);
+    final double unitPrice = _marketManager.marketMetalPrice * (1.0 - discount);
+    final double price = customPrice ?? (amount * unitPrice);
 
     if (!canPurchaseMetal(customPrice)) {
       return false;

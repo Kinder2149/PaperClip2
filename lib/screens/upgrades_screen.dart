@@ -100,18 +100,34 @@ class UpgradesScreen extends StatelessWidget {
   }
 
   Widget _buildStatisticsCard(GameState gameState) {
-    // Création des statistiques de production
+    // Récupérer les niveaux d'améliorations pertinents
+    final speedLevel = gameState.player.upgrades['speed']?.level ?? 0;
+    final bulkLevel = gameState.player.upgrades['bulk']?.level ?? 0;
+    final efficiencyLevel = gameState.player.upgrades['efficiency']?.level ?? 0;
+    final marketingLevel = gameState.player.upgrades['marketing']?.level ?? 0;
+    final reputationLevel = gameState.player.upgrades['reputation']?.level ?? 0;
+
+    // Calculs via la source de vérité
+    final speedMult = UpgradeEffectsCalculator.speedMultiplier(level: speedLevel);
+    final bulkMult = UpgradeEffectsCalculator.bulkMultiplier(level: bulkLevel);
+    final combinedProdMult = speedMult * bulkMult;
+    final efficiencyRed = UpgradeEffectsCalculator.efficiencyReduction(level: efficiencyLevel) * 100.0;
+    final marketingBonusPct = UpgradeEffectsCalculator.marketingBonus(level: marketingLevel) * 100.0;
+    final reputationBonusPct = UpgradeEffectsCalculator.reputationBonus(level: reputationLevel) * 100.0;
+    final demandBonusPct = ((1.0 + marketingBonusPct/100.0) * (1.0 + reputationBonusPct/100.0) - 1.0) * 100.0;
+
+    // Statistiques de production
     List<StatIndicator> productionStats = [
       StatIndicator(
         label: 'Production manuelle',
-        value: '${(1.0).toStringAsFixed(0)} clips', // Valeur fixe en attendant implementation
+        value: '1 clip',
         icon: Icons.touch_app,
         layout: StatIndicatorLayout.horizontal,
         labelStyle: TextStyle(color: Colors.grey[700]),
       ),
       StatIndicator(
-        label: 'Vitesse de production',
-        value: '+${(0.0).toStringAsFixed(0)}%', // Valeur fixe en attendant implementation
+        label: 'Production (vitesse/masse)',
+        value: '+${((combinedProdMult - 1.0) * 100.0).toStringAsFixed(0)}%',
         icon: Icons.speed,
         layout: StatIndicatorLayout.horizontal,
         valueStyle: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold),
@@ -119,7 +135,7 @@ class UpgradesScreen extends StatelessWidget {
       ),
       StatIndicator(
         label: 'Efficacité',
-        value: '-${(0.0).toStringAsFixed(0)}%', // Valeur fixe en attendant implementation
+        value: '-${efficiencyRed.toStringAsFixed(0)}%',
         icon: Icons.eco,
         layout: StatIndicatorLayout.horizontal,
         valueStyle: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
@@ -127,11 +143,11 @@ class UpgradesScreen extends StatelessWidget {
       ),
     ];
 
-    // Création des statistiques du marché
+    // Statistiques du marché
     List<StatIndicator> marketStats = [
       StatIndicator(
-        label: 'Demande actuelle',
-        value: '+${(0.0).toStringAsFixed(0)}%', // Valeur fixe en attendant implementation
+        label: 'Demande (bonus cumulé)',
+        value: '+${demandBonusPct.toStringAsFixed(0)}%',
         icon: Icons.trending_up,
         layout: StatIndicatorLayout.horizontal,
         valueStyle: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
@@ -205,7 +221,9 @@ class UpgradesScreen extends StatelessWidget {
   }
 
   Widget _buildUpgradeCard(BuildContext context, GameState gameState, String id, upgrade_model.Upgrade upgrade) {
-    bool canBuy = gameState.player.money >= upgrade.getCost() && upgrade.level < upgrade.maxLevel;
+    final int requiredLevel = upgrade.requiredLevel;
+    final bool hasRequiredLevel = gameState.level.level >= requiredLevel;
+    bool canBuy = hasRequiredLevel && gameState.player.money >= upgrade.getCost() && upgrade.level < upgrade.maxLevel;
     bool isMaxed = upgrade.level >= upgrade.maxLevel;
 
     // Préparer les informations à afficher
@@ -230,11 +248,10 @@ class UpgradesScreen extends StatelessWidget {
       );
     } else if (!isMaxed) {
       // Afficher les conditions requises si pas achetable et pas au niveau max
-      final requiredLevel = upgrade.requiredLevel ?? 1;
       upgradeDetails['Niveau requis'] = '$requiredLevel';
       
       // Si le niveau requis est atteint mais pas assez d'argent
-      if (gameState.level.level >= requiredLevel) {
+      if (hasRequiredLevel) {
         upgradeDetails['Argent manquant'] = '${(upgrade.getCost() - gameState.player.money).toStringAsFixed(1)} €';
       }
     }
@@ -434,29 +451,35 @@ class UpgradesScreen extends StatelessWidget {
     // Déterminer les impacts spécifiques en fonction de l'ID de l'amélioration
     switch (id) {
       case 'speed':
-        double currentSpeed = (upgrade.level * 0.20) * 100;
-        double nextSpeed = ((upgrade.level + 1) * 0.20) * 100;
+        final currMult = UpgradeEffectsCalculator.speedMultiplier(level: upgrade.level);
+        final nextMult = UpgradeEffectsCalculator.speedMultiplier(level: upgrade.level + 1);
+        final currPct = (currMult - 1.0) * 100.0;
+        final nextPct = (nextMult - 1.0) * 100.0;
         impacts['Vitesse de production'] = [
-          _formatImpact(currentSpeed),
-          _formatImpact(nextSpeed)
+          _formatImpact(currPct),
+          _formatImpact(nextPct)
         ];
         break;
 
       case 'bulk':
-        double currentBulk = (upgrade.level * 0.35) * 100;
-        double nextBulk = ((upgrade.level + 1) * 0.35) * 100;
+        final currMult = UpgradeEffectsCalculator.bulkMultiplier(level: upgrade.level);
+        final nextMult = UpgradeEffectsCalculator.bulkMultiplier(level: upgrade.level + 1);
+        final currPct = (currMult - 1.0) * 100.0;
+        final nextPct = (nextMult - 1.0) * 100.0;
         impacts['Production par lot'] = [
-          _formatImpact(currentBulk),
-          _formatImpact(nextBulk)
+          _formatImpact(currPct),
+          _formatImpact(nextPct)
         ];
         break;
 
       case 'quality':
-        double currentQuality = (upgrade.level * 0.10) * 100;
-        double nextQuality = ((upgrade.level + 1) * 0.10) * 100;
+        final currMult = UpgradeEffectsCalculator.qualityMultiplier(level: upgrade.level);
+        final nextMult = UpgradeEffectsCalculator.qualityMultiplier(level: upgrade.level + 1);
+        final currPct = (currMult - 1.0) * 100.0;
+        final nextPct = (nextMult - 1.0) * 100.0;
         impacts['Augmentation qualité'] = [
-          _formatImpact(currentQuality),
-          _formatImpact(nextQuality)
+          _formatImpact(currPct),
+          _formatImpact(nextPct)
         ];
         break;
 
@@ -619,6 +642,14 @@ class UpgradesScreen extends StatelessWidget {
         return Icons.star;
       case 'automation':
         return Icons.precision_manufacturing;
+      case 'marketing':
+        return Icons.campaign;
+      case 'reputation':
+        return Icons.emoji_events;
+      case 'marketResearch':
+        return Icons.science;
+      case 'procurement':
+        return Icons.local_shipping;
       default:
         return Icons.upgrade;
     }
