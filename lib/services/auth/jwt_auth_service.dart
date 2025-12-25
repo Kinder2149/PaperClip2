@@ -61,7 +61,10 @@ class JwtAuthService {
           .post(
             uri,
             headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
-            body: jsonEncode({'playerId': playerId}),
+            // Option A: le backend requiert désormais provider + provider_user_id.
+            // On interprète ici le playerId fourni comme l'identifiant côté provider
+            // et on envoie un provider par défaut 'google'.
+            body: jsonEncode({'provider': 'google', 'provider_user_id': playerId}),
           )
           .timeout(const Duration(seconds: 20));
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
