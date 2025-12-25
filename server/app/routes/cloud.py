@@ -8,7 +8,6 @@ import json
 import hashlib
 
 CLOUD_ROOT = os.getenv("CLOUD_STORAGE_DIR", "cloud_data")
-API_KEY = os.getenv("API_KEY")  # Optionnel: simple protection par token
 
 os.makedirs(CLOUD_ROOT, exist_ok=True)
 
@@ -20,8 +19,9 @@ MAX_SNAPSHOT_BYTES = int(os.getenv("MAX_SNAPSHOT_BYTES", str(256 * 1024)))  # 25
 GAME_MODE_ENUM = [m.strip() for m in os.getenv("GAME_MODE_ENUM", "").split(",") if m.strip()]
 # Version de schéma attendue pour les snapshots
 CURRENT_SNAPSHOT_SCHEMA_VERSION = int(os.getenv("SNAPSHOT_SCHEMA_VERSION", "1"))
-# Concurrence: activation de l'écriture conditionnelle
-REQUIRE_CONDITIONAL_WRITES = os.getenv("REQUIRE_CONDITIONAL_WRITES", "0").lower() in ("1", "true", "yes")
+# Concurrence: activation de l'écriture conditionnelle (évaluée dynamiquement)
+def _require_conditional_writes() -> bool:
+    return os.getenv("REQUIRE_CONDITIONAL_WRITES", "0").lower() in ("1", "true", "yes")
 
 class CloudSnapshotPayload(BaseModel):
     snapshot: Dict[str, Any] = Field(default_factory=dict)
@@ -55,9 +55,8 @@ def _auth(
     x_authorization: Optional[str] = Header(default=None),
 ):
     """
-    Authentification hybride:
-    - Préférence: JWT via header Authorization: Bearer <jwt> (routes.auth.verify_jwt)
-    - Fallback DEV: API_KEY via header X-Authorization: Bearer <API_KEY>
+    Authentification JWT uniquement:
+    - JWT via header Authorization: Bearer <jwt> (routes.auth.verify_jwt)
     """
     # 1) JWT si présent
     try:
@@ -71,17 +70,7 @@ def _auth(
         # Si Authorization présent mais invalide, on renvoie 401
         if authorization:
             raise HTTPException(status_code=401, detail="Invalid Authorization")
-
-    # 2) Fallback API_KEY (DEV)
-    if API_KEY:
-        if not x_authorization:
-            raise HTTPException(status_code=401, detail="Missing Authorization")
-        token = x_authorization.replace("Bearer ", "").strip()
-        if token != API_KEY:
-            raise HTTPException(status_code=403, detail="Invalid token")
-        return True  # mode DEV: pas de claims JWT disponibles
-
-    # 3) Rien fourni
+    # Rien fourni
     raise HTTPException(status_code=401, detail="Missing Authorization")
 
 def _safe_read_json(path: str) -> Optional[Dict[str, Any]]:
@@ -102,6 +91,9 @@ def put_partie(
 ):
     p = _path(partie_id)
     now = datetime.now(timezone.utc).isoformat()
+    # JWT obligatoire pour toute écriture (pas de fallback API_KEY)
+    if not isinstance(auth_ctx, dict):
+        raise HTTPException(status_code=401, detail="JWT required for write operations")
     # Validation stricte des métadonnées requises
     meta = payload.metadata or {}
     def _is_non_empty_str(v):
@@ -139,12 +131,10 @@ def put_partie(
     if len(meta["name"]) > 100 or len(meta["gameMode"]) > 50 or len(meta["gameVersion"]) > 20:
         raise HTTPException(status_code=422, detail="Metadata fields too long")
 
-    # Vérification d'ownership via JWT si disponible
-    requester_uid: Optional[str] = None
-    if isinstance(auth_ctx, dict):
-        requester_uid = auth_ctx.get("player_uid") or auth_ctx.get("sub")
+    # Vérification d'ownership via JWT
+    requester_uid: Optional[str] = auth_ctx.get("player_uid") or auth_ctx.get("sub")
 
-    # Réparation: si un snapshot existe sans playerId, rattacher automatiquement
+    # Gestion ownership sans compat legacy: pas de revendication via Google playerId
     exists = os.path.exists(p)
     if exists:
         try:
@@ -153,42 +143,14 @@ def put_partie(
             existing_meta = existing.get("metadata", {}) or {}
             existing_owner = existing.get("owner_uid")
             existing_hash = existing.get("hash")
-            if not _is_non_empty_str(existing_meta.get("playerId")):
-                existing_meta["playerId"] = meta["playerId"]
-                existing["metadata"] = existing_meta
-                with open(p, "w", encoding="utf-8") as f:
-                    json.dump(existing, f, ensure_ascii=False)
             # Ownership: si owner_uid présent et JWT dispo, vérifier possession
             if requester_uid and existing_owner and existing_owner != requester_uid:
                 raise HTTPException(status_code=403, detail="Forbidden: not the owner of this partie")
-            # Si owner_uid manquant et JWT dispo, tenter revendication sécurisée si playerId → requester_uid
+            # Si owner_uid manquant et JWT dispo, lier explicitement à ce requester (greenfield)
             if requester_uid and not existing_owner:
-                try:
-                    from ..services.identity import resolve_existing_player_uid
-                    mapped_uid = resolve_existing_player_uid(provider="google", provider_user_id=str(existing_meta.get("playerId", "")))
-                except Exception:
-                    mapped_uid = None
-                if mapped_uid and mapped_uid == requester_uid:
-                    existing["owner_uid"] = requester_uid
-                    with open(p, "w", encoding="utf-8") as f:
-                        json.dump(existing, f, ensure_ascii=False)
-                elif mapped_uid and mapped_uid != requester_uid:
-                    # Un autre propriétaire est implicite via playerId → refuser l'écriture
-                    raise HTTPException(status_code=403, detail="Forbidden: not the owner of this partie")
-                elif mapped_uid is None:
-                    # Fallback: vérifier via claims.providers si l'id google correspond au requester
-                    try:
-                        req_providers = (auth_ctx or {}).get("providers", []) if isinstance(auth_ctx, dict) else []
-                    except Exception:
-                        req_providers = []
-                    legacy_pid = str(existing_meta.get("playerId", ""))
-                    if legacy_pid:
-                        owns_legacy = any(
-                            (isinstance(p, dict) and p.get("provider") == "google" and str(p.get("id")) == legacy_pid)
-                            for p in req_providers
-                        )
-                        if not owns_legacy:
-                            raise HTTPException(status_code=403, detail="Forbidden: not the owner of this partie")
+                existing["owner_uid"] = requester_uid
+                with open(p, "w", encoding="utf-8") as f:
+                    json.dump(existing, f, ensure_ascii=False)
         except HTTPException:
             # Ne pas avaler les erreurs d'ownership explicites
             raise
@@ -206,7 +168,7 @@ def put_partie(
             current_etag = prev_for_etag.get("hash")
         except Exception:
             current_etag = None
-        enforce = REQUIRE_CONDITIONAL_WRITES or (if_match is not None)
+        enforce = _require_conditional_writes() or (if_match is not None)
         if enforce:
             # Exiger If-Match si fichier existe
             if not if_match:
@@ -218,12 +180,13 @@ def put_partie(
                 raise HTTPException(status_code=412, detail="Precondition Failed: ETag does not match")
     else:
         # Création: si enforcé globalement ou si If-None-Match fourni, exiger If-None-Match: *
-        enforce = REQUIRE_CONDITIONAL_WRITES or (if_none_match is not None)
+        enforce = _require_conditional_writes() or (if_none_match is not None)
         if enforce and (if_none_match or "") != "*":
             raise HTTPException(status_code=428, detail="Precondition Required: If-None-Match: * required for creation")
+        # Création: associer strictement partie_id -> requester_uid (sans validation par provider)
 
-    # À l'écriture, si fichier existe et ownership ne correspond pas, refuser (uniquement si JWT dispo)
-    if requester_uid and exists:
+    # À l'écriture, si fichier existe et ownership ne correspond pas, refuser
+    if exists:
         try:
             with open(p, "r", encoding="utf-8") as f:
                 prev = json.load(f)
@@ -245,8 +208,8 @@ def put_partie(
         "lastPullAt": None,
         "hash": hashlib.sha256(json.dumps(payload.snapshot, sort_keys=True).encode("utf-8")).hexdigest(),
     }
-    # Définir owner_uid lors de la création si JWT présent
-    if requester_uid and not os.path.exists(p):
+    # Définir owner_uid lors de la création
+    if not os.path.exists(p):
         data["owner_uid"] = requester_uid
     with open(p, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False)
@@ -326,17 +289,8 @@ def list_parties(playerId: str = Query(..., description="Identifiant joueur (Goo
             continue
         if requester_uid:
             owner = data.get("owner_uid")
-            if owner and owner != requester_uid:
+            if owner != requester_uid:
                 continue
-            if not owner:
-                # Support legacy: autoriser si playerId correspond au requester via identité
-                try:
-                    from ..services.identity import resolve_existing_player_uid
-                    mapped_uid = resolve_existing_player_uid(provider="google", provider_user_id=str(meta.get("playerId", "")))
-                except Exception:
-                    mapped_uid = None
-                if mapped_uid and mapped_uid != requester_uid:
-                    continue
         partie_id = data.get("partieId") or filename[:-5]
         items.append(
             PartiesListItem(
@@ -361,19 +315,20 @@ def delete_partie(partie_id: str, auth_ctx=Depends(_auth)):
     p = _path(partie_id)
     if not os.path.exists(p):
         raise HTTPException(status_code=404, detail="Not found")
-    # Enforcer ownership si JWT disponible
-    if isinstance(auth_ctx, dict):
-        requester_uid = auth_ctx.get("player_uid") or auth_ctx.get("sub")
-        try:
-            with open(p, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            owner = data.get("owner_uid")
-            if owner and owner != requester_uid:
-                raise HTTPException(status_code=403, detail="Forbidden: not the owner of this partie")
-        except HTTPException:
-            raise
-        except Exception:
-            pass
+    # JWT obligatoire pour suppression (pas de fallback API_KEY)
+    if not isinstance(auth_ctx, dict):
+        raise HTTPException(status_code=401, detail="JWT required for delete operations")
+    requester_uid = auth_ctx.get("player_uid") or auth_ctx.get("sub")
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        owner = data.get("owner_uid")
+        if owner and owner != requester_uid:
+            raise HTTPException(status_code=403, detail="Forbidden: not the owner of this partie")
+    except HTTPException:
+        raise
+    except Exception:
+        pass
     try:
         os.remove(p)
     except Exception as e:

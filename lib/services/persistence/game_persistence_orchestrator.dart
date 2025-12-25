@@ -611,6 +611,23 @@ class GamePersistenceOrchestrator {
         );
       }
 
+      try {
+        final now = DateTime.now();
+        final baseKey = state.partieId ?? name;
+        final backupName = '$baseKey${GameConstants.BACKUP_DELIMITER}${now.millisecondsSinceEpoch}';
+        final backupData = <String, dynamic>{
+          LocalGamePersistenceService.snapshotKey: rawSnapshot,
+        };
+        final backupSave = SaveGame(
+          name: backupName,
+          lastSaveTime: now,
+          gameData: backupData,
+          version: GameConstants.VERSION,
+          gameMode: state.gameMode,
+        );
+        await SaveManagerAdapter.saveGame(backupSave);
+      } catch (_) {}
+
       final migrated = await _persistence.migrateSnapshot(snapshot);
       if (_isDebug) {
         print(
@@ -891,7 +908,19 @@ class GamePersistenceOrchestrator {
       // Attachement obligatoire au joueur cloud
       'playerId': playerId,
     };
-    await port.pushById(partieId: partieId, snapshot: snap, metadata: meta);
+    try {
+      await port.pushById(partieId: partieId, snapshot: snap, metadata: meta);
+    } on ETagPreconditionException catch (_) {
+      // Conflit de concurrence détecté: signaler pour l'UX sans implémenter l'UI ici
+      try {
+        syncState.value = 'error';
+      } catch (_) {}
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('cloud_conflict_' + partieId, true);
+      } catch (_) {}
+      rethrow;
+    }
   }
 
   Future<Map<String, dynamic>?> pullCloudById({

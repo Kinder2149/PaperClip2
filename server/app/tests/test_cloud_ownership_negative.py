@@ -138,7 +138,8 @@ def test_legacy_claim_denied_when_mapping_mismatch(tmp_path):
     # Requérant gY
     token_y = login(client, "gY")
     r = put_partie(client, token_y, "legacy1", player_id="gX")
-    assert r.status_code == 403
+    # Option A: si owner_uid est absent, le premier writer authentifié revendique l'ownership
+    assert r.status_code == 200
 
 
 def test_snapshot_too_large(tmp_path, monkeypatch):
@@ -164,3 +165,34 @@ def test_invalid_game_mode_when_enum(tmp_path, monkeypatch):
     token = login(client, "gA")
     r = put_partie(client, token, "enum1", player_id="gA", name="Run", gameMode="hardcore", gameVersion="1.0.0")
     assert r.status_code == 422
+
+
+def test_put_rejects_api_key_write(tmp_path, monkeypatch):
+    # Activer une API_KEY et recharger les modules pour prendre en compte le fallback
+    monkeypatch.setenv("API_KEY", "devkey")
+    from app.routes import cloud as cloud_module
+    importlib.reload(cloud_module)
+
+    client = build_full_app()
+    # Tentative d'écriture avec uniquement X-Authorization (API_KEY) → refusée (JWT requis)
+    meta = {"name": "Run", "gameMode": "classic", "gameVersion": "1.0.0", "playerId": "gA"}
+    body = {"snapshot": {"snapshotSchemaVersion": 1}, "metadata": meta}
+    r = client.put("/api/cloud/parties/ak1", headers={"X-Authorization": "Bearer devkey"}, json=body)
+    assert r.status_code == 401
+    assert any(s in r.json()["detail"] for s in ["JWT required", "Missing Authorization"])
+
+
+def test_delete_rejects_api_key_without_jwt(tmp_path, monkeypatch):
+    # Activer une API_KEY et recharger cloud
+    monkeypatch.setenv("API_KEY", "devkey")
+    from app.routes import cloud as cloud_module
+    importlib.reload(cloud_module)
+
+    client = build_full_app()
+    # Créer une partie avec JWT pour avoir une ressource à supprimer
+    token = login(client, "gA")
+    assert put_partie(client, token, "akdel1", player_id="gA").status_code == 200
+    # Tenter de supprimer avec seulement X-Authorization → refus 401
+    r = client.delete("/api/cloud/parties/akdel1", headers={"X-Authorization": "Bearer devkey"})
+    assert r.status_code == 401
+    assert any(s in r.json()["detail"] for s in ["JWT required", "Missing Authorization"])

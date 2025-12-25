@@ -16,6 +16,8 @@ class HttpCloudPersistencePort implements CloudPersistencePort {
   final String baseUrl;
   final AuthHeaderProvider? authHeaderProvider;
   final PlayerIdProvider? playerIdProvider;
+  // Cache ETag par partieId pour la gestion de concurrence
+  final Map<String, String> _etagCache = <String, String>{};
 
   HttpCloudPersistencePort({
     required this.baseUrl,
@@ -34,6 +36,7 @@ class HttpCloudPersistencePort implements CloudPersistencePort {
     );
     return merged;
   }
+
 
   @override
   Future<void> deleteById({required String partieId}) async {
@@ -176,6 +179,13 @@ class HttpCloudPersistencePort implements CloudPersistencePort {
         final req = await client.putUrl(uri);
         final headers = await _buildHeaders();
         headers.forEach(req.headers.set);
+        // Concurrence: If-Match pour mise à jour, If-None-Match: * pour création
+        final cached = _etagCache[partieId];
+        if (cached != null && cached.isNotEmpty) {
+          req.headers.set(HttpHeaders.ifMatchHeader, '"$cached"');
+        } else {
+          req.headers.set(HttpHeaders.ifNoneMatchHeader, '*');
+        }
         req.add(utf8.encode(body));
         return await req.close().timeout(const Duration(seconds: 30));
       }
@@ -191,9 +201,18 @@ class HttpCloudPersistencePort implements CloudPersistencePort {
           }
         } catch (_) {}
       }
+      if (resp.statusCode == 412 || resp.statusCode == 428) {
+        final text = await resp.transform(utf8.decoder).join();
+        throw ETagPreconditionException(resp.statusCode, text, currentEtag: _etagCache[partieId]);
+      }
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         final text = await resp.transform(utf8.decoder).join();
         throw HttpException('HTTP ${resp.statusCode}: $text', uri: uri);
+      }
+      // Mettre à jour l'ETag si retourné par le serveur
+      final newEtag = resp.headers.value(HttpHeaders.etagHeader);
+      if (newEtag != null && newEtag.isNotEmpty) {
+        _etagCache[partieId] = newEtag.replaceAll('"', '');
       }
       if (kDebugMode) {
         print('[HttpCloudPersistencePort] pushById ok: $partieId');
@@ -231,6 +250,11 @@ class HttpCloudPersistencePort implements CloudPersistencePort {
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         final text = await resp.transform(utf8.decoder).join();
         throw HttpException('HTTP ${resp.statusCode}: $text', uri: uri);
+      }
+      // Capturer l'ETag courant
+      final etag = resp.headers.value(HttpHeaders.etagHeader);
+      if (etag != null && etag.isNotEmpty) {
+        _etagCache[partieId] = etag.replaceAll('"', '');
       }
       final text = await resp.transform(utf8.decoder).join();
       final json = jsonDecode(text);
@@ -271,6 +295,11 @@ class HttpCloudPersistencePort implements CloudPersistencePort {
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         final text = await resp.transform(utf8.decoder).join();
         throw HttpException('HTTP ${resp.statusCode}: $text', uri: uri);
+      }
+      // Capturer l'ETag courant exposé par /status
+      final etag = resp.headers.value(HttpHeaders.etagHeader);
+      if (etag != null && etag.isNotEmpty) {
+        _etagCache[partieId] = etag.replaceAll('"', '');
       }
       final text = await resp.transform(utf8.decoder).join();
       final obj = jsonDecode(text);

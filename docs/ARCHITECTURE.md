@@ -1,5 +1,8 @@
 # Architecture — Clean Architecture (stricte)
 
+> Status: FROZEN — 2025-12-25 (Option A: Clean absolu, greenfield)
+> Toute évolution structurelle future doit être proposée via un ADR séparé et explicitement référencé ici. Les invariants d’identité/persistance et l’Option A (JWT-only, ownership par `player_uid`, aucune compat legacy) sont considérés comme normatifs.
+
 Ce document décrit la structure cible du code et les règles de dépendances.
 
 ## Objectif
@@ -102,6 +105,11 @@ La migration est volontairement progressive :
 - Interdiction d’introduire des helpers UI/audio/formatage dans `GameState`.
 - Toute nouvelle méthode doit prouver la délégation métier et l’absence de scheduling/IO.
 - Stratégie “snapshot-first”: le snapshot est la source de vérité; legacy conservé uniquement pour compat/migration.
+
+## Références
+- Conformité du système de sauvegarde: `docs/FINAL_SAVE_SYSTEM_COMPLIANCE.md`
+- Schéma Supabase (identité): `docs/SUPABASE_SCHEMA.md`
+- Checklist environnement Prod: `docs/PROD_ENV_CHECKLIST.md`
 
 ## Couche Runtime (Application) — Composants clés
 

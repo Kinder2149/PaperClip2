@@ -21,6 +21,17 @@ class CloudStatus {
   });
 }
 
+/// Exception levée quand une écriture cloud échoue à cause d'une précondition ETag
+/// non satisfaite (concurrence, écriture obsolète, création sans If-None-Match: *).
+class ETagPreconditionException implements Exception {
+  final int statusCode; // 412 ou 428
+  final String message;
+  final String? currentEtag;
+  ETagPreconditionException(this.statusCode, this.message, {this.currentEtag});
+  @override
+  String toString() => 'ETagPreconditionException($statusCode): $message';
+}
+
 /// Entrée d'index cloud pour une partie disponible côté distant.
 class CloudIndexEntry {
   final String partieId;

@@ -98,3 +98,38 @@ Ce document consolide les invariants, APIs autorisées/dépréciées, politiques
 
 ---
 Ce document est la référence officielle. Tout nouveau code lié aux sauvegardes doit s’y conformer. Toute API ou flux contredisant ces invariants doit être refusé en revue.
+
+## 8) Concurrence & Conflits (ETag, LWW explicite)
+- Politique
+  - ETag monotone exposé par le serveur (headers `ETag`, `X-Remote-Version`).
+  - Refus des écritures obsolètes: 412 (If-Match mismatch) / 428 (création sans `If-None-Match: *`).
+  - Stratégie LWW explicite (Last Writer Wins) mais seulement si le client se base sur l’état courant (ETag).
+- Client
+  - Pull/Status: capture l’ETag courant et le met en cache par `partieId`.
+  - Push: `If-None-Match: *` (création) si pas d’ETag en cache, sinon `If-Match: "<etag>"` (mise à jour).
+  - En cas de 412/428: signaler un conflit (flag orchestrateur), demander une action UX; pas de merge automatique.
+- Serveur
+  - Activer `REQUIRE_CONDITIONAL_WRITES=1`. JWT + ownership requis pour toute écriture/suppression.
+
+## 9) Snapshot versioning & migrations (v1 verrouillée)
+- Contrat
+  - `snapshotSchemaVersion` obligatoire; le serveur refuse version absente ou future.
+  - Migrations côté client uniquement (aucune transformation serveur) et déterministes.
+  - Backup local pré-migration, sauvegarde post-migration après application.
+- V1 actuelle
+  - `_latestSupportedSchemaVersion = 1` (client) ; `SNAPSHOT_SCHEMA_VERSION=1` (serveur).
+  - Passage futur en v2: incrément coordonné (serveur + client) et ajout d’étapes v1→v2 dans le pipeline.
+
+## 10) Ownership Cloud strict (Option A — Clean absolu)
+- JWT requis pour toutes les opérations (PUT/DELETE/GET/STATUS). Aucun fallback API_KEY (désactivé et supprimé).
+- Lien strict `partieId → owner_uid (player_uid)` ; refus explicite 403 si non-propriétaire.
+- Aucune compatibilité legacy par `playerId` (Google). Le champ `playerId` reste une métadonnée de contexte mais n’a aucun rôle d’ownership.
+- Champs metadata requis (name, gameMode, gameVersion, playerId) et garde-fous (taille max, enums fermées optionnelles).
+
+## 11) Décommission & dépréciations (finalisé — Option A)
+- Supprimés/désactivés
+  - GPG cloud legacy (slot global) : off et code mort à retirer s’il reste des traces.
+  - Fallback API_KEY : supprimé (dev et prod). Authentification strictement JWT.
+- Identité Google legacy (mapping `playerId` → `player_uid`)
+  - Retiré: aucune revendication d’ownership par `playerId`. Google reste un provider d’auth, pas d’ownership.
+  - Conséquence: base « greenfield » sans dette de compatibilité. Si un jour une compat est requise, elle sera réintroduite sous feature flag et via un plan de migration documenté.

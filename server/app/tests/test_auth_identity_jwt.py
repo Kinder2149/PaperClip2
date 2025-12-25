@@ -66,31 +66,11 @@ def test_login_with_provider_returns_jwt_with_sub_uuid_and_providers():
     providers = claims.get("providers") or []
     assert any(p.get("provider") == "google" and p.get("id") == "g123" for p in providers)
 
-
-def test_login_legacy_playerId_maps_to_same_player_uid_and_sets_legacy_claim():
+def test_login_rejects_legacy_playerId_payload_option_a():
     client = build_auth_app()
-
-    # 1) Login avec schéma recommandé
-    resp1 = client.post("/api/auth/login", json={"provider": "google", "provider_user_id": "gXYZ"})
-    assert resp1.status_code == 200
-    token1 = resp1.json()["access_token"]
-
-    from app.routes import auth as auth_module
-    claims1 = jwt.decode(token1, os.getenv("SECRET_KEY"), algorithms=[auth_module.ALGORITHM])
-    sub1 = claims1["sub"]
-
-    # 2) Login compat héritée avec playerId identique
-    resp2 = client.post("/api/auth/login", json={"playerId": "gXYZ"})
-    assert resp2.status_code == 200
-    token2 = resp2.json()["access_token"]
-
-    claims2 = jwt.decode(token2, os.getenv("SECRET_KEY"), algorithms=[auth_module.ALGORITHM])
-    sub2 = claims2["sub"]
-
-    # Même player_uid attendu
-    assert sub1 == sub2
-    # legacy_playerId présent pour la requête héritée
-    assert claims2.get("legacy_playerId") == "gXYZ"
+    # Option A: pas de compat playerId seul
+    resp = client.post("/api/auth/login", json={"playerId": "gXYZ"})
+    assert resp.status_code == 400
 
 
 def test_verify_jwt_accepts_uuid_sub_and_rejects_expired():
@@ -121,26 +101,17 @@ def test_verify_jwt_accepts_uuid_sub_and_rejects_expired():
     assert exc.value.status_code == 401
 
 
-def test_verify_jwt_legacy_sub_provider_id_is_resolved_to_player_uid():
-    # Simuler un ancien token où sub = id google non-UUID
+def test_verify_jwt_rejects_non_uuid_sub_option_a():
+    # Un ancien token avec sub non-UUID doit être rejeté en Option A
     from app.routes import auth as auth_module
     secret = os.getenv("SECRET_KEY")
-
-    # D'abord, créer un mapping en faisant un login pour g999
-    client = build_auth_app()
-    resp = client.post("/api/auth/login", json={"provider": "google", "provider_user_id": "g999"})
-    assert resp.status_code == 200
-
     old_style_claims = {
         "sub": "g999",  # non-UUID
         "iat": int(iso_now().timestamp()),
         "exp": int((iso_now() + timedelta(hours=1)).timestamp()),
     }
     old_token = jwt.encode(old_style_claims, secret, algorithm=auth_module.ALGORITHM)
-
-    claims = auth_module.verify_jwt(f"Bearer {old_token}")
-    # verify_jwt doit exposer player_uid normalisé
-    assert "player_uid" in claims
-    # Doit être un uuid valide
-    uuid_obj = uuid.UUID(str(claims["player_uid"]), version=4)
-    assert str(uuid_obj) == claims["player_uid"]
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as exc:
+        auth_module.verify_jwt(f"Bearer {old_token}")
+    assert exc.value.status_code == 401

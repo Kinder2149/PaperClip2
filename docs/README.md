@@ -5,15 +5,17 @@ Dernière mise à jour: 2025-12-25
 Ce README référence les documents de conception canoniques et signale les documents archivés. Toute nouvelle documentation doit se conformer à cet index pour éviter les doublons et contradictions.
 
 ## Documents canoniques (source de vérité)
-- Identité & Persistance: `identity/INVARIANTS_IDENTITE_PERSISTENCE.md`
-- Invariants système de sauvegarde: `SAVE_SYSTEM_INVARIANTS.md`
+- Identité & Persistance: `identity/INVARIANTS_IDENTITE_PERSISTENCE.md`, `SYSTEM_INVARIANTS_IDENTITY_PERSISTENCE.md`
+- Invariants système de sauvegarde: `SAVE_SYSTEM_INVARIANTS.md`, `FINAL_SAVE_SYSTEM_COMPLIANCE.md`
 - Stratégie de persistance (snapshot-first): `persistence.md`
 - Rétention des backups: `backups/Backup_Retention.md`
 - Références progression/événements: `progression/GAME_EVENTS_REFERENCE.md`, `progression/PROGRESSION_CURVE_REFERENCE.md`, `progression/flows/Save_Load_Flow.md`
 - UI/UX: `ui/SaveLoad_UI.md`, `ux/UX_INVISIBILITY_GUIDE.md`, `ux/GOOGLE_FEATURES_UX.md`
 - Social: `social/SOCIAL_MODEL_FINAL.md`
 - CI & validation: `ci/TESTS_AND_CI_CHECKLIST.md`, `VALIDATION_REPORT.md`
-- Architecture: `ARCHITECTURE.md`
+- Architecture (FROZEN): `ARCHITECTURE.md`
+- Environnement Prod: `PROD_ENV_CHECKLIST.md`
+- Schéma Supabase/Postgres (identité): `SUPABASE_SCHEMA.md`
 
 ## Documents archivés (obsolètes/contradictoires)
 Archivé dans `docs/_archive/` pour traçabilité. Ne plus modifier ni référencer.
@@ -27,6 +29,8 @@ Archivé dans `docs/_archive/` pour traçabilité. Ne plus modifier ni référen
   - `_archive/supabase_migration.sql`
   - `_archive/SYNC_ORCHESTRATION_GOOGLE.md`
   - `_archive/IDENTITY_FLOW_FINAL_SUPABASE.md`
+
+Note: les documents “FROZEN” ne doivent plus être modifiés sans ADR associé.
 
 ## Règles de gouvernance documentaire
 - Un seul document canonique par sujet. Si un nouveau document remplace un existant, déplacer l’ancien dans `_archive/` et ajouter un lien/renvoi croisé.
