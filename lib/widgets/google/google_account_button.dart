@@ -8,6 +8,8 @@ class GoogleAccountButton extends StatelessWidget {
   final bool showAvatar;
   final Color? backgroundColor;
   final Color? textColor;
+  final bool fullWidth;
+  final bool compact;
 
   const GoogleAccountButton({
     super.key,
@@ -15,6 +17,8 @@ class GoogleAccountButton extends StatelessWidget {
     this.showAvatar = true,
     this.backgroundColor,
     this.textColor,
+    this.fullWidth = true,
+    this.compact = false,
   });
 
   @override
@@ -28,14 +32,16 @@ class GoogleAccountButton extends StatelessWidget {
 
     final bool enabled = onPressed != null;
 
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
+    final EdgeInsetsGeometry padding = compact
+        ? const EdgeInsets.symmetric(horizontal: 8, vertical: 8)
+        : const EdgeInsets.symmetric(horizontal: 24, vertical: 16);
+
+    final button = ElevatedButton(
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
           foregroundColor: textColor,
           backgroundColor: backgroundColor,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          padding: padding,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(30),
           ),
@@ -46,22 +52,22 @@ class GoogleAccountButton extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(8),
+              padding: EdgeInsets.all(compact ? 6 : 8),
               decoration: BoxDecoration(
                 color: (textColor ?? Colors.white).withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.account_circle),
             ),
-            const SizedBox(width: 16),
+            SizedBox(width: compact ? 8 : 16),
             Expanded(
               child: Text(
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 softWrap: false,
-                style: const TextStyle(
-                  fontSize: 16,
+                style: TextStyle(
+                  fontSize: compact ? 14 : 16,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -69,8 +75,12 @@ class GoogleAccountButton extends StatelessWidget {
             if (trailing != null) Flexible(child: trailing),
           ],
         ),
-      ),
-    );
+      );
+
+    if (fullWidth) {
+      return SizedBox(width: double.infinity, child: button);
+    }
+    return button;
   }
 
   String _buildLabel(GoogleIdentityService identity) {

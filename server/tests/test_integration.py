@@ -8,11 +8,11 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 
-SECRET = os.getenv("SECRET_KEY", "change-this-secret")
 ALGO = "HS256"
 
 
 def _make_jwt(player_uid: str | None = None) -> str:
+    secret = os.getenv("SECRET_KEY", "change-this-secret")
     sub = player_uid or str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     payload = {
@@ -20,7 +20,7 @@ def _make_jwt(player_uid: str | None = None) -> str:
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(hours=1)).timestamp()),
     }
-    return jwt.encode(payload, SECRET, algorithm=ALGO)
+    return jwt.encode(payload, secret, algorithm=ALGO)
 
 
 def test_health_returns_ok():
@@ -70,6 +70,8 @@ def test_profile_put_get_roundtrip(tmp_path, monkeypatch):
     # Isoler le répertoire profiles pour le test
     profiles_dir = tmp_path / "profiles"
     monkeypatch.setenv("PROFILE_DATA_DIR", str(profiles_dir))
+    # S'assurer que le SECRET côté app et côté test sont cohérents
+    monkeypatch.setenv("SECRET_KEY", "change-this-secret")
 
     client = TestClient(app)
 

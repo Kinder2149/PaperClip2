@@ -6,6 +6,7 @@ import 'sections/notification_action.dart';
 import 'sections/music_control_action.dart';
 import 'sections/theme_mode_action.dart';
 import 'sections/settings_action.dart';
+import 'sections/google_account_action.dart';
 
 class AppBarActions {
   final GameMode gameMode;
@@ -39,6 +40,9 @@ class AppBarActions {
 
     // Ajouter le bouton de basculement de thème
     actions.add(const ThemeModeAction());
+
+    // Ajouter le bouton de compte Google (réutilisé de la Start Screen)
+    actions.add(const GoogleAccountAction());
     
     // Ajouter le bouton de paramètres
     actions.add(SettingsAction(

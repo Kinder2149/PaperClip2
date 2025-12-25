@@ -42,12 +42,12 @@ def _safe_read(path: str) -> Optional[Dict[str, Any]]:
 def _safe_write(path: str, payload: Dict[str, Any]) -> None:
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False)
+        json.dump(payload, f, ensure_ascii=False, default=str)
     os.replace(tmp, path)
 
 
 @router.get("/state", response_model=UserProfileState)
-def get_state(authorization: Optional[str] = Header(default=None)):
+def get_state(authorization: Optional[str] = Header(default=None, alias="Authorization")):
     claims = verify_jwt(authorization)
     player_uid = claims["player_uid"]
     p = _path(player_uid)
@@ -61,7 +61,7 @@ def get_state(authorization: Optional[str] = Header(default=None)):
 
 
 @router.put("/state", status_code=status.HTTP_204_NO_CONTENT)
-def put_state(state: UserProfileState, authorization: Optional[str] = Header(default=None)):
+def put_state(state: UserProfileState, authorization: Optional[str] = Header(default=None, alias="Authorization")):
     claims = verify_jwt(authorization)
     player_uid = claims["player_uid"]
     p = _path(player_uid)

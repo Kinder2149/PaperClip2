@@ -379,6 +379,7 @@ class StatisticsManager with ChangeNotifier {
       case GameEventType.autoclipperPurchased:
       case GameEventType.progressionPathChosen:
       case GameEventType.importantEventOccurred:
+      case GameEventType.metalPurchased:
         return;
     }
   }

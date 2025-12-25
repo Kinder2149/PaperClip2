@@ -191,6 +191,8 @@ class ProgressionRulesService {
           onUpgradePurchase(upgradeLevel: upgradeLevel);
         }
         return;
+      case GameEventType.metalPurchased:
+        return;
       case GameEventType.productionTick:
       case GameEventType.marketTick:
       case GameEventType.autoclipperPurchased:

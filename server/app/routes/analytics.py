@@ -41,11 +41,9 @@ def record_event(event: AnalyticsEventIn, authorization: Optional[str] = Header(
     if authorization:
         try:
             user_claims = verify_jwt(authorization)
-        except HTTPException:
-            # Si fourni mais invalide -> 401
-            raise
         except Exception:
-            raise HTTPException(status_code=401, detail="Invalid Authorization")
+            # Best-effort: ne pas rejeter l'event si le JWT est invalide
+            user_claims = None
 
     record: Dict[str, Any] = {
         "name": event.name,

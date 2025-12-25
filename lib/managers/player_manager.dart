@@ -28,7 +28,6 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
   
   // Stats et états
   double _sellPrice = GameConstants.INITIAL_PRICE;
-  int _marketingLevel = 0;
   int _autoClipperCount = 0;
   int _megaClipperCount = 0;
   double _autoClipperCost = GameConstants.BASE_AUTOCLIPPER_COST;
@@ -37,8 +36,6 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
   int _metalPurchaseCount = 0;
   
   // Niveaux et upgrades
-  int _storageUpgradeLevel = 0;
-  int _efficiencyUpgradeLevel = 0;
   double _productionSpeedMultiplier = 1.0;
   double _productionBatchSizeMultiplier = 1.0;
   bool _autoMetalBuyerEnabled = false;
@@ -50,15 +47,12 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
   double get paperclips => _paperclips;
   double get metal => _metal;
   double get sellPrice => _sellPrice;
-  int get marketingLevel => _marketingLevel;
   int get autoClipperCount => _autoClipperCount;
   int get megaClipperCount => _megaClipperCount;
   double get autoClipperCost => _autoClipperCost;
   double get megaClipperCost => _megaClipperCost;
   double get metalCost => _metalCost;
   int get metalPurchaseCount => _metalPurchaseCount;
-  int get storageUpgradeLevel => _storageUpgradeLevel;
-  int get efficiencyUpgradeLevel => _efficiencyUpgradeLevel;
   double get productionSpeedMultiplier => _productionSpeedMultiplier;
   double get productionBatchSizeMultiplier => _productionBatchSizeMultiplier;
   bool get autoMetalBuyerEnabled => _autoMetalBuyerEnabled;
@@ -312,39 +306,12 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
     return purchaseMegaClipper();
   }
   
-  /// Acheter une amélioration marketing
-  bool purchaseMarketingUpgrade() {
-    double cost = calculateMarketingCost();
-    if (canAfford(cost)) {
-      _marketingLevel++;
-      _money -= cost;
-      if (_money < 0) _money = 0;
-      notifyListeners();
-      return true;
-    }
-    return false;
-  }
-  
-  /// Méthode de rétrocompatibilité qui redirige vers purchaseMarketingUpgrade
-  bool upgradeMarketing() {
-    return purchaseMarketingUpgrade();
-  }
-  
-  /// Calcule le coût d'une amélioration marketing
-  double calculateMarketingCost() {
-    return 25.0 * pow(1.1, _marketingLevel); // Constantes à ajouter dans GameConstants
-  }
-  
   /// Retourne le niveau de marketing actuel
   int getMarketingLevel() {
-    return _marketingLevel;
+    return _upgrades['marketing']?.level ?? 0;
   }
   
-  /// Met à jour le niveau de stockage
-  void updateStorageLevel(int level) {
-    _storageUpgradeLevel = level;
-    notifyListeners();
-  }
+  
   
   /// Met à jour la capacité maximale de stockage de métal
   void updateMaxMetalStorage(double capacity) {
@@ -398,15 +365,6 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
     if (_money < 0) _money = 0;
     upgrade.level++;
 
-    // Compatibilité : certains anciens champs persistent encore dans les saves.
-    // La source de vérité reste `_upgrades[...].level`, mais on garde un mirroring
-    // minimal pour éviter les divergences en cas de chargement legacy.
-    if (upgradeId == 'storage') {
-      _storageUpgradeLevel = upgrade.level;
-    } else if (upgradeId == 'efficiency') {
-      _efficiencyUpgradeLevel = upgrade.level;
-    }
-
     notifyListeners();
     return true;
   }
@@ -418,15 +376,12 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
       'paperclips': _paperclips,
       'metal': _metal,
       'sellPrice': _sellPrice,
-      'marketingLevel': _marketingLevel,
       'autoClipperCount': _autoClipperCount,
       'megaClipperCount': _megaClipperCount,
       'autoClipperCost': _autoClipperCost,
       'megaClipperCost': _megaClipperCost,
       'metalCost': _metalCost,
       'metalPurchaseCount': _metalPurchaseCount,
-      'storageUpgradeLevel': _storageUpgradeLevel,
-      'efficiencyUpgradeLevel': _efficiencyUpgradeLevel,
       'productionSpeedMultiplier': _productionSpeedMultiplier,
       'productionBatchSizeMultiplier': _productionBatchSizeMultiplier,
       'autoMetalBuyerEnabled': _autoMetalBuyerEnabled,
@@ -453,7 +408,6 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
       _paperclips = (json['paperclips'] as num?)?.toDouble() ?? 0.0;
       _metal = (json['metal'] as num?)?.toDouble() ?? GameConstants.INITIAL_METAL;
       _sellPrice = (json['sellPrice'] as num?)?.toDouble() ?? GameConstants.INITIAL_PRICE;
-      _marketingLevel = (json['marketingLevel'] as num?)?.toInt() ?? 0;
       
       // Chargement du nombre d'autoclippers
       _autoClipperCount = (json['autoClipperCount'] as num?)?.toInt() ?? 0;
@@ -463,8 +417,6 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
       _megaClipperCost = (json['megaClipperCost'] as num?)?.toDouble() ?? 30.0;
       _metalCost = (json['metalCost'] as num?)?.toDouble() ?? 14.0;
       _metalPurchaseCount = (json['metalPurchaseCount'] as num?)?.toInt() ?? 0;
-      _storageUpgradeLevel = (json['storageUpgradeLevel'] as num?)?.toInt() ?? 0;
-      _efficiencyUpgradeLevel = (json['efficiencyUpgradeLevel'] as num?)?.toInt() ?? 0;
       _productionSpeedMultiplier = (json['productionSpeedMultiplier'] as num?)?.toDouble() ?? 1.0;
       _productionBatchSizeMultiplier = (json['productionBatchSizeMultiplier'] as num?)?.toDouble() ?? 1.0;
       _autoMetalBuyerEnabled = json['autoMetalBuyerEnabled'] as bool? ?? false;
@@ -496,25 +448,27 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
           }
         });
 
-        // Maintenir les champs legacy alignés sur la source de vérité.
+        // Réappliquer les effets dépendants du niveau au chargement (ex: capacité de stockage)
         final storage = _upgrades['storage'];
         if (storage != null) {
-          _storageUpgradeLevel = storage.level;
-        }
-        final efficiency = _upgrades['efficiency'];
-        if (efficiency != null) {
-          _efficiencyUpgradeLevel = efficiency.level;
+          final newCapacity = UpgradeEffectsCalculator.metalStorageCapacity(
+            storageLevel: storage.level,
+          );
+          _maxMetalStorage = newCapacity;
+          if (_metal > _maxMetalStorage) {
+            _metal = _maxMetalStorage;
+          }
         }
       } else {
         // Fallback legacy : anciennes sauvegardes peuvent ne pas contenir `upgrades`.
-        // On projette alors les niveaux legacy vers la map d'upgrades.
-        final storage = _upgrades['storage'];
-        if (storage != null) {
-          storage.level = _storageUpgradeLevel;
-        }
-        final efficiency = _upgrades['efficiency'];
-        if (efficiency != null) {
-          efficiency.level = _efficiencyUpgradeLevel;
+        // Assurer la cohérence de la capacité en se basant sur le niveau courant (par défaut 0)
+        final effectiveStorageLevel = _upgrades['storage']?.level ?? 0;
+        final newCapacity = UpgradeEffectsCalculator.metalStorageCapacity(
+          storageLevel: effectiveStorageLevel,
+        );
+        _maxMetalStorage = newCapacity;
+        if (_metal > _maxMetalStorage) {
+          _metal = _maxMetalStorage;
         }
       }
       
@@ -530,15 +484,12 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
     _paperclips = 0.0;
     _metal = GameConstants.INITIAL_METAL;
     _sellPrice = GameConstants.INITIAL_PRICE;
-    _marketingLevel = 0;
     _autoClipperCount = 0;
     _megaClipperCount = 0;
     _autoClipperCost = GameConstants.BASE_AUTOCLIPPER_COST;
     _megaClipperCost = 30.0;
     _metalCost = 14.0;
     _metalPurchaseCount = 0;
-    _storageUpgradeLevel = 0;
-    _efficiencyUpgradeLevel = 0;
     _productionSpeedMultiplier = 1.0;
     _productionBatchSizeMultiplier = 1.0;
     _autoMetalBuyerEnabled = false;

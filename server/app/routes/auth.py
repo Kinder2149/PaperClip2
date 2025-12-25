@@ -9,9 +9,11 @@ import uuid
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-SECRET_KEY = os.getenv("SECRET_KEY", "change-this-secret")
 ALGORITHM = "HS256"
 TOKEN_TTL_SECONDS = int(os.getenv("JWT_TTL_SECONDS", "3600"))
+
+def _get_secret() -> str:
+    return os.getenv("SECRET_KEY", "change-this-secret")
 
 class LoginRequest(BaseModel):
     # Schéma strict Option A (clean): provider requis, aucun champ legacy
@@ -51,7 +53,7 @@ def login(req: LoginRequest):
         "exp": int(exp.timestamp()),
     }
 
-    token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+    token = jwt.encode(payload, _get_secret(), algorithm=ALGORITHM)
     return LoginResponse(access_token=token, expires_at=exp)
 
 
@@ -62,7 +64,7 @@ def verify_jwt(authorization: Optional[str]) -> Dict[str, Any]:
         raise HTTPException(status_code=401, detail="Invalid Authorization scheme")
     token = authorization.split(" ", 1)[1].strip()
     try:
-        claims = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        claims = jwt.decode(token, _get_secret(), algorithms=[ALGORITHM])
         # Option A: exiger sub = player_uid (UUID v4) sans compat legacy
         sub = claims.get("sub")
         try:

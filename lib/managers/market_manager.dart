@@ -168,6 +168,13 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
   int _totalSalesCount = 0;
   double _averageSalePrice = 0;
   double _highestSalePrice = 0.0;
+  // --- Réputation dynamique (Option B) ---
+  DateTime _lastReputationUpdate = DateTime.fromMillisecondsSinceEpoch(0);
+  int _lowSalesStreak = 0;
+  static const Duration _reputationWindow = Duration(seconds: 60);
+  static const Duration _reputationCooldown = Duration(seconds: 10);
+  static const int _salesPerMinThreshold = 10; // seuil indicatif
+  static const int _lowSalesStreakThreshold = 5; // N ticks consécutifs avant pénalité
 
   // Agrégats d'historique minimalistes (utilisés par l'écran Historique)
   double get totalSalesRevenue => _totalSales;
@@ -350,6 +357,12 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
           moneyEarned: revenue,
           // Retrait des paramètres sales et price non supportés
         );
+
+        // Réputation dynamique (Option B): mise à jour lissée et bornée
+        _maybeUpdateReputation(
+          sellPrice: sellPrice,
+          elapsedSeconds: elapsed,
+        );
         
         if (kDebugMode && verboseLogs) {
           print('[MarketManager] Statistiques mises à jour: ${_totalSalesCount} ventes totales, ${_totalSales.toStringAsFixed(2)} revenus cumulés');
@@ -363,12 +376,73 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
         );
       } else {
         if (kDebugMode) print('[MarketManager] Aucune vente possible - demande insuffisante');
+        // Pas de vente: possibilité d'augmenter la série de faibles ventes si le prix est excessif
+        _maybeUpdateReputation(
+          sellPrice: sellPrice,
+          elapsedSeconds: elapsed,
+          noSale: true,
+        );
       }
     } else {
       if (kDebugMode) print('[MarketManager] Aucune vente possible - pas de stock de trombones');
     }
 
     return MarketSaleResult.none;
+  }
+
+  double _computeRecentSalesPerMin({Duration window = _reputationWindow}) {
+    if (salesHistory.isEmpty) return 0.0;
+    final cutoff = DateTime.now().subtract(window);
+    int qty = 0;
+    for (int i = salesHistory.length - 1; i >= 0; i--) {
+      final rec = salesHistory[i];
+      if (rec.timestamp.isBefore(cutoff)) break;
+      qty += rec.quantity;
+    }
+    if (window.inSeconds <= 0) return 0.0;
+    final perSec = qty / window.inSeconds;
+    return perSec * 60.0;
+  }
+
+  void _maybeUpdateReputation({
+    required double sellPrice,
+    required double elapsedSeconds,
+    bool noSale = false,
+  }) {
+    final now = DateTime.now();
+    if (now.difference(_lastReputationUpdate) < _reputationCooldown) {
+      return;
+    }
+
+    final recentPerMin = _computeRecentSalesPerMin();
+    final inOptimalRange =
+        sellPrice >= GameConstants.OPTIMAL_PRICE_LOW && sellPrice <= GameConstants.OPTIMAL_PRICE_HIGH;
+    final priceExcessive = sellPrice > GameConstants.MAX_PRICE_THRESHOLD;
+
+    bool adjusted = false;
+    if (inOptimalRange && recentPerMin >= _salesPerMinThreshold) {
+      reputation = (reputation + 0.01).clamp(0.5, 1.5);
+      _lowSalesStreak = 0;
+      adjusted = true;
+    } else if (priceExcessive) {
+      if (noSale || recentPerMin < _salesPerMinThreshold) {
+        _lowSalesStreak += 1;
+        if (_lowSalesStreak >= _lowSalesStreakThreshold) {
+          reputation = (reputation - 0.01).clamp(0.5, 1.5);
+          _lowSalesStreak = 0;
+          adjusted = true;
+        }
+      } else {
+        _lowSalesStreak = 0;
+      }
+    } else {
+      _lowSalesStreak = 0;
+    }
+
+    if (adjusted) {
+      _lastReputationUpdate = now;
+      notifyListeners();
+    }
   }
 
   @Deprecated('Utiliser processSales(...) comme chemin officiel de vente (Option B2).')

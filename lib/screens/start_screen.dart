@@ -1,7 +1,8 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
-import '../constants/game_config.dart'; // ImportÃ© depuis constants au lieu de models
+import '../constants/game_config.dart'; // Importé depuis constants au lieu de models
+import 'package:paperclip2/core/constants/constantes.dart';
 import '../utils/update_manager.dart';
 import '../services/persistence/game_persistence_orchestrator.dart';
 import '../services/notification_manager.dart'; // Ajout de l'import pour NotificationManager
@@ -391,11 +392,24 @@ class _StartScreenState extends State<StartScreen> {
       final gs = context.read<GameState>();
       gs.setStorageMode(selectedStorage);
 
-      // Nom cosmétique par défaut (ID-first: aucune contrainte d’unicité par nom)
-      final defaultName = 'Partie ${DateTime.now().day}/${DateTime.now().month}';
+      // Nom par défaut centralisé + demande de confirmation et choix du mode
+      final defaultName = PartieNaming.defaultName();
 
-      // Démarrer en mode par défaut (INFINITE) sans modal
-      await context.read<GameRuntimeCoordinator>().startNewGameAndStartAutoSave(defaultName, mode: GameMode.INFINITE);
+      final tuple = await _showNewGameDialog(
+        context: context,
+        initialName: defaultName,
+        initialMode: GameMode.INFINITE,
+      );
+      if (tuple == null) {
+        return;
+      }
+      final selectedName = tuple.$1;
+      final selectedMode = tuple.$2;
+
+      // Démarrer avec les valeurs choisies
+      await context
+          .read<GameRuntimeCoordinator>()
+          .startNewGameAndStartAutoSave(selectedName, mode: selectedMode);
 
       // Déclencher automatiquement un push cloud initial si cloud par partie activé et identité valide
       try {
@@ -429,7 +443,7 @@ class _StartScreenState extends State<StartScreen> {
       if (mounted) {
         final introScreen = IntroductionScreen(
           showSkipButton: true,
-          isCompetitiveMode: false,
+          isCompetitiveMode: selectedMode == GameMode.COMPETITIVE,
           onStart: () {
             context.read<NavigationService>().pushReplacement(
               MaterialPageRoute(builder: (_) => const MainScreen()),
@@ -451,6 +465,76 @@ class _StartScreenState extends State<StartScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<(String, GameMode)?> _showNewGameDialog({
+    required BuildContext context,
+    required String initialName,
+    required GameMode initialMode,
+  }) async {
+    final TextEditingController nameController = TextEditingController(text: initialName);
+    GameMode selectedMode = initialMode;
+    return showDialog<(String, GameMode)>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Nouvelle partie'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Nom de la partie',
+                ),
+              ),
+              const SizedBox(height: 12),
+              StatefulBuilder(
+                builder: (context, setState) {
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      RadioListTile<GameMode>(
+                        title: const Text('Infini'),
+                        value: GameMode.INFINITE,
+                        groupValue: selectedMode,
+                        onChanged: (val) {
+                          if (val != null) setState(() => selectedMode = val);
+                        },
+                      ),
+                      RadioListTile<GameMode>(
+                        title: const Text('Compétitif'),
+                        value: GameMode.COMPETITIVE,
+                        groupValue: selectedMode,
+                        onChanged: (val) {
+                          if (val != null) setState(() => selectedMode = val);
+                        },
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(null),
+              child: const Text('Annuler'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final name = nameController.text.trim().isEmpty
+                    ? PartieNaming.defaultName()
+                    : nameController.text.trim();
+                Navigator.of(ctx).pop((name, selectedMode));
+              },
+              child: const Text('Créer'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
