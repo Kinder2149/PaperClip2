@@ -23,7 +23,7 @@ void main() {
 
       // Reset state to known values
       player.resetPlayerState();
-      market.resetMarketState();
+      market.reset();
 
       // Ensure market has stock and define a predictable metal price
       market.marketMetalPrice = 0.20; // 0.20 per unit

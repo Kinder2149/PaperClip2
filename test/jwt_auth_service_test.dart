@@ -53,14 +53,14 @@ void main() {
 
     test('loginWithPlayerId success stores token and exp', () async {
       // Provide API_BASE_URL using dotenv test loader
-      await dotenv.dotenv.testLoad(fileInput: 'API_BASE_URL=http://localhost');
+      dotenv.dotenv.testLoad(fileInput: 'API_BASE_URL=http://localhost');
 
       final svc = JwtAuthService.instance;
       final mem = _MemoryStorage();
       svc.setStorageAdapterForTesting(mem);
 
       final mock = MockClient((request) async {
-        expect(request.url.toString(), 'http://localhost/auth/login');
+        expect(request.url.toString(), 'http://localhost/api/auth/login');
         return http.Response(
           '{"access_token":"xyz","expires_at":"2030-01-01T00:00:00Z"}',
           200,
@@ -79,7 +79,7 @@ void main() {
     });
 
     test('loginWithPlayerId handles network error and non-2xx', () async {
-      await dotenv.dotenv.testLoad(fileInput: 'API_BASE_URL=http://localhost');
+      dotenv.dotenv.testLoad(fileInput: 'API_BASE_URL=http://localhost');
 
       final svc = JwtAuthService.instance;
       final mem = _MemoryStorage();

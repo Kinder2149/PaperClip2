@@ -7,6 +7,7 @@ import 'package:paperclip2/services/persistence/game_snapshot.dart';
 import 'package:paperclip2/services/save_system/save_manager_adapter.dart';
 import 'package:paperclip2/models/save_game.dart';
 import 'package:paperclip2/models/game_state.dart';
+import 'package:paperclip2/constants/game_config.dart';
 
 GameSnapshot _validSnap() => GameSnapshot(
       metadata: {
@@ -45,8 +46,7 @@ void main() {
 
   test('loadGameById with allowRestore=false rethrows on corrupt snapshot', () async {
     final state = GameState();
-    state.initializeNewGame('AllowRestoreFalse');
-    final pid = state.partieId!;
+    final pid = 'allow-restore-false';
 
     // Save a corrupt snapshot under this id
     final bad = SaveGame(
@@ -68,11 +68,10 @@ void main() {
 
   test('loadGameById with allowRestore=true restores from latest backup on corrupt snapshot', () async {
     final state = GameState();
-    state.initializeNewGame('AllowRestoreTrue');
-    final pid = state.partieId!;
+    final pid = 'allow-restore-true';
 
     // Create a valid backup entry for this partieId
-    final backupName = '$pid|${DateTime.now().millisecondsSinceEpoch}';
+    final backupName = '$pid${GameConstants.BACKUP_DELIMITER}${DateTime.now().millisecondsSinceEpoch}';
     final backup = SaveGame(
       name: backupName,
       lastSaveTime: DateTime.now(),

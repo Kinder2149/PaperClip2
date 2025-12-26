@@ -93,7 +93,7 @@ class JwtAuthService {
       }
       return false;
     }
-    final uri = Uri.parse(base + '/auth/login');
+    final uri = Uri.parse(base + '/api/auth/login');
     try {
       final resp = await _client
           .post(

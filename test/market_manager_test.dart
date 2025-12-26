@@ -6,7 +6,7 @@ void main() {
   group('MarketManager.updateMarketStock & metal price', () {
     test('metal price increases when stock decreases, clamped to bounds', () {
       final market = MarketManager();
-      market.resetMarketState();
+      market.reset();
 
       // At full initial stock => price near MIN
       market.updateMarketStock(GameConstants.INITIAL_MARKET_METAL);

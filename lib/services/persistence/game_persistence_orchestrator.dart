@@ -212,7 +212,8 @@ class GamePersistenceOrchestrator {
         }
 
         final restoredSave = SaveGame(
-          // On restaure sous le même ID (conservé par l'adapter via metadata)
+          // Écraser la sauvegarde existante en conservant exactement le même identifiant
+          id: lastSave.id,
           name: lastSave.name,
           lastSaveTime: DateTime.now(),
           gameData: backupSave.gameData,
@@ -680,9 +681,11 @@ class GamePersistenceOrchestrator {
 
   Future<bool> _tryRestoreFromBackupsAndLoad(GameState state, String baseName) async {
     try {
-      final pid = state.partieId;
-      if (pid == null || pid.isEmpty) {
-        // ID-first strict: sans identifiant technique, pas de restauration automatique
+      // Utiliser en priorité l'identifiant technique connu sur l'état; sinon
+      // retomber sur le nom/baseName fourni par l'appelant (id quand disponible).
+      final pid = (state.partieId == null || state.partieId!.isEmpty) ? baseName : state.partieId!;
+      if (pid.isEmpty) {
+        // Sans identité exploitable on ne peut pas cibler les backups
         return false;
       }
       final saves = await SaveManagerAdapter.listSaves();
@@ -700,8 +703,44 @@ class GamePersistenceOrchestrator {
 
       for (final backup in candidateBackups) {
         try {
-          // Utiliser l'API de restauration ID-first (écrase la cible par partieId)
-          final ok = await SaveManagerAdapter.restoreFromBackup(backup.name, state);
+          // Résoudre l'ID réel du backup à partir de son nom
+          final metas = await SaveManagerAdapter.listSaves();
+          final match = metas.where((m) => m.name == backup.name).toList()
+            ..sort((a,b)=>b.timestamp.compareTo(a.timestamp));
+          if (match.isEmpty) continue;
+          final bSave = await SaveManagerAdapter.loadGameById(match.first.id);
+          if (bSave == null) continue;
+          // Extraire le snapshot du backup et vérifier sa migrabilité
+          final data = bSave.gameData;
+          final key = LocalGamePersistenceService.snapshotKey;
+          if (!data.containsKey(key)) continue;
+          Map<String, dynamic>? snapJson;
+          final raw = data[key];
+          if (raw is Map) {
+            snapJson = Map<String, dynamic>.from(raw as Map);
+          } else if (raw is String) {
+            final snap = GameSnapshot.fromJsonString(raw);
+            if (snap != null) snapJson = snap.toJson();
+          }
+          if (snapJson == null) continue;
+          // Tester migration; si échec → passer au backup suivant
+          try {
+            final migrated = await _persistence.migrateSnapshot(GameSnapshot.fromJson(snapJson));
+            snapJson = migrated.toJson();
+          } catch (_) {
+            continue;
+          }
+          // Écrire le contenu validé du backup sous l'identifiant technique cible (pid)
+          final restored = SaveGame(
+            id: pid,
+            name: pid,
+            lastSaveTime: DateTime.now(),
+            gameData: { LocalGamePersistenceService.snapshotKey: snapJson },
+            version: bSave.version,
+            gameMode: bSave.gameMode,
+            isRestored: true,
+          );
+          final ok = await SaveManagerAdapter.saveGame(restored);
           if (!ok) continue;
           // Charger strictement par identifiant technique
           await loadGameById(state, pid, allowRestore: false);
@@ -893,7 +932,9 @@ class GamePersistenceOrchestrator {
     } catch (e) {
       // Aligner le comportement de fallback de loadGame()
       if (allowRestore && e is FormatException) {
-        final restored = await _tryRestoreFromBackupsAndLoad(state, state.gameName ?? '');
+        // En cas de snapshot corrompu, tenter restauration en utilisant l'identité
+        // fournie à l'appel (id) comme baseName si l'état ne possède pas encore partieId.
+        final restored = await _tryRestoreFromBackupsAndLoad(state, id);
         if (restored) return;
       }
       if (_isDebug) {

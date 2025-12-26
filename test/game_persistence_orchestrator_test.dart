@@ -6,6 +6,7 @@ import 'package:paperclip2/services/persistence/local_game_persistence.dart';
 import 'package:paperclip2/services/persistence/game_snapshot.dart';
 import 'package:paperclip2/models/save_game.dart';
 import 'package:paperclip2/services/save_system/save_manager_adapter.dart';
+import 'package:paperclip2/constants/game_config.dart';
 
 void main() {
   setUp(() async {
@@ -36,6 +37,7 @@ void main() {
 
     final snapshot = _makeValidSnapshot();
     await const LocalGamePersistenceService().saveSnapshot(snapshot, slotId: pid);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
 
     final status = await GamePersistenceOrchestrator.instance.validateForListing(pid);
     expect(status, GamePersistenceOrchestrator.integrityValid);
@@ -54,6 +56,7 @@ void main() {
       gameMode: GameMode.INFINITE,
     );
     await SaveManagerAdapter.saveGame(sg);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
 
     final status = await GamePersistenceOrchestrator.instance.validateForListing(pid);
     expect(status, GamePersistenceOrchestrator.integrityMigratable);
@@ -72,6 +75,7 @@ void main() {
       gameMode: GameMode.INFINITE,
     );
     await SaveManagerAdapter.saveGame(bad);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
 
     final status = await GamePersistenceOrchestrator.instance.validateForListing(pid);
     expect(status, GamePersistenceOrchestrator.integrityCorrupt);
@@ -82,7 +86,7 @@ void main() {
     final baseId = 'partie-restore';
 
     // First, create a valid backup entry
-    final backupName = baseId + '|' + DateTime.now().millisecondsSinceEpoch.toString();
+    final backupName = baseId + GameConstants.BACKUP_DELIMITER + DateTime.now().millisecondsSinceEpoch.toString();
     final backup = SaveGame(
       name: backupName,
       lastSaveTime: DateTime.now(),
@@ -108,14 +112,11 @@ void main() {
     // Ensure adapter returns our last save as most recent
     // Now run the restoration check
     await GamePersistenceOrchestrator.instance.checkAndRestoreLastSaveFromBackupIfNeeded();
+    // Laisser le temps aux écritures async de se finaliser
+    await Future<void>.delayed(const Duration(milliseconds: 50));
 
-    // After restoration, the regular save should contain a valid snapshot
-    final reloaded = await SaveManagerAdapter.loadGameById(baseId);
-    expect(reloaded, isNotNull);
-    final gd = reloaded!.gameData;
-    expect(gd.containsKey(LocalGamePersistenceService.snapshotKey), isTrue);
-    // Snapshot must be parseable back to Map
-    final raw = gd[LocalGamePersistenceService.snapshotKey];
-    expect(raw, isA<Map>());
+    // Après restauration, l'intégrité doit redevenir valide pour l'UI
+    final status = await GamePersistenceOrchestrator.instance.validateForListing(baseId);
+    expect(status, GamePersistenceOrchestrator.integrityValid);
   });
 }

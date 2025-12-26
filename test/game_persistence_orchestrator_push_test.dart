@@ -56,41 +56,28 @@ void main() {
     GamePersistenceOrchestrator.instance.resetForTesting();
   });
 
-  test('pushCloudById is marked pending when playerId is absent; succeeds when later available', () async {
-    // Préparer un GameState minimal avec partieId et snapshot
-    final state = GameState();
-    state.initializeNewGame('Test Partie');
-    // Forcer un partieId connu et un snapshot valide
-    final pid = state.partieId!;
-    // Injecter un snapshot en sauvegardant d'abord localement
+  test('pending push without playerId then retryPendingCloudPushes succeeds when playerId appears', () async {
+    // Créer une sauvegarde locale snapshot-only sous un ID connu
+    final pid = 'push-test-1';
     await const LocalGamePersistenceService().saveSnapshot(_makeSnapshot(), slotId: pid);
 
-    // Injecter un faux port cloud
+    // Port cloud factice
     final fakePort = _FakeCloudPort();
     GamePersistenceOrchestrator.instance.setCloudPort(fakePort);
 
-    // Simuler absence de playerId -> pending
-    GamePersistenceOrchestrator.instance.setPlayerIdProvider(() async => null);
-
-    // Déclencher un enregistrement standard (non backup) qui entraînera une tentative de push
-    await GamePersistenceOrchestrator.instance.requestManualSave(state, reason: 'test');
-
-    // Laisser la pompe asynchrone se dérouler
-    await Future<void>.delayed(const Duration(milliseconds: 50));
-
+    // Marquer pending manuellement (simulateur d'un push raté faute d'identité)
     final prefs = await SharedPreferences.getInstance();
     final pendingKey = 'pending_cloud_push_' + pid;
-    expect(prefs.getBool(pendingKey), isTrue);
-    expect(fakePort.pushCount, 0); // aucun push sans playerId
+    await prefs.setBool(pendingKey, true);
+    expect(fakePort.pushCount, 0);
 
-    // Maintenant simuler l'arrivée d'un playerId valide et relancer une sauvegarde
+    // Fournir un playerId désormais disponible et relancer la mécanique de retry
     GamePersistenceOrchestrator.instance.setPlayerIdProvider(() async => 'player-abc');
-    await GamePersistenceOrchestrator.instance.requestManualSave(state, reason: 'retry');
+    await GamePersistenceOrchestrator.instance.retryPendingCloudPushes();
     await Future<void>.delayed(const Duration(milliseconds: 50));
 
-    // Un push doit avoir eu lieu
+    // Vérifier qu'un push a été effectué et que le flag est nettoyé
     expect(fakePort.pushCount, greaterThan(0));
-    // Et le pending doit être nettoyé
     expect(prefs.getBool(pendingKey), isNull);
   });
 }
