@@ -86,14 +86,24 @@ class JwtAuthService {
   }
 
   Future<bool> loginWithPlayerId(String playerId) async {
-    final base = (dotenv.env['API_BASE_URL'] ?? '').trim();
+    // Normaliser la base et éviter le double /api
+    var base = (dotenv.env['API_BASE_URL'] ?? '').trim();
+    if (base.isEmpty) {
+      // fallback sur CLOUD_BACKEND_BASE_URL si API_BASE_URL non fourni
+      base = (dotenv.env['CLOUD_BACKEND_BASE_URL'] ?? '').trim();
+    }
     if (base.isEmpty) {
       if (kDebugMode) {
-        print('[JwtAuthService] API_BASE_URL vide, impossible de se connecter');
+        print('[JwtAuthService] API_BASE_URL et CLOUD_BACKEND_BASE_URL vides, impossible de se connecter');
       }
       return false;
     }
-    final uri = Uri.parse(base + '/api/auth/login');
+    // retirer un trailing slash et un suffixe /api pour éviter /api/api/
+    if (base.endsWith('/')) base = base.substring(0, base.length - 1);
+    if (base.toLowerCase().endsWith('/api')) {
+      base = base.substring(0, base.length - 4);
+    }
+    final uri = Uri.parse(base).replace(path: '/api/auth/login');
     try {
       final resp = await _client
           .post(

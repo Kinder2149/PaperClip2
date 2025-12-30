@@ -1,7 +1,7 @@
 name: paperclip2
 description: Un jeu incrémental de production de trombones avec des mécaniques de gestion et d'optimisation.
 publish_to: 'none'
-version: 1.0.1+5
+version: 2.2.0+27
 
 environment:
   sdk: '>=3.0.6 <4.0.0'

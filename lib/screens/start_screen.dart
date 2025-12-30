@@ -441,11 +441,13 @@ class _StartScreenState extends State<StartScreen> {
       } catch (_) {}
 
       if (mounted) {
+        // Capturer le service de navigation maintenant pour éviter d'utiliser un context potentiellement unmounted plus tard
+        final nav = context.read<NavigationService>();
         final introScreen = IntroductionScreen(
           showSkipButton: true,
           isCompetitiveMode: selectedMode == GameMode.COMPETITIVE,
           onStart: () {
-            context.read<NavigationService>().pushReplacement(
+            nav.pushReplacement(
               MaterialPageRoute(builder: (_) => const MainScreen()),
             );
           },

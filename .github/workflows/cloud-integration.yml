@@ -1,0 +1,37 @@
+name: Cloud Integration Tests
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Flutter version
+        run: flutter --version
+
+      - name: Pub get
+        run: flutter pub get
+
+      - name: Run unit tests
+        run: flutter test -r expanded --concurrency=1 --exclude-tags=integration-skip
+
+      - name: Run cloud integration test
+        env:
+          CLOUD_BACKEND_BASE_URL: ${{ secrets.CLOUD_BACKEND_BASE_URL }}
+          TEST_PLAYER_ID: ${{ secrets.TEST_PLAYER_ID }}
+        run: |
+          echo "Running integration with CLOUD_BACKEND_BASE_URL=$CLOUD_BACKEND_BASE_URL"
+          flutter test test/integration_cloud_push_pull_test.dart -r expanded --concurrency=1

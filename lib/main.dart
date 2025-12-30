@@ -32,6 +32,7 @@ import 'services/auth/jwt_auth_service.dart';
 import 'services/cloud/local_cloud_persistence_port.dart';
 import 'services/cloud/http_cloud_persistence_port.dart';
 import 'services/cloud/snapshots_cloud_persistence_port.dart';
+import 'services/google/identity/google_identity_service.dart';
 
 // Adapters UI/Audio (hors domaine)
 import './services/ui/game_ui_event_adapter.dart';
@@ -192,6 +193,20 @@ void main() async {
 
     // Init audio (chargement asset / loop) avant démarrage des adapters
     await backgroundMusicService.initialize();
+
+    // Auth silencieuse: tenter un login JWT avec le dernier playerId connu avant toute requête cloud
+    try {
+      final pid = _googleServices.identity.playerId ?? await GoogleIdentityService.readLastKnownPlayerId();
+      if (pid != null && pid.isNotEmpty) {
+        final ok = await JwtAuthService.instance.loginWithPlayerId(pid);
+        if (kDebugMode) {
+          print('[Bootstrap] silent login pid=' + pid + ' ok=' + ok.toString());
+        }
+        if (ok) {
+          try { await GamePersistenceOrchestrator.instance.onPlayerConnected(playerId: pid); } catch (_) {}
+        }
+      }
+    } catch (_) {}
 
     // Wiring des adapters événementiels (écoute des événements du domaine)
     _uiEventAdapter.start();
