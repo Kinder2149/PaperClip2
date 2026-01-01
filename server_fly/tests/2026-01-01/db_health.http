@@ -1,0 +1,4 @@
+###
+# 401 expected without bearer
+GET https://server-fly-paperclip.fly.dev/db/health
+

@@ -1,0 +1,9 @@
+###
+# 401 expected without bearer
+PUT https://server-fly-paperclip.fly.dev/saves/{{partieId}}
+Content-Type: application/json
+
+{
+  "snapshot": {"ok": true}
+}
+

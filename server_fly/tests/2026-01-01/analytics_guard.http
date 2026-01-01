@@ -1,0 +1,10 @@
+###
+# 401 expected without bearer
+POST https://server-fly-paperclip.fly.dev/analytics/events
+Content-Type: application/json
+
+{
+  "name": "test",
+  "properties": {"k": "v"}
+}
+
