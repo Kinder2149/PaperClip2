@@ -10,6 +10,7 @@ abstract class GamesServicesFacade {
   Future<String?> getPlayerName();
   Future<String?> getPlayerIconImage();
   Future<void> unlockAchievement({required String androidId});
+  Future<void> incrementAchievement({required String androidId, required int bySteps});
   Future<void> submitScore({required String androidLeaderboardId, required int value});
 }
 
@@ -32,6 +33,20 @@ class GamesServicesFacadeImpl implements GamesServicesFacade {
   @override
   Future<void> unlockAchievement({required String androidId}) =>
       Achievements.unlock(achievement: Achievement(androidID: androidId, percentComplete: 100));
+
+  @override
+  Future<void> incrementAchievement({required String androidId, required int bySteps}) async {
+    try {
+      // API games_services >=4.1: increment() n'accepte plus 'steps'.
+      // On appelle increment() 'bySteps' fois (bornage simple pour éviter les rafales énormes).
+      final capped = bySteps.clamp(1, 50);
+      for (var i = 0; i < capped; i++) {
+        await Achievements.increment(achievement: Achievement(androidID: androidId));
+      }
+    } catch (_) {
+      // ignore errors
+    }
+  }
 
   @override
   Future<void> submitScore({required String androidLeaderboardId, required int value}) =>

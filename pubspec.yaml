@@ -1,7 +1,7 @@
 name: paperclip2
 description: Un jeu incrémental de production de trombones avec des mécaniques de gestion et d'optimisation.
 publish_to: 'none'
-version: 2.2.0+27
+version: 2.2.0+16
 
 environment:
   sdk: '>=3.0.6 <4.0.0'
@@ -9,41 +9,38 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  
+
   # Interface utilisateur
   provider: ^6.1.1
   fl_chart: ^0.70.0
   cupertino_icons: ^1.0.6
   uuid: ^4.5.1
   cached_network_image: ^3.2.3
-  
+
   # Stockage et fichiers
   shared_preferences: ^2.2.2
   path_provider: ^2.1.2
-  # file_picker supprimé car non utilisé directement et cause des problèmes de compilation
-  
+
   # Audio
   just_audio: ^0.9.36
-  
+
   # Utilitaires
   archive: ^4.0.2
   intl: ^0.19.0
   logging: ^1.2.0
   http: ^1.1.0
-  
-  # Configuration
   flutter_dotenv: ^5.1.0
-  package_info_plus: ^4.2.0
-  games_services: ^4.1.1
-  supabase_flutter: ^2.6.0
-  flutter_secure_storage: ^9.0.0
+  games_services: ^4.0.3
+  flutter_secure_storage: ^9.2.4
+  firebase_core: ^3.6.0
+  firebase_auth: ^5.3.1
+  google_sign_in: ^6.2.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.1
   flutter_launcher_icons: ^0.13.1
-  # Tests
   mockito: ^5.4.4
   build_runner: ^2.4.8
   mocktail: ^1.0.3

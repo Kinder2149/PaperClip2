@@ -13,13 +13,19 @@ class LeaderboardsMapper {
         if (v != null) out.add(MapEntry(LeaderboardsKeys.productionTotalClips, v));
         break;
       case 'economy.net_profit':
-        final v = _asInt(data['value']) ?? _asInt(data['net']) ?? _asInt(data['amount']);
-        if (v != null) out.add(MapEntry(LeaderboardsKeys.netProfit, v));
+        final d = _asDouble(data['value']) ?? _asDouble(data['net']) ?? _asDouble(data['amount']);
+        if (d != null) {
+          final scaled = (d * 10000).round(); // 4 décimales
+          out.add(MapEntry(LeaderboardsKeys.netProfit, scaled));
+        }
         break;
       case 'leaderboard.general_score':
         // Si une couche orchestratrice fournit un score composite explicite
-        final v = _asInt(data['score']);
-        if (v != null) out.add(MapEntry(LeaderboardsKeys.general, v));
+        final d = _asDouble(data['score']);
+        if (d != null) {
+          final scaled = (d * 100).round(); // 2 décimales
+          out.add(MapEntry(LeaderboardsKeys.general, scaled));
+        }
         break;
       default:
         break;
@@ -31,6 +37,13 @@ class LeaderboardsMapper {
     if (v is int) return v;
     if (v is double) return v.toInt();
     if (v is String) return int.tryParse(v);
+    return null;
+  }
+
+  double? _asDouble(Object? v) {
+    if (v is double) return v;
+    if (v is int) return v.toDouble();
+    if (v is String) return double.tryParse(v);
     return null;
   }
 }

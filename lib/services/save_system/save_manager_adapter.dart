@@ -40,6 +40,59 @@ class SaveManagerAdapter {
     return _instance._saveManager!;
   }
 
+  /// Récupère la dernière sauvegarde pour une partie spécifique (par ID technique)
+  /// Exclut les backups (entrées contenant le délimiteur de backup dans le nom)
+  static Future<SaveGame?> getLastSaveById(String partieId) async {
+    try {
+      await ensureInitialized();
+
+      if (kDebugMode) {
+        print('SaveManagerAdapter.getLastSaveById: Recherche de la dernière sauvegarde pour ID=$partieId');
+      }
+
+      final saves = await instance.listSaves();
+      if (saves.isEmpty) {
+        if (kDebugMode) {
+          print('SaveManagerAdapter.getLastSaveById: Aucune sauvegarde trouvée');
+        }
+        return null;
+      }
+
+      final filtered = saves.where((s) => s.id == partieId && !s.name.contains(GameConstants.BACKUP_DELIMITER)).toList();
+      if (filtered.isEmpty) {
+        if (kDebugMode) {
+          print('SaveManagerAdapter.getLastSaveById: Aucune sauvegarde régulière trouvée pour cette partie');
+        }
+        return null;
+      }
+
+      filtered.sort((a, b) => b.lastModified.compareTo(a.lastModified));
+
+      final meta = filtered.first;
+      final saveGame = await instance.loadSave(meta.id);
+      if (saveGame == null) {
+        if (kDebugMode) {
+          print('SaveManagerAdapter.getLastSaveById: Échec du chargement de la sauvegarde ${meta.id}');
+        }
+        return null;
+      }
+
+      return SaveGame(
+        id: meta.id,
+        name: meta.name,
+        lastSaveTime: meta.lastModified,
+        gameData: saveGame.gameData,
+        version: meta.version,
+        gameMode: meta.gameMode,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('SaveManagerAdapter.getLastSaveById: ERREUR: $e');
+      }
+      return null;
+    }
+  }
+
   /// Liste les backups pour un `partieId` donné (ID-first): nom commence par '<partieId>|'.
   static Future<List<SaveGameInfo>> listBackupsForPartie(String partieId) async {
     final all = await listSaves();

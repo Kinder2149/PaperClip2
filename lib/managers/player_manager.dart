@@ -66,10 +66,6 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
   double get maxMetalStorage => _maxMetalStorage;
   double get maintenanceCosts => _maintenanceCosts;
   
-  // Total de trombones produits (statistique)
-  double _totalPaperclips = 0.0;
-  double get totalPaperclips => _totalPaperclips;
-  
   // Getter pour les upgrades
   Map<String, Upgrade> get upgrades => _upgrades;
   
@@ -184,10 +180,6 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
   /// Mise à jour du nombre de trombones du joueur
   void updatePaperclips(double newValue) {
     if (newValue < 0) newValue = 0;
-    double added = newValue - _paperclips;
-    if (added > 0) {
-      _totalPaperclips += added;
-    }
     _paperclips = newValue;
     notifyListeners();
   }
@@ -390,7 +382,6 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
       'trust': _trust,
       'processors': _processors,
       'memory': _memory,
-      'totalPaperclips': _totalPaperclips,
       'maxMetalStorage': _maxMetalStorage,
       'maintenanceCosts': _maintenanceCosts,
       'lastMaintenanceTime': _lastMaintenanceTime?.toIso8601String(),
@@ -425,7 +416,6 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
       _trust = (json['trust'] as num?)?.toInt() ?? 0;
       _processors = (json['processors'] as num?)?.toDouble() ?? 0.0;
       _memory = (json['memory'] as num?)?.toDouble() ?? 0.0;
-      _totalPaperclips = (json['totalPaperclips'] as num?)?.toDouble() ?? 0.0;
       _maxMetalStorage = (json['maxMetalStorage'] as num?)?.toDouble() ?? GameConstants.INITIAL_STORAGE_CAPACITY;
       _maintenanceCosts = (json['maintenanceCosts'] as num?)?.toDouble() ?? 0.0;
       

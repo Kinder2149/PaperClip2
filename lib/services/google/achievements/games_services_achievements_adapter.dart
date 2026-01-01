@@ -35,4 +35,18 @@ class GamesServicesAchievementsAdapter implements AchievementsAdapter {
       // erreurs silencieuses
     }
   }
+
+  @override
+  Future<void> increment(String achievementKey, int bySteps) async {
+    try {
+      if (bySteps <= 0) return;
+      final signedIn = await _facade.isSignedIn();
+      if (!signedIn) return;
+      final androidId = _androidIds[achievementKey];
+      if (androidId == null || androidId.isEmpty) return;
+      await _facade.incrementAchievement(androidId: androidId, bySteps: bySteps);
+    } catch (_) {
+      // erreurs silencieuses
+    }
+  }
 }

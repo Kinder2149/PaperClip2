@@ -12,7 +12,7 @@ class EnvConfig {
 
       await dotenv.load(fileName: ".env");
 
-      // Liste des clés requises - les références Firebase ont été supprimées suite à la migration vers FastAPI
+      // Liste des clés requises
       List<String> requiredKeys = [];
       
       // Ajoutez ici les nouvelles clés requises pour l'API si nécessaire
@@ -42,7 +42,6 @@ class EnvConfig {
   }
 
 
-  // Les getters Firebase ont été supprimés suite à la migration vers FastAPI
   // Ajoutez ici les nouveaux getters pour les variables d'environnement API si nécessaire
   // Exemple:
   // static String get apiBaseUrl => dotenv.env['API_BASE_URL'] ?? '';

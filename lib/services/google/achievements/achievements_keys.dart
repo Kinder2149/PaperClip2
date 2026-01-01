@@ -1,6 +1,7 @@
 /// Clés canoniques de succès Google côté client.
 /// Ces clés sont référencées par l'orchestrateur/événements locaux.
 class AchievementKeys {
+  static const expLevel50 = 'ach_exp_level50';
   static const level5 = 'ach_level5';
   static const totalClips10k = 'ach_totalclips_10k';
   static const totalClips50k = 'ach_totalclips_50k';

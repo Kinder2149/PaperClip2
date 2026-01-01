@@ -3,6 +3,8 @@ plugins {
     id "kotlin-android"
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id "dev.flutter.flutter-gradle-plugin"
+    // Firebase Google services plugin for JSON config
+    id "com.google.gms.google-services"
 }
 
 // Chargement optionnel des propriétés de signature depuis key.properties (non versionné)
@@ -37,6 +39,14 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+    }
+
+    // Workaround for Play 16KB page size requirement when AGP >= 8.5.1 can't be ensured by Flutter toolchain.
+    // This compresses native libs in APKs derived from the bundle to avoid ZIP 16K alignment constraints.
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging true
+        }
     }
 
     signingConfigs {

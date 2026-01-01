@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import 'achievements_adapter.dart';
 import 'achievements_mapper.dart';
+import 'achievements_keys.dart';
 
 /// Service Achievements (Étape 2)
 /// - Reçoit des événements locaux normalisés (eventId + data)
@@ -14,6 +15,7 @@ class AchievementsService {
 
   final Queue<String> _pending = Queue<String>();
   final Set<String> _submittedThisSession = <String>{};
+  int _lastLevelReported = 0; // progression locale pour succès progressifs
 
   AchievementsService({
     required AchievementsAdapter adapter,
@@ -23,6 +25,22 @@ class AchievementsService {
 
   /// Point d'entrée unique pour consommer un événement local documenté.
   Future<void> handleEvent(String eventId, Map<String, dynamic> data) async {
+    // Gestion dédiée de la réussite progressive "Gain d'exp": 50 étapes, 1 par niveau atteint
+    if (eventId == 'level.reached') {
+      final lvl = _asInt(data['level']) ?? 0;
+      final cappedNew = lvl.clamp(0, 50);
+      final cappedPrev = _lastLevelReported.clamp(0, 50);
+      final delta = cappedNew - cappedPrev;
+      if (delta > 0) {
+        try {
+          if (await _adapter.isReady()) {
+            await _adapter.increment(AchievementKeys.expLevel50, delta);
+          }
+          _lastLevelReported = lvl;
+        } catch (_) {}
+      }
+    }
+
     final keys = _mapper.mapEvent(eventId, data);
     for (final k in keys) {
       await _submitOrQueue(k);
@@ -66,4 +84,11 @@ class AchievementsService {
       _pending.addLast(key);
     }
   }
+}
+
+int? _asInt(Object? v) {
+  if (v is int) return v;
+  if (v is double) return v.toInt();
+  if (v is String) return int.tryParse(v);
+  return null;
 }

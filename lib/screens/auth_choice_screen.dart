@@ -4,8 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../services/notification_manager.dart';
 import '../services/google/google_bootstrap.dart';
-import '../services/google/identity/identity_status.dart';
-import '../services/supabase/supabase_auth_linker.dart';
+import '../services/auth/firebase_auth_service.dart';
 import '../services/identity/email_identity_service.dart';
 import '../services/google/identity/google_identity_service.dart';
 // Flux Control Center global supprimé
@@ -24,32 +23,20 @@ class AuthChoiceScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             ElevatedButton.icon(
-              icon: const Icon(Icons.games_outlined),
-              label: const Text('Se connecter avec Google'),
+              icon: const Icon(Icons.account_circle_outlined),
+              label: const Text('Se connecter avec Google (Firebase)'),
               onPressed: () async {
-                final google = context.read<GoogleServicesBundle>();
-                // 1) Tenter d'abord la connexion Google Play Games (pour obtenir playerId)
-                final st = await google.identity.signIn();
-                if (st != IdentityStatus.signedIn) {
-                  NotificationManager.instance.showNotification(
-                    message: 'Connexion Google Play Games échouée',
-                    level: NotificationLevel.ERROR,
-                  );
-                  return;
-                }
-                // 2) Établir (ou réutiliser) la session Supabase OAuth liée à Google
                 try {
-                  await SupabaseAuthLinker.ensureGoogleSession();
+                  await FirebaseAuthService.instance.signInWithGoogle();
+                  final token = await FirebaseAuthService.instance.getIdToken();
+                  NotificationManager.instance.showNotification(
+                    message: token != null ? 'Connecté (Firebase). ID Token reçu.' : 'Connecté (Firebase). Pas d\'ID Token.',
+                    level: NotificationLevel.INFO,
+                  );
                 } catch (e) {
                   NotificationManager.instance.showNotification(
-                    message: 'Session Supabase non établie: $e',
+                    message: 'Connexion Google/Firebase échouée: $e',
                     level: NotificationLevel.ERROR,
-                  );
-                }
-                if (context.mounted) {
-                  NotificationManager.instance.showNotification(
-                    message: 'Connecté à Google Play Games',
-                    level: NotificationLevel.INFO,
                   );
                 }
               },

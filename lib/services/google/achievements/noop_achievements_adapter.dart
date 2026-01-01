@@ -10,4 +10,9 @@ class NoopAchievementsAdapter implements AchievementsAdapter {
   Future<void> unlock(String achievementKey) async {
     // No-op
   }
+
+  @override
+  Future<void> increment(String achievementKey, int bySteps) async {
+    // No-op
+  }
 }

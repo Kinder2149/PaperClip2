@@ -11,13 +11,8 @@ class AchievementsMapper {
     switch (eventId) {
       case 'level.reached':
         final lvl = _asInt(data['level']);
-        if (lvl != null && lvl >= 5) {
-          out.add(AchievementKeys.level5);
-        }
-        // Speedrun: si fourni, on valide ici (sinon l'orchestrateur peut déclencher un check dédié)
-        final totalPlayed = _asInt(data['total_played_seconds']);
-        if (lvl != null && lvl >= 7 && totalPlayed != null && totalPlayed <= 20 * 60) {
-          out.add(AchievementKeys.speedrunLvl7Under20m);
+        if (lvl != null && lvl >= 50) {
+          out.add(AchievementKeys.expLevel50);
         }
         break;
 
@@ -68,6 +63,21 @@ class AchievementsMapper {
         final efficiencyMaxed = data['efficiency_maxed'] == true;
         if ((metalPerClip != null && metalPerClip <= 0.05) || efficiencyMaxed) {
           out.add(AchievementKeys.efficiencyMaster);
+        }
+        break;
+
+      case 'efficiency.updated':
+        final efficiency = _asDouble(data['efficiency']);
+        if (efficiency != null && efficiency >= 8.0) {
+          out.add(AchievementKeys.efficiencyMaster);
+        }
+        break;
+
+      case 'crisis.triggered':
+        // Speed run = déclencher la crise en moins de 10 minutes
+        final elapsed = _asInt(data['elapsed_seconds']);
+        if (elapsed != null && elapsed <= 10 * 60) {
+          out.add(AchievementKeys.speedrunLvl7Under20m);
         }
         break;
 

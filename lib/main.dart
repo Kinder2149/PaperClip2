@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 import './screens/bootstrap_screen.dart';
 
@@ -126,6 +127,7 @@ final _leaderboardsEventAdapter = LeaderboardsEventAdapter.withListeners(
 void main() async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
+    await Firebase.initializeApp();
     await dotenv.load(fileName: '.env');
     if (kDebugMode) {
       print('Flutter binding initialized');
@@ -212,7 +214,9 @@ void main() async {
     _uiEventAdapter.start();
     _audioEventAdapter.start();
     _analyticsEventAdapter.start();
-    // Désactivation des adapters événements Achievements/Leaderboards (non utilisés actuellement)
+    // Activer les adapters événements Achievements/Leaderboards
+    _achievementsEventAdapter.start();
+    _leaderboardsEventAdapter.start();
 
     await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     if (kDebugMode) {

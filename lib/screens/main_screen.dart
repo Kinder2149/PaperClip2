@@ -26,6 +26,11 @@ import '../services/game_runtime_coordinator.dart';
 // Imports des widgets
 import '../widgets/indicators/notification_widgets.dart';
 import '../widgets/save_button.dart';
+import 'package:games_services/games_services.dart';
+import 'package:paperclip2/services/google/google_bootstrap.dart';
+import 'package:paperclip2/services/google/identity/google_identity_service.dart';
+import 'package:paperclip2/services/google/identity/identity_status.dart';
+import 'package:paperclip2/services/save_system/save_manager_adapter.dart';
 
 // Imports des écrans
 import 'production_screen.dart';
@@ -213,6 +218,16 @@ class _MainScreenState extends State<MainScreen> {
     } else if (difference.inDays < 1) {
       return 'Il y a ${difference.inHours}h';
     }
+    return '${lastSave.day}/${lastSave.month} ${lastSave.hour}:${lastSave.minute}';
+  }
+
+  // Formatteur indépendant pour un DateTime (utilisé par FutureBuilder)
+  String _formatRelativeSaveTime(DateTime lastSave) {
+    final now = DateTime.now();
+    final difference = now.difference(lastSave);
+    if (difference.inMinutes < 1) return 'À l\'instant';
+    if (difference.inHours < 1) return 'Il y a ${difference.inMinutes} min';
+    if (difference.inDays < 1) return 'Il y a ${difference.inHours}h';
     return '${lastSave.day}/${lastSave.month} ${lastSave.hour}:${lastSave.minute}';
   }
 
@@ -785,10 +800,26 @@ class _MainScreenState extends State<MainScreen> {
                           ListTile(
                             leading: const Icon(Icons.save),
                             title: const Text('Sauvegarder'),
-                            subtitle: Text(
-                              'Dernière sauvegarde: ${_getLastSaveTimeText(
-                                  gameState)}',
-                            ),
+                            subtitle: Builder(builder: (context) {
+                              final partieId = gameState.partieId;
+                              if (partieId == null || partieId.isEmpty) {
+                                return const Text('Dernière sauvegarde: Jamais');
+                              }
+                              return FutureBuilder(
+                                future: SaveManagerAdapter.getLastSaveById(partieId),
+                                builder: (context, snapshot) {
+                                  if (snapshot.connectionState == ConnectionState.waiting) {
+                                    return const Text('Dernière sauvegarde: …');
+                                  }
+                                  final save = snapshot.data;
+                                  if (save == null) {
+                                    return const Text('Dernière sauvegarde: Jamais');
+                                  }
+                                  final text = _formatRelativeSaveTime(save.lastSaveTime);
+                                  return Text('Dernière sauvegarde: $text');
+                                },
+                              );
+                            }),
                             onTap: () {
                               // Fermer le modal pour voir le feedback de sauvegarde
                               Navigator.pop(context);
@@ -857,7 +888,126 @@ class _MainScreenState extends State<MainScreen> {
                     ),
 
                     const SizedBox(height: 8),
-                    
+
+                    // Section Services Google Play Games
+                    Card(
+                      elevation: 0,
+                      color: Colors.grey[50],
+                      child: Consumer<GoogleServicesBundle>(
+                        builder: (context, google, _) {
+                          final identity = google.identity;
+                          final isSignedIn = identity.status == IdentityStatus.signedIn;
+                          final displayName = (identity.displayName ?? '').trim();
+                          final avatarUrl = identity.avatarUrl;
+                          return Column(
+                            children: [
+                              ListTile(
+                                leading: const Icon(Icons.account_circle),
+                                title: Text(isSignedIn
+                                    ? (displayName.isNotEmpty ? displayName : 'Connecté à Google Play Games')
+                                    : 'Se connecter à Google Play Games'),
+                                trailing: (avatarUrl != null && avatarUrl.startsWith('http'))
+                                    ? CircleAvatar(radius: 14, backgroundImage: NetworkImage(avatarUrl))
+                                    : null,
+                                onTap: () async {
+                                  try {
+                                    if (!isSignedIn) {
+                                      await identity.signIn();
+                                      if (context.mounted) {
+                                        NotificationManager.instance.showNotification(
+                                          message: 'Connexion Google réussie',
+                                          level: NotificationLevel.SUCCESS,
+                                        );
+                                      }
+                                    } else {
+                                      await identity.signOut();
+                                      if (context.mounted) {
+                                        NotificationManager.instance.showNotification(
+                                          message: 'Déconnexion Google effectuée',
+                                          level: NotificationLevel.INFO,
+                                        );
+                                      }
+                                    }
+                                  } catch (e) {
+                                    if (context.mounted) {
+                                      NotificationManager.instance.showNotification(
+                                        message: 'Erreur Google: $e',
+                                        level: NotificationLevel.ERROR,
+                                      );
+                                    }
+                                  }
+                                },
+                              ),
+                              const Divider(height: 1),
+                              ListTile(
+                                leading: const Icon(Icons.emoji_events_outlined),
+                                title: const Text('Réussites'),
+                                subtitle: const Text('Afficher les succès Google Play Games'),
+                                onTap: () async {
+                                  Navigator.pop(context);
+                                  try {
+                                    await Achievements.showAchievements();
+                                  } catch (e) {
+                                    if (context.mounted) {
+                                      NotificationManager.instance.showNotification(
+                                        message: 'Affichage réussites impossible: $e',
+                                        level: NotificationLevel.ERROR,
+                                      );
+                                    }
+                                  }
+                                },
+                              ),
+                              const Divider(height: 1),
+                              ListTile(
+                                leading: const Icon(Icons.leaderboard_outlined),
+                                title: const Text('Classements'),
+                                subtitle: const Text('Afficher les classements Google Play Games'),
+                                onTap: () async {
+                                  Navigator.pop(context);
+                                  try {
+                                    await Leaderboards.showLeaderboards();
+                                  } catch (e) {
+                                    if (context.mounted) {
+                                      NotificationManager.instance.showNotification(
+                                        message: 'Affichage classements impossible: $e',
+                                        level: NotificationLevel.ERROR,
+                                      );
+                                    }
+                                  }
+                                },
+                              ),
+                              const Divider(height: 1),
+                              ListTile(
+                                leading: const Icon(Icons.sync),
+                                title: const Text('Synchroniser maintenant'),
+                                subtitle: const Text('Forcer l’envoi des succès et scores'),
+                                onTap: () async {
+                                  Navigator.pop(context);
+                                  try {
+                                    await context.read<GoogleServicesBundle>().achievements.tryFlush();
+                                    await context.read<GoogleServicesBundle>().leaderboards.tryFlush();
+                                    if (context.mounted) {
+                                      NotificationManager.instance.showNotification(
+                                        message: 'Synchronisation lancée',
+                                        level: NotificationLevel.INFO,
+                                      );
+                                    }
+                                  } catch (e) {
+                                    if (context.mounted) {
+                                      NotificationManager.instance.showNotification(
+                                        message: 'Erreur de synchronisation: $e',
+                                        level: NotificationLevel.ERROR,
+                                      );
+                                    }
+                                  }
+                                },
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+
                     // Section Services de jeu
                     Card(
                       elevation: 0,
@@ -1026,7 +1176,7 @@ class _MainScreenState extends State<MainScreen> {
   double _calculateGlobalProgress(GameState gameState) {
     // Version simple: basée sur le nombre de trombones produits par rapport à un objectif
     double maxPaperclips = GameConstants.GLOBAL_PROGRESS_TARGET;
-    double currentPaperclips = gameState.player.totalPaperclips;
+    double currentPaperclips = gameState.statistics.totalPaperclipsProduced.toDouble();
     
     // Limiter à 1.0 (100%)
     return (currentPaperclips / maxPaperclips).clamp(0.0, 1.0);
@@ -1064,7 +1214,7 @@ class _MainScreenState extends State<MainScreen> {
             Text('Progression: ${(progress * 100).toInt()}%'),
             const SizedBox(height: 8),
             Text(
-              'Trombones produits: ${gameState.player.totalPaperclips.toStringAsFixed(0)} / ${GameConstants.GLOBAL_PROGRESS_TARGET.toStringAsFixed(0)}'
+              'Trombones produits: ${gameState.statistics.totalPaperclipsProduced} / ${GameConstants.GLOBAL_PROGRESS_TARGET.toStringAsFixed(0)}'
             ),
             const SizedBox(height: 8),
             LinearProgressIndicator(
