@@ -29,10 +29,7 @@ import './services/google/cloudsave/cloud_save_service.dart';
 import './services/google/cloudsave/cloud_save_bootstrap.dart';
 import './screens/auth_choice_screen.dart';
 import 'services/persistence/game_persistence_orchestrator.dart';
-import 'services/auth/jwt_auth_service.dart';
-import 'services/cloud/local_cloud_persistence_port.dart';
-import 'services/cloud/http_cloud_persistence_port.dart';
-import 'services/cloud/snapshots_cloud_persistence_port.dart';
+// Cloud ports legacy retirés
 import 'services/google/identity/google_identity_service.dart';
 
 // Adapters UI/Audio (hors domaine)
@@ -40,7 +37,7 @@ import './services/ui/game_ui_event_adapter.dart';
 import './services/audio/audio_event_adapter.dart';
 import './services/analytics/analytics_event_adapter.dart';
 import './services/analytics/analytics_port.dart';
-import './services/analytics/http_analytics_port.dart';
+// HTTP analytics désactivé (NoOp)
 
 // Services globaux
 final gameState = GameState();
@@ -84,24 +81,7 @@ final _audioEventAdapter = AudioEventAdapter.withListeners(
 
 // Analytics wiring (adapter bus -> analytics port)
 AnalyticsPort _buildAnalyticsPort() {
-  try {
-    final enableHttp = (dotenv.env['FEATURE_ANALYTICS_HTTP'] ?? 'false').toLowerCase() == 'true';
-    if (enableHttp) {
-      final base = (dotenv.env['CLOUD_BACKEND_BASE_URL'] ?? '').trim();
-      if (base.isNotEmpty) {
-        return HttpAnalyticsPort(
-          baseUrl: base,
-          authHeaderProvider: () async {
-            final headers = await JwtAuthService.instance.buildAuthHeaders();
-            if (headers != null) return headers;
-            final bearer = (dotenv.env['CLOUD_API_BEARER'] ?? '').trim();
-            if (bearer.isEmpty) return null;
-            return {'Authorization': 'Bearer ' + bearer};
-          },
-        );
-      }
-    }
-  } catch (_) {}
+  // Analytics HTTP legacy désactivé → NoOp uniquement
   return const NoOpAnalyticsPort();
 }
 
@@ -138,77 +118,9 @@ void main() async {
     gameState.productionManager.setDomainEventSink(_domainEventSink);
     gameState.autoSaveService.setDomainEventSink(_domainEventSink);
 
-    // Injection du port cloud (Option A: cloud par partie) sous feature flag
-    try {
-      final enableCloudPerPartie = (dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true';
-      if (enableCloudPerPartie) {
-        final enableHttp = (dotenv.env['FEATURE_CLOUD_PER_PARTIE_HTTP'] ?? 'false').toLowerCase() == 'true';
-        if (enableHttp) {
-          final base = (dotenv.env['CLOUD_BACKEND_BASE_URL'] ?? '').trim();
-          if (base.isEmpty) {
-            if (kDebugMode) {
-              print('[Bootstrap] FEATURE_CLOUD_PER_PARTIE_HTTP=true mais CLOUD_BACKEND_BASE_URL est vide. Fallback LocalCloudPersistencePort');
-            }
-            GamePersistenceOrchestrator.instance.setCloudPort(LocalCloudPersistencePort());
-            // Injecter le provider playerId pour l'auto-push après sauvegardes
-            GamePersistenceOrchestrator.instance.setPlayerIdProvider(() async {
-              return _googleServices.identity.playerId;
-            });
-          } else {
-            GamePersistenceOrchestrator.instance.setCloudPort(
-              HttpCloudPersistencePort(
-                baseUrl: base,
-                authHeaderProvider: () async {
-                  // JWT dynamique si présent, sinon fallback API key via .env
-                  final headers = await JwtAuthService.instance.buildAuthHeaders();
-                  if (headers != null) return headers;
-                  final bearer = (dotenv.env['CLOUD_API_BEARER'] ?? '').trim();
-                  if (bearer.isEmpty) return null;
-                  return {'Authorization': 'Bearer ' + bearer};
-                },
-                playerIdProvider: () async {
-                  return _googleServices.identity.playerId;
-                },
-              ),
-            );
-            if (kDebugMode) {
-              print('[Bootstrap] Cloud per partie activé (HttpCloudPersistencePort) base=' + base);
-            }
-            // Injecter aussi côté orchestrateur (auto-push dans la pompe)
-            GamePersistenceOrchestrator.instance.setPlayerIdProvider(() async {
-              return _googleServices.identity.playerId;
-            });
-          }
-        } else {
-          // POC local/offline basé sur SnapshotsCloudSave: 1 slot par partieId (adapter GPG/Local)
-          GamePersistenceOrchestrator.instance.setCloudPort(SnapshotsCloudPersistencePort());
-          if (kDebugMode) {
-            print('[Bootstrap] Cloud per partie activé (SnapshotsCloudPersistencePort POC)');
-          }
-          // Même hors HTTP, fournir le provider playerId pour une future connexion
-          GamePersistenceOrchestrator.instance.setPlayerIdProvider(() async {
-            return _googleServices.identity.playerId;
-          });
-        }
-      }
-    } catch (_) {}
-
     // Init audio (chargement asset / loop) avant démarrage des adapters
     await backgroundMusicService.initialize();
 
-    // Auth silencieuse: tenter un login JWT avec le dernier playerId connu avant toute requête cloud
-    try {
-      final pid = _googleServices.identity.playerId ?? await GoogleIdentityService.readLastKnownPlayerId();
-      if (pid != null && pid.isNotEmpty) {
-        final ok = await JwtAuthService.instance.loginWithPlayerId(pid);
-        if (kDebugMode) {
-          print('[Bootstrap] silent login pid=' + pid + ' ok=' + ok.toString());
-        }
-        if (ok) {
-          try { await GamePersistenceOrchestrator.instance.onPlayerConnected(playerId: pid); } catch (_) {}
-        }
-      }
-    } catch (_) {}
 
     // Wiring des adapters événementiels (écoute des événements du domaine)
     _uiEventAdapter.start();
