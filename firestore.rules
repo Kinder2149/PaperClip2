@@ -1,0 +1,67 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // Sauvegardes versionnées par joueur/partie
+    match /players/{uid}/saves/{partieId} {
+
+      // Conteneur: lecture owner-only, pas d’écriture directe
+      allow read: if isOwner(uid);
+      allow write: if false;
+
+      // Sous-collection d'état (meta, current)
+      match /state/meta {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && request.resource.data.keys().hasOnly(['nextVersion','lastVersion','updatedAt'])
+          && (request.resource.data.nextVersion is int)
+          && (request.resource.data.lastVersion is int);
+        allow delete: if false;
+      }
+
+      match /state/current {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && request.resource.data.keys().hasOnly(['version','snapshot','updatedAt'])
+          && (request.resource.data.version is int)
+          && (request.resource.data.snapshot is map)
+          && (request.resource.data.snapshot.metadata is map)
+          && (request.resource.data.snapshot.metadata.partieId == partieId);
+        allow delete: if false;
+      }
+
+      // Versions immuables: création uniquement
+      match /versions/{version} {
+        allow get, list: if isOwner(uid);
+        allow create: if isOwner(uid)
+          && (version.matches('^[0-9]+$'))
+          && request.resource.data.keys().hasOnly(['version','snapshot','createdAt'])
+          && (request.resource.data.version is int)
+          && (request.resource.data.version > 0)
+          && (request.resource.data.snapshot is map)
+          && (request.resource.data.snapshot.metadata is map)
+          && (request.resource.data.snapshot.core is map)
+          && (request.resource.data.snapshot.stats is map)
+          && (request.resource.data.snapshot.metadata.partieId == partieId)
+          && (resource == null);
+        allow update, delete: if false;
+      }
+    }
+
+    // Analytics best-effort: écriture owner-only, pas d’update/delete
+    match /players/{uid}/analytics/{eventId} {
+      allow read: if false; // mettre true si affichage côté client nécessaire
+      allow create: if isOwner(uid)
+        && request.resource.data.keys().hasOnly(['name','properties','timestamp','receivedAt'])
+        && (request.resource.data.name is string)
+        && ((request.resource.data.properties == null) || (request.resource.data.properties is map))
+        && ((request.resource.data.timestamp == null) || (request.resource.data.timestamp is timestamp))
+        && (request.resource.data.receivedAt is timestamp);
+      allow update, delete: if false;
+    }
+  }
+}

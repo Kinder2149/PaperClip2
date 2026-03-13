@@ -1,0 +1,281 @@
+// lib/widgets/save_button.dart
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../models/game_state.dart';
+import '../services/game_runtime_coordinator.dart';
+import '../services/notification_manager.dart';
+import '../services/persistence/game_persistence_orchestrator.dart';
+import '../utils/logger.dart';
+
+/// Widget réutilisable pour un bouton de sauvegarde standard
+/// 
+/// Ce widget fournit un bouton standardisé pour sauvegarder la partie
+/// avec une gestion des états, des animations et des notifications.
+class SaveButton extends StatefulWidget {
+  static final Logger _slogger = Logger.forComponent('ui-save');
+  /// Style du bouton
+  final ButtonStyle? buttonStyle;
+  
+  /// Icon à afficher (par défaut, une icône de sauvegarde)
+  final IconData icon;
+  
+  /// Texte à afficher sur le bouton (facultatif)
+  final String? label;
+  
+  /// Callback appelé après une sauvegarde réussie
+  final Function? onSaveComplete;
+  
+  /// Indique si le bouton doit être affiché comme un FloatingActionButton
+  final bool isFloatingActionButton;
+  
+  /// Indique si le bouton doit être affiché comme un IconButton simple
+  final bool isIconOnly;
+  
+  /// Indique si le bouton doit afficher un label sous l'icône
+  final bool showLabelBelow;
+
+  /// Crée un nouveau bouton de sauvegarde
+  const SaveButton({
+    Key? key,
+    this.buttonStyle,
+    this.icon = Icons.save,
+    this.label,
+    this.onSaveComplete,
+    this.isFloatingActionButton = false,
+    this.isIconOnly = false,
+    this.showLabelBelow = false,
+  }) : super(key: key);
+
+  /// Méthode utilitaire statique pour sauvegarder une partie depuis n'importe où
+  /// sans avoir à instancier le widget
+  static Future<void> saveGame(BuildContext context) async {
+    final gameState = Provider.of<GameState>(context, listen: false);
+    if (!gameState.isInitialized || gameState.partieId == null || gameState.partieId!.isEmpty) {
+      NotificationManager.instance.showNotification(
+        message: 'Erreur: Jeu non initialisé ou ID de monde manquant',
+        level: NotificationLevel.ERROR,
+      );
+      return;
+    }
+
+    try {
+      await GamePersistenceOrchestrator.instance.requestManualSave(
+        gameState,
+        reason: 'ui_save_button',
+      );
+      if (context.mounted) {
+        NotificationManager.instance.showNotification(
+          message: 'Monde sauvegardé avec succès!',
+          level: NotificationLevel.SUCCESS,
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        NotificationManager.instance.showNotification(
+          message: 'Erreur lors de la sauvegarde: $e',
+          level: NotificationLevel.ERROR,
+          duration: const Duration(seconds: 5),
+        );
+      }
+      if (kDebugMode) {
+        _slogger.debug('[SAVE] Erreur de sauvegarde: $e');
+      }
+    }
+  }
+
+  /// Méthode utilitaire statique pour sauvegarder une partie avec un nom spécifique
+  /// sans avoir à instancier le widget
+  /// Retourne true en cas de succès, false en cas d'échec
+  static Future<bool> saveGameWithName(BuildContext context, String saveName) async {
+    final gameState = Provider.of<GameState>(context, listen: false);
+    if (!gameState.isInitialized || gameState.partieId == null || gameState.partieId!.isEmpty) {
+      NotificationManager.instance.showNotification(
+        message: 'Erreur: Jeu non initialisé ou ID de monde manquant',
+        level: NotificationLevel.ERROR,
+      );
+      return false;
+    }
+
+    try {
+      // ID-first: ignorer le nom fourni et sauvegarder par identifiant de partie
+      await GamePersistenceOrchestrator.instance.requestManualSave(
+        gameState,
+        reason: 'ui_save_button_with_name',
+      );
+      if (context.mounted) {
+        NotificationManager.instance.showNotification(
+          message: 'Monde sauvegardé avec succès!',
+          level: NotificationLevel.SUCCESS,
+        );
+      }
+      return true;
+    } catch (e) {
+      if (context.mounted) {
+        NotificationManager.instance.showNotification(
+          message: 'Erreur lors de la sauvegarde: $e',
+          level: NotificationLevel.ERROR,
+          duration: const Duration(seconds: 5),
+        );
+      }
+      if (kDebugMode) {
+        _slogger.debug('[SAVE] Erreur de sauvegarde: $e');
+      }
+      return false;
+    }
+  }
+
+  @override
+  State<SaveButton> createState() => _SaveButtonState();
+}
+
+class _SaveButtonView {
+  final bool isInitialized;
+  final String? gameName;
+
+  const _SaveButtonView({
+    required this.isInitialized,
+    required this.gameName,
+  });
+
+  @override
+  bool operator ==(Object other) {
+    return other is _SaveButtonView &&
+        other.isInitialized == isInitialized &&
+        other.gameName == gameName;
+  }
+
+  @override
+  int get hashCode => Object.hash(isInitialized, gameName);
+}
+
+class _SaveButtonState extends State<SaveButton> {
+  static final Logger _slogger = Logger.forComponent('ui-save');
+  bool _isSaving = false;
+
+  /// Déclenche la sauvegarde du jeu
+  Future<void> _saveGame(BuildContext context) async {
+    if (_isSaving) return; // Éviter les sauvegardes multiples
+    
+    final gameState = context.read<GameState>();
+    
+    setState(() {
+      _isSaving = true;
+    });
+    
+    try {
+      if (kDebugMode) {
+        _slogger.debug('[SAVE] Sauvegarde en cours (ID-first)');
+      }
+      await GamePersistenceOrchestrator.instance.requestManualSave(
+        gameState,
+        reason: 'ui_save_button',
+      );
+      
+      if (context.mounted) {
+        NotificationManager.instance.showNotification(
+          message: 'Monde sauvegardé avec succès!',
+          level: NotificationLevel.SUCCESS,
+        );
+      }
+      
+      if (widget.onSaveComplete != null) {
+        widget.onSaveComplete!();
+      }
+    } catch (e) {
+      if (context.mounted) {
+        NotificationManager.instance.showNotification(
+          message: 'Erreur lors de la sauvegarde: $e',
+          level: NotificationLevel.ERROR,
+          duration: const Duration(seconds: 5),
+        );
+      }
+      if (kDebugMode) {
+        _slogger.debug('[SAVE] Erreur de sauvegarde: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Selector<GameState, _SaveButtonView>(
+      selector: (context, gameState) => _SaveButtonView(
+        isInitialized: gameState.isInitialized,
+        gameName: gameState.gameName,
+      ),
+      builder: (context, view, child) {
+        // Si le gameState n'est pas disponible ou initialisé, ne pas afficher le bouton
+        if (!view.isInitialized || view.gameName == null) {
+          return const SizedBox.shrink();
+        }
+
+        // Choix du type de bouton selon les propriétés
+        if (widget.isFloatingActionButton) {
+          return FloatingActionButton(
+            onPressed: _isSaving ? null : () => _saveGame(context),
+            tooltip: 'Sauvegarder',
+            backgroundColor:
+                _isSaving ? Colors.grey : Theme.of(context).primaryColor,
+            child: _isSaving
+                ? const CircularProgressIndicator(color: Colors.white)
+                : Icon(widget.icon),
+          );
+        } else if (widget.isIconOnly) {
+          return IconButton(
+            onPressed: _isSaving ? null : () => _saveGame(context),
+            icon: _isSaving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(widget.icon),
+            tooltip: 'Sauvegarder',
+          );
+        } else if (widget.showLabelBelow) {
+          return InkWell(
+            onTap: _isSaving ? null : () => _saveGame(context),
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _isSaving
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(widget.icon),
+                  const SizedBox(height: 4),
+                  Text(widget.label ?? 'Sauvegarder'),
+                ],
+              ),
+            ),
+          );
+        } else {
+          // Bouton standard ElevatedButton
+          return ElevatedButton.icon(
+            onPressed: _isSaving ? null : () => _saveGame(context),
+            style: widget.buttonStyle,
+            icon: _isSaving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(widget.icon),
+            label: Text(widget.label ?? 'Sauvegarder'),
+          );
+        }
+      },
+    );
+  }
+}
