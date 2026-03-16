@@ -12,7 +12,7 @@ dependencies:
 
   # Interface utilisateur
   provider: ^6.1.1
-  fl_chart: ^0.70.0
+  fl_chart: ^1.2.0
   cupertino_icons: ^1.0.6
   uuid: ^4.5.1
   cached_network_image: ^3.2.3
@@ -22,31 +22,31 @@ dependencies:
   path_provider: ^2.1.2
 
   # Audio
-  just_audio: ^0.9.36
+  just_audio: ^0.10.5
 
   # Utilitaires
   archive: ^4.0.2
-  intl: ^0.19.0
+  intl: ^0.20.2
   logging: ^1.2.0
-  flutter_dotenv: ^5.1.0
+  flutter_dotenv: ^6.0.0
   json_annotation: ^4.8.1
 
   # Google Play Games (optionnel, No-Op sur plateformes non supportées)
-  games_services: ^4.0.3
+  games_services: ^5.0.0
 
   # Sécurité locale
-  flutter_secure_storage: ^9.2.4
+  flutter_secure_storage: ^10.0.0
 
   # Firebase (FlutterFire v3)
-  firebase_core: ^3.6.0
-  firebase_auth: ^5.3.1
-  google_sign_in: ^6.2.1
+  firebase_core: ^4.5.0
+  firebase_auth: ^6.2.0
+  google_sign_in: ^7.2.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.1
-  flutter_launcher_icons: ^0.13.1
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
   mockito: ^5.4.4
   build_runner: ^2.4.8
   json_serializable: ^6.7.1
