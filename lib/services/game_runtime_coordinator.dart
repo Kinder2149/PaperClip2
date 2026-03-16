@@ -31,6 +31,7 @@ class GameRuntimeCoordinator implements RuntimeOrchestrator {
   bool _isRecoveringOffline = false;
   GameEventListener? _eventListener;
   GameAudioPort? _audioPort;
+  void Function(OfflineProgressResult)? _onOfflineProgressCallback;
 
   GameRuntimeCoordinator({
     required GameState gameState,
@@ -307,6 +308,11 @@ class GameRuntimeCoordinator implements RuntimeOrchestrator {
     _audioPort = port;
   }
 
+  // Injection du callback pour afficher la notification offline
+  void setOfflineProgressCallback(void Function(OfflineProgressResult) callback) {
+    _onOfflineProgressCallback = callback;
+  }
+
   void _onGameEvent(GameEvent event) {
     switch (event.type) {
       case GameEventType.autoclipperPurchased:
@@ -352,7 +358,14 @@ class GameRuntimeCoordinator implements RuntimeOrchestrator {
 
   void _onAppResumed() {
     // Applique d'abord l'offline, puis reprend la session
-    unawaited(recoverOffline());
+    final now = _clock.now();
+    final result = _applyOfflineProgress(now: now);
+    
+    // Afficher la notification si l'utilisateur était absent et qu'un callback est configuré
+    if (result.didSimulate && _onOfflineProgressCallback != null) {
+      _onOfflineProgressCallback!(result);
+    }
+    
     try {
       final enableCloud = (dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true';
       final pid = _gameState.partieId;

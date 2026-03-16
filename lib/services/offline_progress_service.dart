@@ -6,12 +6,20 @@ class OfflineProgressResult {
   final DateTime lastOfflineAppliedAt;
   final String offlineSpecVersion;
   final bool didSimulate;
+  final Duration absenceDuration;
+  final double paperclipsProduced;
+  final double moneyEarned;
+  final bool wasCapped;
 
   const OfflineProgressResult({
     required this.lastActiveAt,
     required this.lastOfflineAppliedAt,
     required this.offlineSpecVersion,
     required this.didSimulate,
+    required this.absenceDuration,
+    required this.paperclipsProduced,
+    required this.moneyEarned,
+    required this.wasCapped,
   });
 }
 
@@ -38,6 +46,10 @@ class OfflineProgressService {
         lastOfflineAppliedAt: now,
         offlineSpecVersion: 'v2',
         didSimulate: false,
+        absenceDuration: Duration.zero,
+        paperclipsProduced: 0.0,
+        moneyEarned: 0.0,
+        wasCapped: false,
       );
     }
 
@@ -48,12 +60,21 @@ class OfflineProgressService {
         lastOfflineAppliedAt: lastOfflineAppliedAt ?? base,
         offlineSpecVersion: 'v2',
         didSimulate: false,
+        absenceDuration: Duration.zero,
+        paperclipsProduced: 0.0,
+        moneyEarned: 0.0,
+        wasCapped: false,
       );
     }
 
-    if (delta > GameConstants.OFFLINE_MAX_DURATION) {
+    final actualDelta = delta;
+    final wasCapped = delta > GameConstants.OFFLINE_MAX_DURATION;
+    if (wasCapped) {
       delta = GameConstants.OFFLINE_MAX_DURATION;
     }
+
+    final initialPaperclips = engine.player.paperclips;
+    final initialMoney = engine.player.money;
 
     // Simulation par pas (<= 10s)
     double remainingSeconds = delta.inMilliseconds / 1000.0;
@@ -67,11 +88,18 @@ class OfflineProgressService {
       remainingSeconds -= step;
     }
 
+    final paperclipsProduced = engine.player.paperclips - initialPaperclips;
+    final moneyEarned = engine.player.money - initialMoney;
+
     return OfflineProgressResult(
       lastActiveAt: now,
       lastOfflineAppliedAt: now,
       offlineSpecVersion: 'v2',
       didSimulate: true,
+      absenceDuration: actualDelta,
+      paperclipsProduced: paperclipsProduced,
+      moneyEarned: moneyEarned,
+      wasCapped: wasCapped,
     );
   }
 }

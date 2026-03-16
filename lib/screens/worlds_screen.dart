@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:paperclip2/services/save_game.dart' show SaveGameInfo;
 import 'package:paperclip2/services/persistence/save_aggregator.dart';
 import 'package:paperclip2/services/persistence/game_persistence_orchestrator.dart';
 import 'package:paperclip2/services/persistence/sync_state.dart';
@@ -13,17 +12,16 @@ import 'package:paperclip2/widgets/worlds/world_card.dart';
 import 'package:paperclip2/widgets/worlds/world_actions_dialog.dart';
 import 'package:paperclip2/services/runtime/runtime_actions.dart';
 import 'package:paperclip2/models/game_state.dart';
-import 'package:paperclip2/widgets/appbar/game_appbar.dart';
-import 'package:paperclip2/widgets/appbar/settings_bottom_sheet.dart';
 import 'package:paperclip2/widgets/appbar/sections/google_account_action.dart';
 import 'package:paperclip2/widgets/new_game/new_game_dialog.dart';
 import 'package:paperclip2/constants/game_config.dart';
 import 'package:paperclip2/services/auth/firebase_auth_service.dart';
-import 'package:paperclip2/services/cloud/cloud_port_manager.dart';
 import 'package:paperclip2/screens/introduction_screen.dart';
 import 'package:paperclip2/screens/main_screen.dart';
 import 'package:paperclip2/widgets/common/empty_state.dart';
 import 'package:paperclip2/widgets/layout/app_scaffold.dart';
+import 'package:paperclip2/widgets/dialogs/offline_progress_dialog.dart';
+import 'package:paperclip2/services/game_runtime_coordinator.dart';
 
 class WorldsScreen extends StatefulWidget {
   final bool openCreateDialog;
@@ -59,6 +57,16 @@ class _WorldsScreenState extends State<WorldsScreen> with WidgetsBindingObserver
   void initState() {
     super.initState();
     try { WidgetsBinding.instance.addObserver(this); } catch (_) {}
+    
+    // Configurer le callback pour afficher la notification offline
+    try {
+      final coordinator = context.read<GameRuntimeCoordinator>();
+      coordinator.setOfflineProgressCallback((result) {
+        if (!mounted) return;
+        OfflineProgressDialog.show(context, result);
+      });
+    } catch (_) {}
+    
     _sync = GamePersistenceOrchestrator.instance.syncState;
     _syncListener = () {
       if (!mounted) return;

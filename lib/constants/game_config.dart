@@ -168,7 +168,7 @@ class GameConstants {
   static const Duration PRODUCTION_INTERVAL = Duration(seconds: 1);
   static const Duration METAL_PRICE_UPDATE_INTERVAL = Duration(seconds: 6);
   static const Duration EVENT_MAX_AGE = Duration(days: 1);
-  static const Duration OFFLINE_MAX_DURATION = Duration(hours: 8);
+  static const Duration OFFLINE_MAX_DURATION = Duration(minutes: 120);
   static const Duration GAME_LOOP_INTERVAL = Duration(milliseconds: 100);
   static const double TICKS_PER_SECOND = 10.0; // 1000ms / 100ms
   static const double BASE_PRODUCTION_PER_SECOND = 1.0; // 1 trombone par seconde
