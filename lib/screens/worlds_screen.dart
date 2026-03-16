@@ -179,11 +179,11 @@ class _WorldsScreenState extends State<WorldsScreen> with WidgetsBindingObserver
       // Afficher l'introduction puis lancer le jeu
       await Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => IntroductionScreen(
+          builder: (ctx) => IntroductionScreen(
             showSkipButton: true,
             isCompetitiveMode: mode == GameMode.COMPETITIVE,
             onStart: () {
-              Navigator.of(_).pushReplacement(
+              Navigator.of(ctx).pushReplacement(
                 MaterialPageRoute(builder: (_) => const MainScreen()),
               );
             },

@@ -4,7 +4,7 @@ publish_to: 'none'
 version: 2.2.0+18
 
 environment:
-  sdk: '>=3.0.6 <4.0.0'
+  sdk: ^3.8.0
 
 dependencies:
   flutter:
@@ -29,7 +29,7 @@ dependencies:
   intl: ^0.20.2
   logging: ^1.2.0
   flutter_dotenv: ^6.0.0
-  json_annotation: ^4.8.1
+  json_annotation: ^4.11.0
 
   # Google Play Games (optionnel, No-Op sur plateformes non supportées)
   games_services: ^5.0.0
@@ -60,9 +60,6 @@ flutter_icons:
   image_path: "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png"
   adaptive_icon_background: "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_adaptive_back.png"
   adaptive_icon_foreground: "android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_adaptive_fore.png"
-
-dependency_overrides:
-  analyzer: ^6.0.0
 
 flutter:
   uses-material-design: true

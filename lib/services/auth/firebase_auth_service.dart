@@ -17,9 +17,18 @@ class FirebaseAuthService {
   // IMPORTANT: utiliser le client Web OAuth pour forcer l'émission d'un idToken valide côté Android
   // ID client Web (auto-created by Google Service) extrait de google-services.json
   // client_id: 555184834356-lr2v3kje289ghiad05uj7d2eha74kqqi.apps.googleusercontent.com
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    serverClientId: '555184834356-lr2v3kje289ghiad05uj7d2eha74kqqi.apps.googleusercontent.com',
-  );
+  final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
+  
+  bool _initialized = false;
+
+  Future<void> _ensureInitialized() async {
+    if (!_initialized) {
+      await _googleSignIn.initialize(
+        serverClientId: '555184834356-lr2v3kje289ghiad05uj7d2eha74kqqi.apps.googleusercontent.com',
+      );
+      _initialized = true;
+    }
+  }
 
   Stream<User?> authStateChanges() => _auth.authStateChanges();
 
@@ -30,7 +39,8 @@ class FirebaseAuthService {
   Future<UserCredential> signInWithGoogle() async {
     // 1) Demande d'auth Google
     try {
-      final GoogleSignInAccount? gUser = await _googleSignIn.signIn();
+      await _ensureInitialized();
+      final GoogleSignInAccount? gUser = await _googleSignIn.authenticate();
       if (gUser == null) {
         _logger.warn('[AUTH] Google sign-in annule par utilisateur.');
         throw StateError('Connexion Google annulée');
@@ -39,7 +49,6 @@ class FirebaseAuthService {
 
       // 2) Credentials pour Firebase
       final credential = GoogleAuthProvider.credential(
-        accessToken: gAuth.accessToken,
         idToken: gAuth.idToken,
       );
 
@@ -64,7 +73,7 @@ class FirebaseAuthService {
 
   /// Tente d'assurer une session Firebase sans interaction utilisateur.
   /// 1) Si déjà connecté → retourne l'ID token.
-  /// 2) Sinon, tente un signInSilently() Google, puis signe Firebase.
+  /// 2) Sinon, tente un attemptLightweightAuthentication() Google, puis signe Firebase.
   /// 3) Retourne l'ID token ou null si échec silencieux.
   Future<String?> ensureSignedInSilently() async {
     // Déjà connecté ?
@@ -75,26 +84,26 @@ class FirebaseAuthService {
 
     try {
       // Tentative de session Google silencieuse
-      final GoogleSignInAccount? gUser = await _googleSignIn.signInSilently();
+      await _ensureInitialized();
+      final GoogleSignInAccount? gUser = await _googleSignIn.attemptLightweightAuthentication();
       if (gUser == null) {
         // Pas de session Google disponible en silence
-        _logger.warn('[AUTH] signInSilently: aucun compte Google disponible.');
+        _logger.warn('[AUTH] attemptLightweightAuthentication: aucun compte Google disponible.');
         return null;
       }
       final GoogleSignInAuthentication gAuth = await gUser.authentication;
       final credential = GoogleAuthProvider.credential(
-        accessToken: gAuth.accessToken,
         idToken: gAuth.idToken,
       );
       await _auth.signInWithCredential(credential);
       // Récupérer le token après sign-in silencieux
       token = await getIdToken();
-      _logger.info('[AUTH] signInSilently: Firebase connecté='+ (token != null && token.isNotEmpty).toString());
+      _logger.info('[AUTH] attemptLightweightAuthentication: Firebase connecté='+ (token != null && token.isNotEmpty).toString());
       
       return token;
     } catch (e) {
       // Rester discret mais journaliser l'erreur pour diagnostic
-      _logger.warn('[AUTH] signInSilently erreur: '+e.toString());
+      _logger.warn('[AUTH] attemptLightweightAuthentication erreur: '+e.toString());
       return null;
     }
   }
@@ -168,7 +177,8 @@ class FirebaseAuthService {
   Future<void> signOut() async {
     await _auth.signOut();
     try {
-      await _googleSignIn.signOut();
+      await _ensureInitialized();
+      await _googleSignIn.disconnect();
     } catch (_) {}
   }
 }
