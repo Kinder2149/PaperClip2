@@ -13,7 +13,6 @@ import 'package:paperclip2/services/save_system/local_save_game_manager.dart';
 import 'package:paperclip2/services/cloud/cloud_persistence_port.dart';
 import 'package:paperclip2/services/cloud/cloud_persistence_adapter.dart';
 import 'package:paperclip2/services/cloud/models/cloud_world_detail.dart';
-import 'package:paperclip2/services/cloud/exceptions/version_conflict_exception.dart';
 import 'package:paperclip2/services/auth/firebase_auth_service.dart';
 import 'package:paperclip2/services/persistence/game_persistence_service.dart';
 import 'package:paperclip2/services/persistence/game_snapshot.dart';
@@ -26,8 +25,10 @@ import 'package:paperclip2/services/save_game.dart';
 import 'package:paperclip2/models/save_metadata.dart';
 import 'package:paperclip2/services/notification_manager.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:paperclip2/utils/logger.dart';
+import 'package:paperclip2/screens/conflict_resolution_screen.dart';
 
 // CORRECTION AUDIT P2 #5: Timeouts standardisés et documentés
 // 
@@ -99,12 +100,14 @@ class GamePersistenceOrchestrator {
   final GamePersistenceService _persistence = const LocalGamePersistenceService();
   // Port cloud optionnel (injecté depuis le bootstrap ou un service)
   CloudPersistencePort? _cloudPort;
+  // BuildContext optionnel pour afficher l'écran de résolution de conflits
+  BuildContext? _navigationContext;
   
   /// IDENTITÉ CANONIQUE (CRITIQUE):
   /// - uid Firebase = identité technique backend (SOURCE DE VÉRITÉ)
   /// - playerId Google Play = identité cosmétique (affichage UI uniquement)
   /// - RÈGLE: Toute logique métier DOIT utiliser uid, JAMAIS playerId
-  /// - Backend isole données par uid: players/{uid}/saves/{partieId}
+  /// - Backend isole données par uid: players/{uid}/saves/{enterpriseId}
   /// 
   /// Utiliser FirebaseAuthService.instance.currentUser?.uid pour obtenir l'identité
   
@@ -117,7 +120,7 @@ class GamePersistenceOrchestrator {
 
   final List<SaveRequest> _queue = <SaveRequest>[];
   bool _isPumping = false;
-  // ZONE D'OMBRE #4: Backup cooldown par partieId au lieu de global
+  // ZONE D'OMBRE #4: Backup cooldown par enterpriseId au lieu de global
   final Map<String, DateTime> _lastBackupAtByPartie = <String, DateTime>{};
   DateTime? _lastImportantEventEnqueuedAt;
   final Map<String, DateTime> _lastAutoSaveAtBySlot = <String, DateTime>{};
@@ -169,7 +172,7 @@ class GamePersistenceOrchestrator {
     if (port == null) {
       throw StateError('Cloud port not configured');
     }
-    await port.deleteById(partieId: partieId);
+    await port.deleteById(enterpriseId: partieId);
   }
 
   // Injection du port cloud (GPG, HTTP, etc.)
@@ -182,6 +185,67 @@ class GamePersistenceOrchestrator {
       'isNoop': isNoop,
     });
     _cloudPort = port;
+  }
+
+  /// Définit le contexte de navigation pour afficher l'écran de résolution de conflits
+  void setNavigationContext(BuildContext? context) {
+    _navigationContext = context;
+  }
+
+  /// Affiche l'écran de résolution de conflits et retourne le choix de l'utilisateur
+  Future<ConflictChoice?> _showConflictResolution({
+    required GameSnapshot localSnapshot,
+    required GameSnapshot cloudSnapshot,
+    required String enterpriseId,
+  }) async {
+    final context = _navigationContext;
+    if (context == null || !context.mounted) {
+      _logger.warn('[CONFLICT] Pas de contexte de navigation', code: 'conflict_no_context');
+      return null;
+    }
+
+    try {
+      final choice = await Navigator.of(context).push<ConflictChoice>(
+        MaterialPageRoute(
+          builder: (context) => ConflictResolutionScreen(
+            data: ConflictResolutionData(
+              localSnapshot: localSnapshot,
+              cloudSnapshot: cloudSnapshot,
+              enterpriseId: enterpriseId,
+            ),
+          ),
+        ),
+      );
+      
+      _logger.info('[CONFLICT] Choix utilisateur', code: 'conflict_choice', ctx: {
+        'choice': choice?.toString() ?? 'null',
+        'enterpriseId': enterpriseId,
+      });
+      
+      return choice;
+    } catch (e) {
+      _logger.error('[CONFLICT] Erreur affichage écran', code: 'conflict_error', ctx: {
+        'error': e.toString(),
+      });
+      return null;
+    }
+  }
+
+  /// Extrait un GameSnapshot depuis un SaveGame
+  GameSnapshot _extractSnapshot(SaveGame save) {
+    final data = save.gameData;
+    final snapshotKey = LocalGamePersistenceService.snapshotKey;
+    final rawSnapshot = data[snapshotKey];
+    
+    if (rawSnapshot is Map<String, dynamic>) {
+      return GameSnapshot.fromJson(rawSnapshot);
+    } else if (rawSnapshot is Map) {
+      return GameSnapshot.fromJson(Map<String, dynamic>.from(rawSnapshot));
+    } else if (rawSnapshot is String) {
+      return GameSnapshot.fromJsonString(rawSnapshot);
+    }
+    
+    throw StateError('Snapshot format invalide: ${rawSnapshot.runtimeType}');
   }
 
   // --- Wrappers locaux (unifié, sans SaveManagerAdapter) ---
@@ -347,7 +411,6 @@ class GamePersistenceOrchestrator {
           lastSaveTime: DateTime.now(),
           gameData: backupSave.gameData,
           version: backupSave.version,
-          gameMode: backupSave.gameMode,
           isRestored: true,
         );
 
@@ -383,7 +446,7 @@ class GamePersistenceOrchestrator {
   Future<void> requestAutoSave(GameState state, {String? reason}) async {
     if (!state.isInitialized) return;
     // ID-first: utiliser l'identité technique de la partie pour le keying/coalescing
-    final pid = state.partieId;
+    final pid = state.enterpriseId;
     if (pid == null || pid.isEmpty) return;
     // Anti-rafale: ignorer si une autosave récente a déjà été enfilée pour ce slot
     final now = DateTime.now();
@@ -407,7 +470,7 @@ class GamePersistenceOrchestrator {
 
   Future<void> requestImportantSave(GameState state, {String? reason}) async {
     if (!state.isInitialized) return;
-    final pid = state.partieId;
+    final pid = state.enterpriseId;
     if (pid == null || pid.isEmpty) return;
 
     final now = DateTime.now();
@@ -438,8 +501,8 @@ class GamePersistenceOrchestrator {
     String? reason,
   }) async {
     if (!state.isInitialized) return;
-    // ID-first: force l'utilisation du partieId, ignore un slotId textuel si fourni
-    final pid = state.partieId;
+    // ID-first: force l'utilisation du enterpriseId, ignore un slotId textuel si fourni
+    final pid = state.enterpriseId;
     if (pid == null || pid.isEmpty) return;
     await _enqueue(
       state,
@@ -456,7 +519,7 @@ class GamePersistenceOrchestrator {
 
   Future<void> requestLifecycleSave(GameState state, {String? reason}) async {
     if (!state.isInitialized) return;
-    final pid = state.partieId;
+    final pid = state.enterpriseId;
     if (pid == null || pid.isEmpty) return;
 
     final now = DateTime.now();
@@ -474,8 +537,8 @@ class GamePersistenceOrchestrator {
       ),
     );
 
-    // ZONE D'OMBRE #4: Vérifier cooldown par partieId
-    final baseKey = state.partieId;
+    // ZONE D'OMBRE #4: Vérifier cooldown par enterpriseId
+    final baseKey = state.enterpriseId;
     if (baseKey == null || baseKey.isEmpty) {
       // Pas d'ID -> pas de backup (on n'autorise pas de backup sans identifiant)
       return;
@@ -506,13 +569,13 @@ class GamePersistenceOrchestrator {
     String? reason,
     bool bypassCooldown = false,
   }) async {
-    if (!state.isInitialized || state.gameName == null) return;
+    if (!state.isInitialized || state.enterpriseName == null) return;
     // Identité stricte: refuser les backups si l'ID de partie est absent
-    if (state.partieId == null || state.partieId!.isEmpty) return;
+    if (state.enterpriseId == null || state.enterpriseId!.isEmpty) return;
 
     final now = DateTime.now();
-    // ZONE D'OMBRE #4: Vérifier cooldown par partieId
-    final baseKey = state.partieId;
+    // ZONE D'OMBRE #4: Vérifier cooldown par enterpriseId
+    final baseKey = state.enterpriseId;
     if (baseKey == null || baseKey.isEmpty) return;
     
     final lastBackup = _lastBackupAtByPartie[baseKey];
@@ -606,12 +669,12 @@ class GamePersistenceOrchestrator {
               'backup': next.isBackup,
             },
           );
-          // ID-first: pour les sauvegardes non-backup, interpréter slotId comme partieId
+          // ID-first: pour les sauvegardes non-backup, interpréter slotId comme enterpriseId
           final isBackupName = next.isBackup || next.slotId.contains(GameConstants.BACKUP_DELIMITER);
           // Sécurité monde courant: si l'utilisateur a changé de monde entre l'enqueue et l'exécution,
           // éviter toute écriture sur un monde non courant. On ne traite que si l'identité correspond.
           if (!isBackupName) {
-            final currentPid = state.partieId;
+            final currentPid = state.enterpriseId;
             if (currentPid == null || currentPid.isEmpty || currentPid != next.slotId) {
               _logger.warn('[SAVE-PUMP] Skip request: monde courant différent', code: 'save_skip_world_mismatch', ctx: {
                 'requestedWorldId': next.slotId,
@@ -644,7 +707,7 @@ class GamePersistenceOrchestrator {
                 kLocalSaveTimeout,
                 onTimeout: () {
                   _logger.error('[SAVE-PUMP] Timeout local save', code: 'save_timeout_local', ctx: {
-                    'partieId': state.partieId,
+                    'enterpriseId': state.enterpriseId,
                     'timeout': kLocalSaveTimeout.inSeconds,
                   });
                   throw TimeoutException('Local save timeout après ${kLocalSaveTimeout.inSeconds}s');
@@ -676,7 +739,7 @@ class GamePersistenceOrchestrator {
                 if (uid != null && uid.isNotEmpty) {
                   // CORRECTION #7: Timeout cloud long (60s) pour connexions lentes
                   await pushCloudById(
-                    partieId: pid,
+                    enterpriseId: pid,
                     state: state,
                     uid: uid, // ✅ Identité Firebase canonique
                     reason: 'pump_auto_push_${next.trigger.toString()}',
@@ -765,7 +828,7 @@ class GamePersistenceOrchestrator {
           // Mission: après la toute première sauvegarde d'un monde, logguer le snapshot des mondes
           try {
             if (!isBackupName) {
-              final wid = state.partieId ?? next.slotId;
+              final wid = state.enterpriseId ?? next.slotId;
               if (wid.isNotEmpty && !_firstSaveLogged.contains(wid)) {
                 _firstSaveLogged.add(wid);
                 await _logWorldsSnapshot(codeTag: 'worlds_snapshot_after_first_save');
@@ -777,7 +840,7 @@ class GamePersistenceOrchestrator {
           if (next.trigger == SaveTrigger.lifecycle) {
             try {
               final now = DateTime.now();
-              final baseKey = state.partieId ?? (state.gameName ?? 'default');
+              final baseKey = state.enterpriseId ?? (state.enterpriseName ?? 'default');
               final backupName =
                   '$baseKey${GameConstants.BACKUP_DELIMITER}${now.millisecondsSinceEpoch}';
               await saveGame(state, backupName);
@@ -798,7 +861,7 @@ class GamePersistenceOrchestrator {
   }
 
   /// Sauvegarde complète de l'état de jeu courant.
-  /// ID-first: utilise `state.partieId` si présent; sinon fallback legacy par nom.
+  /// ID-first: utilise `state.enterpriseId` si présent; sinon fallback legacy par nom.
   /// MISSION STABILISATION: Push cloud automatique pour toutes les sauvegardes (cloud-first strict).
   Future<void> saveGame(GameState state, String name) async {
     if (!state.isInitialized) {
@@ -810,15 +873,15 @@ class GamePersistenceOrchestrator {
       // On n'écrit plus le payload legacy complet (prepareGameData) afin d'éviter
       // les divergences + faciliter l'évolution de schéma.
       final snapshot = state.toSnapshot();
-      // Cohérence identité: pour les sauvegardes non-backup, partieId du snapshot doit correspondre
+      // Cohérence identité: pour les sauvegardes non-backup, enterpriseId du snapshot doit correspondre
       final bool isBackupName = name.contains(GameConstants.BACKUP_DELIMITER);
       if (!isBackupName) {
-        final snapPartieId = snapshot.metadata['partieId'];
+        final snapPartieId = snapshot.metadata['enterpriseId'];
         if (snapPartieId is! String || snapPartieId.isEmpty) {
-          throw SaveError('PARTIE_ID_MISSING', 'Snapshot sans metadata.partieId');
+          throw SaveError('PARTIE_ID_MISSING', 'Snapshot sans metadata.enterpriseId');
         }
-        if (state.partieId != null && state.partieId!.isNotEmpty && snapPartieId != state.partieId) {
-          throw SaveError('PARTIE_ID_MISMATCH', 'metadata.partieId ne correspond pas à la partie courante');
+        if (state.enterpriseId != null && state.enterpriseId!.isNotEmpty && snapPartieId != state.enterpriseId) {
+          throw SaveError('PARTIE_ID_MISMATCH', 'metadata.enterpriseId ne correspond pas à la partie courante');
         }
       }
       // Normalisation contrat (timestamps/version)
@@ -834,7 +897,7 @@ class GamePersistenceOrchestrator {
       };
 
       // Identité stricte: l'ID technique de la partie est obligatoire pour toute sauvegarde non-backup
-      String? existingId = state.partieId;
+      String? existingId = state.enterpriseId;
       if (isBackupName) {
         // Backups: toujours une nouvelle entrée indépendante de l'ID de la partie
         existingId = null;
@@ -850,7 +913,6 @@ class GamePersistenceOrchestrator {
         lastSaveTime: DateTime.now(),
         gameData: gameData,
         version: GameConstants.VERSION,
-        gameMode: state.gameMode,
       );
 
       final mgr = await LocalSaveGameManager.getInstance();
@@ -866,26 +928,26 @@ class GamePersistenceOrchestrator {
   }
 
   /// Nouvelle API ID-first: sauvegarder la partie courante par identifiant technique.
-  /// Conserve le nom affichable actuel via `state.gameName`.
+  /// Conserve le nom affichable actuel via `state.enterpriseName`.
   /// MISSION STABILISATION: Push cloud automatique pour toutes les sauvegardes (cloud-first strict).
   Future<void> saveGameById(GameState state) async {
     if (!state.isInitialized) {
       throw SaveError('NOT_INITIALIZED', "Le jeu n'est pas initialisé");
     }
     // ID obligatoire pour toute sauvegarde standard
-    final existingId = state.partieId;
+    final existingId = state.enterpriseId;
     if (existingId == null || existingId.isEmpty) {
       throw SaveError('MISSING_ID', 'ID de partie absent: impossible de sauvegarder sans identifiant technique');
     }
     try {
       final snapshot = state.toSnapshot();
-      // Cohérence identité (ID-first): partieId du snapshot doit correspondre
-      final snapPartieId = snapshot.metadata['partieId'];
+      // Cohérence identité (ID-first): enterpriseId du snapshot doit correspondre
+      final snapPartieId = snapshot.metadata['enterpriseId'];
       if (snapPartieId is! String || snapPartieId.isEmpty) {
-        throw SaveError('PARTIE_ID_MISSING', 'Snapshot sans metadata.partieId');
+        throw SaveError('PARTIE_ID_MISSING', 'Snapshot sans metadata.enterpriseId');
       }
       if (snapPartieId != existingId) {
-        throw SaveError('PARTIE_ID_MISMATCH', 'metadata.partieId ne correspond pas à la partie courante');
+        throw SaveError('PARTIE_ID_MISMATCH', 'metadata.enterpriseId ne correspond pas à la partie courante');
       }
       // Normalisation contrat (timestamps/version)
       final normalized = _normalizeSnapshotContract(snapshot);
@@ -899,11 +961,10 @@ class GamePersistenceOrchestrator {
       };
       final saveData = SaveGame(
         id: existingId,
-        name: state.gameName ?? existingId,
+        name: state.enterpriseName ?? existingId,
         lastSaveTime: DateTime.now(),
         gameData: gameData,
         version: GameConstants.VERSION,
-        gameMode: state.gameMode,
       );
 
       final mgr = await LocalSaveGameManager.getInstance();
@@ -978,7 +1039,7 @@ class GamePersistenceOrchestrator {
 
       try {
         final now = DateTime.now();
-        final baseKey = state.partieId ?? name;
+        final baseKey = state.enterpriseId ?? name;
         final backupName = '$baseKey${GameConstants.BACKUP_DELIMITER}${now.millisecondsSinceEpoch}';
         final backupData = <String, dynamic>{
           LocalGamePersistenceService.snapshotKey: rawSnapshot,
@@ -988,7 +1049,6 @@ class GamePersistenceOrchestrator {
           lastSaveTime: now,
           gameData: backupData,
           version: GameConstants.VERSION,
-          gameMode: state.gameMode,
         );
         final mgr = await LocalSaveGameManager.getInstance();
         await mgr.saveGame(backupSave);
@@ -1018,7 +1078,7 @@ class GamePersistenceOrchestrator {
     try {
       // Utiliser en priorité l'identifiant technique connu sur l'état; sinon
       // retomber sur le nom/baseName fourni par l'appelant (id quand disponible).
-      final pid = (state.partieId == null || state.partieId!.isEmpty) ? baseName : state.partieId!;
+      final pid = (state.enterpriseId == null || state.enterpriseId!.isEmpty) ? baseName : state.enterpriseId!;
       if (pid.isEmpty) {
         // Sans identité exploitable on ne peut pas cibler les backups
         return false;
@@ -1072,7 +1132,6 @@ class GamePersistenceOrchestrator {
             lastSaveTime: DateTime.now(),
             gameData: { LocalGamePersistenceService.snapshotKey: snapJson },
             version: bSave.version,
-            gameMode: bSave.gameMode,
             isRestored: true,
           );
           final mgr = await LocalSaveGameManager.getInstance();
@@ -1094,11 +1153,11 @@ class GamePersistenceOrchestrator {
 
   /// Vérifie et tente de restaurer une sauvegarde depuis les backups disponibles.
   Future<void> checkAndRestoreFromBackup(GameState state) async {
-    if (!state.isInitialized || state.gameName == null) return;
+    if (!state.isInitialized || state.enterpriseName == null) return;
 
     try {
-      // ID-first strict: restaurer par partieId uniquement
-      final pid = state.partieId;
+      // ID-first strict: restaurer par enterpriseId uniquement
+      final pid = state.enterpriseId;
       if (pid == null || pid.isEmpty) return;
       final saves = await _listSavesViaLocalManager();
       final backups = saves
@@ -1190,17 +1249,16 @@ class GamePersistenceOrchestrator {
         return false;
       }
 
-      final pid = state.partieId;
+      final pid = state.enterpriseId;
       if (pid == null || pid.isEmpty) return false;
 
       // Écrire sous l'identifiant technique courant
       final restored = SaveGame(
         id: pid,
-        name: state.gameName ?? pid,
+        name: state.enterpriseName ?? pid,
         lastSaveTime: DateTime.now(),
         gameData: { LocalGamePersistenceService.snapshotKey: snapJson },
         version: bSave.version,
-        gameMode: bSave.gameMode,
         isRestored: true,
       );
       final mgr = await LocalSaveGameManager.getInstance();
@@ -1298,7 +1356,7 @@ class GamePersistenceOrchestrator {
       
       try {
         // CORRECTION: Timeout de 30 secondes pour éviter blocage indéfini
-        final materialized = await materializeFromCloud(partieId: id).timeout(
+        final materialized = await materializeFromCloud(enterpriseId: id).timeout(
           kCloudMaterializeTimeout,
           onTimeout: () {
             _logger.error('[LOAD] Timeout matérialisation cloud', code: 'load_materialize_timeout', ctx: {
@@ -1386,14 +1444,14 @@ class GamePersistenceOrchestrator {
       // Scénario: monde créé sur appareil A, login sur appareil B → local vide mais cloud contient le monde
       if (save == null) {
         _logger.warn('[LOAD] Sauvegarde locale absente, tentative matérialisation cloud', 
-          code: 'load_fallback_cloud', ctx: {'partieId': id});
+          code: 'load_fallback_cloud', ctx: {'enterpriseId': id});
         
         // Vérifier état du CloudPort avant tentative
         final port = _cloudPort;
         if (port == null || port is NoopCloudPersistenceAdapter) {
           _logger.error('[LOAD] CloudPort inactif - impossible de matérialiser', 
             code: 'load_cloud_disabled', ctx: {
-              'partieId': id,
+              'enterpriseId': id,
               'portType': port?.runtimeType.toString() ?? 'null',
             });
           throw StateError(
@@ -1403,14 +1461,14 @@ class GamePersistenceOrchestrator {
         }
         
         try {
-          final materialized = await materializeFromCloud(partieId: id);
+          final materialized = await materializeFromCloud(enterpriseId: id);
           if (materialized) {
             _logger.info('[LOAD] Matérialisation cloud réussie, rechargement local',
-              code: 'load_cloud_success', ctx: {'partieId': id});
+              code: 'load_cloud_success', ctx: {'enterpriseId': id});
             save = await _loadSaveByIdViaLocalManager(id);
           } else {
             _logger.error('[LOAD] Matérialisation échouée - partie introuvable cloud', 
-              code: 'load_cloud_not_found', ctx: {'partieId': id});
+              code: 'load_cloud_not_found', ctx: {'enterpriseId': id});
             throw StateError(
               'WORLD_NOT_FOUND: Cette partie n\'existe ni localement ni dans le cloud. '
               'Elle a peut-être été supprimée sur un autre appareil.'
@@ -1430,7 +1488,7 @@ class GamePersistenceOrchestrator {
                      errorStr.contains('connection')) {
             _logger.error('[LOAD] Erreur réseau lors matérialisation', 
               code: 'load_network_error', ctx: {
-                'partieId': id,
+                'enterpriseId': id,
                 'error': e.toString(),
               });
             throw StateError(
@@ -1442,7 +1500,7 @@ class GamePersistenceOrchestrator {
                      errorStr.contains('unauthorized')) {
             _logger.error('[LOAD] Erreur authentification lors matérialisation', 
               code: 'load_auth_error', ctx: {
-                'partieId': id,
+                'enterpriseId': id,
                 'error': e.toString(),
               });
             throw StateError(
@@ -1452,7 +1510,7 @@ class GamePersistenceOrchestrator {
           } else {
             _logger.error('[LOAD] Erreur inconnue lors matérialisation', 
               code: 'load_unknown_error', ctx: {
-                'partieId': id,
+                'enterpriseId': id,
                 'error': e.toString(),
               });
             throw StateError(
@@ -1465,7 +1523,7 @@ class GamePersistenceOrchestrator {
       
       if (save == null) {
         _logger.error('[LOAD] Sauvegarde toujours null après matérialisation', 
-          code: 'load_still_null', ctx: {'partieId': id});
+          code: 'load_still_null', ctx: {'enterpriseId': id});
         throw StateError(
           'LOAD_ERROR: Échec du chargement de la partie après téléchargement. '
           'Réessayez ou vérifiez l\'espace de stockage disponible.'
@@ -1485,10 +1543,10 @@ class GamePersistenceOrchestrator {
           await saveGame(state, name);
         } catch (_) {}
         try {
-          final pid = state.partieId ?? id;
+          final pid = state.enterpriseId ?? id;
           final port = _cloudPort;
           if (port != null && pid.isNotEmpty) {
-            Future.microtask(() => checkCloudAndPullIfNeeded(state: state, partieId: pid));
+            Future.microtask(() => checkCloudAndPullIfNeeded(state: state, enterpriseId: pid));
           }
         } catch (_) {}
         return;
@@ -1501,17 +1559,17 @@ class GamePersistenceOrchestrator {
         await saveGame(state, name);
       } catch (_) {}
       try {
-        final pid = state.partieId ?? id;
+        final pid = state.enterpriseId ?? id;
         final port = _cloudPort;
         if (port != null && pid.isNotEmpty) {
-          Future.microtask(() => checkCloudAndPullIfNeeded(state: state, partieId: pid));
+          Future.microtask(() => checkCloudAndPullIfNeeded(state: state, enterpriseId: pid));
         }
       } catch (_) {}
     } catch (e) {
       // Aligner le comportement de fallback de loadGame()
       if (allowRestore && e is FormatException) {
         // En cas de snapshot corrompu, tenter restauration en utilisant l'identité
-        // fournie à l'appel (id) comme baseName si l'état ne possède pas encore partieId.
+        // fournie à l'appel (id) comme baseName si l'état ne possède pas encore enterpriseId.
         final restored = await _tryRestoreFromBackupsAndLoad(state, id);
         if (restored) return;
       }
@@ -1522,9 +1580,9 @@ class GamePersistenceOrchestrator {
     }
     
     // CORRECTION: Vérification d'intégrité post-chargement
-    final loadedId = state.partieId;
+    final loadedId = state.enterpriseId;
     if (loadedId != id) {
-      _logger.error('[LOAD] ⚠️ INCOHÉRENCE CRITIQUE: partieId ne correspond pas', 
+      _logger.error('[LOAD] ⚠️ INCOHÉRENCE CRITIQUE: enterpriseId ne correspond pas', 
         code: 'load_id_mismatch', ctx: {
           'expected': id,
           'actual': loadedId,
@@ -1538,8 +1596,8 @@ class GamePersistenceOrchestrator {
     }
     
     _logger.info('[LOAD] ✅ Vérification d\'intégrité réussie', code: 'load_integrity_ok', ctx: {
-      'partieId': id,
-      'gameName': state.gameName,
+      'enterpriseId': id,
+      'gameName': state.enterpriseName,
     });
   }
 
@@ -1592,11 +1650,11 @@ class GamePersistenceOrchestrator {
   /// Push snapshot vers le cloud
   /// 
   /// [uid] : Identité Firebase canonique (source de vérité)
-  /// [partieId] : UUID v4 de la partie
+  /// [enterpriseId] : UUID v4 de la partie
   /// [state] : État complet du jeu à sauvegarder
   /// [reason] : Raison du push (pour logs/debug)
   Future<void> pushCloudById({
-    required String partieId,
+    required String enterpriseId,
     required GameState state,
     required String uid, // ✅ Identité Firebase canonique
     String? reason,
@@ -1607,20 +1665,20 @@ class GamePersistenceOrchestrator {
     }
     if (_isDebug) {
       _logger.info('[cloud][start] pushCloudById', code: 'cloud_start', ctx: {
-        'partieId': partieId,
+        'enterpriseId': enterpriseId,
         if (reason != null) 'reason': reason,
       });
     }
     // P1-3: Vérifier limite de 10 mondes avant push cloud
     try {
       final cloudEntries = await _cloudPort?.listParties() ?? [];
-      final existingWorldIds = cloudEntries.map((e) => e.partieId).toSet();
+      final existingWorldIds = cloudEntries.map((e) => e.enterpriseId).toSet();
       
       // Si ce monde n'existe pas déjà dans le cloud ET on a déjà 10 mondes
-      if (!existingWorldIds.contains(partieId) && cloudEntries.length >= GameConstants.MAX_WORLDS) {
+      if (!existingWorldIds.contains(enterpriseId) && cloudEntries.length >= GameConstants.MAX_WORLDS) {
         _logger.error('[cloud][error] Limite de ${GameConstants.MAX_WORLDS} mondes atteinte', 
           code: 'cloud_max_worlds', ctx: {
-          'partieId': partieId,
+          'enterpriseId': enterpriseId,
           'currentCount': cloudEntries.length,
         });
         
@@ -1644,14 +1702,14 @@ class GamePersistenceOrchestrator {
     // P0-1: Vérification stricte uid Firebase - lever exception si manquant
     if (uid.isEmpty) {
       _logger.error('[cloud][error] pushCloudById - uid Firebase manquant', code: 'cloud_no_uid', ctx: {
-        'partieId': partieId,
+        'enterpriseId': enterpriseId,
         'uid': uid,
       });
       
       // CORRECTION AUDIT #2: Marquer comme pending avec timestamp pour TTL (7 jours)
       try {
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('pending_identity_'+partieId, DateTime.now().toIso8601String());
+        await prefs.setString('pending_identity_'+enterpriseId, DateTime.now().toIso8601String());
       } catch (_) {}
       
       try {
@@ -1659,22 +1717,21 @@ class GamePersistenceOrchestrator {
       } catch (_) {}
       
       // P0-1: LEVER UNE EXCEPTION au lieu de return silencieux
-      throw StateError('UID_REQUIRED: Utilisateur non authentifié (uid Firebase manquant) pour partieId=$partieId');
+      throw StateError('UID_REQUIRED: Utilisateur non authentifié (uid Firebase manquant) pour enterpriseId=$enterpriseId');
     }
     // Construire snapshot normalisé et métadonnées minimales
     final snap = _normalizeSnapshotContract(state.toSnapshot()).toJson();
-    String displayName = state.gameName ?? '';
+    String displayName = state.enterpriseName;
     try {
-      final metaLocal = await _getSaveMetadataByIdViaLocalManager(partieId);
+      final metaLocal = await _getSaveMetadataByIdViaLocalManager(enterpriseId);
       if (metaLocal != null && (metaLocal.name).isNotEmpty) {
         displayName = metaLocal.name;
       }
     } catch (_) {}
-    if (displayName.isEmpty) displayName = partieId;
+    if (displayName.isEmpty) displayName = enterpriseId;
     // P2-1: Métadonnées minimales - timestamps gérés server-side
     final meta = <String, dynamic>{
-      'partieId': partieId,
-      'gameMode': state.gameMode == GameMode.COMPETITIVE ? 'COMPETITIVE' : 'INFINITE',
+      'enterpriseId': enterpriseId,
       'gameVersion': GameConstants.VERSION,
       // P2-1: savedAt supprimé - backend génère updated_at server-side
       'name': displayName,
@@ -1686,73 +1743,25 @@ class GamePersistenceOrchestrator {
       // NOUVEAU: Retry automatique avec backoff exponentiel
       await _retryWithBackoff(
         operation: () async {
-          await port.pushById(partieId: partieId, snapshot: snap, metadata: meta);
+          await port.pushById(enterpriseId: enterpriseId, snapshot: snap, metadata: meta);
         },
-        operationName: 'pushCloudById($partieId)',
+        operationName: 'pushCloudById($enterpriseId)',
       );
       
       // Succès: nettoyer les flags de pending
       try {
         final prefs = await SharedPreferences.getInstance();
-        await prefs.remove('pending_cloud_push_'+partieId);
-        await prefs.remove('pending_identity_'+partieId);
+        await prefs.remove('pending_cloud_push_'+enterpriseId);
+        await prefs.remove('pending_identity_'+enterpriseId);
       } catch (_) {}
       // TOUJOURS logger le succès, même en production
       _logger.info('[cloud][success] pushCloudById', code: 'cloud_success', ctx: {
-        'partieId': partieId,
+        'enterpriseId': enterpriseId,
       });
-    } on VersionConflictException catch (e) {
-      // P0-4: Résolution automatique conflit cloud (409)
-      _logger.warn('[cloud][conflict_409] pushCloudById - tentative résolution', code: 'cloud_conflict_409_resolve', ctx: {
-        'partieId': partieId,
-        'expectedVersion': e.expectedVersion,
-        'actualVersion': e.actualVersion,
-        'error': e.toString(),
-      });
-      
-      try {
-        // 1. Pull version cloud actuelle
-        final cloudData = await port.pullById(partieId: partieId);
-        if (cloudData == null) {
-          _logger.error('[cloud][conflict_409] Impossible de récupérer version cloud', code: 'cloud_conflict_pull_failed');
-          rethrow;
-        }
-        
-        // 2. Merge: "Last write wins" - on garde notre version locale
-        // (stratégie simple, peut être améliorée avec merge intelligent)
-        _logger.info('[cloud][conflict_409] Merge: last write wins (local)', code: 'cloud_conflict_merge');
-        
-        // 3. Retry push avec nouvelle tentative
-        await _retryWithBackoff(
-          operation: () async {
-            await port.pushById(partieId: partieId, snapshot: snap, metadata: meta);
-          },
-          operationName: 'pushCloudById_after_conflict($partieId)',
-          maxRetries: 1, // Une seule tentative après résolution
-        );
-        
-        _logger.info('[cloud][conflict_409] Conflit résolu avec succès', code: 'cloud_conflict_resolved');
-        
-        // Succès après résolution
-        try {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.remove('pending_cloud_push_'+partieId);
-          await prefs.remove('pending_identity_'+partieId);
-        } catch (_) {}
-        return; // Sortir sans rethrow
-      } catch (conflictError) {
-        _logger.error('[cloud][conflict_409] Échec résolution conflit', code: 'cloud_conflict_resolution_failed', ctx: {
-          'error': conflictError.toString(),
-        });
-        try {
-          syncState.value = SyncState.error;
-        } catch (_) {}
-        rethrow;
-      }
     } catch (e, stackTrace) {
       // TOUJOURS logger les erreurs, même en production
       _logger.error('[cloud][error] pushCloudById failed', code: 'cloud_error', ctx: {
-        'partieId': partieId,
+        'enterpriseId': enterpriseId,
         'error': e.toString(),
         'stackTrace': stackTrace.toString().substring(0, 500),
       });
@@ -1770,7 +1779,7 @@ class GamePersistenceOrchestrator {
     if (port == null) {
       throw StateError('Cloud port not configured');
     }
-    return port.pullById(partieId: partieId);
+    return port.pullById(enterpriseId: partieId);
   }
 
   Future<CloudStatus> cloudStatusById({
@@ -1780,7 +1789,7 @@ class GamePersistenceOrchestrator {
     if (port == null) {
       throw StateError('Cloud port not configured');
     }
-    return port.statusById(partieId: partieId);
+    return port.statusById(enterpriseId: partieId);
   }
 
   /// Liste les parties présentes côté cloud (selon l'implémentation du port)
@@ -1853,20 +1862,20 @@ class GamePersistenceOrchestrator {
   /// Utilisé après chargement local pour synchroniser avec le cloud
   Future<void> checkCloudAndPullIfNeeded({
     required GameState state,
-    required String partieId,
+    required String enterpriseId,
   }) async {
     final port = _cloudPort;
     if (port == null) return;
     
     try {
-      final status = await port.statusById(partieId: partieId);
+      final status = await port.statusById(enterpriseId: enterpriseId);
       if (!status.exists) return;
       
       // Vérifier si cloud plus récent que local
-      final localMeta = await _getSaveMetadataByIdViaLocalManager(partieId);
+      final localMeta = await _getSaveMetadataByIdViaLocalManager(enterpriseId);
       if (localMeta == null) {
         // Pas de version locale, pull cloud
-        await materializeFromCloud(partieId: partieId);
+        await materializeFromCloud(enterpriseId: enterpriseId);
         return;
       }
       
@@ -1878,15 +1887,15 @@ class GamePersistenceOrchestrator {
         if (cloudTime.isAfter(localTime)) {
           // Cloud plus récent, pull
           _logger.info('[SYNC] Cloud plus récent, pull automatique', code: 'sync_auto_pull', ctx: {
-            'partieId': partieId,
+            'enterpriseId': enterpriseId,
             'cloudTime': cloudTime.toIso8601String(),
             'localTime': localTime.toIso8601String(),
           });
           
-          final detail = await port.pullById(partieId: partieId);
+          final detail = await port.pullById(enterpriseId: enterpriseId);
           if (detail != null) {
             await _importCloudObject(
-              partieId: partieId,
+              enterpriseId: enterpriseId,
               obj: detail.snapshot,
               cloudName: detail.name ?? status.name,
             );
@@ -1895,7 +1904,7 @@ class GamePersistenceOrchestrator {
       }
     } catch (e) {
       _logger.warn('[SYNC] Erreur checkCloudAndPullIfNeeded', code: 'sync_check_error', ctx: {
-        'partieId': partieId,
+        'enterpriseId': enterpriseId,
         'error': e.toString(),
       });
     }
@@ -1904,7 +1913,7 @@ class GamePersistenceOrchestrator {
   /// Push l'état actuel du jeu vers le cloud
   /// P0-1: Récupération automatique du uid Firebase
   Future<void> pushCloudForState(GameState state, {String? reason}) async {
-    final pid = state.partieId;
+    final pid = state.enterpriseId;
     if (pid == null || pid.isEmpty) return;
     
     // P0-1: Utiliser uid Firebase comme identité canonique
@@ -1915,7 +1924,7 @@ class GamePersistenceOrchestrator {
     }
     
     await pushCloudById(
-      partieId: pid,
+      enterpriseId: pid,
       state: state,
       uid: uid, // Identité Firebase canonique
       reason: reason,
@@ -1933,7 +1942,7 @@ class GamePersistenceOrchestrator {
   /// 
   /// P0-1: Le paramètre [playerId] est DEPRECATED, il contient uid Firebase
   Future<void> _syncFromCloudAtLogin({
-    required String partieId,
+    required String enterpriseId,
     String? playerId,
   }) async {
     final port = _cloudPort;
@@ -1948,11 +1957,11 @@ class GamePersistenceOrchestrator {
     CloudStatus? cloudStatus; // P1-4: Déclarer avant try pour accès dans détection conflits
     
     try {
-      cloudStatus = await port.statusById(partieId: partieId);
+      cloudStatus = await port.statusById(enterpriseId: enterpriseId);
       cloudExists = cloudStatus.exists;
       
       if (cloudExists) {
-        final detail = await port.pullById(partieId: partieId);
+        final detail = await port.pullById(enterpriseId: enterpriseId);
         if (detail != null) {
           cloudObj = detail.snapshot;
           cloudName = detail.name ?? cloudStatus.name;
@@ -1960,7 +1969,7 @@ class GamePersistenceOrchestrator {
       }
     } catch (e) {
       _logger.warn('[SYNC-LOGIN] Erreur récupération cloud', code: 'sync_login_cloud_error', ctx: {
-        'worldId': partieId,
+        'worldId': enterpriseId,
         'error': e.toString(),
       });
       return; // Erreur réseau, skip ce monde
@@ -1969,7 +1978,7 @@ class GamePersistenceOrchestrator {
     // P1-4: Détection de conflits multi-device
     // RÈGLE 1: Si cloud existe → vérifier conflit avec local
     if (cloudExists && cloudObj != null) {
-      final localMeta = await _getSaveMetadataByIdViaLocalManager(partieId);
+      final localMeta = await _getSaveMetadataByIdViaLocalManager(enterpriseId);
       
       // Si local existe aussi, détecter conflit potentiel
       if (localMeta != null) {
@@ -1983,20 +1992,136 @@ class GamePersistenceOrchestrator {
             
             // P1-4: Si diff > 5 minutes, conflit potentiel multi-device
             if (diff.inMinutes > 5) {
-              _logger.warn('[SYNC-LOGIN] Conflit détecté multi-device', code: 'sync_conflict_detected', ctx: {
-                'worldId': partieId,
+              _logger.info('[CONFLICT] Conflit détecté', code: 'conflict_detected', ctx: {
+                'enterpriseId': enterpriseId,
+                'diffMinutes': diff.inMinutes,
                 'cloudTimestamp': cloudTimestamp.toIso8601String(),
                 'localTimestamp': localTimestamp.toIso8601String(),
-                'diffMinutes': diff.inMinutes,
               });
               
-              // P1-4: Notification utilisateur du conflit
-              NotificationManager.instance.showNotification(
-                message: '⚠️ Conflit détecté: "${cloudName ?? partieId}"\n'
-                         'Version cloud plus récente appliquée',
-                level: NotificationLevel.WARNING,
-                duration: const Duration(seconds: 7),
+              // Charger snapshot local
+              final localSave = await _loadSaveByIdViaLocalManager(enterpriseId);
+              if (localSave == null) {
+                _logger.warn('[CONFLICT] Local save introuvable, appliquer cloud', code: 'conflict_no_local');
+                await _importCloudObject(
+                  enterpriseId: enterpriseId,
+                  obj: cloudObj,
+                  cloudName: cloudName,
+                );
+                return;
+              }
+              
+              // Extraire snapshots
+              GameSnapshot localSnapshot;
+              GameSnapshot cloudSnapshot;
+              
+              try {
+                localSnapshot = _extractSnapshot(localSave);
+                cloudSnapshot = GameSnapshot.fromJson(cloudObj);
+              } catch (e) {
+                _logger.error('[CONFLICT] Erreur extraction snapshots', code: 'conflict_extract_error', ctx: {
+                  'error': e.toString(),
+                });
+                // En cas d'erreur, appliquer cloud par défaut
+                await _importCloudObject(
+                  enterpriseId: enterpriseId,
+                  obj: cloudObj,
+                  cloudName: cloudName,
+                );
+                return;
+              }
+              
+              // Afficher écran de choix
+              final choice = await _showConflictResolution(
+                localSnapshot: localSnapshot,
+                cloudSnapshot: cloudSnapshot,
+                enterpriseId: enterpriseId,
               );
+              
+              if (choice == ConflictChoice.keepLocal) {
+                _logger.info('[CONFLICT] Choix: garder local', code: 'conflict_keep_local', ctx: {
+                  'enterpriseId': enterpriseId,
+                });
+                
+                try {
+                  // Supprimer cloud
+                  await port.deleteById(enterpriseId: enterpriseId);
+                  _logger.info('[CONFLICT] Cloud supprimé', code: 'conflict_cloud_deleted');
+                  
+                  // Push local vers cloud
+                  if (playerId != null && playerId.isNotEmpty) {
+                    await pushCloudFromSaveId(
+                      enterpriseId: enterpriseId,
+                      uid: playerId,
+                      reason: 'conflict_resolution_keep_local',
+                    );
+                    _logger.info('[CONFLICT] Local poussé vers cloud', code: 'conflict_local_pushed');
+                  }
+                  
+                  NotificationManager.instance.showNotification(
+                    message: '✅ Version locale conservée et synchronisée',
+                    level: NotificationLevel.SUCCESS,
+                    duration: const Duration(seconds: 5),
+                  );
+                } catch (e) {
+                  _logger.error('[CONFLICT] Erreur keep local', code: 'conflict_keep_local_error', ctx: {
+                    'error': e.toString(),
+                  });
+                  NotificationManager.instance.showNotification(
+                    message: '❌ Erreur lors de la synchronisation',
+                    level: NotificationLevel.ERROR,
+                  );
+                }
+                
+                return;
+                
+              } else if (choice == ConflictChoice.keepCloud) {
+                _logger.info('[CONFLICT] Choix: garder cloud', code: 'conflict_keep_cloud', ctx: {
+                  'enterpriseId': enterpriseId,
+                });
+                
+                try {
+                  // Supprimer local
+                  await _deleteSaveByIdViaLocalManager(enterpriseId);
+                  _logger.info('[CONFLICT] Local supprimé', code: 'conflict_local_deleted');
+                  
+                  // Appliquer cloud
+                  await _importCloudObject(
+                    enterpriseId: enterpriseId,
+                    obj: cloudObj,
+                    cloudName: cloudName,
+                  );
+                  _logger.info('[CONFLICT] Cloud appliqué', code: 'conflict_cloud_applied');
+                  
+                  NotificationManager.instance.showNotification(
+                    message: '✅ Version cloud conservée et appliquée',
+                    level: NotificationLevel.SUCCESS,
+                    duration: const Duration(seconds: 5),
+                  );
+                } catch (e) {
+                  _logger.error('[CONFLICT] Erreur keep cloud', code: 'conflict_keep_cloud_error', ctx: {
+                    'error': e.toString(),
+                  });
+                  NotificationManager.instance.showNotification(
+                    message: '❌ Erreur lors de l\'application',
+                    level: NotificationLevel.ERROR,
+                  );
+                }
+                
+                return;
+                
+              } else {
+                // Cancel ou null → ne rien faire
+                _logger.warn('[CONFLICT] Choix annulé ou null', code: 'conflict_cancelled', ctx: {
+                  'choice': choice?.toString() ?? 'null',
+                });
+                NotificationManager.instance.showNotification(
+                  message: '⚠️ Résolution de conflit annulée',
+                  level: NotificationLevel.WARNING,
+                  duration: const Duration(seconds: 3),
+                );
+                return;
+              }
             }
           }
         } catch (e) {
@@ -2006,31 +2131,31 @@ class GamePersistenceOrchestrator {
       
       // Appliquer cloud (cloud wins)
       await _importCloudObject(
-        partieId: partieId,
+        enterpriseId: enterpriseId,
         obj: cloudObj,
         cloudName: cloudName,
       );
       _logger.info('[SYNC-LOGIN] Cloud importé (cloud wins)', code: 'sync_login_cloud_wins', ctx: {
-        'worldId': partieId,
+        'worldId': enterpriseId,
       });
       return;
     }
     
     // RÈGLE 2: Si cloud n'existe pas → pousser le local (si présent)
-    final localMeta = await _getSaveMetadataByIdViaLocalManager(partieId);
+    final localMeta = await _getSaveMetadataByIdViaLocalManager(enterpriseId);
     if (localMeta != null && playerId != null && playerId.isNotEmpty) {
       try {
         await pushCloudFromSaveId(
-          partieId: partieId,
+          enterpriseId: enterpriseId,
           uid: playerId,
           reason: 'sync_login_local_only',
         );
         _logger.info('[SYNC-LOGIN] Local poussé au cloud', code: 'sync_login_push_local', ctx: {
-          'worldId': partieId,
+          'worldId': enterpriseId,
         });
       } catch (e) {
         _logger.warn('[SYNC-LOGIN] Échec push local', code: 'sync_login_push_error', ctx: {
-          'worldId': partieId,
+          'worldId': enterpriseId,
           'error': e.toString(),
         });
       }
@@ -2038,7 +2163,7 @@ class GamePersistenceOrchestrator {
   }
 
   Future<void> _importCloudObject({
-    required String partieId,
+    required String enterpriseId,
     required Map<String, dynamic> obj,
     GameState? state,
     String? cloudName,
@@ -2048,28 +2173,27 @@ class GamePersistenceOrchestrator {
     final snap = GameSnapshot.fromJson(Map<String, dynamic>.from(raw));
     // Harmoniser le nom local d'après le cloud avant d'appliquer
     try {
-      final metaLocal = await _getSaveMetadataByIdViaLocalManager(partieId);
+      final metaLocal = await _getSaveMetadataByIdViaLocalManager(enterpriseId);
       if (cloudName != null && cloudName.isNotEmpty && metaLocal != null && metaLocal.name != cloudName) {
-        await _updateSaveMetadataByIdViaLocalManager(partieId, metaLocal.copyWith(name: cloudName));
+        await _updateSaveMetadataByIdViaLocalManager(enterpriseId, metaLocal.copyWith(name: cloudName));
       }
     } catch (_) {}
     if (state != null) {
       // IMPORTANT: Forcer l'identité technique et le nom avant d'appliquer le snapshot
       // pour éviter d'écrire sous un mauvais ID lors d'un monde déjà initialisé.
       try {
-        state.setPartieId(partieId);
+        // setPartieId removed in CHANTIER-01
       } catch (_) {}
-      final targetName = cloudName ?? partieId;
+      final targetName = cloudName ?? enterpriseId;
       state.applyLoadedGameDataWithoutSnapshot(targetName, <String, dynamic>{});
       state.applySnapshot(snap);
       await state.finishLoadGameAfterSnapshot(targetName, <String, dynamic>{});
       // Vérification d'intégrité défensive
-      if (state.partieId != partieId) {
-        _logger.warn('[IMPORT] partieId mismatch après import; correction forcée', code: 'import_id_mismatch', ctx: {
-          'expected': partieId,
-          'actual': state.partieId ?? 'null',
+      if (state.enterpriseId != enterpriseId) {
+        _logger.warn('[IMPORT] enterpriseId mismatch après import; correction forcée', code: 'import_id_mismatch', ctx: {
+          'expected': enterpriseId,
+          'actual': state.enterpriseId ?? 'null',
         });
-        try { state.setPartieId(partieId); } catch (_) {}
       }
       try {
         await saveGameById(state);
@@ -2077,12 +2201,11 @@ class GamePersistenceOrchestrator {
     } else {
       // matérialisation silencieuse via gestionnaire local
       final save = SaveGame(
-        id: partieId,
-        name: cloudName ?? partieId,
+        id: enterpriseId,
+        name: cloudName ?? enterpriseId,
         lastSaveTime: DateTime.now(),
         gameData: { LocalGamePersistenceService.snapshotKey: snap.toJson() },
         version: GameConstants.VERSION,
-        gameMode: GameMode.INFINITE,
       );
       final mgr = await LocalSaveGameManager.getInstance();
       await mgr.saveGame(save);
@@ -2094,7 +2217,7 @@ class GamePersistenceOrchestrator {
   /// - Extrait `gameSnapshot` depuis le `gameData`
   /// - Envoie via le port cloud avec des métadonnées minimales
   Future<void> pushCloudFromSaveId({
-    required String partieId,
+    required String enterpriseId,
     required String uid,
     String? reason,
   }) async {
@@ -2104,7 +2227,7 @@ class GamePersistenceOrchestrator {
     }
     if (_isDebug) {
       _logger.info('[cloud][start] pushCloudFromSaveId', code: 'cloud_start', ctx: {
-        'partieId': partieId,
+        'enterpriseId': enterpriseId,
         if (reason != null) 'reason': reason,
       });
     }
@@ -2112,14 +2235,14 @@ class GamePersistenceOrchestrator {
     // L'UI DOIT savoir que la sauvegarde a échoué pour informer l'utilisateur
     if (uid.isEmpty) {
       _logger.error('[cloud][error] pushCloudFromSaveId - uid Firebase manquant', code: 'cloud_no_uid', ctx: {
-        'partieId': partieId,
+        'enterpriseId': enterpriseId,
         'uid': uid,
       });
       
       // CORRECTION AUDIT #2: Marquer comme pending avec timestamp pour TTL (7 jours)
       try {
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('pending_identity_'+partieId, DateTime.now().toIso8601String());
+        await prefs.setString('pending_identity_'+enterpriseId, DateTime.now().toIso8601String());
       } catch (_) {}
       
       try {
@@ -2127,16 +2250,16 @@ class GamePersistenceOrchestrator {
       } catch (_) {}
       
       // P0-1: LEVER UNE EXCEPTION au lieu de return silencieux
-      throw StateError('UID_REQUIRED: Utilisateur non authentifié (uid Firebase manquant) pour partieId=$partieId');
+      throw StateError('UID_REQUIRED: Utilisateur non authentifié (uid Firebase manquant) pour enterpriseId=$enterpriseId');
     }
-    final save = await _loadSaveByIdViaLocalManager(partieId);
+    final save = await _loadSaveByIdViaLocalManager(enterpriseId);
     if (save == null) {
-      throw StateError('Sauvegarde introuvable pour id=$partieId');
+      throw StateError('Sauvegarde introuvable pour id=$enterpriseId');
     }
     final data = save.gameData;
     final key = LocalGamePersistenceService.snapshotKey;
     if (!data.containsKey(key)) {
-      throw StateError('Snapshot absent dans la sauvegarde id=$partieId');
+      throw StateError('Snapshot absent dans la sauvegarde id=$enterpriseId');
     }
     Map<String, dynamic>? snapshot;
     final raw = data[key];
@@ -2147,12 +2270,12 @@ class GamePersistenceOrchestrator {
       if (snap != null) snapshot = snap.toJson();
     }
     if (snapshot == null) {
-      throw StateError('Snapshot illisible pour id=$partieId');
+      throw StateError('Snapshot illisible pour id=$enterpriseId');
     }
     // P2-1: Métadonnées minimales - timestamps gérés server-side
     final meta = <String, dynamic>{
-      'partieId': partieId,
-      'gameMode': save.gameMode == GameMode.COMPETITIVE ? 'COMPETITIVE' : 'INFINITE',
+      'enterpriseId': enterpriseId,
+//       'gameMode': save.gameMode == GameMode.COMPETITIVE ? 'COMPETITIVE' : 'INFINITE',
       'gameVersion': save.version,
       // P2-1: savedAt supprimé - backend génère updated_at server-side
       'name': save.name,
@@ -2164,23 +2287,23 @@ class GamePersistenceOrchestrator {
     final sw = Stopwatch()..start();
     try {
       _logger.info('worlds_put_attempt', code: 'worlds_put_attempt', ctx: {
-        'worldId': partieId,
+        'worldId': enterpriseId,
         'reason': reason ?? 'unspecified',
       });
-      await port.pushById(partieId: partieId, snapshot: snapshot, metadata: meta);
+      await port.pushById(enterpriseId: enterpriseId, snapshot: snapshot, metadata: meta);
       // Succès: nettoyer le flag pending_identity
       try {
         final prefs = await SharedPreferences.getInstance();
-        await prefs.remove('pending_identity_'+partieId);
+        await prefs.remove('pending_identity_'+enterpriseId);
       } catch (_) {}
       sw.stop();
       _logger.info('worlds_put_success', code: 'worlds_put_success', ctx: {
-        'worldId': partieId,
+        'worldId': enterpriseId,
         'latency_ms': sw.elapsedMilliseconds,
       });
       if (_isDebug) {
         _logger.info('[cloud][success] pushCloudFromSaveId', code: 'cloud_success', ctx: {
-          'partieId': partieId,
+          'enterpriseId': enterpriseId,
           'latency_ms': sw.elapsedMilliseconds,
         });
       }
@@ -2203,7 +2326,7 @@ class GamePersistenceOrchestrator {
       } catch (_) {}
       
       _logger.error('[cloud] pushCloudFromSaveId failed', code: 'worlds_put_failure', ctx: {
-        'worldId': partieId,
+        'worldId': enterpriseId,
         'latency_ms': sw.elapsedMilliseconds,
         if (httpCode != null) 'http_code': httpCode,
         'cause_category': cause,
@@ -2211,7 +2334,7 @@ class GamePersistenceOrchestrator {
       });
       if (_isDebug) {
         _logger.warn('[cloud][backoff] pushCloudFromSaveId', code: 'cloud_backoff', ctx: {
-          'partieId': partieId,
+          'enterpriseId': enterpriseId,
           if (httpCode != null) 'http_code': httpCode,
         });
       }
@@ -2220,8 +2343,8 @@ class GamePersistenceOrchestrator {
   }
 
   /// Matérialise localement une partie à partir du cloud (écrit snapshot-only sous l'ID)
-  Future<bool> materializeFromCloud({required String partieId}) async {
-    _logger.info('[MATERIALIZE] START', code: 'materialize_start', ctx: {'partieId': partieId});
+  Future<bool> materializeFromCloud({required String enterpriseId}) async {
+    _logger.info('[MATERIALIZE] START', code: 'materialize_start', ctx: {'enterpriseId': enterpriseId});
     
     final port = _cloudPort;
     if (port == null) {
@@ -2230,11 +2353,11 @@ class GamePersistenceOrchestrator {
     }
     
     _logger.info('[MATERIALIZE] Calling pullById', code: 'materialize_pull');
-    final detail = await port.pullById(partieId: partieId);
+    final detail = await port.pullById(enterpriseId: enterpriseId);
     
     if (detail == null) {
       _logger.warn('[MATERIALIZE] World not found in cloud', code: 'materialize_not_found', ctx: {
-        'partieId': partieId,
+        'enterpriseId': enterpriseId,
       });
       return false;
     }
@@ -2242,36 +2365,33 @@ class GamePersistenceOrchestrator {
     final snapshot = detail.snapshot;
     if (snapshot.isEmpty) {
       _logger.error('[MATERIALIZE] Empty snapshot', code: 'materialize_empty_snapshot', ctx: {
-        'partieId': partieId,
+        'enterpriseId': enterpriseId,
       });
       return false;
     }
     
-    final name = detail.name ?? partieId;
+    final name = detail.name ?? enterpriseId;
     final version = detail.gameVersion ?? GameConstants.VERSION;
-    final mode = detail.gameModeEnum;
     
     _logger.info('[MATERIALIZE] Creating SaveGame', code: 'materialize_create_save', ctx: {
-      'partieId': partieId,
+      'enterpriseId': enterpriseId,
       'name': name,
       'version': version,
-      'gameMode': mode.toString(),
     });
     
     final save = SaveGame(
-      id: partieId,
+      id: enterpriseId,
       name: name,
       lastSaveTime: DateTime.now(),
       gameData: {LocalGamePersistenceService.snapshotKey: snapshot},
       version: version,
-      gameMode: mode,
     );
     
     final mgr = await LocalSaveGameManager.getInstance();
     final result = await mgr.saveGame(save);
     
     _logger.info('[MATERIALIZE] Result', code: 'materialize_result', ctx: {
-      'partieId': partieId,
+      'enterpriseId': enterpriseId,
       'success': result,
     });
     
@@ -2336,7 +2456,7 @@ class GamePersistenceOrchestrator {
         
         // Tenter le push
         try {
-          await pushCloudFromSaveId(partieId: m.id, uid: uid); // ✅ uid Firebase
+          await pushCloudFromSaveId(enterpriseId: m.id, uid: uid); // ✅ uid Firebase
           await prefs.remove(keyIdentity);
           await prefs.remove(keyRetryCount);
           successCount++;
@@ -2474,10 +2594,10 @@ class GamePersistenceOrchestrator {
       // 3. Pour chaque monde cloud, appliquer l'arbitrage de fraîcheur
       int syncedCount = 0;
       int errorCount = 0;
-      final List<String> failedWorldIds = [];
+      final List<String> failedEnterpriseIds = [];
 
       for (final cloudEntry in cloudWorlds) {
-        final worldId = cloudEntry.partieId;
+        final worldId = cloudEntry.enterpriseId;
         if (worldId.isEmpty) continue;
 
         try {
@@ -2488,7 +2608,7 @@ class GamePersistenceOrchestrator {
 
           // CORRECTION POST-AUDIT: Utiliser "cloud always wins" au lieu de l'arbitrage
           await _syncFromCloudAtLogin(
-            partieId: worldId,
+            enterpriseId: worldId,
             playerId: ensuredUid,
           );
 
@@ -2498,7 +2618,7 @@ class GamePersistenceOrchestrator {
           });
         } catch (e) {
           errorCount++;
-          failedWorldIds.add(worldId);
+          failedEnterpriseIds.add(worldId);
           _logger.warn('[SYNC-LOGIN] Échec sync monde', code: 'sync_login_world_error', ctx: {
             'worldId': worldId,
             'error': e.toString(),
@@ -2508,7 +2628,7 @@ class GamePersistenceOrchestrator {
       }
 
       // 4. Pousser les mondes locaux orphelins vers le cloud (cloud-first)
-      final cloudWorldIds = cloudWorlds.map((e) => e.partieId).toSet();
+      final cloudWorldIds = cloudWorlds.map((e) => e.enterpriseId).toSet();
       final orphanLocalIds = localWorldIds.difference(cloudWorldIds);
 
       if (orphanLocalIds.isNotEmpty) {
@@ -2523,7 +2643,7 @@ class GamePersistenceOrchestrator {
             });
 
             await pushCloudFromSaveId(
-              partieId: orphanId,
+              enterpriseId: orphanId,
               uid: ensuredUid,
               reason: 'sync_login_orphan',
             );
@@ -2549,21 +2669,21 @@ class GamePersistenceOrchestrator {
         'synced': syncedCount,
         'errors': errorCount,
         'orphans': orphanLocalIds.length,
-        'failedWorldIds': failedWorldIds.join(','),
+        'failedEnterpriseIds': failedEnterpriseIds.join(','),
       });
       
       // CORRECTION AUDIT #5: Retourner statut approprié avec détails
       if (errorCount > 0 && syncedCount > 0) {
         return SyncResult.partialSuccess(
-          failedWorldIds: failedWorldIds,
+          failedEnterpriseIds: failedEnterpriseIds,
           syncedCount: syncedCount,
           totalCount: totalWorlds,
-          errorDetails: '${failedWorldIds.length} monde(s) non synchronisé(s)',
+          errorDetails: '${failedEnterpriseIds.length} monde(s) non synchronisé(s)',
         );
       } else if (errorCount > 0) {
         return SyncResult(
           status: SyncStatus.networkError,
-          failedWorldIds: failedWorldIds,
+          failedEnterpriseIds: failedEnterpriseIds,
           syncedCount: syncedCount,
           totalCount: totalWorlds,
           errorDetails: 'Échec synchronisation de tous les mondes',
@@ -2644,13 +2764,6 @@ class GamePersistenceOrchestrator {
                   'save': save.version,
                 });
               }
-              if (meta.gameMode != save.gameMode) {
-                _logger.warn('INTEGRITY WARNING: Désalignement gameMode', code: 'integrity_gamemode_mismatch', ctx: {
-                  'id': m.id,
-                  'meta': meta.gameMode.toString(),
-                  'save': save.gameMode.toString(),
-                });
-              }
             }
           } catch (e) {
             _logger.error('INTEGRITY ERROR: Lecture metadata échouée', code: 'integrity_meta_read_error', ctx: {
@@ -2690,7 +2803,7 @@ class GamePersistenceOrchestrator {
         }
       }
 
-      // 3) Backups: format partieId|timestamp, association à une sauvegarde régulière, rétention N/TTL
+      // 3) Backups: format enterpriseId|timestamp, association à une sauvegarde régulière, rétention N/TTL
       try {
         final now = DateTime.now();
         final regularIds = metas
