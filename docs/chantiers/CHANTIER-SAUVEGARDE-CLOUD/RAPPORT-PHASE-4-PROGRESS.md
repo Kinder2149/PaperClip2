@@ -174,15 +174,16 @@
 
 ### Configuration Exécution
 
-**Problème actuel** : Les tests E2E nécessitent :
-- Configuration `integration_test` package
-- Device ou émulateur pour exécution
-- Ou adaptation pour tests unitaires purs
+**Solution retenue** : Tests unitaires purs sans UI
+- Les tests utilisent uniquement les mocks (pas de vraie UI)
+- Exécution avec `flutter test` standard
+- Pas besoin de device ou émulateur
+- Build Windows échoue à cause de `flutter_secure_storage_windows` (atlstr.h manquant)
 
-**Solutions possibles** :
-1. Configurer `integration_test` avec device Android/iOS
-2. Adapter tests pour exécution comme tests unitaires
-3. Utiliser `flutter_test` au lieu de `integration_test`
+**Correction appliquée** :
+- Déplacer tests de `integration_test/` vers `test/e2e/`
+- Utiliser `flutter_test` au lieu de `integration_test`
+- Tests s'exécutent comme tests unitaires
 
 ## 📊 Métriques
 
