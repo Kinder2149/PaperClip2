@@ -14,7 +14,6 @@ class GameConstants {
   static const String APP_NAME = 'PaperClip2';
   static const String APP_TITLE = 'ClipFactory Empire';
   static const int CURRENT_BUILD_NUMBER = 3;  // Ajouté depuis UpdateManager
-  static const String GAME_MODE_KEY = 'game_mode';
 
   //======================================================================
   // SECTION: TEXTE D'INTERFACE
@@ -37,7 +36,7 @@ class GameConstants {
   static const int MAX_BACKUPS = 3;                        // Depuis StorageConstants
   static const String BACKUP_DELIMITER = StorageKeys.backupDelimiter;        // Depuis StorageConstants
   // Rétention backups (Phase 4)
-  static const int BACKUP_RETENTION_MAX = 10;              // N = 10 backups par partieId
+  static const int BACKUP_RETENTION_MAX = 10;              // N = 10 backups par enterpriseId
   static const Duration BACKUP_RETENTION_TTL = Duration(days: 30); // TTL = 30 jours
   // Limite de mondes (Phase 1.3)
   static const int MAX_WORLDS = 10;                        // Nombre maximum de mondes créables par utilisateur
@@ -71,7 +70,7 @@ class GameConstants {
   //======================================================================
   // SECTION: CONSTANTES DE BASE ET RESSOURCES
   //======================================================================
-  static const double INITIAL_METAL = 500.0;
+  static const double INITIAL_METAL = 100.0;
   static const double INITIAL_MONEY = 0.0;
   static const double INITIAL_PRICE = 0.25;
   static const double METAL_PER_PAPERCLIP = 0.1;
@@ -134,7 +133,7 @@ class GameConstants {
   
   // Prix du métal sur le marché
   static const double MIN_METAL_PRICE = 0.10; // Prix minimum du métal
-  static const double MAX_METAL_PRICE = 0.45; // Prix maximum du métal
+  static const double MAX_METAL_PRICE = 0.50; // Prix maximum du métal
 
   // Niveaux de déblocage
   static const int MARKET_UNLOCK_LEVEL = 3; // Niveau requis pour débloquer le marché
@@ -292,10 +291,6 @@ enum EventImportance {
   bool operator >=(EventImportance other) {
     return value >= other.value;
   }
-}
-enum GameMode {
-  INFINITE,    // Mode infini, comme le jeu actuel
-  COMPETITIVE  // Mode compétitif, avec focus sur les statistiques et scores
 }
 
 enum UnlockableFeature {

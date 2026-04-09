@@ -52,7 +52,7 @@ class SaveButton extends StatefulWidget {
   /// sans avoir à instancier le widget
   static Future<void> saveGame(BuildContext context) async {
     final gameState = Provider.of<GameState>(context, listen: false);
-    if (!gameState.isInitialized || gameState.partieId == null || gameState.partieId!.isEmpty) {
+    if (!gameState.isInitialized || gameState.enterpriseId == null || gameState.enterpriseId!.isEmpty) {
       NotificationManager.instance.showNotification(
         message: 'Erreur: Jeu non initialisé ou ID de monde manquant',
         level: NotificationLevel.ERROR,
@@ -90,7 +90,7 @@ class SaveButton extends StatefulWidget {
   /// Retourne true en cas de succès, false en cas d'échec
   static Future<bool> saveGameWithName(BuildContext context, String saveName) async {
     final gameState = Provider.of<GameState>(context, listen: false);
-    if (!gameState.isInitialized || gameState.partieId == null || gameState.partieId!.isEmpty) {
+    if (!gameState.isInitialized || gameState.enterpriseId == null || gameState.enterpriseId!.isEmpty) {
       NotificationManager.instance.showNotification(
         message: 'Erreur: Jeu non initialisé ou ID de monde manquant',
         level: NotificationLevel.ERROR,
@@ -132,22 +132,22 @@ class SaveButton extends StatefulWidget {
 
 class _SaveButtonView {
   final bool isInitialized;
-  final String? gameName;
+  final String? enterpriseName;
 
   const _SaveButtonView({
     required this.isInitialized,
-    required this.gameName,
+    required this.enterpriseName,
   });
 
   @override
   bool operator ==(Object other) {
     return other is _SaveButtonView &&
         other.isInitialized == isInitialized &&
-        other.gameName == gameName;
+        other.enterpriseName == enterpriseName;
   }
 
   @override
-  int get hashCode => Object.hash(isInitialized, gameName);
+  int get hashCode => Object.hash(isInitialized, enterpriseName);
 }
 
 class _SaveButtonState extends State<SaveButton> {
@@ -208,11 +208,11 @@ class _SaveButtonState extends State<SaveButton> {
     return Selector<GameState, _SaveButtonView>(
       selector: (context, gameState) => _SaveButtonView(
         isInitialized: gameState.isInitialized,
-        gameName: gameState.gameName,
+        enterpriseName: gameState.enterpriseName,
       ),
       builder: (context, view, child) {
         // Si le gameState n'est pas disponible ou initialisé, ne pas afficher le bouton
-        if (!view.isInitialized || view.gameName == null) {
+        if (!view.isInitialized || view.enterpriseName == null) {
           return const SizedBox.shrink();
         }
 

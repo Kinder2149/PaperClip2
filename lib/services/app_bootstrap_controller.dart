@@ -19,6 +19,7 @@ import '../services/theme_service.dart';
 import '../services/ui/game_ui_port.dart';
 import '../services/audio/game_audio_port.dart';
 import '../services/auth/firebase_auth_service.dart';
+import '../main.dart' show navigatorKey;
 
 enum AppBootstrapStatus {
   idle,
@@ -43,6 +44,10 @@ class AppBootstrapController extends ChangeNotifier {
   
   // P0-5: Flag pour éviter double installation listener
   bool _firebaseListenerInstalled = false;
+  
+  // P1: Flag pour loading UI sync
+  bool _isSyncing = false;
+  bool get isSyncing => _isSyncing;
 
   final Future<void> Function()? _envConfigLoad;
   final Future<void> Function()? _persistenceBackupCheck;
@@ -123,7 +128,7 @@ class AppBootstrapController extends ChangeNotifier {
     print('🔥🔥🔥 [BOOTSTRAP] Starting bootstrap process 🔥🔥🔥');
     
     // P0-5: INSTALLER LISTENER FIREBASE EN TOUT PREMIER
-    // Ceci garantit que la sync cloud démarre AVANT l'affichage de WorldsScreen
+    // Ceci garantit que la sync cloud démarre AVANT l'affichage de l'interface principale
     print('🔥🔥🔥 [BOOTSTRAP] Installing Firebase listener BEFORE bootstrap 🔥🔥🔥');
     await _installFirebaseAuthListener();
     
@@ -393,7 +398,7 @@ class AppBootstrapController extends ChangeNotifier {
           code: 'bootstrap_initial_user_detected');
         
         // CORRECTION CRITIQUE: Sync IMMÉDIATE sans debounce pour utilisateur existant
-        // Raison: WorldsScreen s'affiche rapidement et l'utilisateur peut cliquer avant la fin du debounce
+        // Raison: L'interface principale s'affiche rapidement et l'utilisateur peut interagir avant la fin du debounce
         await _syncUserImmediately(initialUser.uid, 'BOOTSTRAP-INITIAL');
       } else {
         print('🔥🔥🔥 [BOOTSTRAP] No user initially 🔥🔥🔥');
@@ -444,23 +449,33 @@ class AppBootstrapController extends ChangeNotifier {
   Future<void> _syncUserImmediately(String uid, String source) async {
     print('🔥🔥🔥 [$source] _syncUserImmediately() CALLED | uid=$uid 🔥🔥🔥');
     
+    // Marquer sync en cours
+    _isSyncing = true;
+    notifyListeners();
+    
     appLogger.info('[$source] Starting IMMEDIATE sync | uid=$uid', code: 'sync_start');
     
     try {
+      print('🔥🔥🔥 [$source] STEP 1: Marking as synced 🔥🔥🔥');
       // Marquer comme synchronisé AVANT de démarrer (éviter double sync)
       _lastSyncedUid = uid;
       
+      print('🔥🔥🔥 [$source] STEP 2: Getting SharedPreferences 🔥🔥🔥');
       // Activer cloud automatiquement
       final prefs = await SharedPreferences.getInstance();
       final cloudEnabled = prefs.getBool('cloud_enabled') ?? false;
       
+      print('🔥🔥🔥 [$source] STEP 3: Cloud preference | enabled=$cloudEnabled 🔥🔥🔥');
       appLogger.info('[$source] Cloud preference | enabled=$cloudEnabled', code: 'sync_cloud_pref');
       
       if (!cloudEnabled) {
+        print('🔥🔥🔥 [$source] STEP 4: Auto-enabling cloud 🔥🔥🔥');
         appLogger.info('[$source] Auto-enabling cloud (Firebase user detected)', code: 'sync_auto_enable');
         await prefs.setBool('cloud_enabled', true);
+        print('🔥🔥🔥 [$source] STEP 5: Cloud enabled in prefs 🔥🔥🔥');
       }
       
+      print('🔥🔥🔥 [$source] STEP 6: Activating CloudPort... 🔥🔥🔥');
       // Activer CloudPort
       appLogger.info('[$source] Activating CloudPort...', code: 'sync_cloudport_start');
       
@@ -468,6 +483,7 @@ class AppBootstrapController extends ChangeNotifier {
         reason: '${source}_uid=$uid'
       );
       
+      print('🔥🔥🔥 [$source] STEP 7: CloudPort activation result=$activationSuccess 🔥🔥🔥');
       appLogger.info('[$source] CloudPort activation | success=$activationSuccess', 
         code: 'sync_cloudport_result');
       
@@ -498,40 +514,120 @@ class AppBootstrapController extends ChangeNotifier {
           code: 'sync_cloudport_retry_success');
       }
       
-      // Synchronisation cloud
-      appLogger.info('[$source] Calling onPlayerConnected()...', code: 'sync_orchestrator_start');
+      print('🔥🔥🔥 [$source] STEP 8: Calling onPlayerConnected() with timeout 🔥🔥🔥');
+      // Synchronisation cloud avec timeout 30s
+      appLogger.info('[$source] Calling onPlayerConnected() with 30s timeout...', code: 'sync_orchestrator_start');
       
-      final syncResult = await GamePersistenceOrchestrator.instance.onPlayerConnected(playerId: uid);
-      
-      appLogger.info('[$source] onPlayerConnected() completed | success=${syncResult.isSuccess}', 
-        code: 'sync_orchestrator_result');
-      
-      if (!syncResult.isSuccess) {
-        appLogger.warn('[$source] Sync failed | message=${syncResult.userMessage}', 
-          code: 'sync_failed');
-        
-        NotificationManager.instance.showNotification(
-          message: syncResult.userMessage,
-          level: NotificationLevel.WARNING,
-          duration: const Duration(seconds: 5),
-        );
+      // Injecter le contexte de navigation pour la résolution de conflits
+      final context = navigatorKey.currentContext;
+      if (context != null && context.mounted) {
+        GamePersistenceOrchestrator.instance.setNavigationContext(context);
+        appLogger.info('[$source] Navigation context injected for conflict resolution', code: 'sync_context_injected');
       } else {
-        appLogger.info('[$source] Sync completed successfully', code: 'sync_success');
+        appLogger.warn('[$source] No navigation context available for conflict resolution', code: 'sync_no_context');
+      }
+      
+      try {
+        final syncResult = await GamePersistenceOrchestrator.instance
+          .onPlayerConnected(playerId: uid)
+          .timeout(
+            const Duration(seconds: 30),
+            onTimeout: () {
+              appLogger.warn('[$source] Sync login timeout - continuing offline', 
+                code: 'sync_timeout');
+              throw TimeoutException('Sync login timeout après 30s');
+            },
+          );
+        
+        print('🔥🔥🔥 [$source] STEP 9: onPlayerConnected() completed | success=${syncResult.isSuccess} 🔥🔥🔥');
+        
+        appLogger.info('[$source] onPlayerConnected() completed | success=${syncResult.isSuccess}', 
+          code: 'sync_orchestrator_result');
+        
+        if (!syncResult.isSuccess) {
+          appLogger.warn('[$source] Sync failed | message=${syncResult.userMessage}', 
+            code: 'sync_failed');
+          
+          NotificationManager.instance.showNotification(
+            message: syncResult.userMessage,
+            level: NotificationLevel.WARNING,
+            duration: const Duration(seconds: 5),
+          );
+        } else {
+          appLogger.info('[$source] Sync completed successfully', code: 'sync_success');
+          
+          // CORRECTION: Notification utilisateur du succès de la synchronisation
+          // Note: Le 404 sur /enterprise/{uid} est NORMAL pour un nouvel utilisateur
+          // car il n'a pas encore créé d'entreprise dans le cloud
+          print('🔥🔥🔥 [$source] SHOWING SUCCESS NOTIFICATION 🔥🔥🔥');
+          
+          // Retry automatique avec délai progressif pour garantir que l'UI est prête
+          _showNotificationWhenReady(
+            message: '✅ Synchronisation terminée',
+            level: NotificationLevel.SUCCESS,
+            source: source,
+          );
+        }
+      } on TimeoutException {
+        appLogger.warn('[$source] Sync timeout - offline mode', code: 'sync_timeout_offline');
+        _showOfflineNotification();
+        // Ne pas rethrow - permettre mode offline
       }
     } catch (e, stack) {
-      // CORRECTION: Log INCONDITIONNEL + notification utilisateur
-      appLogger.error('[$source] CRITICAL: Sync error', 
+      // CORRECTION: Log INCONDITIONNEL + notification utilisateur + fallback offline
+      appLogger.error('[$source] CRITICAL: Sync error - offline mode', 
         code: 'sync_error',
-        ctx: {'error': e.toString(), 'stack': stack.toString()});
+        ctx: {'error': e.toString(), 'stack': stack.toString().substring(0, 500)});
       
-      NotificationManager.instance.showNotification(
-        message: '⚠️ Erreur synchronisation cloud - Vérifiez votre connexion',
-        level: NotificationLevel.ERROR,
-        duration: const Duration(seconds: 5),
-      );
-      
-      // Ne PAS rethrow ici - la sync est optionnelle, l'app doit continuer
+      _showOfflineNotification();
+      // Ne pas rethrow - permettre mode offline (la sync est optionnelle)
+    } finally {
+      // Toujours remettre à false
+      _isSyncing = false;
+      notifyListeners();
     }
+  }
+
+  /// Affiche une notification avec retry automatique si ScaffoldMessengerKey pas disponible
+  /// Utilise un délai progressif (200ms, 400ms, 600ms, 800ms, 1000ms)
+  Future<void> _showNotificationWhenReady({
+    required String message,
+    required NotificationLevel level,
+    required String source,
+    int maxRetries = 5,
+  }) async {
+    for (int i = 0; i < maxRetries; i++) {
+      // Délai progressif: 200ms * (i + 1)
+      final delayMs = 200 * (i + 1);
+      await Future.delayed(Duration(milliseconds: delayMs));
+      
+      try {
+        NotificationManager.instance.showNotification(
+          message: message,
+          level: level,
+          duration: const Duration(seconds: 3),
+        );
+        print('🔥🔥🔥 [$source] Notification displayed successfully (attempt ${i + 1}/$maxRetries, delay=${delayMs}ms) 🔥🔥🔥');
+        return; // Succès - sortir
+      } catch (e) {
+        if (i < maxRetries - 1) {
+          print('🔥🔥🔥 [$source] Notification retry ${i + 1}/$maxRetries (delay=${delayMs}ms) - ScaffoldMessengerKey not ready 🔥🔥🔥');
+        } else {
+          print('🔥🔥🔥 [$source] Notification FAILED after $maxRetries retries - giving up 🔥🔥🔥');
+          appLogger.warn('[$source] Failed to show notification after $maxRetries retries', 
+            code: 'notification_failed');
+        }
+      }
+    }
+  }
+
+  void _showOfflineNotification() {
+    // Utiliser le même mécanisme de retry pour les notifications offline
+    _showNotificationWhenReady(
+      message: '⚠️ Erreur sync cloud - Mode offline activé',
+      level: NotificationLevel.WARNING,
+      source: 'OFFLINE',
+    );
   }
 
   @override

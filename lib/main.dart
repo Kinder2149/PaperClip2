@@ -1,14 +1,11 @@
-﻿import 'dart:async';
-
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'firebase_options.dart';
 
-import './screens/start_screen.dart';
 import './screens/bootstrap_screen.dart';
 // Imports des modèles et services
 import './models/game_state.dart';
@@ -29,8 +26,6 @@ import './services/google/google_bootstrap.dart';
 import './services/google/achievements/achievements_event_adapter.dart';
 import './services/google/leaderboards/leaderboards_event_adapter.dart';
 import './screens/auth_choice_screen.dart';
-import 'services/persistence/game_persistence_orchestrator.dart';
-import 'services/persistence/sync_result.dart';
 // Cloud ports legacy retirés
 import 'services/google/identity/google_identity_service.dart';
 import 'services/google/identity/identity_status.dart';
@@ -42,7 +37,6 @@ import './services/analytics/analytics_event_adapter.dart';
 import './services/analytics/analytics_port.dart';
 // HTTP analytics retiré (Firebase-only Callable): utiliser NoOp ou Callable ultérieurement
 import 'services/runtime/runtime_actions.dart' as runtime_facade;
-import 'package:paperclip2/services/cloud/cloud_persistence_adapter.dart';
 import 'package:paperclip2/services/cloud/cloud_port_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 // Auth Firebase utilisée directement par le client HTTP (pas de JWT backend dédié)
@@ -105,7 +99,8 @@ final _analyticsEventAdapter = AnalyticsEventAdapter.withListeners(
 );
 
 // Google Services wiring (identité, succès, classements) + adapters événementiels
-final _googleServices = createGoogleServices(enableOnAndroid: true);
+// CORRECTION: Désactiver Google Play Games sur Web (non supporté)
+final _googleServices = createGoogleServices(enableOnAndroid: !kIsWeb);
 final _achievementsEventAdapter = AchievementsEventAdapter.withListeners(
   addListener: gameState.addEventListener,
   removeListener: gameState.removeEventListener,
@@ -118,9 +113,18 @@ final _leaderboardsEventAdapter = LeaderboardsEventAdapter.withListeners(
 );
 
 void main() async {
+  print('🔥🔥🔥 [MAIN] Application starting... 🔥🔥🔥');
+  
   try {
+    print('🔥🔥🔥 [MAIN] Initializing Flutter binding 🔥🔥🔥');
     WidgetsFlutterBinding.ensureInitialized();
-    await Firebase.initializeApp();
+    
+    print('🔥🔥🔥 [MAIN] Initializing Firebase 🔥🔥🔥');
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    
+    print('🔥🔥🔥 [MAIN] Loading .env file 🔥🔥🔥');
     await dotenv.load(fileName: '.env');
     
     // Log de démarrage propre
@@ -200,14 +204,14 @@ void main() async {
 
     NotificationManager.instance.setScaffoldMessengerKey(scaffoldMessengerKey);
 
-    // Initialisation du port Cloud selon la préférence persistée + auto-activation si Google déjà signé
+    // Initialisation du port Cloud selon la préférence persistée + auto-activation si Firebase déjà signé
     try {
       final prefs = await SharedPreferences.getInstance();
       // SavesFacade supprimé - utilisation directe GamePersistenceOrchestrator
 
-      // Rafraîchir l'identité Google Play Games
-      try { await _googleServices.identity.refresh(); } catch (_) {}
-      final isSignedIn = _googleServices.identity.status == IdentityStatus.signedIn;
+      // Vérifier si l'utilisateur est connecté à Firebase Auth
+      final firebaseUser = FirebaseAuthService.instance.currentUser;
+      final isFirebaseSignedIn = firebaseUser != null;
 
       var cloudEnabled = prefs.getBool('cloud_enabled') ?? false;
       // Filtre mission depuis préférences utilisateur (priorité aux prefs si activées)
@@ -217,14 +221,15 @@ void main() async {
           Logger.enableMissionMode(missionPref == true);
         }
       } catch (_) {}
-      if (!cloudEnabled && isSignedIn) {
+      // Activer automatiquement le cloud si l'utilisateur est connecté à Firebase
+      if (!cloudEnabled && isFirebaseSignedIn) {
         cloudEnabled = true;
         await prefs.setBool('cloud_enabled', true);
       }
       // CORRECTION AUDIT #1: Simplifier activation CloudPort au boot
       // Si cloud_enabled=true, TOUJOURS activer le CloudPort
       // La vérification auth se fera au moment des requêtes via ensureAuthenticatedForCloud()
-      print('🔥🔥🔥 [MAIN] CloudPort activation | cloudEnabled=$cloudEnabled isSignedIn=$isSignedIn 🔥🔥🔥');
+      print('🔥🔥🔥 [MAIN] CloudPort activation | cloudEnabled=$cloudEnabled isFirebaseSignedIn=$isFirebaseSignedIn uid=${firebaseUser?.uid} 🔥🔥🔥');
       
       if (cloudEnabled) {
         final activated = await CloudPortManager.instance.activate(reason: 'boot_user_preference');
@@ -321,24 +326,36 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final themeServiceProvider = Provider.of<ThemeService>(context);
+    if (kDebugMode) {
+      print('🔥🔥🔥 [MyApp] build() called 🔥🔥🔥');
+    }
+    
+    try {
+      final themeServiceProvider = Provider.of<ThemeService>(context);
+      
+      if (kDebugMode) {
+        print('🔥🔥🔥 [MyApp] Got ThemeService, building MaterialApp 🔥🔥🔥');
+      }
 
-    return MaterialApp(
-      navigatorKey: navigatorKey,
-      scaffoldMessengerKey: scaffoldMessengerKey,
-      title: 'PaperClip Game',
-      theme: themeServiceProvider.getLightTheme(),
-      darkTheme: themeServiceProvider.getDarkTheme(),
-      themeMode: themeServiceProvider.themeMode,
-      home: BootstrapScreen(
-        startScreenBuilder: (context) => const StartScreen(),
-      ),
-      routes: {
-        '/auth': (_) => const AuthChoiceScreen(),
-      },
-      debugShowCheckedModeBanner: false,
-    );
+      return MaterialApp(
+        navigatorKey: navigatorKey,
+        scaffoldMessengerKey: scaffoldMessengerKey,
+        title: 'PaperClip Game',
+        theme: themeServiceProvider.getLightTheme(),
+        darkTheme: themeServiceProvider.getDarkTheme(),
+        themeMode: themeServiceProvider.themeMode,
+        home: const BootstrapScreen(),
+        routes: {
+          '/auth': (_) => const AuthChoiceScreen(),
+        },
+        debugShowCheckedModeBanner: false,
+      );
+    } catch (e, st) {
+      if (kDebugMode) {
+        print('🔥🔥🔥 [MyApp] ERROR in build(): $e 🔥🔥🔥');
+        print('Stack: $st');
+      }
+      rethrow;
+    }
   }
 }
-
-Widget _startScreenBuilder(BuildContext context) => const StartScreen();

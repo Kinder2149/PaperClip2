@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:paperclip2/constants/game_config.dart'; // Importé depuis constants au lieu de models
 import 'package:paperclip2/models/game_state.dart';
 import 'package:provider/provider.dart';
 
@@ -9,7 +8,6 @@ class MetalCrisisDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final gameState = Provider.of<GameState>(context);
-    final isCompetitiveMode = gameState.gameMode == GameMode.COMPETITIVE;
     
     return Dialog(
       shape: RoundedRectangleBorder(
@@ -17,11 +15,11 @@ class MetalCrisisDialog extends StatelessWidget {
       ),
       elevation: 0,
       backgroundColor: Colors.transparent,
-      child: _buildDialogContent(context, gameState, isCompetitiveMode),
+      child: _buildDialogContent(context, gameState),
     );
   }
 
-  Widget _buildDialogContent(BuildContext context, GameState gameState, bool isCompetitiveMode) {
+  Widget _buildDialogContent(BuildContext context, GameState gameState) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -45,58 +43,24 @@ class MetalCrisisDialog extends StatelessWidget {
             size: 56,
           ),
           const SizedBox(height: 16),
-          Text(
-            isCompetitiveMode ? 'Fin de monde!' : 'Crise de métal!',
-            style: const TextStyle(
+          const Text(
+            'Crise de métal!',
+            style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.bold,
               color: Colors.white,
             ),
           ),
           const SizedBox(height: 16),
-          Text(
-            isCompetitiveMode
-                ? 'Vous avez atteint la fin de votre monde compétitif. Votre score final est calculé en fonction de votre production de trombones et du temps mis.'
-                : 'Vous avez épuisé vos réserves de métal et n\'avez plus d\'argent pour en acheter. Que souhaitez-vous faire?',
-            style: const TextStyle(fontSize: 16, color: Colors.white70),
+          const Text(
+            'Vous avez épuisé vos réserves de métal et n\'avez plus d\'argent pour en acheter. Que souhaitez-vous faire?',
+            style: TextStyle(fontSize: 16, color: Colors.white70),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 24),
-          if (isCompetitiveMode) ...[
-            _buildCompetitiveActions(context, gameState),
-          ] else ...[
-            _buildCrisisActions(context, gameState),
-          ],
+          _buildCrisisActions(context, gameState),
         ],
       ),
-    );
-  }
-
-  Widget _buildCompetitiveActions(BuildContext context, GameState gameState) {
-    return Column(
-      children: [
-        Text(
-          'Score: ${gameState.calculateCompetitiveScore()}',
-          style: const TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Colors.amber,
-          ),
-        ),
-        const SizedBox(height: 16),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            foregroundColor: Colors.white,
-            backgroundColor: Colors.green,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          ),
-          onPressed: () {
-            gameState.handleCompetitiveGameEnd();
-            Navigator.of(context).pop();
-          },
-          child: const Text('Terminer le monde'),
-        ),
-      ],
     );
   }
 

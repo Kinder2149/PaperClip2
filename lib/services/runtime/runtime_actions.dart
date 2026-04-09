@@ -2,7 +2,6 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:paperclip2/services/game_runtime_coordinator.dart';
-import 'package:paperclip2/constants/game_config.dart' show GameMode;
 
 /// Façade légère exposant uniquement des intentions runtime à l'UI.
 /// - Ne divulgue pas le GameRuntimeCoordinator
@@ -24,13 +23,21 @@ class RuntimeActions {
   void resume() => _runtime.resume();
   Future<void> recoverOffline() => _runtime.recoverOffline();
 
-  Future<void> loadGameByIdAndStartAutoSave(String partieId) =>
-      _runtime.loadGameByIdAndStartAutoSave(partieId);
+  Future<void> loadGameByIdAndStartAutoSave(String enterpriseId) =>
+      _runtime.loadGameByIdAndStartAutoSave(enterpriseId);
+
+  // CHANTIER-01: Créer une nouvelle entreprise
+  Future<void> createNewEnterpriseAndStartAutoSave(String enterpriseName) =>
+      _runtime.createNewEnterpriseAndStartAutoSave(enterpriseName);
+
+  // CHANTIER-01: Charger l'entreprise unique
+  Future<void> loadEnterpriseAndStartAutoSave() =>
+      _runtime.loadEnterpriseAndStartAutoSave();
 
   // État dérivé minimal
   bool get isPaused => _isPausedReader != null ? _isPausedReader!.call() : false;
 
   // Intention: démarrer une nouvelle partie et lancer l'autosave
-  Future<void> startNewGameAndStartAutoSave(String name, {GameMode mode = GameMode.INFINITE}) =>
-      _runtime.startNewGameAndStartAutoSave(name, mode: mode);
+  Future<void> startNewGameAndStartAutoSave(String name) =>
+      _runtime.startNewGameAndStartAutoSave(name);
 }

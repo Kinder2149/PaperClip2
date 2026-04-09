@@ -4,196 +4,142 @@
 
 ## 🎮 Description
 
-PaperClip2 est un jeu de gestion où vous produisez et vendez des trombones pour développer votre empire industriel. Le jeu propose :
-- Production automatique et manuelle
-- Système d'upgrades et de progression
-- Marché dynamique avec fluctuations de prix
-- Sauvegarde cloud multi-appareils
-- Limite de 10 mondes par utilisateur
+PaperClip2 est un jeu de gestion où vous produisez et vendez des trombones pour développer votre empire industriel.
 
-## 📚 Documentation
+**Fonctionnalités principales :**
+- 🏭 Production automatique et manuelle
+- 📈 Système d'upgrades et de progression
+- 💰 Marché dynamique avec fluctuations de prix
+- ☁️ Sauvegarde cloud multi-appareils (Firebase)
+- 🌍 Gestion multi-mondes (max 10 par utilisateur)
+- 📱 Support Android, iOS, Web et Desktop
 
-**Documentation complète** : [`documentation/README.md`](documentation/README.md)
+---
 
-### Accès rapide
-- **Architecture** : [`documentation/01-architecture/`](documentation/01-architecture/)
-- **Guides développeur** : [`documentation/02-guides-developpeur/`](documentation/02-guides-developpeur/)
-- **Guides utilisateur** : [`documentation/03-guides-utilisateur/`](documentation/03-guides-utilisateur/)
-- **Rapports missions** : [`documentation/04-rapports-missions/`](documentation/04-rapports-missions/)
-
-## 🏗️ Architecture
-
-### Backend : Firebase Functions (Production)
-
-**Stack technique confirmée :**
-- **Firebase Functions v2** (2nd generation)
-- **Node.js 20** LTS
-- **Express 4.x** (framework HTTP)
-- **Firebase Admin SDK** (Firestore, Auth)
-- **Cloud Firestore** (base de données NoSQL)
-- **Firebase Auth** (authentification utilisateur)
-
-**Endpoints exposés :**
-- Base URL : `https://[region]-[project-id].cloudfunctions.net/api`
-- Configuration client : Variable d'environnement `FUNCTIONS_API_BASE`
-
-⚠️ **Note importante** : Le projet utilise **exclusivement Firebase Functions** comme backend.
-Toute mention de FastAPI, Render, ou autres backends dans d'anciennes notes est obsolète et doit être ignorée.
-
-### Frontend
-- **Flutter** (Dart)
-- **Provider** (gestion d'état)
-- **SharedPreferences** (stockage local)
-
-### Authentification
-- En-tête HTTP : `Authorization: Bearer <Firebase ID Token>`
-- Firebase Auth comme source unique de vérité
-- Documentation : `docs/backend/firebase_functions_api.md`
-
-### Synthèse persistance & identité (client)
-
-- Orchestrateur client: `GamePersistenceOrchestrator` (ID-first, snapshot-first)
-- Stockage local: `LocalSaveGameManager` (SharedPreferences), clé snapshot: `gameSnapshot`
-- API canonique côté client: `/worlds` (création, mise à jour, lecture, listing, suppression). Détails: `docs/backend/firebase_functions_api.md` (section "API canonique de persistance côté client").
-- API technique backend: `/saves` (versions/restauration legacy). Le client ne l’appelle pas directement. Détails: même document.
-- Rôle de `playerId`: prérequis opérationnel côté client (gating) et métadonnée de contexte; ni ownership ni sécurité. Détails: `docs/backend/firebase_functions_api.md` (section "Rôle et statut contractuel de playerId").
-- Cycle de vie d’un monde (client): états et transitions réelles (`local_only`, `pending_identity`, `cloud_pending`, `cloud_synced`, `cloud_error`, `cloud-only`). Détails: `docs/backend/firebase_functions_api.md` (section "Cycle de vie d’un monde – Client").
-
-## 🚀 Getting Started
+## 🚀 Démarrage Rapide
 
 ### Prérequis
 
-- **Flutter SDK** ≥ 3.0.0
-- **Node.js** ≥ 18.x (pour Firebase Functions)
+- **Flutter SDK** ≥ 3.0.0 ([Installation](https://flutter.dev/docs/get-started/install))
+- **Node.js** ≥ 18.x ([Installation](https://nodejs.org/))
 - **Firebase CLI** : `npm install -g firebase-tools`
 - **Compte Firebase** avec projet configuré
 
 ### Installation
 
-#### 1. Clone le projet
 ```bash
+# 1. Cloner le projet
 git clone <repository-url>
-cd paperclip2
-```
+cd PaperClip2
 
-#### 2. Configuration Flutter
-```bash
-# Installer les dépendances
+# 2. Installer les dépendances Flutter
 flutter pub get
 
-# Créer le fichier .env
+# 3. Créer le fichier de configuration
 cp .env.example .env
+# Éditer .env avec vos valeurs Firebase
+
+# 4. Installer les dépendances backend
+cd functions
+npm install
+cd ..
 ```
 
-Éditer `.env` avec vos valeurs :
+### Configuration Firebase
+
+1. Créer un projet sur [Firebase Console](https://console.firebase.google.com/)
+2. Télécharger `google-services.json` (Android) et placer dans `android/app/`
+3. Télécharger `GoogleService-Info.plist` (iOS) et placer dans `ios/Runner/`
+4. Éditer `.env` :
 ```env
 APP_ENV=development
 FUNCTIONS_API_BASE=https://us-central1-<your-project-id>.cloudfunctions.net/api
+FEATURE_CLOUD_PER_PARTIE=true
 ```
 
-**Note :** Les clés Firebase sont gérées par `google-services.json` (Android) et `GoogleService-Info.plist` (iOS).
+---
 
-#### 3. Configuration Backend
+## 🎯 Commandes Principales
+
+### Développement
+
+#### Lancer l'application
+
 ```bash
-cd functions
-npm install
+# Android (émulateur ou appareil connecté)
+flutter run
 
-# Créer le fichier .env (optionnel pour développement local)
-cp .env.example .env
+# iOS (simulateur ou appareil connecté)
+flutter run -d ios
+
+# Web (Chrome)
+flutter run -d chrome
+
+# Windows Desktop
+flutter run -d windows
+
+# Spécifier un appareil
+flutter devices                    # Lister les appareils
+flutter run -d <device-id>        # Lancer sur un appareil spécifique
 ```
 
-#### 4. Lancer en développement
+#### Backend (Émulateurs Firebase)
 
-**Terminal 1 - Backend (émulateurs Firebase) :**
 ```bash
+# Terminal séparé - Lancer les émulateurs
 cd functions
 firebase emulators:start
+
+# Ou avec UI
+firebase emulators:start --import=./emulator-data --export-on-exit
 ```
-
-**Terminal 2 - Flutter :**
-```bash
-flutter run
-```
-
-### Variables d'Environnement
-
-#### Client Flutter (`.env`)
-- `APP_ENV` : Environnement (`development` | `production`)
-- `FUNCTIONS_API_BASE` : URL de base des Firebase Functions
-
-#### Backend Functions (`functions/.env`)
-- `FIREBASE_PROJECT_ID` : ID du projet Firebase
-- `FIRESTORE_EMULATOR_HOST` : Host de l'émulateur Firestore (dev uniquement)
-
-## 📦 Build et Déploiement
 
 ### Build Production
 
-**Android :**
+#### Android
+
 ```bash
+# APK Release
 flutter build apk --release
-# APK disponible dans : build/app/outputs/flutter-apk/app-release.apk
+
+# APK de sortie : build/app/outputs/flutter-apk/app-release.apk
+
+# App Bundle (pour Google Play Store)
+flutter build appbundle --release
+
+# Bundle de sortie : build/app/outputs/bundle/release/app-release.aab
 ```
 
-**iOS :**
+#### iOS
+
 ```bash
+# Build iOS
 flutter build ios --release
+
+# Ouvrir Xcode pour archiver et distribuer
+open ios/Runner.xcworkspace
 ```
 
-### Déploiement Backend
+#### Web
 
 ```bash
-cd functions
-npm ci
-npm run build
-firebase deploy --only functions:api
+# Build Web
+flutter build web --release
+
+# Fichiers de sortie : build/web/
 ```
 
-Voir aussi : `functions/package.json` et `docs/backend/firebase_functions_api.md`
+#### Windows
 
-## Démarrage de l’app
+```bash
+# Build Windows
+flutter build windows --release
 
-1. Configurer le fichier `.env` (voir section Configuration).
-2. Lancer l’application Flutter (Android / iOS / Web / Desktop).
-3. Les services cloud utilisent les endpoints HTTP onRequest exposés par Functions.
-4. Au démarrage, l’application vérifie la présence de `FUNCTIONS_API_BASE` (échec immédiat si absent).
+# Exécutable : build/windows/runner/Release/
+```
 
-## Observabilité & diagnostic
+### Tests
 
-- Runbook diagnostic persistance/synchro: `docs/runbook_persistence_sync.md`
-  - États `syncState`, flags SharedPreferences (`pending_cloud_push_*`, `pending_identity_*`, `last_push_error_*`)
-  - Erreurs transport `push_failed_<code>` et arbitrage fraîcheur
-  - Procédures push/import/restore et invariants (ID-first, snapshot-first)
-
-## 📚 Documentation
-
-### Documentation Technique
-- [Architecture Globale](docs/ARCHITECTURE_GLOBALE.md) - Vue d'ensemble du système
-- [Guide Persistance Client](docs/CLIENT_PERSISTENCE_GUIDE.md) - Sauvegarde et synchronisation
-- [API Backend](docs/backend/firebase_functions_api.md) - Endpoints et contrats
-- [Audit Pré-Production](docs/AUDIT_COMPLET_PRE_PROD.md) - État du projet et checklist
-
-### Documentation Utilisateur
-- [Guide Cloud Save](docs/USER_GUIDE_CLOUD_SAVE.md) - Utilisation de la sauvegarde cloud
-
-### Documentation Développeur
-- [Plan Nettoyage Legacy](docs/PLAN_NETTOYAGE_LEGACY.md) - Refactoring en cours
-- [Runbook Diagnostic](docs/runbook_persistence_sync.md) - Diagnostic et résolution de problèmes
-
-## Documentation produit (PHASE 5)
-
-- Cycle de vie d’un monde: `docs/PHASE5_CYCLE_VIE_MONDE.md`
-- Garanties de persistance: `docs/PHASE5_GARANTIES_PERSISTENCE.md`
-- Récupérabilité cross‑device: `docs/PHASE5_RECUPERABILITE_CROSS_DEVICE.md`
-
-Notes d’alignement:
-- ID-first strict: chaque monde est identifié par un `partieId` (UUID v4 recommandé).
-- Snapshot-first: la source de vérité locale est `gameSnapshot`.
-- Ownership et sécurité: serveur‑side via Firebase Auth uid (backend Functions).
-
-## 🧪 Tests
-
-### Tests Flutter
 ```bash
 # Tous les tests
 flutter test
@@ -201,66 +147,294 @@ flutter test
 # Tests avec rapport détaillé
 flutter test -r expanded
 
-# Tests unitaires spécifiques
+# Tests unitaires uniquement
 flutter test test/unit/
-```
 
-### Tests Backend
-```bash
+# Tests d'intégration
+flutter test test/integration_test/
+
+# Tests backend
 cd functions
 npm test
-
-# Tests E2E spécifiques
-npm test -- worlds_limit.test.ts
 ```
 
-## 🏛️ Structure du Projet
+### Déploiement
+
+#### Backend Firebase Functions
 
 ```bash
-paperclip2/
-├── lib/                      # Code Flutter
-│   ├── constants/           # Constantes et configuration
-│   ├── controllers/         # Contrôleurs de session
-│   ├── managers/            # Managers métier (Market, Production, etc.)
-│   ├── models/              # Modèles de données
-│   ├── screens/             # Écrans UI
-│   ├── services/            # Services (persistance, auth, cloud)
-│   ├── widgets/             # Widgets réutilisables
-│   └── main.dart            # Point d'entrée
-├── functions/               # Backend Firebase Functions
-│   ├── src/                # Code TypeScript
-│   │   └── index.ts        # Endpoints API
-│   └── test/               # Tests backend
-├── docs/                    # Documentation
-├── test/                    # Tests Flutter
-└── .env                     # Configuration (non versionné)
+cd functions
+
+# Build
+npm run build
+
+# Déployer toutes les fonctions
+firebase deploy --only functions
+
+# Déployer une fonction spécifique
+firebase deploy --only functions:api
+
+# Déployer avec les règles Firestore
+firebase deploy --only functions,firestore:rules
 ```
 
-## 🔑 Concepts Clés
+#### Application Mobile
+
+**Android (Google Play Store) :**
+1. Générer le bundle : `flutter build appbundle --release`
+2. Uploader sur [Google Play Console](https://play.google.com/console)
+
+**iOS (App Store) :**
+1. Ouvrir Xcode : `open ios/Runner.xcworkspace`
+2. Product → Archive
+3. Distribuer via App Store Connect
+
+### Maintenance
+
+```bash
+# Nettoyer le build
+flutter clean
+flutter pub get
+
+# Nettoyer complètement (avec script)
+.\clean-build.ps1
+
+# Mettre à jour les dépendances
+flutter pub upgrade
+
+# Analyser le code
+flutter analyze
+
+# Formater le code
+dart format lib/
+```
+
+---
+
+## 📁 Structure du Projet
+
+```
+PaperClip2/
+├── lib/                          # Code source Flutter
+│   ├── constants/               # Constantes et configuration
+│   ├── controllers/             # Contrôleurs de session
+│   ├── domain/                  # Logique métier (DDD)
+│   ├── gameplay/                # Mécanique de jeu
+│   ├── models/                  # Modèles de données
+│   ├── screens/                 # Écrans UI
+│   ├── services/                # Services (persistance, auth, cloud)
+│   │   ├── persistence/        # Gestion sauvegarde/sync
+│   │   ├── auth/               # Authentification Firebase
+│   │   └── cloud/              # Synchronisation cloud
+│   ├── widgets/                 # Widgets réutilisables
+│   └── main.dart                # Point d'entrée
+│
+├── functions/                    # Backend Firebase Functions
+│   ├── src/                     # Code TypeScript
+│   │   ├── index.ts            # Endpoints API
+│   │   └── routes/             # Routes Express
+│   └── test/                    # Tests backend
+│
+├── test/                         # Tests Flutter
+│   ├── unit/                    # Tests unitaires
+│   ├── integration_test/        # Tests d'intégration
+│   └── e2e/                     # Tests end-to-end
+│
+├── docs/                         # Documentation
+│   ├── 01-architecture/         # Architecture technique
+│   ├── 02-guides-developpeur/   # Guides développeur
+│   └── 03-guides-utilisateur/   # Guides utilisateur
+│
+├── android/                      # Configuration Android
+├── ios/                          # Configuration iOS
+├── web/                          # Configuration Web
+├── windows/                      # Configuration Windows
+│
+├── assets/                       # Ressources (images, audio)
+├── scripts/                      # Scripts utilitaires
+└── archive/                      # Fichiers obsolètes
+```
+
+---
+
+## 🏗️ Architecture Technique
+
+### Stack Frontend
+- **Framework** : Flutter 3.x (Dart)
+- **State Management** : Provider
+- **Stockage Local** : SharedPreferences
+- **Navigation** : Flutter Navigator 2.0
+- **Auth** : Firebase Auth
+
+### Stack Backend
+- **Runtime** : Firebase Functions v2 (Node.js 20)
+- **Framework** : Express 4.x
+- **Database** : Cloud Firestore
+- **Auth** : Firebase Auth (JWT tokens)
 
 ### Persistance
-- **ID-first** : Chaque monde est identifié par un `worldId` (UUID v4)
+- **ID-first** : Chaque monde identifié par UUID v4 (`partieId`)
 - **Snapshot-first** : Source de vérité locale = `gameSnapshot`
-- **Cloud-first** : Synchronisation automatique au login
-- **Limite** : Maximum 10 mondes par utilisateur
+- **Cloud-first** : Sync automatique au login
+- **Multi-device** : Synchronisation cross-device via Firestore
 
-### Synchronisation
-- **États** : `local_only`, `cloud_pending`, `cloud_synced`, `cloud_error`, `cloud-only`
-- **Push automatique** : À la création de monde (si connecté)
-- **Sync automatique** : Au login Firebase Auth
-- **Retry** : Automatique sur changement d'auth et au resume
+---
 
-### Sécurité
-- **Ownership** : Strict via Firebase Auth `uid`
-- **Validation** : UUID v4 obligatoire pour `worldId`
-- **Rate limiting** : À implémenter (recommandé : 100 req/min)
+## 📚 Documentation
+
+### Pour Développeurs
+- [Architecture Globale](docs/01-architecture/architecture-globale.md)
+- [Guide Persistance](docs/02-guides-developpeur/guide-persistance.md)
+- [API Backend](docs/02-guides-developpeur/api-backend.md)
+- [Guide Déploiement](docs/02-guides-developpeur/guide-deployment.md)
+
+### Pour Utilisateurs
+- [Guide Sauvegarde Cloud](docs/03-guides-utilisateur/guide-sauvegarde-cloud.md)
+- [FAQ](docs/03-guides-utilisateur/faq.md)
+
+### Index Complet
+- [Documentation Index](docs/INDEX.md)
+
+---
+
+## 🔧 Configuration
+
+### Variables d'Environnement
+
+#### Client Flutter (`.env`)
+```env
+APP_ENV=development                    # development | production
+FUNCTIONS_API_BASE=https://...        # URL Firebase Functions
+FEATURE_CLOUD_PER_PARTIE=true         # Activer sync cloud
+```
+
+#### Backend Functions (`functions/.env`)
+```env
+FIREBASE_PROJECT_ID=your-project-id
+FIRESTORE_EMULATOR_HOST=localhost:8080  # Dev uniquement
+```
+
+---
+
+## 🧪 Tests et Qualité
+
+### Couverture de Tests
+```bash
+# Générer rapport de couverture
+flutter test --coverage
+genhtml coverage/lcov.info -o coverage/html
+```
+
+### Analyse Statique
+```bash
+# Analyser le code
+flutter analyze
+
+# Vérifier le formatage
+dart format --set-exit-if-changed lib/
+```
+
+---
+
+## 🐛 Debugging
+
+### Logs
+```bash
+# Logs Flutter en temps réel
+flutter logs
+
+# Logs Firebase Functions
+firebase functions:log
+
+# Logs Firestore (émulateur)
+firebase emulators:start --inspect-functions
+```
+
+### DevTools
+```bash
+# Ouvrir Flutter DevTools
+flutter pub global activate devtools
+flutter pub global run devtools
+```
+
+---
+
+## 🚢 Déploiement sur Mobile
+
+### Tester sur Appareil Physique
+
+#### Android
+```bash
+# Activer le mode développeur sur l'appareil
+# Connecter via USB
+# Autoriser le débogage USB
+
+flutter devices              # Vérifier que l'appareil est détecté
+flutter run                  # Lancer l'app
+```
+
+#### iOS
+```bash
+# Connecter l'iPhone via USB
+# Faire confiance à l'ordinateur sur l'iPhone
+
+flutter devices              # Vérifier que l'appareil est détecté
+flutter run                  # Lancer l'app
+```
+
+### Installer l'APK Manuellement
+
+```bash
+# 1. Build l'APK
+flutter build apk --release
+
+# 2. Installer via ADB
+adb install build/app/outputs/flutter-apk/app-release.apk
+
+# 3. Ou transférer l'APK sur l'appareil et installer
+```
+
+---
 
 ## 🤝 Contribution
 
-Voir [CONTRIBUTING.md](CONTRIBUTING.md) (à créer)
+### Workflow Git
+```bash
+# Créer une branche
+git checkout -b feature/ma-fonctionnalite
+
+# Commit
+git add .
+git commit -m "feat: description de la fonctionnalité"
+
+# Push
+git push origin feature/ma-fonctionnalite
+```
+
+### Conventions de Commit
+- `feat:` Nouvelle fonctionnalité
+- `fix:` Correction de bug
+- `docs:` Documentation
+- `refactor:` Refactoring
+- `test:` Ajout/modification de tests
+- `chore:` Tâches de maintenance
+
+---
 
 ## 📄 Licence
 
-Voir [LICENSE]
+Propriétaire - Tous droits réservés
 
 ---
+
+## 📞 Support
+
+Pour toute question ou problème :
+- Consulter la [FAQ](docs/03-guides-utilisateur/faq.md)
+- Ouvrir une issue sur GitHub
+- Consulter la [documentation complète](docs/INDEX.md)
+
+---
+
+**Version** : 1.0.3  
+**Dernière mise à jour** : Mars 2026

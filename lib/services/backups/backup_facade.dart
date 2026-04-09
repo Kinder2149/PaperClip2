@@ -22,7 +22,6 @@ class BackupFacade {
       version: meta.version,
       paperclips: 0,
       money: 0,
-      gameMode: meta.gameMode,
       totalPaperclipsSold: 0,
       autoClipperCount: 0,
       isBackup: meta.name.contains(GameConstants.BACKUP_DELIMITER),
@@ -33,8 +32,8 @@ class BackupFacade {
     return backups;
   }
 
-  /// Regroupe les backups par partieId extrait du nom (avant le délimiteur).
-  Map<String, List<SaveGameInfo>> groupByPartieId(List<SaveGameInfo> backups) {
+  /// Regroupe les backups par enterpriseId extrait du nom (avant le délimiteur).
+  Map<String, List<SaveGameInfo>> groupByEnterpriseId(List<SaveGameInfo> backups) {
     final map = <String, List<SaveGameInfo>>{};
     for (final b in backups) {
       final base = b.name.split(GameConstants.BACKUP_DELIMITER).first;
@@ -55,9 +54,9 @@ class BackupFacade {
     return mgr.deleteSave(id);
   }
 
-  /// Applique la politique de rétention sur un partieId.
-  Future<int> applyRetention({required String partieId}) async {
+  /// Applique la politique de rétention sur un enterpriseId.
+  Future<int> applyRetention({required String enterpriseId}) async {
     final mgr = await LocalSaveGameManager.getInstance();
-    return mgr.applyBackupRetention(partieId: partieId);
+    return mgr.applyBackupRetention(enterpriseId: enterpriseId);
   }
 }

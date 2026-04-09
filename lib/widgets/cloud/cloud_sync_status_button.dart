@@ -181,7 +181,7 @@ class _CloudSyncStatusButtonState extends State<CloudSyncStatusButton> {
     );
   }
 
-  Future<void> _pushNow(BuildContext context, String partieId) async {
+  Future<void> _pushNow(BuildContext context, String enterpriseId) async {
     // Normalisation: pas de push cloud depuis l'UI
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

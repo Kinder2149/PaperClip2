@@ -39,7 +39,7 @@ Vérifier que les mondes pending sont automatiquement réconciliés au login.
 
 ### Logs à Vérifier
 ```
-[RETRY] Succès pour <partieId>
+[RETRY] Succès pour <enterpriseId>
 [RETRY] Terminé: 1 succès, 0 échecs, 0 expirés, 0 limites atteintes
 ```
 
@@ -57,7 +57,7 @@ Vérifier que les mondes pending sont abandonnés après 3 tentatives échouées
 ### Étapes
 1. **Créer monde pending**
    - Créer monde hors-ligne
-   - Vérifier flag `pending_identity_<partieId>` dans SharedPreferences
+   - Vérifier flag `pending_identity_<enterpriseId>` dans SharedPreferences
 
 2. **Tenter sync avec backend down**
    - Se connecter (backend retourne 500)
@@ -66,7 +66,7 @@ Vérifier que les mondes pending sont abandonnés après 3 tentatives échouées
 
 3. **Vérifier abandon**
    - 4ème tentative: vérifier notification "⚠️ X monde(s) non synchronisé(s) (limite retry atteinte)"
-   - Vérifier flag `pending_identity_<partieId>` supprimé
+   - Vérifier flag `pending_identity_<enterpriseId>` supprimé
 
 ### Résultat Attendu
 ✅ Max 3 tentatives effectuées  

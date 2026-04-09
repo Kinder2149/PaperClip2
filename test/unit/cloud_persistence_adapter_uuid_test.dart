@@ -179,7 +179,7 @@ void main() {
     });
 
     group('Message d\'erreur', () {
-      test('contient le partieId invalide dans le message', () {
+      test('contient le enterpriseId invalide dans le message', () {
         const invalidUuid = 'invalid-uuid-123';
         
         try {
@@ -201,7 +201,7 @@ void main() {
         // Devrait lever ArgumentError AVANT de tenter requête HTTP
         expect(
           () => adapter.pushById(
-            partieId: invalidUuid,
+            enterpriseId: invalidUuid,
             snapshot: {'test': 'data'},
             metadata: {},
           ),
@@ -213,7 +213,7 @@ void main() {
         const invalidUuid = 'not-a-uuid';
         
         expect(
-          () => adapter.pullById(partieId: invalidUuid),
+          () => adapter.pullById(enterpriseId: invalidUuid),
           throwsA(isA<ArgumentError>()),
         );
       });
@@ -222,7 +222,7 @@ void main() {
         const invalidUuid = 'not-a-uuid';
         
         expect(
-          () => adapter.statusById(partieId: invalidUuid),
+          () => adapter.statusById(enterpriseId: invalidUuid),
           throwsA(isA<ArgumentError>()),
         );
       });
@@ -231,7 +231,7 @@ void main() {
         const invalidUuid = 'not-a-uuid';
         
         expect(
-          () => adapter.deleteById(partieId: invalidUuid),
+          () => adapter.deleteById(enterpriseId: invalidUuid),
           throwsA(isA<ArgumentError>()),
         );
       });

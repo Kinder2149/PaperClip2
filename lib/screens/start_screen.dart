@@ -8,7 +8,6 @@ import '../utils/update_manager.dart';
 import '../services/notification_manager.dart'; // Ajout de l'import pour NotificationManager
 import '../services/navigation_service.dart';
 import '../services/app_bootstrap_controller.dart';
-import 'worlds_screen.dart';
 import 'introduction_screen.dart';
 import 'package:paperclip2/screens/main_screen.dart';
 import '../services/google/google_bootstrap.dart';
@@ -20,7 +19,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../widgets/google/google_account_button.dart';
 import '../widgets/google/account_info_card.dart';
 import '../widgets/sync_status_chip.dart';
-import 'google_profile_screen.dart';
+import 'profile_screen.dart';
 // Cloud global GPG snapshots retiré (cloud par partie uniquement)
 import 'package:paperclip2/services/runtime/runtime_actions.dart';
 import 'package:paperclip2/services/auth/firebase_auth_service.dart';
@@ -149,13 +148,13 @@ class _StartScreenState extends State<StartScreen> {
                   children: [
                     ListTile(
                       leading: const Icon(Icons.person_outline),
-                      title: const Text('Voir mon profil Google Play'),
+                      title: const Text('Voir mon profil'),
                       onTap: () async {
                         Navigator.pop(context);
                         if (!mounted) return;
                         await Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (_) => const GoogleProfileScreen()),
+                          MaterialPageRoute(builder: (_) => const ProfileScreen()),
                         );
                       },
                     ),
@@ -278,14 +277,12 @@ class _StartScreenState extends State<StartScreen> {
     }
   }
 
-  Future<(String, GameMode)?> _showNewGameDialog({
+  Future<String?> _showNewGameDialog({
     required BuildContext context,
     required String initialName,
-    required GameMode initialMode,
   }) async {
     final TextEditingController nameController = TextEditingController(text: initialName);
-    GameMode selectedMode = initialMode;
-    return showDialog<(String, GameMode)>(
+    return showDialog<String>(
       context: context,
       barrierDismissible: true,
       builder: (ctx) {
@@ -300,32 +297,6 @@ class _StartScreenState extends State<StartScreen> {
                   labelText: 'Nom du monde',
                 ),
               ),
-              const SizedBox(height: 12),
-              StatefulBuilder(
-                builder: (context, setState) {
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      RadioListTile<GameMode>(
-                        title: const Text('Infini'),
-                        value: GameMode.INFINITE,
-                        groupValue: selectedMode,
-                        onChanged: (val) {
-                          if (val != null) setState(() => selectedMode = val);
-                        },
-                      ),
-                      RadioListTile<GameMode>(
-                        title: const Text('Compétitif'),
-                        value: GameMode.COMPETITIVE,
-                        groupValue: selectedMode,
-                        onChanged: (val) {
-                          if (val != null) setState(() => selectedMode = val);
-                        },
-                      ),
-                    ],
-                  );
-                },
-              ),
             ],
           ),
           actions: [
@@ -338,7 +309,7 @@ class _StartScreenState extends State<StartScreen> {
                 final name = nameController.text.trim().isEmpty
                     ? PartieNaming.defaultName()
                     : nameController.text.trim();
-                Navigator.of(ctx).pop((name, selectedMode));
+                Navigator.of(ctx).pop(name);
               },
               child: const Text('Créer'),
             ),
@@ -427,10 +398,24 @@ class _StartScreenState extends State<StartScreen> {
                       : () => Navigator.push(
                             context,
                             MaterialPageRoute(
-                                builder: (context) => const WorldsScreen(openCreateDialog: true)),
+                                builder: (context) => IntroductionScreen(
+                                  onStart: () async {
+                                    // Navigation vers MainScreen après création
+                                    if (!context.mounted) return;
+                                    Navigator.of(context).pushReplacement(
+                                      MaterialPageRoute(builder: (_) => const MainScreen()),
+                                    );
+                                  },
+                                  onCreateEnterprise: (String enterpriseName) async {
+                                    // Créer l'entreprise via RuntimeActions
+                                    final runtimeActions = context.read<RuntimeActions>();
+                                    await runtimeActions.createNewEnterpriseAndStartAutoSave(enterpriseName);
+                                    runtimeActions.startSession();
+                                  },
+                                )),
                           ),
                   icon: Icons.add,
-                  label: 'Créer un monde',
+                  label: 'Créer une entreprise',
                   color: Colors.white,
                   textColor: Colors.deepPurple[700],
                 ),
@@ -438,15 +423,24 @@ class _StartScreenState extends State<StartScreen> {
                 const SizedBox(height: 16),
 
                 _buildMenuButton(
-                  onPressed: _isLoading
+                  onPressed: _isLoading || !_hasLastSave
                       ? null
-                      : () => Navigator.push(
+                      : () async {
+                          // Charger la dernière entreprise
+                          final mgr = await LocalSaveGameManager.getInstance();
+                          final saves = await mgr.listSaves();
+                          if (saves.isEmpty) return;
+                          
+                          final lastSave = saves.first;
+                          if (!context.mounted) return;
+                          
+                          Navigator.push(
                             context,
-                            MaterialPageRoute(
-                                builder: (context) => const WorldsScreen()),
-                          ),
+                            MaterialPageRoute(builder: (context) => const MainScreen()),
+                          );
+                        },
                   icon: Icons.play_arrow,
-                  label: 'Mes mondes',
+                  label: 'Continuer',
                   color: Colors.deepPurple[600],
                   textColor: Colors.white,
                   trailing: _lastSaveInfo != null

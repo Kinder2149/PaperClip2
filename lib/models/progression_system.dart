@@ -334,6 +334,15 @@ class MissionSystem implements JsonLoadable {
     generateDailyMissions();
     generateWeeklyMissions();
   }
+  
+  /// Annule toutes les missions en cours (pour reset progression)
+  void cancelAll() {
+    dailyMissions.clear();
+    weeklyMissions.clear();
+    // Regénérer les missions
+    generateDailyMissions();
+    generateWeeklyMissions();
+  }
 
   /// Renvoie des informations détaillées sur la progression des missions
   Map<String, dynamic> getDetailedMissionProgress() {
@@ -866,6 +875,23 @@ ${details.tips.map((t) => '• $t').join('\n')}
     double baseXP = 2.0;
     double bonusXP = ProgressionBonus.getTotalBonus(level);
     addExperience(baseXP * bonusXP, ExperienceType.PRODUCTION);
+  }
+  
+  /// Reset pour progression (prestige)
+  /// 
+  /// Réinitialise le niveau et l'XP mais conserve les recherches
+  void resetForProgression() {
+    _experience = 0;
+    _level = 1;
+    _currentPath = ProgressionPath.PRODUCTION;
+    _xpMultiplier = 1.0;
+    
+    // Réinitialisation des systèmes
+    comboSystem.setComboCount(0);
+    dailyBonus.setClaimed(false);
+    _featureUnlocker.reset();
+    
+    notifyListeners();
   }
 
   void addAutomaticProduction(int amount) {

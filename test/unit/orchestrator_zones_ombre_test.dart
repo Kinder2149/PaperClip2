@@ -2,6 +2,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:paperclip2/services/persistence/game_persistence_orchestrator.dart';
 import 'package:paperclip2/services/cloud/cloud_persistence_port.dart';
+import 'package:paperclip2/services/cloud/models/cloud_status.dart';
+import 'package:paperclip2/services/cloud/models/cloud_index_entry.dart';
+import 'package:paperclip2/services/cloud/models/cloud_world_detail.dart';
 import 'package:paperclip2/models/game_state.dart';
 import 'package:paperclip2/constants/game_config.dart';
 
@@ -13,7 +16,7 @@ class _MockCloudPortWithConflict implements CloudPersistencePort {
 
   @override
   Future<void> pushById({
-    required String partieId,
+    required String enterpriseId,
     required Map<String, dynamic> snapshot,
     required Map<String, dynamic> metadata,
   }) async {
@@ -25,8 +28,8 @@ class _MockCloudPortWithConflict implements CloudPersistencePort {
     }
     
     // Deuxième appel ou pas de conflit → succès
-    storage[partieId] = {'snapshot': snapshot, 'metadata': metadata};
-    statuses[partieId] = CloudStatus(
+    storage[enterpriseId] = {'snapshot': snapshot, 'metadata': metadata};
+    statuses[enterpriseId] = CloudStatus(
       exists: true,
       lastSavedAt: DateTime.now(),
       name: metadata['name']?.toString(),
@@ -34,29 +37,38 @@ class _MockCloudPortWithConflict implements CloudPersistencePort {
   }
 
   @override
-  Future<Map<String, dynamic>?> pullById({required String partieId}) async {
-    return storage[partieId];
+  Future<CloudWorldDetail?> pullById({required String enterpriseId}) async {
+    final data = storage[enterpriseId];
+    if (data == null) return null;
+    return CloudWorldDetail(
+      enterpriseId: enterpriseId,
+      version: 1,
+      snapshot: data['snapshot'] as Map<String, dynamic>,
+      updatedAt: DateTime.now().toIso8601String(),
+      name: (data['metadata'] as Map<String, dynamic>?)?['name']?.toString(),
+      gameVersion: (data['metadata'] as Map<String, dynamic>?)?['gameVersion']?.toString(),
+    );
   }
 
   @override
-  Future<CloudStatus> statusById({required String partieId}) async {
-    return statuses[partieId] ?? CloudStatus(exists: false);
+  Future<CloudStatus> statusById({required String enterpriseId}) async {
+    return statuses[enterpriseId] ?? CloudStatus(exists: false);
   }
 
   @override
   Future<List<CloudIndexEntry>> listParties() async => [];
 
   @override
-  Future<void> deleteById({required String partieId}) async {
-    storage.remove(partieId);
-    statuses[partieId] = CloudStatus(exists: false);
+  Future<void> deleteById({required String enterpriseId}) async {
+    storage.remove(enterpriseId);
+    statuses[enterpriseId] = CloudStatus(exists: false);
   }
 }
 
 class _MockCloudPortWithTimeout implements CloudPersistencePort {
   @override
   Future<void> pushById({
-    required String partieId,
+    required String enterpriseId,
     required Map<String, dynamic> snapshot,
     required Map<String, dynamic> metadata,
   }) async {
@@ -65,10 +77,10 @@ class _MockCloudPortWithTimeout implements CloudPersistencePort {
   }
 
   @override
-  Future<Map<String, dynamic>?> pullById({required String partieId}) async => null;
+  Future<CloudWorldDetail?> pullById({required String enterpriseId}) async => null;
 
   @override
-  Future<CloudStatus> statusById({required String partieId}) async {
+  Future<CloudStatus> statusById({required String enterpriseId}) async {
     return CloudStatus(exists: false);
   }
 
@@ -76,7 +88,7 @@ class _MockCloudPortWithTimeout implements CloudPersistencePort {
   Future<List<CloudIndexEntry>> listParties() async => [];
 
   @override
-  Future<void> deleteById({required String partieId}) async {}
+  Future<void> deleteById({required String enterpriseId}) async {}
 }
 
 void main() {
@@ -96,7 +108,7 @@ void main() {
         // Préparer données cloud existantes
         port.storage['test-partie'] = {
           'snapshot': {
-            'metadata': {'worldId': 'test-partie', 'version': 2},
+            'metadata': {'enterpriseId': 'test-partie', 'version': 2},
             'core': {'paperclips': 50},
             'market': <String, dynamic>{},
             'production': <String, dynamic>{},
@@ -144,7 +156,7 @@ void main() {
         // Préparer données cloud
         port.storage['cloud-only'] = {
           'snapshot': {
-            'metadata': {'worldId': 'cloud-only', 'version': 2},
+            'metadata': {'enterpriseId': 'cloud-only', 'version': 2},
             'core': {'paperclips': 100},
             'market': <String, dynamic>{},
             'production': <String, dynamic>{},
@@ -162,31 +174,31 @@ void main() {
         
         // Matérialiser depuis cloud
         final materialized = await GamePersistenceOrchestrator.instance.materializeFromCloud(
-          partieId: 'cloud-only',
+          enterpriseId: 'cloud-only',
         );
         
         expect(materialized, isTrue, reason: 'Matérialisation devrait réussir');
       });
     });
 
-    group('Zone #4: Backup cooldown par partieId', () {
-      test('backup cooldown est indépendant par partieId', () async {
+    group('Zone #4: Backup cooldown par enterpriseId', () {
+      test('backup cooldown est indépendant par enterpriseId', () async {
         GamePersistenceOrchestrator.instance.setPlayerIdProvider(() async => 'player-1');
         
-        // Note: Ce test valide la structure du cooldown par partieId
+        // Note: Ce test valide la structure du cooldown par enterpriseId
         // Le cooldown est stocké dans _lastBackupAtByPartie (Map<String, DateTime>)
-        // Chaque partieId a son propre cooldown indépendant
+        // Chaque enterpriseId a son propre cooldown indépendant
         // Dans un test réel avec GameState, on utiliserait requestBackup()
         
-        expect(true, isTrue, reason: 'Cooldown par partieId structure validée');
+        expect(true, isTrue, reason: 'Cooldown par enterpriseId structure validée');
       });
 
-      test('backup cooldown bloque backup successif pour même partieId', () async {
+      test('backup cooldown bloque backup successif pour même enterpriseId', () async {
         GamePersistenceOrchestrator.instance.setPlayerIdProvider(() async => 'player-1');
         
         // Note: Le cooldown est de 10 minutes (GameConstants.BACKUP_COOLDOWN)
-        // Si un backup a été créé il y a moins de 10 minutes pour un partieId,
-        // un nouveau backup pour le même partieId sera bloqué (sauf bypassCooldown=true)
+        // Si un backup a été créé il y a moins de 10 minutes pour un enterpriseId,
+        // un nouveau backup pour le même enterpriseId sera bloqué (sauf bypassCooldown=true)
         
         expect(true, isTrue, reason: 'Cooldown bloquant structure validée');
       });

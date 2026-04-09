@@ -2,23 +2,27 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/game_state.dart';
-import '../../services/background_music.dart';
-import '../../constants/game_config.dart'; // Importé depuis constants au lieu de models
-import 'appbar_title.dart';
-import 'package:paperclip2/services/google/google_bootstrap.dart';
-import '../indicators/competitive_mode_indicator.dart';
-import 'appbar_level_indicator.dart';
+import 'level_badge.dart';
 import 'appbar_actions.dart';
+import 'resource_chip.dart';
 
 class _GameAppBarView {
   final bool isInCrisisMode;
   final dynamic levelSystem;
-  final dynamic gameMode;
+  final String enterpriseName;
+  final double money;
+  final double paperclips;
+  final int quantum;
+  final int innovationPoints;
 
   const _GameAppBarView({
     required this.isInCrisisMode,
     required this.levelSystem,
-    required this.gameMode,
+    required this.enterpriseName,
+    required this.money,
+    required this.paperclips,
+    required this.quantum,
+    required this.innovationPoints,
   });
 
   @override
@@ -26,11 +30,15 @@ class _GameAppBarView {
     return other is _GameAppBarView &&
         other.isInCrisisMode == isInCrisisMode &&
         other.levelSystem == levelSystem &&
-        other.gameMode == gameMode;
+        other.enterpriseName == enterpriseName &&
+        other.money == money &&
+        other.paperclips == paperclips &&
+        other.quantum == quantum &&
+        other.innovationPoints == innovationPoints;
   }
 
   @override
-  int get hashCode => Object.hash(isInCrisisMode, levelSystem, gameMode);
+  int get hashCode => Object.hash(isInCrisisMode, levelSystem, enterpriseName, money, paperclips, quantum, innovationPoints);
 }
 
 class GameAppBar extends StatelessWidget implements PreferredSizeWidget {
@@ -50,7 +58,7 @@ class GameAppBar extends StatelessWidget implements PreferredSizeWidget {
   }) : super(key: key);
   
   @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+  Size get preferredSize => const Size.fromHeight(100); // Augmenté pour 2 lignes
 
   @override
   Widget build(BuildContext context) {
@@ -58,7 +66,11 @@ class GameAppBar extends StatelessWidget implements PreferredSizeWidget {
       selector: (context, gameState) => _GameAppBarView(
         isInCrisisMode: gameState.isInCrisisMode,
         levelSystem: gameState.level,
-        gameMode: gameState.gameMode,
+        enterpriseName: gameState.enterpriseName,
+        money: gameState.playerManager.money,
+        paperclips: gameState.playerManager.paperclips,
+        quantum: gameState.rareResources.quantum,
+        innovationPoints: gameState.rareResources.pointsInnovation,
       ),
       builder: (context, view, _) {
         final theme = Theme.of(context);
@@ -67,48 +79,72 @@ class GameAppBar extends StatelessWidget implements PreferredSizeWidget {
                 ? theme.colorScheme.surface
                 : const Color(0xFF673AB7)); // Colors.deepPurple[700]
 
-        // Récupération du surnom utilisateur via l'identité Google
-        final google = context.read<GoogleServicesBundle>();
-        final displayName = (google.identity.displayName ?? '').trim();
-        final String nickname = displayName.isNotEmpty ? displayName : 'Utilisateur';
-
-        final bool isCompetitive = view.gameMode == GameMode.COMPETITIVE;
-
         return AppBar(
+          toolbarHeight: 100,
           title: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                nickname,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
+              // LIGNE 1: Niveau + Nom entreprise + Argent
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  LevelBadge(levelSystem: view.levelSystem),
+                  const SizedBox(width: 12),
+                  Container(
+                    constraints: const BoxConstraints(maxWidth: 150),
+                    child: Text(
+                      view.enterpriseName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        letterSpacing: 0.3,
+                      ),
                     ),
-              ),
-              if (isCompetitive) ...[
-                const SizedBox(height: 2),
-                // Chrono compact sous le pseudo
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 0),
-                    child: CompetitiveModeIndicator(),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 12),
+                  ResourceChip(
+                    emoji: '💵',
+                    value: view.money,
+                    color: Colors.green.shade600,
+                    formatLarge: true,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // LIGNE 2: Trombones + Quantum + Points Innovation
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  ResourceChip(
+                    emoji: '📎',
+                    value: view.paperclips,
+                    color: Colors.blue.shade500,
+                    formatLarge: true,
+                  ),
+                  const SizedBox(width: 8),
+                  ResourceChip(
+                    emoji: '⚡',
+                    value: view.quantum.toDouble(),
+                    color: Colors.cyan.shade400,
+                    formatLarge: false,
+                  ),
+                  const SizedBox(width: 8),
+                  ResourceChip(
+                    emoji: '💡',
+                    value: view.innovationPoints.toDouble(),
+                    color: Colors.purple.shade400,
+                    formatLarge: false,
+                  ),
+                ],
+              ),
             ],
           ),
           centerTitle: true,
           backgroundColor: appBarColor,
-          leading: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: AppBarLevelIndicator(levelSystem: view.levelSystem),
-          ),
-          leadingWidth: 60,
           actions: AppBarActions(
-            gameMode: view.gameMode,
             additionalActions: additionalActions,
             onSettingsPressed: onSettingsPressed,
           ).buildActions(context),

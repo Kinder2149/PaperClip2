@@ -1,7 +1,6 @@
 import 'package:paperclip2/constants/game_config.dart';
 import 'package:paperclip2/models/save_game.dart';
 import 'package:paperclip2/services/save_system/local_save_game_manager.dart';
-import 'package:paperclip2/services/persistence/world_model.dart';
 
 import 'game_persistence_service.dart';
 import 'game_snapshot.dart';
@@ -15,7 +14,8 @@ class LocalGamePersistenceService implements GamePersistenceService {
   /// Clé utilisée dans le gameData pour stocker le snapshot sérialisé.
   static const String snapshotKey = 'gameSnapshot';
 
-  static const int _latestSupportedSchemaVersion = 1;
+  // CHANTIER-01: Version 3 pour entreprise unique
+  static const int _latestSupportedSchemaVersion = 3;
 
   const LocalGamePersistenceService();
 
@@ -26,7 +26,7 @@ class LocalGamePersistenceService implements GamePersistenceService {
 
     SaveGame? existing;
     try {
-      // ID-first: slotId correspond à l'identifiant technique (partieId)
+      // ID-first: slotId correspond à l'identifiant technique (enterpriseId)
       existing = await mgr.loadSave(slotId);
     } catch (_) {
       // Si la sauvegarde n'existe pas encore, on en créera une nouvelle.
@@ -43,11 +43,10 @@ class LocalGamePersistenceService implements GamePersistenceService {
     gameData[snapshotKey] = normalizedSnapshot.toJson();
 
     final saveGame = SaveGame(
-      // ID-first strict: l'identifiant persistant doit être le worldId (slotId)
+      // ID-first strict: l'identifiant persistant doit être l'enterpriseId (slotId)
       id: existing?.id ?? slotId,
       name: existing?.name ?? slotId,
       gameData: gameData,
-      gameMode: existing?.gameMode ?? GameMode.INFINITE,
       lastSaveTime: now,
       version: existing?.version,
     );
@@ -55,15 +54,11 @@ class LocalGamePersistenceService implements GamePersistenceService {
     await mgr.saveGame(saveGame);
   }
 
-  /// Variante ID-first: sauvegarder un snapshot pour une partie identifiée par `partieId`.
-  Future<void> saveSnapshotById(GameSnapshot snapshot, {required String partieId}) async {
-    await saveSnapshot(snapshot, slotId: partieId);
+  /// Variante ID-first: sauvegarder un snapshot pour une entreprise identifiée par `enterpriseId`.
+  Future<void> saveSnapshotById(GameSnapshot snapshot, {required String enterpriseId}) async {
+    await saveSnapshot(snapshot, slotId: enterpriseId);
   }
 
-  /// Variante World-first: sauvegarder un snapshot pour un monde identifié par `worldId`.
-  Future<void> saveSnapshotByWorldId(GameSnapshot snapshot, {required String worldId}) async {
-    await saveSnapshot(snapshot, slotId: worldId);
-  }
 
   @override
   Future<GameSnapshot?> loadSnapshot({required String slotId}) async {
@@ -89,7 +84,7 @@ class LocalGamePersistenceService implements GamePersistenceService {
     final raw = data[snapshotKey];
     if (raw is Map) {
       final snap = GameSnapshot.fromJson(Map<String, dynamic>.from(raw));
-      // À la lecture locale, garantir également la présence du worldId si absent
+      // À la lecture locale, garantir également la présence de l'enterpriseId si absent
       // sans altérer le stockage tant qu'aucune sauvegarde n'est faite.
       try {
         return _ensureWorldMetadata(snap, slotId: slotId, now: DateTime.now());
@@ -110,15 +105,11 @@ class LocalGamePersistenceService implements GamePersistenceService {
     return null;
   }
 
-  /// Variante ID-first: charger un snapshot pour une partie identifiée par `partieId`.
-  Future<GameSnapshot?> loadSnapshotById({required String partieId}) async {
-    return loadSnapshot(slotId: partieId);
+  /// Variante ID-first: charger un snapshot pour une entreprise identifiée par `enterpriseId`.
+  Future<GameSnapshot?> loadSnapshotById({required String enterpriseId}) async {
+    return loadSnapshot(slotId: enterpriseId);
   }
 
-  /// Variante World-first: charger un snapshot pour un monde identifié par `worldId`.
-  Future<GameSnapshot?> loadSnapshotByWorldId({required String worldId}) async {
-    return loadSnapshot(slotId: worldId);
-  }
 
   @override
   Future<GameSnapshot> migrateSnapshot(GameSnapshot snapshot) async {
@@ -177,48 +168,11 @@ class LocalGamePersistenceService implements GamePersistenceService {
     );
   }
 
-  // --- API Monde locale (utilitaires) ---
 
-  /// Enregistre un Monde complet localement en imposant l'intégrité des métadonnées.
-  Future<void> saveWorld(World world) async {
-    final snap = GameSnapshot.fromJson(world.snapshot);
-    await saveSnapshot(snap, slotId: world.worldId);
-  }
-
-  /// Charge un Monde local par `worldId`. Retourne null si absent.
-  Future<World?> loadWorld(String worldId) async {
-    final mgr = await LocalSaveGameManager.getInstance();
-    SaveGame? save;
-    try {
-      save = await mgr.loadSave(worldId);
-    } catch (_) {
-      return null;
-    }
-    final snap = await loadSnapshot(slotId: worldId);
-    if (snap == null) return null;
-
-    final md = Map<String, dynamic>.from(snap.metadata);
-    final name = (save?.name ?? worldId).toString();
-    final createdAtIso = (md['createdAt'] as String?) ?? save?.lastSaveTime.toIso8601String() ?? DateTime.now().toIso8601String();
-    final updatedAtIso = (md['updatedAt'] as String?) ?? save?.lastSaveTime.toIso8601String() ?? createdAtIso;
-    final gameVersion = (md['gameVersion'] as String?) ?? GameConstants.VERSION;
-
-    return World(
-      worldId: worldId,
-      name: name,
-      createdAt: DateTime.parse(createdAtIso),
-      updatedAt: DateTime.parse(updatedAtIso),
-      gameVersion: gameVersion,
-      snapshot: snap.toJson(),
-    );
-  }
-
-  /// Normalise les métadonnées Monde minimales dans le snapshot (worldId, createdAt, updatedAt, gameVersion).
+  /// Normalise les métadonnées minimales dans le snapshot (createdAt, updatedAt, gameVersion).
   GameSnapshot _ensureWorldMetadata(GameSnapshot snapshot, {required String slotId, required DateTime now}) {
     final md = Map<String, dynamic>.from(snapshot.metadata);
 
-    // Aucun snapshot sans worldId: imposer la valeur cohérente avec slotId
-    md['worldId'] ??= slotId;
     // createdAt immuable: si absent, créer maintenant
     md['createdAt'] ??= now.toIso8601String();
     // updatedAt = now (monotone non décroissant, garanti par flux d'écriture atomique)

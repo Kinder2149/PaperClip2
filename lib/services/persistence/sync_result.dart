@@ -4,14 +4,14 @@
 /// puisse gérer les échecs et afficher un feedback utilisateur approprié.
 class SyncResult {
   final SyncStatus status;
-  final List<String> failedWorldIds;
+  final List<String> failedEnterpriseIds;
   final String? errorDetails;
   final int syncedCount;
   final int totalCount;
   
   const SyncResult({
     required this.status,
-    this.failedWorldIds = const [],
+    this.failedEnterpriseIds = const [],
     this.errorDetails,
     this.syncedCount = 0,
     this.totalCount = 0,
@@ -24,14 +24,14 @@ class SyncResult {
   static const SyncResult networkError = SyncResult(status: SyncStatus.networkError);
   
   static SyncResult partialSuccess({
-    required List<String> failedWorldIds,
+    required List<String> failedEnterpriseIds,
     required int syncedCount,
     required int totalCount,
     String? errorDetails,
   }) {
     return SyncResult(
       status: SyncStatus.partialSuccess,
-      failedWorldIds: failedWorldIds,
+      failedEnterpriseIds: failedEnterpriseIds,
       syncedCount: syncedCount,
       totalCount: totalCount,
       errorDetails: errorDetails,
@@ -64,7 +64,7 @@ class SyncResult {
     final baseMessage = status.userMessage;
     
     // Ajouter détails si succès partiel
-    if (status == SyncStatus.partialSuccess && failedWorldIds.isNotEmpty) {
+    if (status == SyncStatus.partialSuccess && failedEnterpriseIds.isNotEmpty) {
       return '$baseMessage ($syncedCount/$totalCount réussis)';
     }
     

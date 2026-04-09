@@ -7,7 +7,8 @@ export 'package:paperclip2/constants/game_config.dart'
     show GameConstants, GameMode, UnlockableFeature, ProgressionPath;
 
 /// Version contractuelle du format de GameSnapshot (obligatoire dans metadata.version)
-const int GAME_SNAPSHOT_CONTRACT_VERSION = 1;
+/// CHANTIER-01: Version 3 pour entreprise unique avec validation backend stricte
+const int GAME_SNAPSHOT_CONTRACT_VERSION = 3;
 
 /// Fonctions utilitaires pour les noms de partie
 class PartieNaming {

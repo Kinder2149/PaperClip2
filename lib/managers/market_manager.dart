@@ -6,6 +6,7 @@ import '../constants/game_config.dart'; // Mis à jour pour utiliser le dossier 
 import '../models/json_loadable.dart';
 import '../models/statistics_manager.dart';
 import 'player_manager.dart'; // Import de PlayerManager
+import 'research_manager.dart'; // Import de ResearchManager
 import '../services/upgrades/upgrade_effects_calculator.dart';
 import '../services/units/value_objects.dart';
 import 'package:paperclip2/services/runtime/clock.dart';
@@ -121,12 +122,16 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
   final void Function(bool)? _pauseRequest;
   // Références aux autres managers
   PlayerManager? _playerManager;
+  ResearchManager? _researchManager;
   late StatisticsManager _statisticsManager; // Utilisation de 'late' pour déclarer une variable non-nullable qui sera initialisée plus tard
+  dynamic _levelSystem; // LevelSystem pour l'attribution d'XP
   
   // Méthode pour initialiser les références aux autres managers
-  void setManagers(PlayerManager playerManager, StatisticsManager statisticsManager) {
+  void setManagers(PlayerManager playerManager, StatisticsManager statisticsManager, ResearchManager researchManager, {dynamic levelSystem}) {
     _playerManager = playerManager;
     _statisticsManager = statisticsManager;
+    _researchManager = researchManager;
+    _levelSystem = levelSystem;
   }
 
   final MarketDynamics dynamics = MarketDynamics();
@@ -356,8 +361,15 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
       }
 
       if (potentialSales > 0) {
-        final qualityBonus = UpgradeEffectsCalculator.qualityMultiplier(level: qualityLevel);
-        final salePrice = sellPrice * qualityBonus;
+        // CHANTIER-03 : Utiliser bonus recherche pour qualité
+        final qualityBonus = 1.0 + (_researchManager?.getResearchBonus('salePrice') ?? 0.0);
+        
+        // CHANTIER-03 : Appliquer plafond de prix avec bonus recherche (M6 Marché de Niche)
+        final maxPriceBonus = _researchManager?.getResearchBonus('maxSalePrice') ?? 0.0;
+        final effectiveMaxPrice = GameConstants.MAX_PRICE_THRESHOLD * (1.0 + maxPriceBonus);
+        
+        final baseSalePrice = sellPrice * qualityBonus;
+        final salePrice = min(baseSalePrice, effectiveMaxPrice);
         final revenue = potentialSales * salePrice;
 
         // Logs détaillés de la transaction
@@ -375,6 +387,11 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
           moneyEarned: revenue,
           // Retrait des paramètres sales et price non supportés
         );
+        
+        // Attribution d'XP pour la vente
+        if (_levelSystem != null) {
+          _levelSystem.addSale(potentialSales, salePrice);
+        }
 
         // Réputation dynamique (Option B): mise à jour lissée et bornée
         _maybeUpdateReputation(
@@ -517,19 +534,18 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
     // Réduction de la demande si le prix est trop élevé
     double priceMultiplier = max(0.1, 1.0 - (price / GameConstants.MAX_PRICE_THRESHOLD));
 
-    // Unification Marketing: ignorer le marketingLevel legacy et utiliser uniquement l'upgrade
+    // CHANTIER-03 : Utiliser bonus recherche pour marketing
     double marketingMultiplier = 1.0;
-    final marketingUpgradeLevel = _playerManager?.upgrades['marketing']?.level ?? 0;
-    final extraMarketing = UpgradeEffectsCalculator.marketingBonus(level: marketingUpgradeLevel);
+    final extraMarketing = _researchManager?.getResearchBonus('marketDemand') ?? 0.0;
     marketingMultiplier *= (1.0 + extraMarketing);
     
     // Facteur de saturation du marché
-    double saturationFactor = _currentMarketSaturation / GameConstants.DEFAULT_MARKET_SATURATION;
+    // CHANTIER-03 : Appliquer bonus recherche marketSaturation (M5 Domination Marché)
+    final saturationBonus = _researchManager?.getResearchBonus('marketSaturation') ?? 0.0;
+    double saturationFactor = (_currentMarketSaturation + saturationBonus) / GameConstants.DEFAULT_MARKET_SATURATION;
     
-    // La demande est fonction de tous ces facteurs
-    // Intègre la réputation et le bonus d'upgrade Réputation
-    final reputationUpgradeLevel = _playerManager?.upgrades['reputation']?.level ?? 0;
-    final reputationExtra = UpgradeEffectsCalculator.reputationBonus(level: reputationUpgradeLevel);
+    // CHANTIER-03 : Intègre la réputation et le bonus recherche
+    final reputationExtra = _researchManager?.getResearchBonus('reputationBonus') ?? 0.0;
     final reputationFactor = max(0.0, reputation) * (1.0 + reputationExtra);
     double demand = baselineDemand *
         priceMultiplier *
@@ -539,9 +555,8 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
     
     // Utilise la dynamique du marché pour les fluctuations
     double marketConditionEffect = _marketDynamics.getMarketConditionMultiplier();
-    // Réduction de volatilité via Étude de marché
-    final researchLevel = _playerManager?.upgrades['marketResearch']?.level ?? 0;
-    final volReduction = UpgradeEffectsCalculator.volatilityReduction(level: researchLevel);
+    // CHANTIER-03 : Réduction de volatilité via recherche
+    final volReduction = _researchManager?.getResearchBonus('volatilityReduction') ?? 0.0;
     marketConditionEffect *= (1.0 - volReduction);
     
     return demand * marketConditionEffect;
@@ -608,6 +623,24 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
     _lastMetalPriceUpdateTime = _clock.now();
     _activeEvents.clear();
     _salesRemainder = 0.0;
+    notifyListeners();
+  }
+  
+  /// Reset pour progression (prestige)
+  /// 
+  /// Réinitialise le marché mais conserve les recherches
+  void resetForProgression() {
+    _marketMetalStock = GameConstants.INITIAL_MARKET_METAL;
+    _currentPrice = GameConstants.INITIAL_PRICE;
+    _marketMetalPrice = GameConstants.MIN_METAL_PRICE;
+    _currentMarketSaturation = GameConstants.DEFAULT_MARKET_SATURATION;
+    _lastMetalPriceUpdateTime = _clock.now();
+    _activeEvents.clear();
+    _salesRemainder = 0.0;
+    reputation = 1.0;
+    _totalSales = 0.0;
+    _totalSalesCount = 0;
+    _averageSalePrice = 0.0;
     notifyListeners();
   }
   

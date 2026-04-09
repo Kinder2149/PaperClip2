@@ -20,7 +20,6 @@ class SaveEntry {
   final String id; // local: save.id; cloud: fixed slotName
   final String name; // display name
   final DateTime? lastModified;
-  final GameMode gameMode;
   final String? playerId; // for cloud
   final String version;
   final bool isBackup;
@@ -39,7 +38,6 @@ class SaveEntry {
     required this.id,
     required this.name,
     required this.lastModified,
-    required this.gameMode,
     required this.version,
     required this.isBackup,
     required this.isRestored,
@@ -72,7 +70,7 @@ class SaveAggregator {
       try {
         final cloud = await GamePersistenceOrchestrator.instance.listCloudParties();
         for (final c in cloud) {
-          cloudIndex[c.partieId] = c;
+          cloudIndex[c.enterpriseId] = c;
         }
       } catch (_) {}
     }
@@ -126,7 +124,6 @@ class SaveAggregator {
           version: meta.version,
           paperclips: 0,
           money: 0,
-          gameMode: meta.gameMode,
           totalPaperclipsSold: 0,
           autoClipperCount: 0,
           isBackup: meta.name.contains(GameConstants.BACKUP_DELIMITER),
@@ -144,7 +141,7 @@ class SaveAggregator {
 
     // 3. Construire la liste à partir du CLOUD (source de vérité)
     for (final cloudEntry in cloudIndex.values) {
-      final localInfo = localIndex[cloudEntry.partieId];
+      final localInfo = localIndex[cloudEntry.enterpriseId];
 
       if (localInfo != null) {
         // Monde cloud + local: utiliser les stats locales pour enrichir
@@ -165,10 +162,9 @@ class SaveAggregator {
 
         result.add(SaveEntry(
           source: SaveSource.cloud, // CORRECTION: Source = cloud (vérité)
-          id: cloudEntry.partieId,
+          id: cloudEntry.enterpriseId,
           name: cloudEntry.name ?? localInfo.name,
           lastModified: cloudEntry.lastPushAt ?? localInfo.timestamp,
-          gameMode: localInfo.gameMode,
           version: localInfo.version,
           isBackup: false,
           isRestored: localInfo.isRestored,
@@ -186,10 +182,9 @@ class SaveAggregator {
         // Monde cloud-only: matérialisation à la demande
         result.add(SaveEntry(
           source: SaveSource.cloud,
-          id: cloudEntry.partieId,
-          name: cloudEntry.name ?? cloudEntry.partieId,
+          id: cloudEntry.enterpriseId,
+          name: cloudEntry.name ?? cloudEntry.enterpriseId,
           lastModified: cloudEntry.lastPushAt ?? cloudEntry.lastPullAt,
-          gameMode: GameMode.INFINITE,
           version: cloudEntry.gameVersion ?? GameConstants.VERSION,
           isBackup: false,
           isRestored: false,
@@ -231,7 +226,6 @@ class SaveAggregator {
         id: localInfo.id,
         name: localInfo.name,
         lastModified: localInfo.timestamp,
-        gameMode: localInfo.gameMode,
         version: localInfo.version,
         isBackup: false,
         isRestored: localInfo.isRestored,

@@ -94,6 +94,41 @@ class StatisticsManager with ChangeNotifier {
     notifyListeners();
   }
   
+  /// Reset pour progression (prestige) - conserve les stats lifetime
+  /// 
+  /// Réinitialise les stats du run actuel mais conserve les totaux lifetime
+  /// Note: Les stats lifetime sont déjà trackées séparément dans RareResourcesManager
+  void resetCurrentRun() {
+    _totalPaperclipsProduced = 0;
+    _totalMetalUsed = 0.0;
+    _manualPaperclipsProduced = 0;
+    _autoPaperclipsProduced = 0;
+    
+    _totalUpgradesBought = 0;
+    _totalLevelsGained = 0;
+    _totalMissionsCompleted = 0;
+    _totalAchievementsUnlocked = 0;
+    _totalAutoclippersBought = 0;
+    
+    _totalMoneyEarned = 0.0;
+    _totalMoneySpent = 0.0;
+    _peakMoneyPerMinute = 0.0;
+    _currentMoneyPerMinute = 0.0;
+    _lastMinuteEarnings = 0.0;
+    _lastEarningsUpdate = DateTime.now();
+    
+    _totalMetalPurchased = 0.0;
+    _totalIronMined = 0.0;
+    _totalCoalMined = 0.0;
+    _totalElectricityProduced = 0.0;
+    _totalSteelProduced = 0.0;
+    
+    _gameStartTime = DateTime.now();
+    _totalGameTimeSec = 0;
+    
+    notifyListeners();
+  }
+  
   // Méthodes de mise à jour
   /// Méthode principale de mise à jour de la production.
   ///
@@ -117,14 +152,12 @@ class StatisticsManager with ChangeNotifier {
     _totalPaperclipsProduced += produced;
     _totalMetalUsed += metalUsed;
 
-    // Répartir entre manuel / auto en gardant un comportement raisonnable
-    if (isAuto && !isManual) {
+    // Répartir entre manuel / auto (logique corrigée)
+    if (isAuto) {
       _autoPaperclipsProduced += produced;
-    } else if (isManual && !isAuto) {
-      _manualPaperclipsProduced += produced;
     } else {
-      // Si l'information n'est pas claire, on compte tout en auto par défaut
-      _autoPaperclipsProduced += produced;
+      // Par défaut, si pas auto, c'est manuel
+      _manualPaperclipsProduced += produced;
     }
 
     notifyListeners();

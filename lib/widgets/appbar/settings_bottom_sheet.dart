@@ -3,11 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:paperclip2/models/game_state.dart';
 import 'package:paperclip2/screens/start_screen.dart';
-import 'package:paperclip2/screens/worlds_screen.dart';
+import 'package:paperclip2/screens/profile_screen.dart';
 import 'package:paperclip2/services/save_system/local_save_game_manager.dart';
+import 'package:paperclip2/services/auth/firebase_auth_service.dart';
 import 'package:paperclip2/widgets/save_button.dart';
 
-// Bottom sheet Paramètres réutilisable (MainScreen, WorldsScreen, etc.)
+// Bottom sheet Paramètres réutilisable pour l'interface principale
 Future<void> showSettingsBottomSheet(BuildContext context) async {
   final gameState = context.read<GameState>();
   showModalBottomSheet(
@@ -70,27 +71,15 @@ Future<void> showSettingsBottomSheet(BuildContext context) async {
                         ),
                         const Divider(height: 1),
                         ListTile(
-                          leading: const Icon(Icons.folder_open),
-                          title: const Text('Ouvrir un monde'),
-                          onTap: () {
-                            Navigator.pop(context);
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (context) => const WorldsScreen()),
-                            );
-                          },
-                        ),
-                        const Divider(height: 1),
-                        ListTile(
                           leading: const Icon(Icons.save),
                           title: const Text('Sauvegarder'),
                           subtitle: Builder(builder: (context) {
-                            final partieId = gameState.partieId;
-                            if (partieId == null || partieId.isEmpty) {
+                            final enterpriseId = gameState.enterpriseId;
+                            if (enterpriseId == null || enterpriseId.isEmpty) {
                               return const Text('Dernière sauvegarde: Jamais');
                             }
                             return FutureBuilder(
-                              future: LocalSaveGameManager.getInstance().then((mgr) => mgr.loadSave(partieId)),
+                              future: LocalSaveGameManager.getInstance().then((mgr) => mgr.loadSave(enterpriseId)),
                               builder: (context, snapshot) {
                                 if (snapshot.connectionState == ConnectionState.waiting) {
                                   return const Text('Dernière sauvegarde: …');
@@ -137,6 +126,43 @@ Future<void> showSettingsBottomSheet(BuildContext context) async {
                     ),
                   ),
                   const SizedBox(height: 8),
+                  // Section Compte (visible si connecté)
+                  StreamBuilder(
+                    stream: FirebaseAuthService.instance.authStateChanges(),
+                    builder: (context, snapshot) {
+                      final isConnected = FirebaseAuthService.instance.currentUser != null;
+                      
+                      if (!isConnected) return const SizedBox.shrink();
+                      
+                      return Column(
+                        children: [
+                          Card(
+                            elevation: 0,
+                            color: Colors.deepPurple[50],
+                            child: ListTile(
+                              leading: const Icon(Icons.person, color: Colors.deepPurple),
+                              title: const Text(
+                                'Mon Profil',
+                                style: TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                              subtitle: Text(
+                                FirebaseAuthService.instance.currentUser?.email ?? '',
+                                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                              ),
+                              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                              onTap: () {
+                                Navigator.pop(context);
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                      );
+                    },
+                  ),
                   Card(
                     elevation: 0,
                     color: Colors.grey[50],

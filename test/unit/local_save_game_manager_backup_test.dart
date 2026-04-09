@@ -16,15 +16,15 @@ void main() {
     });
 
     // Helper pour créer un SaveGame de test
-    SaveGame _createTestSave(String partieId, String name) {
+    SaveGame _createTestSave(String enterpriseId, String name) {
       return SaveGame(
-        id: partieId,
+        id: enterpriseId,
         name: name,
         lastSaveTime: DateTime.now(),
         gameData: {
           'gameSnapshot': {
             'metadata': {
-              'worldId': partieId,
+              'enterpriseId': enterpriseId,
               'createdAt': DateTime.now().toIso8601String(),
               'version': 2,
             },
@@ -42,7 +42,7 @@ void main() {
     test('createBackup crée un backup avec nom correct', () async {
       final mgr = await LocalSaveGameManager.getInstance();
       
-      // Créer backup manuellement avec un partieId unique
+      // Créer backup manuellement avec un enterpriseId unique
       final now = DateTime.now();
       final uniquePartieId = 'test-create-backup';
       final backupId = 'backup-create-${now.millisecondsSinceEpoch}';
@@ -52,7 +52,7 @@ void main() {
         lastSaveTime: DateTime.now(),
         gameData: {
           'gameSnapshot': {
-            'metadata': {'worldId': backupId, 'createdAt': DateTime.now().toIso8601String(), 'version': 2},
+            'metadata': {'enterpriseId': backupId, 'createdAt': DateTime.now().toIso8601String(), 'version': 2},
             'core': {'paperclips': 100},
             'market': <String, dynamic>{},
             'production': <String, dynamic>{},
@@ -68,13 +68,13 @@ void main() {
       final backups = await mgr.listBackupsForPartie(uniquePartieId);
       expect(backups.length, 1, reason: 'Un backup devrait exister');
       expect(backups.first.name.startsWith('$uniquePartieId${GameConstants.BACKUP_DELIMITER}'), isTrue,
-          reason: 'Le nom du backup devrait commencer par partieId + délimiteur');
+          reason: 'Le nom du backup devrait commencer par enterpriseId + délimiteur');
     });
 
     test('listBackupsForPartie retourne uniquement les backups de la partie', () async {
       final mgr = await LocalSaveGameManager.getInstance();
       
-      // Créer backups pour partie 1 avec un partieId unique
+      // Créer backups pour partie 1 avec un enterpriseId unique
       final now = DateTime.now();
       final uniquePartie1 = 'test-list-partie-1';
       final uniquePartie2 = 'test-list-partie-2';
@@ -86,7 +86,7 @@ void main() {
         lastSaveTime: DateTime.now(),
         gameData: {
           'gameSnapshot': {
-            'metadata': {'worldId': backup1Id, 'createdAt': DateTime.now().toIso8601String(), 'version': 2},
+            'metadata': {'enterpriseId': backup1Id, 'createdAt': DateTime.now().toIso8601String(), 'version': 2},
             'core': {'paperclips': 100},
             'market': <String, dynamic>{},
             'production': <String, dynamic>{},
@@ -107,7 +107,7 @@ void main() {
         lastSaveTime: DateTime.now(),
         gameData: {
           'gameSnapshot': {
-            'metadata': {'worldId': backup2Id, 'createdAt': DateTime.now().toIso8601String(), 'version': 2},
+            'metadata': {'enterpriseId': backup2Id, 'createdAt': DateTime.now().toIso8601String(), 'version': 2},
             'core': {'paperclips': 100},
             'market': <String, dynamic>{},
             'production': <String, dynamic>{},
@@ -127,7 +127,7 @@ void main() {
         lastSaveTime: DateTime.now(),
         gameData: {
           'gameSnapshot': {
-            'metadata': {'worldId': backup3Id, 'createdAt': DateTime.now().toIso8601String(), 'version': 2},
+            'metadata': {'enterpriseId': backup3Id, 'createdAt': DateTime.now().toIso8601String(), 'version': 2},
             'core': {'paperclips': 100},
             'market': <String, dynamic>{},
             'production': <String, dynamic>{},
@@ -165,7 +165,7 @@ void main() {
           lastSaveTime: DateTime.now(),
           gameData: {
             'gameSnapshot': {
-              'metadata': {'worldId': backupId, 'createdAt': DateTime.now().toIso8601String(), 'version': 2},
+              'metadata': {'enterpriseId': backupId, 'createdAt': DateTime.now().toIso8601String(), 'version': 2},
               'core': {'paperclips': 100},
               'market': <String, dynamic>{},
               'production': <String, dynamic>{},
@@ -185,7 +185,7 @@ void main() {
       
       // Appliquer rétention avec MAX = 10
       final deleted = await mgr.applyBackupRetention(
-        partieId: 'test-retention',
+        enterpriseId: 'test-retention',
         max: 10,
       );
       
@@ -199,7 +199,7 @@ void main() {
     test('applyBackupRetention supprime les backups au-delà du TTL', () async {
       final mgr = await LocalSaveGameManager.getInstance();
       
-      // Créer un backup avec un partieId unique
+      // Créer un backup avec un enterpriseId unique
       final now = DateTime.now();
       final backupId = 'ttl-backup-${now.millisecondsSinceEpoch}';
       final backup = SaveGame(
@@ -208,7 +208,7 @@ void main() {
         lastSaveTime: DateTime.now(),
         gameData: {
           'gameSnapshot': {
-            'metadata': {'worldId': backupId, 'createdAt': DateTime.now().toIso8601String(), 'version': 2},
+            'metadata': {'enterpriseId': backupId, 'createdAt': DateTime.now().toIso8601String(), 'version': 2},
             'core': {'paperclips': 100},
             'market': <String, dynamic>{},
             'production': <String, dynamic>{},
@@ -225,7 +225,7 @@ void main() {
       await Future.delayed(const Duration(milliseconds: 2));
       
       final deleted = await mgr.applyBackupRetention(
-        partieId: 'test-ttl',
+        enterpriseId: 'test-ttl',
         ttl: const Duration(milliseconds: 1),
       );
       
@@ -245,7 +245,7 @@ void main() {
         gameData: {
           'gameSnapshot': {
             'metadata': {
-              'worldId': 'test-partie-1',
+              'enterpriseId': 'test-partie-1',
               'createdAt': DateTime.now().toIso8601String(),
               'version': 2,
             },
@@ -269,7 +269,7 @@ void main() {
         lastSaveTime: DateTime.now(),
         gameData: {
           'gameSnapshot': {
-            'metadata': {'worldId': backupId, 'createdAt': DateTime.now().toIso8601String(), 'version': 2},
+            'metadata': {'enterpriseId': backupId, 'createdAt': DateTime.now().toIso8601String(), 'version': 2},
             'core': {'paperclips': 500},
             'market': <String, dynamic>{},
             'production': <String, dynamic>{},

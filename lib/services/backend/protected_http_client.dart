@@ -1,16 +1,16 @@
 import 'dart:convert';
-import 'dart:io';
+import 'package:http/http.dart' as http;
 import '../../utils/logger.dart';
 import '../auth/firebase_auth_service.dart';
 
 class ProtectedHttpClient {
   final Logger _logger = Logger.forComponent('auth-http');
   final Future<String?> Function() _tokenProvider;
-  final HttpClient _client;
+  final http.Client _client;
 
-  ProtectedHttpClient({required Future<String?> Function() tokenProvider, HttpClient? inner})
+  ProtectedHttpClient({required Future<String?> Function() tokenProvider, http.Client? inner})
       : _tokenProvider = tokenProvider,
-        _client = inner ?? HttpClient();
+        _client = inner ?? http.Client();
 
   /// P0-3: Méthode _send avec retry automatique sur 401
   /// 
@@ -44,15 +44,31 @@ class ProtectedHttpClient {
       }
     }
 
-    final req = await _client.openUrl(method, uri);
-    req.headers.set(HttpHeaders.authorizationHeader, 'Bearer '+token);
-    req.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
-    (headers ?? const <String, String>{}).forEach(req.headers.set);
-    if (body != null) {
-      final data = body is String ? body : jsonEncode(body);
-      req.add(utf8.encode(data));
+    final allHeaders = {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+      ...?headers,
+    };
+    
+    final http.Response res;
+    final bodyData = body != null ? (body is String ? body : jsonEncode(body)) : null;
+    
+    switch (method) {
+      case 'GET':
+        res = await _client.get(uri, headers: allHeaders);
+        break;
+      case 'POST':
+        res = await _client.post(uri, headers: allHeaders, body: bodyData);
+        break;
+      case 'PUT':
+        res = await _client.put(uri, headers: allHeaders, body: bodyData);
+        break;
+      case 'DELETE':
+        res = await _client.delete(uri, headers: allHeaders);
+        break;
+      default:
+        throw ArgumentError('Unsupported HTTP method: $method');
     }
-    final res = await req.close();
     
     // P0-3: Gérer 401 avec retry LIMITÉ
     if (res.statusCode == 401) {
@@ -64,7 +80,6 @@ class ProtectedHttpClient {
           'retryCount': retryCount,
         });
         
-        await res.drain();
         throw StateError('SESSION_EXPIRED: Échec authentification après 2 tentatives - reconnexion requise');
       }
       
@@ -74,8 +89,7 @@ class ProtectedHttpClient {
         'retryCount': retryCount,
       });
       
-      // Consommer réponse pour libérer connexion
-      await res.drain();
+      // Pas besoin de drain avec package:http
       
       try {
         token = await FirebaseAuthService.instance.getIdToken(forceRefresh: true);
@@ -107,7 +121,7 @@ class ProtectedHttpClient {
       );
     }
 
-    final text = await utf8.decodeStream(res);
+    final text = res.body;
     dynamic json;
     try { json = text.isNotEmpty ? jsonDecode(text) : null; } catch (_) { json = text; }
     return _HttpResult(statusCode: res.statusCode, body: json);

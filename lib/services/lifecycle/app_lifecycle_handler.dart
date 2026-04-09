@@ -43,7 +43,7 @@ class AppLifecycleHandler with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final gameState = _gameState;
-    if (gameState == null || gameState.gameName == null) {
+    if (gameState == null || gameState.enterpriseName == null) {
       return;
     }
 

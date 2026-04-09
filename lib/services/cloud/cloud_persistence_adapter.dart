@@ -3,12 +3,11 @@ import 'package:paperclip2/services/auth/firebase_auth_service.dart';
 import 'package:paperclip2/services/backend/protected_http_client.dart';
 import 'package:paperclip2/services/cloud/cloud_persistence_port.dart';
 import 'package:paperclip2/services/cloud/cloud_retry_policy.dart';
-import 'package:paperclip2/services/cloud/exceptions/version_conflict_exception.dart';
 import 'package:paperclip2/services/cloud/models/cloud_world_detail.dart';
-import 'package:paperclip2/services/cloud/models/cloud_worlds_list_response.dart';
 import 'package:paperclip2/utils/logger.dart';
 
 /// Adaptateur HTTP (Functions onRequest)
+/// CHANTIER-01 : Utilise API /enterprise pour entreprise unique
 class CloudPersistenceAdapter implements CloudPersistencePort {
   /// P0-2: Regex validation UUID v4
   /// Format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
@@ -18,13 +17,13 @@ class CloudPersistenceAdapter implements CloudPersistencePort {
     caseSensitive: false,
   );
 
-  /// P0-2: Valide qu'un partieId est un UUID v4 valide
+  /// P0-2: Valide qu'un enterpriseId est un UUID v4 valide
   /// Lève ArgumentError si invalide
-  static void _validatePartieId(String partieId) {
-    if (!_uuidV4Regex.hasMatch(partieId)) {
+  static void _validateEnterpriseId(String enterpriseId) {
+    if (!_uuidV4Regex.hasMatch(enterpriseId)) {
       throw ArgumentError.value(
-        partieId,
-        'partieId',
+        enterpriseId,
+        'enterpriseId',
         'Doit être un UUID v4 valide (format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx)',
       );
     }
@@ -41,31 +40,31 @@ class CloudPersistenceAdapter implements CloudPersistencePort {
 
   @override
   Future<void> pushById({
-    required String partieId,
+    required String enterpriseId,
     required Map<String, dynamic> snapshot,
     required Map<String, dynamic> metadata,
   }) async {
     return cloudRetryPolicy.execute(
       operation: () => _pushByIdInternal(
-        partieId: partieId,
+        enterpriseId: enterpriseId,
         snapshot: snapshot,
         metadata: metadata,
       ),
-      operationName: 'pushById($partieId)',
+      operationName: 'pushById($enterpriseId)',
     );
   }
 
   Future<void> _pushByIdInternal({
-    required String partieId,
+    required String enterpriseId,
     required Map<String, dynamic> snapshot,
     required Map<String, dynamic> metadata,
   }) async {
     // P0-2: Validation UUID v4 avant tout appel HTTP
-    _validatePartieId(partieId);
+    _validateEnterpriseId(enterpriseId);
 
     // LOG DÉTAILLÉ : Début push
     _logger.info('[CLOUD-PUSH] START', code: 'cloud_push_start', ctx: {
-      'worldId': partieId,
+      'enterpriseId': enterpriseId,
       'baseUrl': baseUrl,
       'hasSnapshot': snapshot.isNotEmpty,
     });
@@ -84,73 +83,39 @@ class CloudPersistenceAdapter implements CloudPersistencePort {
       rethrow;
     }
 
-    // Nettoyer les timestamps client
-    final meta = Map<String, dynamic>.from(metadata)..remove('savedAt');
+    // CHANTIER-01: Récupérer uid Firebase pour API /enterprise
+    final uid = FirebaseAuthService.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty) {
+      throw StateError('UID_REQUIRED: Firebase UID manquant pour push cloud');
+    }
     
-    // P0-4: Extraire version locale pour détection conflit
-    final int? localVersion = metadata['version'] as int?;
-    
-    // Champs facultatifs côté cloud contract
-    final String? name = (metadata['name'] as String?);
-    final String? gameVersion = (metadata['game_version'] as String?) ?? (metadata['gameVersion'] as String?);
     final payload = {
-      'snapshot': {
-        ...snapshot,
-        'metadata': {
-          ...?snapshot['metadata'] as Map<String, dynamic>?,
-          ...meta,
-          'worldId': partieId,
-        },
-      },
-      if (name != null) 'name': name,
-      if (gameVersion != null) 'game_version': gameVersion,
-      // P0-4: Envoyer version attendue pour détection conflit
-      if (localVersion != null) 'expected_version': localVersion,
+      'enterpriseId': enterpriseId,
+      'snapshot': snapshot,
     };
-    final url = _u('/worlds/'+partieId);
-    try {
-      _logger.info('[HTTP] request', code: 'http_put_world', ctx: {
-        'method': 'PUT',
-        'url': url.toString(),
-        'worldId_url': partieId,
-        'worldId_payload': (((payload['snapshot'] as Map)['metadata']) as Map)['worldId'],
-      });
-    } catch (_) {}
+    final url = _u('/enterprise/'+uid);
+    _logger.info('[HTTP] request', code: 'http_put_enterprise', ctx: {
+      'method': 'PUT',
+      'url': url.toString(),
+      'enterpriseId': enterpriseId,
+      'uid': uid,
+    });
     final res = await _client.put(url, body: payload);
     
     // LOG DÉTAILLÉ : Réponse HTTP
     _logger.info('[CLOUD-PUSH] Response', code: 'cloud_push_response', ctx: {
-      'worldId': partieId,
+      'enterpriseId': enterpriseId,
       'statusCode': res.statusCode,
       'success': res.statusCode >= 200 && res.statusCode < 300,
     });
 
-    // P0-4: Gérer 409 Conflict (version multi-device)
-    if (res.statusCode == 409) {
-      _logger.warn('[CLOUD-PUSH] Conflit version détecté (409)', code: 'cloud_conflict_409', ctx: {
-        'worldId': partieId,
-        'responseBody': res.body?.toString() ?? 'null',
-      });
-      
-      // Extraire versions du body si disponibles
-      int? expectedVersion;
-      int? actualVersion;
-      if (res.body is Map) {
-        expectedVersion = res.body['expected_version'] as int?;
-        actualVersion = res.body['actual_version'] as int?;
-      }
-      
-      throw VersionConflictException(
-        partieId: partieId,
-        expectedVersion: expectedVersion,
-        actualVersion: actualVersion,
-      );
-    }
+    // CHANTIER-01: API /enterprise ne gère pas les conflits de version (snapshot unique)
+    // Les conflits sont résolus par "last write wins"
     
     if (res.statusCode < 200 || res.statusCode >= 300) {
       // LOG ERREUR DÉTAILLÉE
       _logger.error('[CLOUD-PUSH] FAILED', code: 'cloud_push_failed', ctx: {
-        'worldId': partieId,
+        'enterpriseId': enterpriseId,
         'statusCode': res.statusCode,
         'responseBody': res.body?.toString() ?? 'null',
         'url': url.toString(),
@@ -160,43 +125,49 @@ class CloudPersistenceAdapter implements CloudPersistencePort {
 
     // LOG SUCCÈS
     _logger.info('[CLOUD-PUSH] SUCCESS', code: 'cloud_push_ok', ctx: {
-      'worldId': partieId,
+      'enterpriseId': enterpriseId,
       'statusCode': res.statusCode,
     });
   }
 
   @override
-  Future<CloudWorldDetail?> pullById({required String partieId}) async {
+  Future<CloudWorldDetail?> pullById({required String enterpriseId}) async {
     return cloudRetryPolicy.execute(
-      operation: () => _pullByIdInternal(partieId: partieId),
-      operationName: 'pullById($partieId)',
+      operation: () => _pullByIdInternal(enterpriseId: enterpriseId),
+      operationName: 'pullById($enterpriseId)',
     );
   }
 
-  Future<CloudWorldDetail?> _pullByIdInternal({required String partieId}) async {
+  Future<CloudWorldDetail?> _pullByIdInternal({required String enterpriseId}) async {
     // P0-2: Validation UUID v4 avant tout appel HTTP
-    _validatePartieId(partieId);
+    _validateEnterpriseId(enterpriseId);
 
-    _logger.info('[CLOUD-PULL] START', code: 'cloud_pull_start', ctx: {'worldId': partieId});
+    _logger.info('[CLOUD-PULL] START', code: 'cloud_pull_start', ctx: {'enterpriseId': enterpriseId});
     
-    final res = await _client.get(_u('/worlds/'+partieId));
+    // CHANTIER-01: Récupérer uid Firebase pour API /enterprise
+    final uid = FirebaseAuthService.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty) {
+      throw StateError('UID_REQUIRED: Firebase UID manquant pour pull cloud');
+    }
+    
+    final res = await _client.get(_u('/enterprise/$uid'));
     
     final body = res.body as Map<String, dynamic>?;
     
     _logger.info('[CLOUD-PULL] Response', code: 'cloud_pull_response', ctx: {
-      'worldId': partieId,
+      'enterpriseId': enterpriseId,
       'statusCode': res.statusCode,
       'bodyKeys': body?.keys.join(',') ?? 'null',
       'hasSnapshot': body?.containsKey('snapshot') ?? false,
     });
     
     if (res.statusCode == 404) {
-      _logger.info('[CLOUD-PULL] Not found', code: 'cloud_pull_404', ctx: {'worldId': partieId});
+      _logger.info('[CLOUD-PULL] Not found', code: 'cloud_pull_404', ctx: {'enterpriseId': enterpriseId});
       return null;
     }
     if (res.statusCode != 200) {
       _logger.error('[CLOUD-PULL] FAILED', code: 'cloud_pull_failed', ctx: {
-        'worldId': partieId,
+        'enterpriseId': enterpriseId,
         'statusCode': res.statusCode,
       });
       throw StateError('pull_failed_${res.statusCode}');
@@ -208,7 +179,7 @@ class CloudPersistenceAdapter implements CloudPersistencePort {
       final detail = CloudWorldDetail.fromJson(body);
       
       _logger.info('[CLOUD-PULL] Parsed', code: 'cloud_pull_parsed', ctx: {
-        'worldId': partieId,
+        'enterpriseId': enterpriseId,
         'hasSnapshot': detail.snapshot.isNotEmpty,
         'name': detail.name,
         'version': detail.version,
@@ -218,7 +189,7 @@ class CloudPersistenceAdapter implements CloudPersistencePort {
       return detail;
     } catch (e) {
       _logger.error('[CLOUD-PULL] JSON parsing failed', code: 'cloud_pull_parse_error', ctx: {
-        'worldId': partieId,
+        'enterpriseId': enterpriseId,
         'error': e.toString(),
         'bodyKeys': body.keys.join(','),
       });
@@ -227,12 +198,18 @@ class CloudPersistenceAdapter implements CloudPersistencePort {
   }
 
   @override
-  Future<CloudStatus> statusById({required String partieId}) async {
+  Future<CloudStatus> statusById({required String enterpriseId}) async {
     // P0-2: Validation UUID v4 avant tout appel HTTP
-    _validatePartieId(partieId);
+    _validateEnterpriseId(enterpriseId);
 
     try {
-      final res = await _client.get(_u('/worlds/'+partieId));
+      // CHANTIER-01: Récupérer uid Firebase pour API /enterprise
+      final uid = FirebaseAuthService.instance.currentUser?.uid;
+      if (uid == null || uid.isEmpty) {
+        return CloudStatus(exists: false);
+      }
+      
+      final res = await _client.get(_u('/enterprise/$uid'));
       if (res.statusCode == 404) return CloudStatus(exists: false);
       if (res.statusCode != 200) return CloudStatus(exists: false);
       
@@ -260,28 +237,47 @@ class CloudPersistenceAdapter implements CloudPersistencePort {
   }
 
   Future<List<CloudIndexEntry>> _listPartiesInternal() async {
-    final res = await _client.get(_u('/worlds'));
+    // CHANTIER-01: API /enterprise retourne une seule entreprise (pas de liste)
+    // Récupérer uid Firebase
+    final uid = FirebaseAuthService.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty) {
+      return <CloudIndexEntry>[];
+    }
+    
+    final res = await _client.get(_u('/enterprise/$uid'));
+    if (res.statusCode == 404) {
+      return <CloudIndexEntry>[]; // Pas d'entreprise
+    }
     if (res.statusCode != 200) {
       throw StateError('list_failed_${res.statusCode}');
     }
     
     final body = res.body as Map<String, dynamic>?;
     if (body == null) {
-      throw StateError('list_failed_empty_body');
+      return <CloudIndexEntry>[];
     }
     
     try {
-      final response = CloudWorldsListResponse.fromJson(body);
-      return response.items.map((item) {
-        return CloudIndexEntry(
-          partieId: item.worldId,
-          remoteVersion: null,
-          lastPushAt: item.updatedAtDateTime,
+      // Parser la réponse /enterprise (format harmonisé: enterprise_id, updated_at)
+      final enterpriseId = body['enterprise_id'] as String?;
+      final updatedAt = body['updated_at'] as String?;
+      final name = body['name'] as String?;
+      final gameVersion = body['game_version'] as String?;
+      
+      if (enterpriseId == null) {
+        return <CloudIndexEntry>[];
+      }
+      
+      return [
+        CloudIndexEntry(
+          enterpriseId: enterpriseId,
+          remoteVersion: 1, // Toujours 1 pour entreprise unique
+          lastPushAt: updatedAt != null ? DateTime.tryParse(updatedAt) : null,
           lastPullAt: null,
-          name: item.name,
-          gameVersion: item.gameVersion,
-        );
-      }).toList();
+          name: name,
+          gameVersion: gameVersion,
+        ),
+      ];
     } catch (e) {
       _logger.error('[CLOUD-LIST] JSON parsing failed', code: 'cloud_list_parse_error', ctx: {
         'error': e.toString(),
@@ -291,18 +287,25 @@ class CloudPersistenceAdapter implements CloudPersistencePort {
   }
 
   @override
-  Future<void> deleteById({required String partieId}) async {
+  Future<void> deleteById({required String enterpriseId}) async {
     return cloudRetryPolicy.execute(
-      operation: () => _deleteByIdInternal(partieId: partieId),
-      operationName: 'deleteById($partieId)',
+      operation: () => _deleteByIdInternal(enterpriseId: enterpriseId),
+      operationName: 'deleteById($enterpriseId)',
     );
   }
 
-  Future<void> _deleteByIdInternal({required String partieId}) async {
+  Future<void> _deleteByIdInternal({required String enterpriseId}) async {
     // P0-2: Validation UUID v4 avant tout appel HTTP
-    _validatePartieId(partieId);
+    _validateEnterpriseId(enterpriseId);
 
-    final res = await _client.delete(_u('/worlds/'+partieId));
+    // CHANTIER-01: Récupérer uid Firebase pour API /enterprise
+    final uid = FirebaseAuthService.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty) {
+      throw StateError('UID_REQUIRED: Firebase UID manquant pour delete cloud');
+    }
+
+    final res = await _client.delete(_u('/enterprise/$uid'));
+    // Backend retourne 204 No Content (REST standard) ou 404 si déjà supprimé
     if (res.statusCode != 204 && res.statusCode != 404) {
       throw StateError('delete_failed_${res.statusCode}');
     }
@@ -313,7 +316,7 @@ class CloudPersistenceAdapter implements CloudPersistencePort {
 /// Adaptateur de repli qui ne fait rien (utilisé pour désactiver le cloud au logout)
 class NoopCloudPersistenceAdapter implements CloudPersistencePort {
   @override
-  Future<void> deleteById({required String partieId}) async {
+  Future<void> deleteById({required String enterpriseId}) async {
     throw UnsupportedError('cloud disabled');
   }
 
@@ -321,11 +324,11 @@ class NoopCloudPersistenceAdapter implements CloudPersistencePort {
   Future<List<CloudIndexEntry>> listParties() async => <CloudIndexEntry>[];
 
   @override
-  Future<CloudWorldDetail?> pullById({required String partieId}) async => null;
+  Future<CloudWorldDetail?> pullById({required String enterpriseId}) async => null;
 
   @override
   Future<void> pushById({
-    required String partieId,
+    required String enterpriseId,
     required Map<String, dynamic> snapshot,
     required Map<String, dynamic> metadata,
   }) async {
@@ -333,5 +336,5 @@ class NoopCloudPersistenceAdapter implements CloudPersistencePort {
   }
 
   @override
-  Future<CloudStatus> statusById({required String partieId}) async => CloudStatus(exists: false);
+  Future<CloudStatus> statusById({required String enterpriseId}) async => CloudStatus(exists: false);
 }

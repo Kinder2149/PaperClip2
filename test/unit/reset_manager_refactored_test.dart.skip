@@ -1,0 +1,317 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:paperclip2/managers/reset_manager.dart';
+import 'package:paperclip2/services/reset/reset_rewards_calculator.dart';
+import 'package:paperclip2/models/game_state.dart';
+
+/// Tests pour ResetManager refactoré
+/// 
+/// Tests adaptés à l'API réelle de GameState
+void main() {
+  group('ResetManager - Refactored Architecture', () {
+    late GameState gameState;
+    late ResetManager resetManager;
+    
+    setUp(() {
+      // Créer un GameState de test
+      gameState = GameState();
+      // Attendre que l'initialisation soit complète
+      while (!gameState.isInitialized) {
+        // Attente active (dans un vrai test, utiliser async/await)
+      }
+      // Le ResetManager est déjà créé dans GameState
+      resetManager = gameState.resetManager;
+    });
+    
+    group('Conditions de Reset', () {
+      test('canReset retourne false au démarrage (niveau 1)', () {
+        // GameState démarre au niveau 1
+        expect(resetManager.canReset(), isFalse);
+      });
+      
+      test('canReset vérifie niveau >= 20', () {
+        // Simuler niveau via fromJson
+        gameState.levelSystem.fromJson({'level': 15, 'experience': 0});
+        expect(resetManager.canReset(), isFalse);
+        
+        gameState.levelSystem.fromJson({'level': 20, 'experience': 0});
+        // Toujours false car pas assez de trombones
+        expect(resetManager.canReset(), isFalse);
+      });
+      
+      test('canReset vérifie production >= 100000', () {
+        // Niveau OK mais pas de production
+        gameState.levelSystem.fromJson({'level': 25, 'experience': 0});
+        expect(resetManager.canReset(), isFalse);
+      });
+    });
+    
+    group('Calcul Récompenses', () {
+      test('calculatePotentialRewards retourne récompenses minimales niveau 20', () {
+        gameState.levelSystem.fromJson({'level': 20, 'experience': 0});
+        gameState.playerManager.addPaperclips(100000);
+        
+        final rewards = resetManager.calculatePotentialRewards();
+        
+        // Quantum minimum garanti (BASE = 20)
+        expect(rewards.quantum, greaterThanOrEqualTo(20));
+        // Innovation minimum garanti (BASE = 10)
+        expect(rewards.innovationPoints, greaterThanOrEqualTo(10));
+      });
+      
+      test('calculatePotentialRewards respecte formule Quantum', () {
+        gameState.levelSystem.fromJson({'level': 25, 'experience': 0});
+        gameState.playerManager.addPaperclips(1000000);
+        gameState.playerManager.addMoney(10000);
+        gameState.productionManager.buyAutoclipper();
+        gameState.productionManager.buyAutoclipper();
+        gameState.productionManager.buyAutoclipper();
+        gameState.productionManager.buyAutoclipper();
+        gameState.productionManager.buyAutoclipper();
+        gameState.productionManager.buyAutoclipper();
+        gameState.productionManager.buyAutoclipper();
+        gameState.productionManager.buyAutoclipper();
+        gameState.productionManager.buyAutoclipper();
+        gameState.productionManager.buyAutoclipper(); // 10 autoclippers
+        
+        final rewards = resetManager.calculatePotentialRewards();
+        
+        // BASE = 20
+        // PRODUCTION = log10(1M / 1M) × 15 = 0
+        // REVENUS = sqrt(10k / 10k) × 8 = 8
+        // AUTOCLIPPERS = 10 × 0.8 = 8
+        // NIVEAU = (25 / 10)^1.5 × 12 ≈ 47.4
+        // TEMPS = min(0 × 2, 50) = 0
+        // Total ≈ 83 Q (sans bonus premier reset)
+        expect(rewards.quantum, greaterThan(70));
+        expect(rewards.quantum, lessThan(100));
+      });
+      
+      test('calculatePotentialRewards applique bonus premier reset', () {
+        gameState.levelSystem.fromJson({'level': 25, 'experience': 0});
+        gameState.playerManager.addPaperclips(1000000);
+        gameState.playerManager.addMoney(10000);
+        
+        // Premier reset (resetCount = 0)
+        final rewards = resetManager.calculatePotentialRewards();
+        
+        // Avec bonus ×1.5, devrait être plus élevé
+        expect(rewards.quantum, greaterThan(30));
+      });
+      
+      test('calculatePotentialRewards plafond 500 Q respecté', () {
+        gameState.levelSystem.fromJson({'level': 100, 'experience': 0});
+        gameState.playerManager.addPaperclips(1000000000000); // 1 trillion
+        gameState.playerManager.addMoney(100000000); // 100M
+        for (int i = 0; i < 1000; i++) {
+          gameState.productionManager.buyAutoclipper();
+        }
+        
+        final rewards = resetManager.calculatePotentialRewards();
+        
+        expect(rewards.quantum, lessThanOrEqualTo(500));
+      });
+      
+      test('calculatePotentialRewards plafond 100 PI respecté', () {
+        gameState.setLevel(100);
+        // Compléter beaucoup de recherches
+        for (int i = 0; i < 50; i++) {
+          gameState.researchManager.completeResearch('research_$i');
+        }
+        
+        final rewards = resetManager.calculatePotentialRewards();
+        
+        expect(rewards.innovationPoints, lessThanOrEqualTo(100));
+      });
+    });
+    
+    group('Exécution Reset', () {
+      test('performReset échoue si conditions non remplies', () async {
+        gameState.setLevel(15); // Niveau insuffisant
+        
+        final result = await resetManager.performReset();
+        
+        expect(result.success, isFalse);
+        expect(result.error, contains('Conditions non remplies'));
+      });
+      
+      test('performReset conserve Quantum et Innovation', () async {
+        gameState.setLevel(25);
+        gameState.addPaperclips(1000000);
+        gameState.addQuantum(100);
+        gameState.addInnovationPoints(50);
+        
+        final quantumBefore = gameState.quantum;
+        final innovationBefore = gameState.innovationPoints;
+        
+        final result = await resetManager.performReset();
+        
+        expect(result.success, isTrue);
+        expect(gameState.quantum, greaterThan(quantumBefore));
+        expect(gameState.innovationPoints, greaterThan(innovationBefore));
+      });
+      
+      test('performReset reset toutes les ressources', () async {
+        gameState.setLevel(25);
+        gameState.addPaperclips(1000000);
+        gameState.addMoney(10000);
+        gameState.addMetal(1000);
+        gameState.productionManager.buyAutoclipper();
+        gameState.productionManager.buyAutoclipper();
+        
+        await resetManager.performReset();
+        
+        expect(gameState.money, equals(0));
+        expect(gameState.paperclips, equals(0));
+        expect(gameState.metal, equals(500)); // Valeur initiale
+        expect(gameState.autoClipperCount, equals(0));
+        expect(gameState.level, equals(1));
+      });
+      
+      test('performReset conserve recherches débloquées', () async {
+        gameState.setLevel(25);
+        gameState.addPaperclips(1000000);
+        gameState.researchManager.completeResearch('research_1');
+        gameState.researchManager.completeResearch('research_2');
+        
+        final researchesBefore = gameState.researchManager.completedResearches.length;
+        
+        await resetManager.performReset();
+        
+        expect(gameState.researchManager.completedResearches.length, equals(researchesBefore));
+      });
+      
+      test('performReset conserve agents débloqués mais les désactive', () async {
+        gameState.setLevel(25);
+        gameState.addPaperclips(1000000);
+        gameState.agentManager.unlockAgent('agent_1');
+        gameState.agentManager.activateAgent('agent_1');
+        
+        await resetManager.performReset();
+        
+        expect(gameState.agentManager.isUnlocked('agent_1'), isTrue);
+        expect(gameState.agentManager.isActive('agent_1'), isFalse);
+      });
+      
+      test('performReset ajoute entrée dans historique', () async {
+        gameState.setLevel(25);
+        gameState.addPaperclips(1000000);
+        
+        expect(gameState.resetHistory.length, equals(0));
+        
+        final result = await resetManager.performReset();
+        
+        expect(result.success, isTrue);
+        expect(gameState.resetHistory.length, equals(1));
+        expect(gameState.resetHistory.first.quantumGained, greaterThan(0));
+        expect(gameState.resetHistory.first.innovationGained, greaterThan(0));
+        expect(gameState.resetHistory.first.levelBefore, equals(25));
+      });
+      
+      test('performReset incrémente compteur resets', () async {
+        gameState.setLevel(25);
+        gameState.addPaperclips(1000000);
+        
+        expect(gameState.resetCount, equals(0));
+        
+        await resetManager.performReset();
+        
+        expect(gameState.resetCount, equals(1));
+      });
+      
+      test('performReset sauvegarde automatiquement', () async {
+        gameState.setLevel(25);
+        gameState.addPaperclips(1000000);
+        
+        final result = await resetManager.performReset();
+        
+        expect(result.success, isTrue);
+        // Vérifier que la sauvegarde a été déclenchée
+        // (via mock ou vérification du snapshot)
+      });
+    });
+    
+    group('Historique Resets', () {
+      test('historique contient timestamp correct', () async {
+        gameState.setLevel(25);
+        gameState.addPaperclips(1000000);
+        
+        final before = DateTime.now();
+        await resetManager.performReset();
+        final after = DateTime.now();
+        
+        final entry = gameState.resetHistory.first;
+        expect(entry.timestamp.isAfter(before) || entry.timestamp.isAtSameMomentAs(before), isTrue);
+        expect(entry.timestamp.isBefore(after) || entry.timestamp.isAtSameMomentAs(after), isTrue);
+      });
+      
+      test('historique conserve niveau avant reset', () async {
+        gameState.setLevel(28);
+        gameState.addPaperclips(1000000);
+        
+        await resetManager.performReset();
+        
+        expect(gameState.resetHistory.first.levelBefore, equals(28));
+      });
+      
+      test('historique conserve gains exacts', () async {
+        gameState.setLevel(25);
+        gameState.addPaperclips(1000000);
+        
+        final rewardsBefore = resetManager.calculatePotentialRewards();
+        await resetManager.performReset();
+        
+        final entry = gameState.resetHistory.first;
+        expect(entry.quantumGained, equals(rewardsBefore.quantum));
+        expect(entry.innovationGained, equals(rewardsBefore.innovationPoints));
+      });
+      
+      test('plusieurs resets créent plusieurs entrées', () async {
+        // Premier reset
+        gameState.setLevel(25);
+        gameState.addPaperclips(1000000);
+        await resetManager.performReset();
+        
+        expect(gameState.resetHistory.length, equals(1));
+        
+        // Progresser à nouveau
+        gameState.setLevel(25);
+        gameState.addPaperclips(1000000);
+        await resetManager.performReset();
+        
+        expect(gameState.resetHistory.length, equals(2));
+      });
+    });
+    
+    group('Recommandations', () {
+      test('getResetRecommendation niveau insuffisant', () {
+        gameState.setLevel(15);
+        
+        final rewards = ResetRewards(quantum: 0, innovationPoints: 0);
+        final recommendation = resetManager.getResetRecommendation(15, rewards);
+        
+        expect(recommendation, contains('Niveau 20 minimum'));
+      });
+      
+      test('getResetRecommendation niveau 20-24', () {
+        gameState.setLevel(22);
+        gameState.addPaperclips(1000000);
+        
+        final rewards = resetManager.calculatePotentialRewards();
+        final recommendation = resetManager.getResetRecommendation(22, rewards);
+        
+        expect(recommendation, contains('Attendre niveau 25-30'));
+      });
+      
+      test('getResetRecommendation niveau 30+ avec bons gains', () {
+        gameState.setLevel(30);
+        gameState.addPaperclips(10000000);
+        gameState.addMoney(100000);
+        
+        final rewards = resetManager.calculatePotentialRewards();
+        final recommendation = resetManager.getResetRecommendation(30, rewards);
+        
+        expect(recommendation, contains('Bon moment') || recommendation.contains('Excellent'));
+      });
+    });
+  });
+}

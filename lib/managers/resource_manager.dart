@@ -5,6 +5,7 @@ import '../constants/game_config.dart' show GameConstants; // Import explicite d
 import '../models/json_loadable.dart';
 import 'player_manager.dart';
 import 'market_manager.dart';
+import 'research_manager.dart';
 import '../models/statistics_manager.dart';
 import '../services/upgrades/upgrade_effects_calculator.dart';
 
@@ -12,7 +13,8 @@ import '../services/upgrades/upgrade_effects_calculator.dart';
 class ResourceManager extends ChangeNotifier implements JsonLoadable {
   late PlayerManager _playerManager;
   late MarketManager _marketManager;
-  StatisticsManager? _statistics;
+  late StatisticsManager _statisticsManager;
+  ResearchManager? _researchManager;
   
   // États des ressources
   double _metalToClipRatio = GameConstants.METAL_PER_PAPERCLIP; // Métal nécessaire par trombone
@@ -62,15 +64,18 @@ class ResourceManager extends ChangeNotifier implements JsonLoadable {
   }
 
   /// Configure le StatisticsManager associé pour la centralisation des métriques
-  void setStatisticsManager(StatisticsManager statisticsManager) {
-    _statistics = statisticsManager;
+  void setStatisticsManager(StatisticsManager manager) {
+    _statisticsManager = manager;
+  }
+  
+  void setResearchManager(ResearchManager manager) {
+    _researchManager = manager;
   }
 
   bool canPurchaseMetal([double? customPrice]) {
     final double amount = GameConstants.METAL_PACK_AMOUNT;
-    // Appliquer le rabais d'approvisionnement (procurement)
-    final int procurementLevel = _playerManager.upgrades['procurement']?.level ?? 0;
-    final double discount = UpgradeEffectsCalculator.metalDiscount(level: procurementLevel);
+    // CHANTIER-03 : Appliquer le rabais via recherche
+    final double discount = _researchManager?.getResearchBonus('metalPurchaseDiscount') ?? 0.0;
     final double unitPrice = _marketManager.marketMetalPrice * (1.0 - discount);
     final double price = customPrice ?? (amount * unitPrice);
 
@@ -92,9 +97,8 @@ class ResourceManager extends ChangeNotifier implements JsonLoadable {
   /// Acheter du métal (anciennement buyWire)
   bool purchaseMetal([double? customPrice]) {
     final double amount = GameConstants.METAL_PACK_AMOUNT;
-    // Appliquer le rabais d'approvisionnement (procurement)
-    final int procurementLevel = _playerManager.upgrades['procurement']?.level ?? 0;
-    final double discount = UpgradeEffectsCalculator.metalDiscount(level: procurementLevel);
+    // CHANTIER-03 : Appliquer le rabais via recherche
+    final double discount = _researchManager?.getResearchBonus('metalPurchaseDiscount') ?? 0.0;
     final double unitPrice = _marketManager.marketMetalPrice * (1.0 - discount);
     final double price = customPrice ?? (amount * unitPrice);
 
@@ -106,11 +110,9 @@ class ResourceManager extends ChangeNotifier implements JsonLoadable {
     _playerManager.updateMetal(_playerManager.metal + amount);
     _marketManager.updateMarketStock(_marketManager.marketMetalStock - amount);
 
-    // Mise à jour centralisée des statistiques si disponible
-    if (_statistics != null) {
-      _statistics!.updateEconomics(moneySpent: price);
-      _statistics!.updateResources(metalPurchased: amount);
-    }
+    // Mise à jour centralisée des statistiques
+    _statisticsManager.updateEconomics(moneySpent: price);
+    _statisticsManager.updateResources(metalPurchased: amount);
     
     return true;
   }

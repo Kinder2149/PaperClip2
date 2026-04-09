@@ -5,7 +5,8 @@ import 'package:paperclip2/managers/player_manager.dart';
 import 'package:paperclip2/managers/market_manager.dart';
 import 'package:paperclip2/managers/resource_manager.dart';
 import 'package:paperclip2/models/game_state_interfaces.dart';
-import 'package:paperclip2/constants/game_config.dart' show GameMode;
+import 'package:paperclip2/models/game_state.dart';
+import 'game_snapshot.dart';
 
 class GamePersistenceMapper {
   static Map<String, dynamic> prepareGameData({
@@ -14,8 +15,6 @@ class GamePersistenceMapper {
     required LevelSystem levelSystem,
     required MissionSystem missionSystem,
     required StatisticsManager statistics,
-    required GameMode gameMode,
-    DateTime? competitiveStartTime,
   }) {
     return {
       'playerManager': playerManager.toJson(),
@@ -23,13 +22,10 @@ class GamePersistenceMapper {
       'levelSystem': levelSystem.toJson(),
       'missionSystem': missionSystem.toJson(),
       'statistics': statistics.toJson(),
-      'gameMode': gameMode.index,
-      if (competitiveStartTime != null)
-        'competitiveStartTime': competitiveStartTime.toIso8601String(),
     };
   }
 
-  static GameMode applyLoadedGameDataWithoutSnapshot({
+  static void applyLoadedGameDataWithoutSnapshot({
     required PlayerManager playerManager,
     required ResourceManager resourceManager,
     required MarketManager marketManager,
@@ -38,9 +34,6 @@ class GamePersistenceMapper {
     required StatisticsManager statistics,
     required Map<String, dynamic> gameData,
   }) {
-    final mode = gameData.containsKey('gameMode')
-        ? GameMode.values[gameData['gameMode'] as int]
-        : GameMode.INFINITE;
 
     if (gameData.containsKey('playerManager')) {
       playerManager.fromJson(gameData['playerManager'] as Map<String, dynamic>);
@@ -65,8 +58,6 @@ class GamePersistenceMapper {
     if (gameData.containsKey('statistics')) {
       statistics.fromJson(gameData['statistics'] as Map<String, dynamic>);
     }
-
-    return mode;
   }
 
   static Future<void> finishLoadGameAfterSnapshot({
@@ -151,5 +142,119 @@ class GamePersistenceMapper {
     if (loadedProduced != null) {
       statistics.setTotalPaperclipsProduced(loadedProduced);
     }
+  }
+
+  // CHANTIER-01 : Sérialisation snapshot v3 (entreprise unique)
+  static GameSnapshot toSnapshotV3(GameState state) {
+    return GameSnapshot(
+      metadata: {
+        'version': 3,
+        'enterpriseId': state.enterpriseId,
+        'enterpriseName': state.enterpriseName,
+        'createdAt': state.enterpriseCreatedAt?.toUtc().toIso8601String(),
+        'lastModified': DateTime.now().toUtc().toIso8601String(),
+        // CHANTIER-02 : Ressources rares (stats complètes)
+        'quantum': state.rareResources.quantum,
+        'pointsInnovation': state.rareResources.pointsInnovation,
+        'totalResets': state.rareResources.totalResets,
+        'quantumLifetime': state.rareResources.quantumLifetime,
+        'innovationPointsLifetime': state.rareResources.innovationPointsLifetime,
+        'quantumSpent': state.rareResources.quantumSpent,
+        'innovationPointsSpent': state.rareResources.innovationPointsSpent,
+      },
+      core: {
+        'player': state.playerManager.toJson(),
+        'levelSystem': state.levelSystem.toJson(),
+        'missionSystem': state.missionSystem.toJson(),
+        // CHANTIER-02 : Ressources rares
+        'rareResources': state.rareResources.toJson(),
+        'agents': _serializeAgents(state),
+        'research': _serializeResearch(state),
+      },
+      market: state.marketManager.toJson(),
+      production: state.productionManager.toJson(),
+      stats: state.statistics.toJson(),
+    );
+  }
+
+  static Map<String, dynamic> _serializeAgents(GameState state) {
+    // CHANTIER-04 : Sérialiser l'état complet des agents
+    return state.agents.toJson();
+  }
+
+  static Map<String, dynamic> _serializeResearch(GameState state) {
+    // CHANTIER-03 : Sérialiser arbre de recherche complet
+    return state.research.toJson();
+  }
+
+  static void fromSnapshotV3(GameState state, GameSnapshot snapshot) {
+    final metadata = snapshot.metadata;
+    final core = snapshot.core;
+    
+    // Charger identité entreprise
+    if (metadata['enterpriseId'] != null) {
+      state.setEnterpriseId(metadata['enterpriseId'] as String);
+    }
+    if (metadata['enterpriseName'] != null) {
+      state.setEnterpriseName(metadata['enterpriseName'] as String);
+    }
+    
+    // CHANTIER-02 : Charger ressources rares
+    if (core['rareResources'] != null) {
+      // Nouveau format : données complètes dans core
+      state.rareResources.fromJson(core['rareResources'] as Map<String, dynamic>);
+    } else {
+      // Fallback pour anciens snapshots v3 (migration)
+      if (metadata['quantum'] != null) {
+        state.rareResources.addQuantum(metadata['quantum'] as int);
+      }
+      if (metadata['pointsInnovation'] != null) {
+        state.rareResources.addPointsInnovation(metadata['pointsInnovation'] as int);
+      }
+    }
+    
+    // Charger core
+    if (core['player'] != null) {
+      state.playerManager.fromJson(core['player'] as Map<String, dynamic>);
+    }
+    if (core['levelSystem'] != null) {
+      state.levelSystem.fromJson(core['levelSystem'] as Map<String, dynamic>);
+    }
+    if (core['missionSystem'] != null) {
+      state.missionSystem.fromJson(core['missionSystem'] as Map<String, dynamic>);
+    }
+    
+    // Charger market
+    if (snapshot.market != null) {
+      state.marketManager.fromJson(snapshot.market!);
+    }
+    
+    // Charger production
+    if (snapshot.production != null) {
+      state.productionManager.fromJson(snapshot.production!);
+    }
+    
+    // Charger stats
+    if (snapshot.stats != null) {
+      state.statistics.fromJson(snapshot.stats!);
+    }
+    
+    // Agents et recherche (pour futurs chantiers)
+    if (core['agents'] != null) {
+      _deserializeAgents(state, core['agents'] as Map<String, dynamic>);
+    }
+    if (core['research'] != null) {
+      _deserializeResearch(state, core['research'] as Map<String, dynamic>);
+    }
+  }
+
+  static void _deserializeAgents(GameState state, Map<String, dynamic> data) {
+    // CHANTIER-04 : Charger l'état complet des agents
+    state.agents.fromJson(data);
+  }
+
+  static void _deserializeResearch(GameState state, Map<String, dynamic> data) {
+    // CHANTIER-03 : Charger arbre de recherche
+    state.research.fromJson(data);
   }
 }

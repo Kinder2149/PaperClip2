@@ -8,9 +8,13 @@ import '../models/game_state_interfaces.dart';
 import '../models/upgrade.dart';
 import '../services/upgrades/upgrade_effects_calculator.dart';
 import '../services/units/value_objects.dart';
+import 'research_manager.dart';
 
 /// Manager pour les ressources et états du joueur
 class PlayerManager extends ChangeNotifier implements JsonLoadable {
+  // Référence au ResearchManager pour les bonus
+  ResearchManager? _researchManager;
+  
   // Ressources du joueur
   double _money = GameConstants.INITIAL_MONEY;
   double _paperclips = 0.0;
@@ -63,7 +67,11 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
   double get memory => _memory;
   
   // Getters pour les propriétés importantes
-  double get maxMetalStorage => _maxMetalStorage;
+  // CHANTIER-03 : Appliquer bonus recherche metalStorage (R1, R3)
+  double get maxMetalStorage {
+    final storageBonus = _researchManager?.getResearchBonus('metalStorage') ?? 0.0;
+    return _maxMetalStorage * (1.0 + storageBonus);
+  }
   double get maintenanceCosts => _maintenanceCosts;
   
   // Getter pour les upgrades
@@ -199,9 +207,28 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
     notifyListeners();
   }
   
+  /// Configure le ResearchManager pour les bonus de recherche
+  void setResearchManager(ResearchManager researchManager) {
+    _researchManager = researchManager;
+  }
+  
   /// Détermine si le joueur peut acheter un article au prix spécifié
   bool canAfford(double price) {
     return _money >= price;
+  }
+  
+  /// Dépense de l'argent (pour recherches, etc.)
+  bool spendMoney(double amount) {
+    if (_money < amount) return false;
+    
+    _money -= amount;
+    notifyListeners();
+    
+    if (kDebugMode) {
+      print('[PlayerManager] Money spent: -\$${amount.toStringAsFixed(2)}');
+    }
+    
+    return true;
   }
   
   /// Détermine si le joueur a suffisamment de métal pour produire des trombones
@@ -216,6 +243,47 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
     _paperclips = 0.0;
     _metal = GameConstants.INITIAL_METAL;
     _maintenanceCosts = 0.0;
+    notifyListeners();
+  }
+  
+  /// Reset pour progression (prestige) - conserve les ressources rares
+  /// 
+  /// Réinitialise toutes les ressources de base et upgrades, mais conserve
+  /// les ressources rares (Quantum, Points Innovation) qui sont gérées
+  /// par RareResourcesManager.
+  void resetForProgression() {
+    // Reset ressources de base
+    _money = GameConstants.INITIAL_MONEY;
+    _paperclips = 0.0;
+    _metal = GameConstants.INITIAL_METAL;
+    _maxMetalStorage = GameConstants.INITIAL_STORAGE_CAPACITY;
+    _sellPrice = GameConstants.INITIAL_PRICE;
+    
+    // Reset autoclippers
+    _autoClipperCount = 0;
+    _megaClipperCount = 0;
+    _autoClipperCost = GameConstants.BASE_AUTOCLIPPER_COST;
+    
+    // Reset upgrades (remettre tous les niveaux à 0)
+    for (var upgrade in _upgrades.values) {
+      upgrade.level = 0;
+    }
+    
+    // Reset autres états
+    _maintenanceCosts = 0.0;
+    _lastMaintenanceTime = null;
+    _metalPurchaseCount = 0;
+    _productionSpeedMultiplier = 1.0;
+    _productionBatchSizeMultiplier = 1.0;
+    _autoMetalBuyerEnabled = false;
+    _metalAutoBuyerLevel = 0;
+    _autoClipperLevel = 0;
+    
+    // Reset trust/processors/memory si utilisés
+    _trust = 0;
+    _processors = 0.0;
+    _memory = 0.0;
+    
     notifyListeners();
   }
   

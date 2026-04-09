@@ -4,8 +4,8 @@ part 'cloud_world_list_item.g.dart';
 
 @JsonSerializable()
 class CloudWorldListItem {
-  @JsonKey(name: 'world_id')
-  final String worldId;
+  @JsonKey(name: 'enterprise_id')
+  final String enterpriseId;
 
   @JsonKey(name: 'updated_at')
   final String? updatedAt;
@@ -16,7 +16,7 @@ class CloudWorldListItem {
   final String? gameVersion;
 
   CloudWorldListItem({
-    required this.worldId,
+    required this.enterpriseId,
     this.updatedAt,
     this.name,
     this.gameVersion,

@@ -13,12 +13,12 @@ import 'package:paperclip2/utils/logger.dart';
 /// 
 /// **Architecture :**
 /// - `SaveGame` est le modèle de persistance unifié utilisé par tous les services
-/// - Le modèle `World` existe comme wrapper utilitaire mais `SaveGame` reste la source de vérité
-/// - L'identifiant `id` correspond au `worldId`/`partieId` dans l'architecture cloud
+/// - Le modèle `Enterprise` existe comme wrapper utilitaire mais `SaveGame` reste la source de vérité
+/// - L'identifiant `id` correspond à l'`enterpriseId` dans l'architecture cloud
 /// 
 /// **Identité stricte (ID-first) :**
 /// - Chaque sauvegarde possède un `id` UUID v4 unique généré à la création
-/// - Cet ID est utilisé comme clé de stockage local et cloud (`/worlds/:worldId`)
+/// - Cet ID est utilisé comme clé de stockage local et cloud (`/enterprise/:uid`)
 /// - Le `name` est purement affichable et peut être modifié sans impact sur l'identité
 /// 
 /// **Limite :** Un utilisateur peut créer jusqu'à `GameConstants.MAX_WORLDS` mondes.
@@ -26,7 +26,6 @@ class SaveGame {
   final String id;
   final String name;
   final Map<String, dynamic> gameData;
-  final GameMode gameMode;
   final DateTime lastSaveTime;
   final String version;
   final bool isRestored;
@@ -35,7 +34,6 @@ class SaveGame {
     String? id,
     required this.name,
     required this.gameData,
-    required this.gameMode,
     required this.lastSaveTime,
     String? version,
     bool isRestored = false,
@@ -51,7 +49,6 @@ class SaveGame {
         id: json['id'] as String?,
         name: json['name'] as String,
         gameData: json['gameData'] as Map<String, dynamic>,
-        gameMode: _gameModefromString(json['gameMode'] as String),
         lastSaveTime: DateTime.parse(json['lastSaveTime'] as String),
         version: json['version'] as String?,
         isRestored: json['isRestored'] as bool? ?? false,
@@ -68,7 +65,6 @@ class SaveGame {
       'id': id,
       'name': name,
       'gameData': gameData,
-      'gameMode': gameMode.toString().split('.').last,
       'lastSaveTime': lastSaveTime.toIso8601String(),
       'version': version,
       'isRestored': isRestored,
@@ -85,7 +81,6 @@ class SaveGame {
     String? id,
     String? name,
     Map<String, dynamic>? gameData,
-    GameMode? gameMode,
     DateTime? lastSaveTime,
     String? version,
     bool? isRestored,
@@ -94,24 +89,10 @@ class SaveGame {
       id: id ?? this.id,
       name: name ?? this.name,
       gameData: gameData ?? this.gameData,
-      gameMode: gameMode ?? this.gameMode,
       lastSaveTime: lastSaveTime ?? this.lastSaveTime,
       version: version ?? this.version,
       isRestored: isRestored ?? this.isRestored,
     );
   }
   
-  // Méthode privée pour convertir une chaîne en GameMode
-  static GameMode _gameModefromString(String modeString) {
-    try {
-      if (modeString == 'COMPETITIVE') {
-        return GameMode.COMPETITIVE;
-      } else {
-        return GameMode.INFINITE;
-      }
-    } catch (e) {
-      appLogger.warn('[STATE] Mode de jeu inconnu: '+modeString+', utilisation du mode infini par défaut');
-      return GameMode.INFINITE;
-    }
-  }
 }

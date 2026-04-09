@@ -112,7 +112,7 @@ mixin GameStateSave on ChangeNotifier {
     try {
       if (this is GameState) {
         final gameState = this as GameState;
-        final pid = gameState.partieId;
+        final pid = gameState.enterpriseId;
         if (pid == null || pid.isEmpty) {
           return;
         }

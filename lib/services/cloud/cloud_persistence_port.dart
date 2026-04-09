@@ -16,7 +16,7 @@ class CloudStatus {
 }
 
 class CloudIndexEntry {
-  final String partieId;
+  final String enterpriseId;
   final int? remoteVersion;
   final String? playerId;
   final DateTime? lastPushAt;
@@ -24,7 +24,7 @@ class CloudIndexEntry {
   final String? name;
   final String? gameVersion;
   CloudIndexEntry({
-    required this.partieId,
+    required this.enterpriseId,
     this.remoteVersion,
     this.playerId,
     this.lastPushAt,
@@ -39,14 +39,14 @@ class CloudIndexEntry {
 /// ne manipule QUE le snapshot courant (state/current).
 abstract class CloudPersistencePort {
   Future<void> pushById({
-    required String partieId,
+    required String enterpriseId,
     required Map<String, dynamic> snapshot,
     required Map<String, dynamic> metadata,
   });
-  Future<CloudWorldDetail?> pullById({required String partieId});
-  Future<CloudStatus> statusById({required String partieId});
+  Future<CloudWorldDetail?> pullById({required String enterpriseId});
+  Future<CloudStatus> statusById({required String enterpriseId});
   Future<List<CloudIndexEntry>> listParties();
-  Future<void> deleteById({required String partieId});
+  Future<void> deleteById({required String enterpriseId});
 }
 
 class ETagPreconditionException implements Exception {}

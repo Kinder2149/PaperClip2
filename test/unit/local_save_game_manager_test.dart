@@ -26,7 +26,7 @@ void main() {
         gameData: <String, dynamic>{
           'gameSnapshot': {
             'metadata': {
-              'worldId': 'partie-1',
+              'enterpriseId': 'partie-1',
               'createdAt': DateTime.now().toIso8601String(),
             },
             'core': <String, dynamic>{},

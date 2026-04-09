@@ -243,8 +243,8 @@ class EventManager extends ChangeNotifier implements JsonLoadable {
   static const Duration _minimumInterval = Duration(seconds: 30);
   static const int _maxNotifications = 100;
 
-  // Getter pour le nom de la partie actuelle
-  String get _currentGameName => _gameState?.gameName ?? 'default';
+  // Getter pour le nom de l'entreprise actuelle
+  String get _currentGameName => _gameState?.enterpriseName ?? 'default';
 
   final List<GameEvent> _events = [];
   final Map<String, DateTime> _lastNotifications = {}; // Ajout de cette ligne
@@ -379,14 +379,14 @@ class EventManager extends ChangeNotifier implements JsonLoadable {
     notifyListeners();
   }
 
-  Future<void> loadNotificationsForGame(String gameName) async {
+  Future<void> loadNotificationsForGame(String enterpriseName) async {
     try {
       // Vider les notifications existantes
       _notifications.clear();
       _unreadNotificationIds.clear();
       
       // Charger les nouvelles notifications
-      final notifications = await NotificationStorageService.getNotificationsForGame(gameName);
+      final notifications = await NotificationStorageService.getNotificationsForGame(enterpriseName);
       _notifications.addAll(notifications);
       
       // Marquer comme non lues
@@ -397,7 +397,7 @@ class EventManager extends ChangeNotifier implements JsonLoadable {
       unreadCount.value = _unreadNotificationIds.length;
       notifyListeners();
       
-      appLogger.debug('[STATE] Chargé '+notifications.length.toString()+' notifications pour la partie: '+gameName);
+      appLogger.debug('[STATE] Chargé '+notifications.length.toString()+' notifications pour l\'entreprise: '+enterpriseName);
     } catch (e) {
       appLogger.warn('[STATE] Erreur lors du chargement des notifications: '+e.toString());
     }

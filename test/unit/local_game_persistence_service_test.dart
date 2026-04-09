@@ -14,11 +14,11 @@ void main() {
 
     test('saveSnapshot then loadSnapshot returns normalized snapshot', () async {
       const service = LocalGamePersistenceService();
-      final partieId = 'world-123';
+      final enterpriseId = 'world-123';
 
       final snapshot = GameSnapshot(
         metadata: {
-          // Deliberately missing worldId/createdAt to test normalization
+          // Deliberately missing enterpriseId/createdAt to test normalization
         },
         core: <String, dynamic>{'paperclips': 42},
         market: const <String, dynamic>{},
@@ -26,13 +26,13 @@ void main() {
         stats: const <String, dynamic>{},
       );
 
-      await service.saveSnapshot(snapshot, slotId: partieId);
+      await service.saveSnapshot(snapshot, slotId: enterpriseId);
 
-      final loaded = await service.loadSnapshot(slotId: partieId);
+      final loaded = await service.loadSnapshot(slotId: enterpriseId);
       expect(loaded, isNotNull);
 
       final md = loaded!.metadata;
-      expect(md['worldId'], equals(partieId));
+      expect(md['enterpriseId'], equals(enterpriseId));
       expect(md['createdAt'], isA<String>());
       expect(md['updatedAt'], isA<String>());
       expect(md['gameVersion'], isA<String>());

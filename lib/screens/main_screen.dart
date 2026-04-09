@@ -37,16 +37,23 @@ import 'package:paperclip2/services/google/google_bootstrap.dart';
 import 'package:paperclip2/services/google/identity/google_identity_service.dart';
 import 'package:paperclip2/services/google/identity/identity_status.dart';
 import 'package:paperclip2/widgets/appbar/settings_bottom_sheet.dart';
-import 'package:paperclip2/services/auth/firebase_auth_service.dart';
+import '../widgets/dialogs/offline_progress_dialog.dart';
+import '../services/game_runtime_coordinator.dart';
 
-// Imports des écrans
-import 'production_screen.dart';
-import 'market_screen.dart';
-import 'upgrades_screen.dart';
+// Imports des écrans encore utilisés
 import 'event_log_screen.dart';
-import 'worlds_screen.dart';
 import 'start_screen.dart';
 import 'new_metal_production_screen.dart';
+
+// Imports des panneaux
+import 'panels/dashboard_panel.dart';
+import 'panels/production_panel.dart';
+import 'panels/market_panel.dart';
+import 'panels/research_panel.dart';
+import 'panels/agents_panel.dart';
+import 'panels/progression_panel.dart';
+import 'panels/statistics_panel.dart';
+import 'panels/settings_panel.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -55,23 +62,48 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   int _selectedIndex = 0;
-  late final List<Widget> _screens;
+  late final PageController _pageController;
+  late final List<Widget> _panels;
   BackgroundMusicService? _backgroundMusicService;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    
+    // Configurer le callback pour afficher la notification offline
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      
+      try {
+        final coordinator = context.read<GameRuntimeCoordinator>();
+        coordinator.setOfflineProgressCallback((result) {
+          // Seuil minimum: 60 secondes d'absence
+          if (result.absenceDuration.inSeconds >= 60) {
+            if (!mounted) return;
+            OfflineProgressDialog.show(context, result);
+          }
+        });
+      } catch (_) {}
+      
       context.read<RuntimeActions>().startSession();
     });
-    // Corriger l'ordre des écrans
-    _screens = [
-      const ProductionScreen(),
-      const MarketScreen(), // Index 1
-      const UpgradesScreen(), // Index 2
+    
+    // Initialiser PageController
+    _pageController = PageController(initialPage: _selectedIndex);
+    
+    // Liste des 8 panneaux
+    _panels = [
+      const DashboardPanel(),
+      const ProductionPanel(),
+      const MarketPanel(),
+      const ResearchPanel(),
+      const AgentsPanel(),
+      const ProgressionPanel(),
+      const StatisticsPanel(),
+      const SettingsPanel(),
     ];
     // Retirer PlaceholderLockedScreen de la liste initiale
     _initializeGame();
@@ -109,8 +141,16 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // La gestion de l'offline est faite automatiquement par GameRuntimeCoordinator
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _backgroundMusicService?.dispose();
+    _pageController.dispose();
     super.dispose();
   }
 
@@ -121,57 +161,62 @@ class _MainScreenState extends State<MainScreen> {
     return '${hours}h ${minutes}m ${remainingSeconds}s';
   }
 
-  Widget _getCurrentScreen(VisibleUiElements visibleScreens) {
-    switch (_selectedIndex) {
-      case 0:
-        return _screens[0]; // Production toujours visible
-      case 1:
-        return visibleScreens[UiElement.market] == true
-            ? _screens[1]
-            : const PlaceholderLockedScreen();
-      case 2:
-        return visibleScreens[UiElement.upgradesSection] == true
-            ? _screens[2]
-            : const PlaceholderLockedScreen();
-      default:
-        return _screens[0];
-    }
+  Widget _buildPageView() {
+    return PageView(
+      controller: _pageController,
+      onPageChanged: (index) {
+        setState(() {
+          _selectedIndex = index;
+        });
+      },
+      children: _panels,
+    );
   }
 
-  List<NavigationDestination> _buildNavigationDestinations(
-      VisibleUiElements visibleScreens) {
+  List<NavigationDestination> _buildNavigationDestinations() {
     return [
+      const NavigationDestination(
+        icon: Icon(Icons.dashboard_outlined),
+        selectedIcon: Icon(Icons.dashboard),
+        label: 'Dashboard',
+      ),
       const NavigationDestination(
         icon: Icon(Icons.factory_outlined),
         selectedIcon: Icon(Icons.factory),
         label: 'Production',
       ),
-      NavigationDestination(
-        icon: Icon(visibleScreens[UiElement.market] == true
-            ? Icons.shopping_cart_outlined
-            : Icons.lock_outline),
-        selectedIcon: Icon(visibleScreens[UiElement.market] == true
-            ? Icons.shopping_cart
-            : Icons.lock),
-        label: visibleScreens[UiElement.market] == true
-            ? 'Marché'
-            : 'Niveau ${GameConstants.MARKET_UNLOCK_LEVEL}',
+      const NavigationDestination(
+        icon: Icon(Icons.shopping_cart_outlined),
+        selectedIcon: Icon(Icons.shopping_cart),
+        label: 'Marché',
       ),
-      NavigationDestination(
-        icon: Icon(visibleScreens[UiElement.upgradesSection] == true
-            ? Icons.upgrade_outlined
-            : Icons.lock_outline),
-        selectedIcon: Icon(visibleScreens[UiElement.upgradesSection] == true
-            ? Icons.upgrade
-            : Icons.lock),
-        label: visibleScreens[UiElement.upgradesSection] == true
-            ? 'Améliorations'
-            : 'Niveau ${GameConstants.UPGRADES_UNLOCK_LEVEL}',
+      const NavigationDestination(
+        icon: Icon(Icons.upgrade_outlined),
+        selectedIcon: Icon(Icons.upgrade),
+        label: 'Recherche',
+      ),
+      const NavigationDestination(
+        icon: Icon(Icons.smart_toy_outlined),
+        selectedIcon: Icon(Icons.smart_toy),
+        label: 'Agents',
+      ),
+      const NavigationDestination(
+        icon: Icon(Icons.trending_up_outlined),
+        selectedIcon: Icon(Icons.trending_up),
+        label: 'Progression',
+      ),
+      const NavigationDestination(
+        icon: Icon(Icons.bar_chart_outlined),
+        selectedIcon: Icon(Icons.bar_chart),
+        label: 'Statistiques',
+      ),
+      const NavigationDestination(
+        icon: Icon(Icons.settings_outlined),
+        selectedIcon: Icon(Icons.settings),
+        label: 'Paramètres',
       ),
     ];
   }
-
-  // Méthode _saveGame supprimée car remplacée par SaveButton.saveGame
 
   void _showLevelInfoDialog(BuildContext context, LevelSystem levelSystem) {
     showDialog(
@@ -410,7 +455,7 @@ class _MainScreenState extends State<MainScreen> {
                 children: [
                   gameState.showingCrisisView
                       ? const NewMetalProductionScreen()
-                      : _getCurrentScreen(gameState.getVisibleUiElements()),
+                      : _buildPageView(),
                   Positioned(
                     top: 16,
                     right: 16,
@@ -437,11 +482,15 @@ class _MainScreenState extends State<MainScreen> {
               child: NavigationBar(
                 height: 56,
                 selectedIndex: _selectedIndex,
-                onDestinationSelected: (index) =>
-                    setState(() => _selectedIndex = index),
-                destinations: _buildNavigationDestinations(
-                    gameState.getVisibleUiElements()
-                ),
+                onDestinationSelected: (index) {
+                  setState(() => _selectedIndex = index);
+                  _pageController.animateToPage(
+                    index,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                  );
+                },
+                destinations: _buildNavigationDestinations(),
               ),
             )
                 : null,
@@ -461,7 +510,6 @@ class _MainScreenState extends State<MainScreen> {
         }
 
         // Interface normale
-        final visibleScreens = gameState.getVisibleUiElements();
         final efficiencyLevel = gameState.player.upgrades['efficiency']?.level ?? 0;
         final metalPerPaperclip = UpgradeEffectsCalculator.metalPerPaperclip(
           efficiencyLevel: efficiencyLevel,
@@ -472,7 +520,7 @@ class _MainScreenState extends State<MainScreen> {
           appBarSelectedIndex: _selectedIndex,
           body: Stack(
             children: [
-              _getCurrentScreen(visibleScreens),
+              _buildPageView(),
               Consumer<EventManager>(
                 builder: (context, eventManager, _) {
                   final notification = eventManager.notificationStream.value;
@@ -495,7 +543,7 @@ class _MainScreenState extends State<MainScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (!gameState.isInCrisisMode)
+                  if (!gameState.isInCrisisMode && _selectedIndex != 0)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 4.0),
                       child: SizedBox(
@@ -580,9 +628,15 @@ class _MainScreenState extends State<MainScreen> {
                   NavigationBar(
                     height: 56,
                     selectedIndex: _selectedIndex,
-                    onDestinationSelected: (index) =>
-                        setState(() => _selectedIndex = index),
-                    destinations: _buildNavigationDestinations(visibleScreens),
+                    onDestinationSelected: (index) {
+                      setState(() => _selectedIndex = index);
+                      _pageController.animateToPage(
+                        index,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      );
+                    },
+                    destinations: _buildNavigationDestinations(),
                   ),
                 ],
               ),
@@ -762,29 +816,15 @@ class _MainScreenState extends State<MainScreen> {
                           ),
                           const Divider(height: 1),
                           ListTile(
-                            leading: const Icon(Icons.folder_open),
-                            title: const Text('Ouvrir un monde'),
-                            onTap: () {
-                              Navigator.pop(context);
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const WorldsScreen(),
-                                ),
-                              );
-                            },
-                          ),
-                          const Divider(height: 1),
-                          ListTile(
                             leading: const Icon(Icons.save),
                             title: const Text('Sauvegarder'),
                             subtitle: Builder(builder: (context) {
-                              final partieId = gameState.partieId;
-                              if (partieId == null || partieId.isEmpty) {
+                              final enterpriseId = gameState.enterpriseId;
+                              if (enterpriseId == null || enterpriseId.isEmpty) {
                                 return const Text('Dernière sauvegarde: Jamais');
                               }
                               return FutureBuilder(
-                                future: LocalSaveGameManager.getInstance().then((mgr) => mgr.loadSave(partieId)),
+                                future: LocalSaveGameManager.getInstance().then((mgr) => mgr.loadSave(enterpriseId)),
                                 builder: (context, snapshot) {
                                   if (snapshot.connectionState == ConnectionState.waiting) {
                                     return const Text('Dernière sauvegarde: …');
@@ -1059,7 +1099,7 @@ class _MainScreenState extends State<MainScreen> {
                                                       for (final s in all) {
                                                         try {
                                                           await GamePersistenceOrchestrator.instance.pushCloudFromSaveId(
-                                                            partieId: s.id,
+                                                            enterpriseId: s.id,
                                                             uid: uid,
                                                           );
                                                         } catch (_) {}
@@ -1092,10 +1132,10 @@ class _MainScreenState extends State<MainScreen> {
                                     onTap: isSignedIn && enabled
                                         ? () async {
                                             try {
-                                              final partieId = context.read<GameState>().partieId;
-                                              if (partieId == null || partieId.isEmpty) {
+                                              final enterpriseId = context.read<GameState>().enterpriseId;
+                                              if (enterpriseId == null || enterpriseId.isEmpty) {
                                                 NotificationManager.instance.showNotification(
-                                                  message: 'Aucune partie active à synchroniser',
+                                                  message: 'Aucune entreprise active à synchroniser',
                                                   level: NotificationLevel.INFO,
                                                 );
                                                 return;
@@ -1104,7 +1144,7 @@ class _MainScreenState extends State<MainScreen> {
                                               if (uid == null || uid.isEmpty) {
                                                 throw Exception('UID Firebase manquant - authentification requise');
                                               }
-                                              await GamePersistenceOrchestrator.instance.pushCloudFromSaveId(partieId: partieId, uid: uid);
+                                              await GamePersistenceOrchestrator.instance.pushCloudFromSaveId(enterpriseId: enterpriseId, uid: uid);
                                               if (context.mounted) {
                                                 NotificationManager.instance.showNotification(
                                                   message: '✅ Monde synchronisé avec le cloud',

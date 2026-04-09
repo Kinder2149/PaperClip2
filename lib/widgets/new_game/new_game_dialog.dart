@@ -1,19 +1,16 @@
 // lib/widgets/new_game/new_game_dialog.dart
 import 'package:flutter/material.dart';
-import 'package:paperclip2/constants/game_config.dart';
 import 'package:paperclip2/core/constants/constantes.dart';
 
-Future<(String, GameMode)?> showNewGameDialog({
+Future<String?> showNewGameDialog({
   required BuildContext context,
   String? initialName,
-  GameMode initialMode = GameMode.INFINITE,
 }) async {
   final TextEditingController nameController =
       TextEditingController(text: initialName ?? PartieNaming.defaultName());
-  GameMode selectedMode = initialMode;
   String? nameError;
   StateSetter? _setNameState;
-  return showDialog<(String, GameMode)>(
+  return showDialog<String>(
     context: context,
     barrierDismissible: true,
     builder: (ctx) {
@@ -42,32 +39,9 @@ Future<(String, GameMode)?> showNewGameDialog({
               },
             ),
             const SizedBox(height: 12),
-            StatefulBuilder(
-              builder: (context, setState) {
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    RadioListTile<GameMode>(
-                      title: const Text('Infini'),
-                      subtitle: const Text('Progression libre, sans limite de temps.'),
-                      value: GameMode.INFINITE,
-                      groupValue: selectedMode,
-                      onChanged: (val) {
-                        if (val != null) setState(() => selectedMode = val);
-                      },
-                    ),
-                    RadioListTile<GameMode>(
-                      title: const Text('Compétitif'),
-                      subtitle: const Text('Session à score, pensée pour la comparaison.'),
-                      value: GameMode.COMPETITIVE,
-                      groupValue: selectedMode,
-                      onChanged: (val) {
-                        if (val != null) setState(() => selectedMode = val);
-                      },
-                    ),
-                  ],
-                );
-              },
+            const Text(
+              'Mode de jeu : Infini (progression libre)',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ],
         ),
@@ -86,7 +60,7 @@ Future<(String, GameMode)?> showNewGameDialog({
                 return;
               }
               final name = trimmed;
-              Navigator.of(ctx).pop((name, selectedMode));
+              Navigator.of(ctx).pop(name);
             },
             child: const Text('Créer'),
           ),

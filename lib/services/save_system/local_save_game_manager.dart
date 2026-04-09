@@ -290,21 +290,6 @@ class LocalSaveGameManager implements SaveGameManager {
       final String version = data['version'] as String? ?? '2.0';
       final DateTime lastModifiedTime = DateTime.parse(data['timestamp'] as String? ?? data['lastModified'] as String? ?? DateTime.now().toIso8601String());
       
-      // Extraire gameMode
-      GameMode gameMode = GameMode.INFINITE;
-      try {
-        if (data.containsKey('gameMode') && data['gameMode'] is int) {
-          final int modeIndex = data['gameMode'] as int;
-          gameMode = GameMode.values[modeIndex];
-        } else if (data.containsKey('gameData') && 
-                   data['gameData'] is Map && 
-                   (data['gameData'] as Map).containsKey('gameMode') &&
-                   data['gameData']['gameMode'] is int) {
-          final int modeIndex = data['gameData']['gameMode'] as int;
-          gameMode = GameMode.values[modeIndex];
-        }
-      } catch (e) {}
-      
       // Extraire gameData
       Map<String, dynamic> gameData;
       if (data.containsKey('gameData') && data['gameData'] is Map) {
@@ -330,7 +315,6 @@ class LocalSaveGameManager implements SaveGameManager {
         lastSaveTime: lastModifiedTime,
         gameData: gameData,
         version: version,
-        gameMode: gameMode,
       );
     } catch (e) {
       _logger.severe('Erreur lors du chargement de la sauvegarde $saveId: $e');
@@ -357,7 +341,6 @@ class LocalSaveGameManager implements SaveGameManager {
         'id': save.id,
         'version': save.version,
         'timestamp': save.lastSaveTime.toIso8601String(),
-        'gameMode': save.gameMode.index,
         'gameData': sanitizedGameData,
       };
       
@@ -385,7 +368,6 @@ class LocalSaveGameManager implements SaveGameManager {
         creationDate: await _getOrCreateSaveCreationDate(save.id),
         lastModified: DateTime.now(),
         version: save.version,
-        gameMode: save.gameMode,
         displayData: _extractDisplayDataFromGameData(sanitizedGameData as Map<String, dynamic>),
       );
       
@@ -459,7 +441,6 @@ class LocalSaveGameManager implements SaveGameManager {
         'id': save.id,
         'name': save.name,
         'version': save.version,
-        'gameMode': save.gameMode.index,
         'timestamp': save.lastSaveTime.toIso8601String(),
         'exportDate': DateTime.now().toIso8601String(),
         'gameData': save.gameData,
@@ -532,21 +513,6 @@ class LocalSaveGameManager implements SaveGameManager {
         importData['timestamp'] as String? ?? DateTime.now().toIso8601String()
       );
       
-      // Extraire le mode de jeu
-      GameMode gameMode = GameMode.INFINITE;
-      try {
-        if (importData.containsKey('gameMode') && importData['gameMode'] is int) {
-          final int modeIndex = importData['gameMode'] as int;
-          gameMode = GameMode.values[modeIndex];
-        } else if (importData.containsKey('gameData') && 
-                  importData['gameData'] is Map && 
-                  (importData['gameData'] as Map).containsKey('gameMode') &&
-                  importData['gameData']['gameMode'] is int) {
-          final int modeIndex = importData['gameData']['gameMode'] as int;
-          gameMode = GameMode.values[modeIndex];
-        }
-      } catch (e) {}
-      
       // Extraire les données de jeu
       Map<String, dynamic> gameData;
       if (importData.containsKey('gameData') && importData['gameData'] is Map) {
@@ -570,7 +536,6 @@ class LocalSaveGameManager implements SaveGameManager {
         lastSaveTime: timestamp,
         gameData: gameData,
         version: version,
-        gameMode: gameMode,
       );
       
       // Sauvegarder la sauvegarde importée
@@ -597,7 +562,6 @@ class LocalSaveGameManager implements SaveGameManager {
       metadata ??= SaveMetadata.createNew(
         id: saveId,
         name: saveName,
-        gameMode: gameMode,
       );
       
       // Sauvegarder les métadonnées
@@ -614,7 +578,6 @@ class LocalSaveGameManager implements SaveGameManager {
   @override
   Future<SaveGame> createNewSave({
     String? name,
-    GameMode gameMode = GameMode.INFINITE,
     Map<String, dynamic>? initialData,
   }) async {
     await _ensureInitialized();
@@ -629,7 +592,7 @@ class LocalSaveGameManager implements SaveGameManager {
       final String saveName = name ?? 'Nouveau monde ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}';
       
       // Créer des données de jeu initiales ou utiliser celles fournies
-      final Map<String, dynamic> gameData = initialData ?? _createDefaultGameData(gameMode);
+      final Map<String, dynamic> gameData = initialData ?? _createDefaultGameData();
       
       // Créer l'objet SaveGame
       final SaveGame newSave = SaveGame(
@@ -638,7 +601,6 @@ class LocalSaveGameManager implements SaveGameManager {
         lastSaveTime: DateTime.now(),
         gameData: gameData,
         version: '2.0', // Version actuelle
-        gameMode: gameMode,
       );
       
       // Sauvegarder les données
@@ -651,7 +613,6 @@ class LocalSaveGameManager implements SaveGameManager {
       final metadata = SaveMetadata.createNew(
         id: id,
         name: saveName,
-        gameMode: gameMode,
       );
       
       await updateSaveMetadata(id, metadata);
@@ -853,7 +814,6 @@ class LocalSaveGameManager implements SaveGameManager {
         lastSaveTime: DateTime.now(), // Horodatage actuel pour la copie
         gameData: Map<String, dynamic>.from(source.gameData), // Copie profonde
         version: source.version,
-        gameMode: source.gameMode,
       );
       
       // Sauvegarder la copie
@@ -902,7 +862,6 @@ class LocalSaveGameManager implements SaveGameManager {
         lastSaveTime: DateTime.now(),
         gameData: save.gameData,
         version: save.version,
-        gameMode: save.gameMode,
       );
       
       // Sauvegarder
@@ -1025,7 +984,7 @@ class LocalSaveGameManager implements SaveGameManager {
   }
 
   /// Crée des données de jeu par défaut pour une nouvelle partie
-  Map<String, dynamic> _createDefaultGameData(GameMode gameMode) {
+  Map<String, dynamic> _createDefaultGameData() {
     return {
       'playerManager': {
         'money': 0.0,
@@ -1047,7 +1006,6 @@ class LocalSaveGameManager implements SaveGameManager {
         'currentPath': 0,
         'xpMultiplier': 1.0,
       },
-      'gameMode': gameMode.index,
     };
   }
   
@@ -1267,11 +1225,11 @@ class LocalSaveGameManager implements SaveGameManager {
     try {
       final currentTime = DateTime.now();
       
-      // Récupérer partieId depuis GameState
-      final baseKey = gameState.partieId;
+      // Récupérer enterpriseId depuis GameState
+      final baseKey = gameState.enterpriseId;
       if (baseKey == null || baseKey.isEmpty) {
         if (kDebugMode) {
-          _logger.warn('[BACKUP] createBackup: partieId manquant');
+          _logger.warn('[BACKUP] createBackup: enterpriseId manquant');
         }
         return false;
       }
@@ -1312,7 +1270,6 @@ class LocalSaveGameManager implements SaveGameManager {
         lastSaveTime: currentTime,
         gameData: gameData,
         version: GameConstants.VERSION,
-        gameMode: gameState.gameMode,
       );
       
       final mgr = await LocalSaveGameManager.getInstance();
@@ -1320,7 +1277,7 @@ class LocalSaveGameManager implements SaveGameManager {
       
       if (success) {
         // Appliquer rétention après création
-        await applyBackupRetention(partieId: baseKey);
+        await applyBackupRetention(enterpriseId: baseKey);
       }
       
       return success;
@@ -1332,10 +1289,10 @@ class LocalSaveGameManager implements SaveGameManager {
     }
   }
   
-  /// Liste les backups pour un partieId donné
-  Future<List<SaveMetadata>> listBackupsForPartie(String partieId) async {
+  /// Liste les backups pour un enterpriseId donné
+  Future<List<SaveMetadata>> listBackupsForEnterprise(String enterpriseId) async {
     final all = await listSaves();
-    final prefix = '$partieId${GameConstants.BACKUP_DELIMITER}';
+    final prefix = '$enterpriseId${GameConstants.BACKUP_DELIMITER}';
     final backups = all.where((s) => s.name.startsWith(prefix)).toList()
       ..sort((a, b) => b.lastModified.compareTo(a.lastModified));
     return backups;
@@ -1343,14 +1300,14 @@ class LocalSaveGameManager implements SaveGameManager {
   
   /// Applique la politique de rétention des backups
   Future<int> applyBackupRetention({
-    required String partieId,
+    required String enterpriseId,
     int? max,
     Duration? ttl,
   }) async {
     final maxKeep = max ?? GameConstants.BACKUP_RETENTION_MAX;
     final ttlDur = ttl ?? GameConstants.BACKUP_RETENTION_TTL;
     final now = DateTime.now();
-    final backups = await listBackupsForPartie(partieId);
+    final backups = await listBackupsForEnterprise(enterpriseId);
     
     int deleted = 0;
     
@@ -1364,7 +1321,7 @@ class LocalSaveGameManager implements SaveGameManager {
     }
     
     // Recharger après TTL purge
-    final remaining = await listBackupsForPartie(partieId);
+    final remaining = await listBackupsForEnterprise(enterpriseId);
     if (remaining.length > maxKeep) {
       // Supprimer les plus anciens au-delà du quota
       final toDelete = remaining.sublist(maxKeep);
@@ -1405,11 +1362,11 @@ class LocalSaveGameManager implements SaveGameManager {
       
       final extractedGameData = backupSave.gameData;
       
-      // Vérifier partieId cible
-      final targetId = gameState.partieId;
+      // Vérifier enterpriseId cible
+      final targetId = gameState.enterpriseId;
       if (targetId == null || targetId.isEmpty) {
         if (kDebugMode) {
-          _logger.warn('[BACKUP] restoreFromBackup: partieId cible manquant');
+          _logger.warn('[BACKUP] restoreFromBackup: enterpriseId cible manquant');
         }
         return false;
       }
@@ -1429,7 +1386,6 @@ class LocalSaveGameManager implements SaveGameManager {
         lastSaveTime: DateTime.now(),
         gameData: extractedGameData,
         version: backupMeta.version,
-        gameMode: backupMeta.gameMode,
         isRestored: true,
       );
       

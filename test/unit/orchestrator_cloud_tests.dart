@@ -3,7 +3,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:paperclip2/services/persistence/game_persistence_orchestrator.dart';
 import 'package:paperclip2/services/cloud/cloud_persistence_port.dart';
-import 'package:paperclip2/services/save_system/local_save_game_manager.dart';
+import 'package:paperclip2/services/cloud/models/cloud_status.dart';
+import 'package:paperclip2/services/cloud/models/cloud_index_entry.dart';
+import 'package:paperclip2/services/cloud/models/cloud_world_detail.dart';
 import 'package:paperclip2/models/save_game.dart';
 import 'package:paperclip2/constants/game_config.dart';
 import 'package:paperclip2/services/persistence/local_game_persistence.dart';
@@ -15,26 +17,35 @@ class _FakeCloudPort implements CloudPersistencePort {
   List<CloudIndexEntry> index = [];
 
   @override
-  Future<void> pushById({required String partieId, required Map<String, dynamic> snapshot, required Map<String, dynamic> metadata}) async {
-    storage[partieId] = {
+  Future<void> pushById({required String enterpriseId, required Map<String, dynamic> snapshot, required Map<String, dynamic> metadata}) async {
+    storage[enterpriseId] = {
       'snapshot': snapshot,
       'metadata': metadata,
     };
-    lastMetadata[partieId] = metadata;
-    status[partieId] = CloudStatus(exists: true, lastSavedAt: DateTime.now(), name: metadata['name']?.toString());
-    final entry = CloudIndexEntry(partieId: partieId, name: metadata['name']?.toString(), gameVersion: metadata['gameVersion']?.toString());
-    index.removeWhere((e) => e.partieId == partieId);
+    lastMetadata[enterpriseId] = metadata;
+    status[enterpriseId] = CloudStatus(exists: true, lastSavedAt: DateTime.now(), name: metadata['name']?.toString());
+    final entry = CloudIndexEntry(enterpriseId: enterpriseId, name: metadata['name']?.toString(), gameVersion: metadata['gameVersion']?.toString());
+    index.removeWhere((e) => e.enterpriseId == enterpriseId);
     index.add(entry);
   }
 
   @override
-  Future<Map<String, dynamic>?> pullById({required String partieId}) async {
-    return storage[partieId];
+  Future<CloudWorldDetail?> pullById({required String enterpriseId}) async {
+    final data = storage[enterpriseId];
+    if (data == null) return null;
+    return CloudWorldDetail(
+      enterpriseId: enterpriseId,
+      version: 1,
+      snapshot: data['snapshot'] as Map<String, dynamic>,
+      updatedAt: DateTime.now().toIso8601String(),
+      name: (data['metadata'] as Map<String, dynamic>?)?['name']?.toString(),
+      gameVersion: (data['metadata'] as Map<String, dynamic>?)?['gameVersion']?.toString(),
+    );
   }
 
   @override
-  Future<CloudStatus> statusById({required String partieId}) async {
-    return status[partieId] ?? CloudStatus(exists: false);
+  Future<CloudStatus> statusById({required String enterpriseId}) async {
+    return status[enterpriseId] ?? CloudStatus(exists: false);
   }
 
   @override
@@ -43,20 +54,20 @@ class _FakeCloudPort implements CloudPersistencePort {
   }
 
   @override
-  Future<void> deleteById({required String partieId}) async {
-    storage.remove(partieId);
-    status[partieId] = CloudStatus(exists: false);
-    index.removeWhere((e) => e.partieId == partieId);
+  Future<void> deleteById({required String enterpriseId}) async {
+    storage.remove(enterpriseId);
+    status[enterpriseId] = CloudStatus(exists: false);
+    index.removeWhere((e) => e.enterpriseId == enterpriseId);
   }
 
   @override
-  Future<List<int>> listVersions({required String partieId}) async => <int>[];
+  Future<List<int>> listVersions({required String enterpriseId}) async => <int>[];
 
   @override
-  Future<Map<String, dynamic>?> getVersionSnapshot({required String partieId, required int version}) async => null;
+  Future<Map<String, dynamic>?> getVersionSnapshot({required String enterpriseId, required int version}) async => null;
 
   @override
-  Future<bool> restoreVersion({required String partieId, required int version}) async => false;
+  Future<bool> restoreVersion({required String enterpriseId, required int version}) async => false;
 }
 
 void main() {
@@ -74,11 +85,11 @@ void main() {
 
     test('materializeFromCloud writes a local save with snapshot', () async {
       // Arrange: prepare cloud object
-      final partieId = 'pid-1';
-      port.storage[partieId] = {
+      final enterpriseId = 'pid-1';
+      port.storage[enterpriseId] = {
         'snapshot': {
           'metadata': {
-            'worldId': partieId,
+            'enterpriseId': enterpriseId,
             'createdAt': DateTime.now().toIso8601String(),
             'version': 2,
           },
@@ -93,28 +104,28 @@ void main() {
         },
       };
 
-      final ok = await GamePersistenceOrchestrator.instance.materializeFromCloud(partieId: partieId);
+      final ok = await GamePersistenceOrchestrator.instance.materializeFromCloud(enterpriseId: enterpriseId);
       expect(ok, isTrue);
 
       final mgr = await LocalSaveGameManager.getInstance();
-      final local = await mgr.loadSave(partieId);
+      final local = await mgr.loadSave(enterpriseId);
       expect(local, isNotNull);
       expect(local!.gameData.containsKey(LocalGamePersistenceService.snapshotKey), isTrue);
     });
 
     test('pushCloudFromSaveId sends snapshot + metadata', () async {
       final mgr = await LocalSaveGameManager.getInstance();
-      final partieId = 'pid-2';
+      final enterpriseId = 'pid-2';
 
       // Create a local save with a snapshot
       final save = SaveGame(
-        id: partieId,
+        id: enterpriseId,
         name: 'Local World',
         lastSaveTime: DateTime.now(),
         gameData: <String, dynamic>{
           LocalGamePersistenceService.snapshotKey: {
             'metadata': {
-              'worldId': partieId,
+              'enterpriseId': enterpriseId,
               'createdAt': DateTime.now().toIso8601String(),
               'version': 2,
             },
@@ -130,15 +141,15 @@ void main() {
       final okSave = await mgr.saveGame(save);
       expect(okSave, isTrue);
 
-      await GamePersistenceOrchestrator.instance.pushCloudFromSaveId(partieId: partieId, playerId: 'player-1');
+      await GamePersistenceOrchestrator.instance.pushCloudFromSaveId(enterpriseId: enterpriseId, playerId: 'player-1');
 
       // Assert cloud side
-      expect(port.storage.containsKey(partieId), isTrue);
-      final obj = port.storage[partieId]!;
+      expect(port.storage.containsKey(enterpriseId), isTrue);
+      final obj = port.storage[enterpriseId]!;
       expect(obj['snapshot'], isA<Map<String, dynamic>>());
       expect(obj['metadata'], isA<Map<String, dynamic>>());
       final meta = obj['metadata'] as Map<String, dynamic>;
-      expect(meta['partieId'], equals(partieId));
+      expect(meta['enterpriseId'], equals(enterpriseId));
       expect(meta['playerId'], equals('player-1'));
     });
 

@@ -2,7 +2,6 @@
 // Modèle riche pour les métadonnées des sauvegardes
 
 import 'package:flutter/foundation.dart';
-import 'package:paperclip2/constants/game_config.dart';
 
 /// Classe représentant les métadonnées d'une sauvegarde.
 /// 
@@ -27,9 +26,6 @@ class SaveMetadata {
   /// Version du format de sauvegarde
   final String version;
   
-  /// Mode de jeu (infini, scénario, etc.)
-  final GameMode gameMode;
-  
   /// Données d'affichage pour l'interface utilisateur
   /// Peut contenir des statistiques, une miniature, etc.
   final Map<String, dynamic> displayData;
@@ -45,7 +41,6 @@ class SaveMetadata {
     required this.creationDate,
     required this.lastModified,
     required this.version,
-    required this.gameMode,
     Map<String, dynamic>? displayData,
     this.isRestored = false,
   }) : this.displayData = displayData ?? {};
@@ -55,7 +50,6 @@ class SaveMetadata {
     String? name,
     String? description,
     DateTime? lastModified,
-    GameMode? gameMode,
     Map<String, dynamic>? displayData,
     bool? isRestored,
   }) {
@@ -66,7 +60,6 @@ class SaveMetadata {
       creationDate: this.creationDate,
       lastModified: lastModified ?? this.lastModified,
       version: this.version,
-      gameMode: gameMode ?? this.gameMode,
       displayData: displayData ?? Map<String, dynamic>.from(this.displayData),
       isRestored: isRestored ?? this.isRestored,
     );
@@ -81,7 +74,6 @@ class SaveMetadata {
       'creationDate': creationDate.toIso8601String(),
       'lastModified': lastModified.toIso8601String(),
       'version': version,
-      'gameMode': gameMode.index,
       'displayData': displayData,
       'isRestored': isRestored,
     };
@@ -96,7 +88,6 @@ class SaveMetadata {
       creationDate: DateTime.parse(json['creationDate'] as String),
       lastModified: DateTime.parse(json['lastModified'] as String),
       version: json['version'] as String,
-      gameMode: GameMode.values[json['gameMode'] as int],
       displayData: json['displayData'] as Map<String, dynamic>? ?? {},
       isRestored: json['isRestored'] as bool? ?? false,
     );
@@ -106,7 +97,6 @@ class SaveMetadata {
   factory SaveMetadata.createNew({
     required String id,
     String? name,
-    GameMode gameMode = GameMode.INFINITE,
     bool isRestored = false,
   }) {
     final now = DateTime.now();
@@ -117,7 +107,6 @@ class SaveMetadata {
       creationDate: now,
       lastModified: now,
       version: '2.0', // Version actuelle du format
-      gameMode: gameMode,
       displayData: {
         'paperclips': 0,
         'money': 0,

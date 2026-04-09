@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:paperclip2/services/cloud/cloud_persistence_port.dart';
 import 'package:paperclip2/services/cloud/cloud_persistence_adapter.dart';
 import 'package:paperclip2/services/persistence/game_persistence_orchestrator.dart';
@@ -77,55 +76,29 @@ class CloudPortManager {
   /// Permet à l'appelant de vérifier atomiquement le résultat
   Future<bool> activate({required String reason}) async {
     try {
-      if (kDebugMode) {
-        _logger.info('[CloudPortManager] activate() called | reason=$reason', 
-          code: 'cloud_port_activate_start');
-      }
+      print('🔥🔥🔥 [CloudPortManager] activate() called | reason=$reason 🔥🔥🔥');
       
       // Import dynamique pour éviter les dépendances circulaires
-      if (kDebugMode) {
-        _logger.info('[CloudPortManager] Creating active port instance', 
-          code: 'cloud_port_create_port');
-      }
+      print('🔥🔥🔥 [CloudPortManager] Creating active port instance 🔥🔥🔥');
       final CloudPersistencePort activePort = await _createActivePort();
       
-      if (kDebugMode) {
-        _logger.info('[CloudPortManager] Calling setPort() | portType=${activePort.runtimeType}', 
-          code: 'cloud_port_set_port_call');
-      }
+      print('🔥🔥🔥 [CloudPortManager] Calling setPort() | portType=${activePort.runtimeType} 🔥🔥🔥');
       final success = await setPort(activePort, reason: reason);
       
-      if (kDebugMode) {
-        _logger.info('[CloudPortManager] setPort() result | success=$success isActive=$isActive', 
-          code: 'cloud_port_set_port_result');
-      }
+      print('🔥🔥🔥 [CloudPortManager] setPort() result | success=$success 🔥🔥🔥');
+      print('🔥🔥🔥 [CloudPortManager] Checking isActive | _currentPort=${_currentPort?.runtimeType} isActive=$isActive currentPortNull=${_currentPort == null} isNoop=${_currentPort is NoopCloudPersistenceAdapter} 🔥🔥🔥');
       
       // Vérification double pour garantir que le port est bien actif
       if (success && isActive) {
-        if (kDebugMode) {
-          _logger.info('[CloudPortManager] Activation successful | currentPortType=$currentPortType', 
-            code: 'cloud_port_activate_success');
-        }
+        print('🔥🔥🔥 [CloudPortManager] Activation successful | currentPortType=$currentPortType 🔥🔥🔥');
         return true;
       }
       
       // Port configuré mais pas actif (NOOP détecté)
-      _logger.warn('[CloudPortManager] Port configuré mais NOOP détecté', 
-        code: 'cloud_port_noop_detected', ctx: {
-          'portType': currentPortType,
-          'reason': reason,
-          'success': success,
-          'isActive': isActive,
-        });
+      print('🔥🔥🔥 [CloudPortManager] Port configuré mais NOOP détecté | portType=$currentPortType reason=$reason success=$success isActive=$isActive 🔥🔥🔥');
       return false;
     } catch (e, stack) {
-      _logger.error('[CloudPortManager] Erreur activation', 
-        code: 'cloud_port_activation_error', 
-        ctx: {
-          'reason': reason,
-          'error': e.toString(),
-          'stack': stack.toString().substring(0, 200),
-        });
+      print('🔥🔥🔥 [CloudPortManager] ERREUR activation | reason=$reason error=$e stack=${stack.toString().substring(0, 200)} 🔥🔥🔥');
       return false;
     }
   }

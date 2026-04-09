@@ -64,4 +64,33 @@ service cloud.firestore {
       allow update, delete: if false;
     }
   }
+
+  // ========================================
+  // CHANTIER-AUDIT-CLOUD : Entreprise unique
+  // ========================================
+  // Collection /enterprises/{uid} pour le système single-enterprise
+  // Remplace l'ancien système multi-worlds /players/{uid}/saves/{partieId}
+  
+  match /enterprises/{uid} {
+    // Lecture : Utilisateur doit être propriétaire
+    allow read: if isOwner(uid);
+    
+    // Création/Mise à jour : Utilisateur doit être propriétaire + validation structure
+    allow create, update: if isOwner(uid)
+      // Validation structure document
+      && request.resource.data.keys().hasOnly(['enterpriseId', 'snapshot', 'createdAt', 'updatedAt'])
+      // Validation types
+      && (request.resource.data.enterpriseId is string)
+      && (request.resource.data.snapshot is map)
+      && (request.resource.data.createdAt is timestamp)
+      && (request.resource.data.updatedAt is timestamp)
+      // Validation snapshot v3
+      && (request.resource.data.snapshot.metadata is map)
+      && (request.resource.data.snapshot.metadata.version == 3)
+      // Cohérence enterpriseId
+      && (request.resource.data.snapshot.metadata.enterpriseId == request.resource.data.enterpriseId);
+    
+    // Suppression : Utilisateur doit être propriétaire
+    allow delete: if isOwner(uid);
+  }
 }

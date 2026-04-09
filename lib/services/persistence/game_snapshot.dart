@@ -9,12 +9,14 @@ import 'dart:convert';
 /// - market   : état du marché (optionnel)
 /// - production : état de la production (optionnel)
 /// - stats    : statistiques cumulées (optionnel)
+/// - research : arbre de recherche (optionnel, v4+)
 class GameSnapshot {
   final Map<String, dynamic> metadata;
   final Map<String, dynamic> core;
   final Map<String, dynamic>? market;
   final Map<String, dynamic>? production;
   final Map<String, dynamic>? stats;
+  final Map<String, dynamic>? research;
 
   const GameSnapshot({
     required this.metadata,
@@ -22,6 +24,7 @@ class GameSnapshot {
     this.market,
     this.production,
     this.stats,
+    this.research,
   });
 
   Map<String, dynamic> toJson() {
@@ -31,6 +34,7 @@ class GameSnapshot {
       if (market != null) 'market': market,
       if (production != null) 'production': production,
       if (stats != null) 'stats': stats,
+      if (research != null) 'research': research,
     };
   }
 
@@ -58,6 +62,9 @@ class GameSnapshot {
           : null,
       stats: json['stats'] is Map
           ? Map<String, dynamic>.from(json['stats'] as Map)
+          : null,
+      research: json['research'] is Map
+          ? Map<String, dynamic>.from(json['research'] as Map)
           : null,
     );
   }

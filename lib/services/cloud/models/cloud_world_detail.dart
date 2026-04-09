@@ -5,8 +5,8 @@ part 'cloud_world_detail.g.dart';
 
 @JsonSerializable()
 class CloudWorldDetail {
-  @JsonKey(name: 'world_id')
-  final String worldId;
+  @JsonKey(name: 'enterprise_id')
+  final String enterpriseId;
 
   final int version;
 
@@ -24,7 +24,7 @@ class CloudWorldDetail {
   final String? gameMode;
 
   CloudWorldDetail({
-    required this.worldId,
+    required this.enterpriseId,
     required this.version,
     required this.snapshot,
     required this.updatedAt,
@@ -39,9 +39,4 @@ class CloudWorldDetail {
   Map<String, dynamic> toJson() => _$CloudWorldDetailToJson(this);
 
   DateTime get updatedAtDateTime => DateTime.parse(updatedAt);
-  
-  GameMode get gameModeEnum {
-    if (gameMode == null) return GameMode.INFINITE;
-    return gameMode!.contains('COMPETITIVE') ? GameMode.COMPETITIVE : GameMode.INFINITE;
-  }
 }

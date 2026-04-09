@@ -12,12 +12,14 @@ class IntroductionScreen extends StatefulWidget {
   final bool showSkipButton;
   final VoidCallback onStart;
   final bool isCompetitiveMode;
+  final Function(String enterpriseName)? onCreateEnterprise;
 
   const IntroductionScreen({
     Key? key,
     this.showSkipButton = false,
     required this.onStart,
     this.isCompetitiveMode = false,
+    this.onCreateEnterprise,
   }) : super(key: key);
 
   @override
@@ -35,6 +37,10 @@ class _IntroductionScreenState extends State<IntroductionScreen> with TickerProv
   int _currentPage = 0;
   final PageController _pageController = PageController();
 
+  // CHANTIER-01 : Contrôleur pour le nom d'entreprise
+  final TextEditingController _enterpriseNameController = TextEditingController();
+  String? _enterpriseNameError;
+
   void _handleNavigation() {
     if (!mounted) return;
 
@@ -50,6 +56,143 @@ class _IntroductionScreenState extends State<IntroductionScreen> with TickerProv
         MaterialPageRoute(builder: (_) => const MainScreen()),
       );
     }
+  }
+
+  void _handleCreateEnterprise() {
+    final name = _enterpriseNameController.text.trim();
+    
+    if (name.isEmpty) {
+      setState(() {
+        _enterpriseNameError = "Veuillez entrer un nom pour votre entreprise";
+      });
+      return;
+    }
+    
+    if (name.length < 3) {
+      setState(() {
+        _enterpriseNameError = "Le nom doit contenir au moins 3 caractères";
+      });
+      return;
+    }
+    
+    if (name.length > 30) {
+      setState(() {
+        _enterpriseNameError = "Le nom ne peut pas dépasser 30 caractères";
+      });
+      return;
+    }
+    
+    final validChars = RegExp(r"^[a-zA-Z0-9\s\-_.\']+$");
+    if (!validChars.hasMatch(name)) {
+      setState(() {
+        _enterpriseNameError = "Le nom contient des caractères non autorisés";
+      });
+      return;
+    }
+    
+    // CHANTIER-01: Appeler le callback avec le nom d'entreprise
+    if (widget.onCreateEnterprise != null) {
+      widget.onCreateEnterprise!(name);
+    }
+    
+    _handleNavigation();
+  }
+
+  Widget _buildEnterpriseNamePage() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.deepPurple[900]!,
+            Colors.deepPurple[700]!,
+            Colors.purple[500]!,
+          ],
+        ),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(40.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.business,
+                size: 80,
+                color: Colors.white.withOpacity(0.9),
+              ),
+              const SizedBox(height: 40),
+              Text(
+                "NOMMEZ VOTRE ENTREPRISE",
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  letterSpacing: 2,
+                  shadows: [
+                    Shadow(
+                      blurRadius: 10,
+                      color: Colors.black.withOpacity(0.3),
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 30),
+              Text(
+                "Choisissez un nom unique pour votre empire de trombones.\nVous pourrez le modifier plus tard dans les paramètres.",
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.white.withOpacity(0.9),
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 40),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: TextField(
+                  controller: _enterpriseNameController,
+                  decoration: InputDecoration(
+                    hintText: "Nom de l'entreprise",
+                    border: InputBorder.none,
+                    errorText: _enterpriseNameError,
+                  ),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    color: Colors.black87,
+                  ),
+                  textAlign: TextAlign.center,
+                  onChanged: (value) {
+                    if (_enterpriseNameError != null) {
+                      setState(() {
+                        _enterpriseNameError = null;
+                      });
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                "Exemples : PaperClip Corp, TromboTech, ClipMaster Inc.",
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white.withOpacity(0.7),
+                  fontStyle: FontStyle.italic,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -218,9 +361,9 @@ class _IntroductionScreenState extends State<IntroductionScreen> with TickerProv
                                 foregroundColor: Colors.deepPurple[900],
                               ),
                               child: Text(
-                                _currentPage < 2
+                                _currentPage < 3
                                     ? 'SUIVANT'
-                                    : 'INITIALISER LE SYSTÈME',
+                                    : 'CRÉER MON ENTREPRISE',
                                 style: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
@@ -281,6 +424,9 @@ class _IntroductionScreenState extends State<IntroductionScreen> with TickerProv
                     : "Gérez vos ressources et prenez des décisions stratégiques. Déverrouillez de nouvelles fonctionnalités en progressant dans les niveaux.",
                 image: "assets/intro3.png",
               ),
+              
+              // Quatrième page - Nommer l'entreprise
+              _buildEnterpriseNamePage(),
             ],
           ),
 
@@ -327,6 +473,7 @@ class _IntroductionScreenState extends State<IntroductionScreen> with TickerProv
     _controller.dispose();
     _audioPlayer.dispose();
     _pageController.dispose();
+    _enterpriseNameController.dispose();
     super.dispose();
   }
 }

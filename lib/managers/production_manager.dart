@@ -4,6 +4,7 @@ import 'dart:math';
 import '../constants/game_config.dart' show GameConstants, EventType, EventImportance; // Import des constantes et enums requis
 import 'player_manager.dart';
 import '../models/statistics_manager.dart';
+import 'research_manager.dart';
 // MissionSystem (Option A — mise en pause): aucun événement de gameplay n'est branché ici.
 import '../models/json_loadable.dart';
 import '../models/level_system.dart'; // Import pour LevelSystem
@@ -14,6 +15,7 @@ import 'package:paperclip2/domain/ports/domain_event_sink.dart';
 import 'package:paperclip2/domain/ports/no_op_domain_event_sink.dart';
 import 'package:paperclip2/services/runtime/clock.dart';
 import 'package:paperclip2/utils/logger.dart';
+import 'package:paperclip2/managers/agent_manager.dart';
 
 /// Gestionnaire responsable de toute la logique de production de trombones
 /// (production manuelle, automatique, gestion des autoclippeuses, etc.)
@@ -23,6 +25,8 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
   final PlayerManager _playerManager;
   final StatisticsManager _statistics; // Utilise maintenant la version de models/statistics_manager.dart
   final LevelSystem _levelSystem;
+  final ResearchManager _researchManager;
+  AgentManager? _agentManager; // CHANTIER-04 : Optionnel pour compatibilité
   DomainEventSink _eventSink = const NoOpDomainEventSink();
   final Clock _clock;
   // Ponts vers le runtime maître (lecture/commande de pause)
@@ -59,12 +63,18 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
     _pauseReader = reader;
     _pauseRequest = request;
   }
+  
+  // CHANTIER-04 : Setter pour AgentManager (injection tardive)
+  void setAgentManager(AgentManager agentManager) {
+    _agentManager = agentManager;
+  }
 
   // Constructor avec injection de dépendances
   ProductionManager({
     required PlayerManager playerManager,
     required StatisticsManager statistics, // Utilise maintenant la version de models/statistics_manager.dart
     required LevelSystem levelSystem,
+    required ResearchManager researchManager,
     Clock? clock,
     bool Function()? pauseReader,
     void Function(bool)? pauseRequest,
@@ -72,6 +82,7 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
     _playerManager = playerManager,
     _statistics = statistics,
     _levelSystem = levelSystem,
+    _researchManager = researchManager,
     _clock = (clock ?? SystemClock()),
     _pauseReader = pauseReader,
     _pauseRequest = pauseRequest {
@@ -79,10 +90,10 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
   }
 
   double _metalPerPaperclip() {
-    final efficiencyLevel = player.upgrades['efficiency']?.level ?? 0;
-    return UpgradeEffectsCalculator.metalPerPaperclip(
-      efficiencyLevel: efficiencyLevel,
-    );
+    // CHANTIER-03 : Utiliser bonus recherche au lieu d'upgrades
+    final efficiencyBonus = _researchManager.getResearchBonus('metalEfficiency');
+    final baseConsumption = GameConstants.METAL_PER_PAPERCLIP;
+    return baseConsumption * (1.0 - efficiencyBonus);
   }
 
   /// Traite la production automatique de trombones via les autoclippeuses
@@ -101,19 +112,19 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
       _logger.debug('[ProductionManager] État initial: ${player.paperclips.toStringAsFixed(1)} trombones, ${player.metal.toStringAsFixed(1)} métal, ${player.autoClipperCount} autoclippeuses');
     }
 
-    // Calcul des bonus (source unique)
-    final int speedLevel = player.upgrades['speed']?.level ?? 0;
-    final int bulkLevel = player.upgrades['bulk']?.level ?? 0;
-    final int efficiencyLevel = player.upgrades['efficiency']?.level ?? 0;
-
-    final double speedBonus = UpgradeEffectsCalculator.speedMultiplier(level: speedLevel);
-    final double bulkBonus = UpgradeEffectsCalculator.bulkMultiplier(level: bulkLevel);
-
-    final double reduction = UpgradeEffectsCalculator.efficiencyReduction(level: efficiencyLevel);
-    final double efficiencyBonus = 1.0 - reduction;
+    // CHANTIER-03 : Calcul des bonus via recherches
+    final double researchSpeedBonus = _researchManager.getResearchBonus('productionSpeed');
+    final double bulkBonus = 1.0 + _researchManager.getResearchBonus('productionBulk');
+    final double efficiencyBonus = 1.0 - _researchManager.getResearchBonus('metalEfficiency');
+    
+    // CHANTIER-04 : Bonus Production Optimizer Agent (+25% si actif)
+    final double agentSpeedBonus = _agentManager?.getProductionSpeedBonus() ?? 0.0;
+    final double totalSpeedBonus = 1.0 + researchSpeedBonus + agentSpeedBonus;
 
     if (kDebugMode) {
-      _logger.debug('[ProductionManager] Bonus: vitesse: x${speedBonus.toStringAsFixed(2)}, masse: x${bulkBonus.toStringAsFixed(2)}, efficacité: x${efficiencyBonus.toStringAsFixed(2)} (réduction: ${(reduction * 100).toStringAsFixed(1)}%)');
+      final reduction = _researchManager.getResearchBonus('metalEfficiency');
+      _logger.debug('[ProductionManager] Bonus: vitesse recherche: +${(researchSpeedBonus * 100).toStringAsFixed(1)}%, agent: +${(agentSpeedBonus * 100).toStringAsFixed(1)}%, total: x${totalSpeedBonus.toStringAsFixed(2)}');
+      _logger.debug('[ProductionManager] Bonus: masse: x${bulkBonus.toStringAsFixed(2)}, efficacité: x${efficiencyBonus.toStringAsFixed(2)} (réduction: ${(reduction * 100).toStringAsFixed(1)}%)');
     }
 
     // Si joueur a des autoclippeuses
@@ -122,7 +133,7 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
       // GameConstants.BASE_AUTOCLIPPER_PRODUCTION est interprété comme une production "par seconde".
       double productionRatePerSecond =
           player.autoClipperCount * GameConstants.BASE_AUTOCLIPPER_PRODUCTION;
-      productionRatePerSecond *= speedBonus;
+      productionRatePerSecond *= totalSpeedBonus; // Inclut bonus recherche + agent
       productionRatePerSecond *= bulkBonus;
 
       final metalPerPaperclip = _metalPerPaperclip();
@@ -243,10 +254,12 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
 
   /// Calcule le coût d'achat d'une autoclippeuse supplémentaire
   double calculateAutoclipperCost() {
-    return UpgradeEffectsCalculator.autoclipperCost(
-      autoclippersOwned: player.autoClipperCount,
-      automationLevel: player.upgrades['automation']?.level ?? 0,
-    );
+    // CHANTIER-03 : Utiliser bonus recherche pour discount autoclippers
+    final discount = _researchManager.getResearchBonus('autoclipperDiscount');
+    final baseCost = GameConstants.BASE_AUTOCLIPPER_COST;
+    final count = player.autoClipperCount;
+    // Formule exponentielle : coût augmente avec le nombre
+    return baseCost * pow(1.15, count) * (1.0 - discount);
   }
 
   /// Vérifie si le joueur peut acheter une autoclippeuse
@@ -302,6 +315,16 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
     _maintenanceCosts = 0.0;
     _autoProductionRemainder = 0.0;
     _lastUpdateTime = DateTime.now();
+    notifyListeners();
+  }
+  
+  /// Reset pour progression (prestige)
+  /// 
+  /// Réinitialise la production automatique mais conserve les recherches
+  void resetForProgression() {
+    _maintenanceCosts = 0.0;
+    _autoProductionRemainder = 0.0;
+    _lastUpdateTime = _clock.now();
     notifyListeners();
   }
 

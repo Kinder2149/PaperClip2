@@ -32,7 +32,6 @@ class SaveGameInfo {
   final String version;
   final num paperclips;
   final num money;
-  final GameMode gameMode;
   final num totalPaperclipsSold;
   final num autoClipperCount;
   final int level;
@@ -46,7 +45,6 @@ class SaveGameInfo {
     required this.version,
     this.paperclips = 0,
     this.money = 0,
-    required this.gameMode,
     this.totalPaperclipsSold = 0,
     this.autoClipperCount = 0,
     this.level = 1,
@@ -141,7 +139,6 @@ class SaveGameInfo {
       name: metadata.name,
       timestamp: metadata.lastModified,
       version: metadata.version,
-      gameMode: metadata.gameMode,
       isRestored: metadata.isRestored,
       isBackup: isBackup,
       paperclips: paperclips,

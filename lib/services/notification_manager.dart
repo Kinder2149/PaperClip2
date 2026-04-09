@@ -33,6 +33,10 @@ class NotificationManager with ChangeNotifier {
     NotificationLevel level = NotificationLevel.INFO,
     Duration duration = const Duration(seconds: 4),
   }) {
+    if (kDebugMode) {
+      print('🔥🔥🔥 [NotificationManager] showNotification called | message="$message" level=$level 🔥🔥🔥');
+    }
+    
     final notification = GameNotification(
       message: message,
       actionLabel: actionLabel,
@@ -41,16 +45,25 @@ class NotificationManager with ChangeNotifier {
       duration: duration,
     );
     
+    final isKeyAvailable = _scaffoldMessengerKey?.currentState != null;
+    if (kDebugMode) {
+      print('🔥🔥🔥 [NotificationManager] ScaffoldMessengerKey available: $isKeyAvailable 🔥🔥🔥');
+    }
+    
     // Si le contexte n'est pas disponible, mettre en attente
-    if (_scaffoldMessengerKey?.currentState == null) {
+    if (!isKeyAvailable) {
       _pendingNotifications.add(notification);
       if (kDebugMode) {
+        print('🔥🔥🔥 [NotificationManager] Notification queued (${_pendingNotifications.length} in queue) | message="$message" 🔥🔥🔥');
         appLogger.debug('[STATE] Notification en attente: '+message);
       }
       return;
     }
     
     // Afficher la notification
+    if (kDebugMode) {
+      print('🔥🔥🔥 [NotificationManager] Displaying notification immediately | message="$message" 🔥🔥🔥');
+    }
     _showSnackBar(notification);
   }
   
@@ -58,10 +71,21 @@ class NotificationManager with ChangeNotifier {
   void _processPendingNotifications() {
     if (_scaffoldMessengerKey?.currentState == null || _pendingNotifications.isEmpty) return;
     
+    if (kDebugMode) {
+      print('🔥🔥🔥 [NotificationManager] Processing ${_pendingNotifications.length} pending notifications 🔥🔥🔥');
+    }
+    
     // Afficher les notifications en attente
     for (var notification in List.from(_pendingNotifications)) {
+      if (kDebugMode) {
+        print('🔥🔥🔥 [NotificationManager] Displaying queued notification | message="${notification.message}" 🔥🔥🔥');
+      }
       _showSnackBar(notification);
       _pendingNotifications.remove(notification);
+    }
+    
+    if (kDebugMode) {
+      print('🔥🔥🔥 [NotificationManager] All pending notifications processed 🔥🔥🔥');
     }
   }
   

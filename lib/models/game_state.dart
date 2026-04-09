@@ -14,6 +14,11 @@ import '../managers/market_manager.dart';
 import 'progression_system.dart';
 import '../managers/resource_manager.dart';
 import '../managers/production_manager.dart';
+import '../managers/rare_resources_manager.dart';
+import '../managers/research_manager.dart';
+import '../managers/agent_manager.dart';
+import '../managers/reset_manager.dart';
+import 'reset_history_entry.dart';
 
 import 'game_state_interfaces.dart';
 import 'statistics_manager.dart';
@@ -50,6 +55,14 @@ class GameState extends ChangeNotifier implements DomainPorts {
   late final ProgressionRulesService _progressionRules;
   late final GameEngine _engine;
   late final GameEventBus _eventBus;
+  // CHANTIER-02 : Manager ressources rares
+  late final RareResourcesManager _rareResourcesManager;
+  // CHANTIER-03 : Manager arbre de recherche
+  late final ResearchManager _researchManager;
+  // CHANTIER-04 : Manager agents IA
+  late final AgentManager _agentManager;
+  // CHANTIER-05 : Manager reset progression
+  late final ResetManager _resetManager;
 
   // Services auxiliaires
   late final AutoSaveService _autoSaveService;
@@ -62,15 +75,19 @@ class GameState extends ChangeNotifier implements DomainPorts {
   bool _showingCrisisView = false;
   DateTime? _crisisStartTime;
 
-  // Mode de jeu (infini ou compétitif)
-  GameMode _gameMode = GameMode.INFINITE;
-  DateTime? _competitiveStartTime;
-
   bool _isInitialized = false;
   Object? _initializationError;
   StackTrace? _initializationStackTrace;
-  String? _gameName;
-  String? _partieId; // ID technique unique (UUID v4)
+  // CHANTIER-01 : Entreprise unique
+  String? _enterpriseId; // UUID v4 généré une fois
+  String _enterpriseName = 'Mon Entreprise';
+  DateTime? _enterpriseCreatedAt;
+  
+  // CHANTIER-02 : Ressources rares gérées par RareResourcesManager
+  
+  // CHANTIER-05 : Historique des resets progression
+  List<ResetHistoryEntry> _resetHistory = [];
+  int _resetCount = 0;
 
   // Suivi interne du temps de jeu et des compteurs globaux
   DateTime? _lastSaveTime;
@@ -84,23 +101,6 @@ class GameState extends ChangeNotifier implements DomainPorts {
     _lastSaveTime = value;
   }
 
-  // Défini explicitement l'identifiant technique de la partie (utilisé lors du chargement)
-  void setPartieId(String id) {
-    final uuidV4 = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12} ?$');
-    if (uuidV4.hasMatch(id)) {
-      if (kDebugMode && _partieId != null && _partieId != id) {
-        print('[GameState] ⚠️ Changement de partieId détecté: $_partieId → $id');
-      }
-      _partieId = id;
-    } else {
-      if (kDebugMode) {
-        print('[GameState] ❌ Tentative d\'assignation d\'un partieId invalide (non UUID v4): "$id"');
-        print('[GameState] Stack trace:');
-        print(StackTrace.current);
-      }
-      throw ArgumentError('[GameState] partieId doit être un UUID v4 valide, reçu: "$id"');
-    }
-  }
 
   void markLastActiveAt(DateTime value) {
     _lastActiveAt = value;
@@ -153,31 +153,90 @@ class GameState extends ChangeNotifier implements DomainPorts {
   bool get isInitialized => _isInitialized;
   Object? get initializationError => _initializationError;
   StackTrace? get initializationStackTrace => _initializationStackTrace;
-  String? get gameName => _gameName;
-  String? get partieId => _partieId;
+  // CHANTIER-01 : Getters entreprise
+  String? get enterpriseId => _enterpriseId;
+  String get enterpriseName => _enterpriseName;
+  DateTime? get enterpriseCreatedAt => _enterpriseCreatedAt;
+  
+  // CHANTIER-02 : Getters ressources rares (délégation vers RareResourcesManager)
+  int get quantum => _rareResourcesManager.quantum;
+  int get pointsInnovation => _rareResourcesManager.pointsInnovation;
+  int get totalResets => _rareResourcesManager.totalResets;
+  
+  // CHANTIER-05 : Getters historique resets
+  List<ResetHistoryEntry> get resetHistory => List.unmodifiable(_resetHistory);
+  int get resetCount => _resetCount;
+  
+  // Accès direct au manager pour fonctionnalités avancées
+  RareResourcesManager get rareResources => _rareResourcesManager;
+  ResearchManager get research => _researchManager;
+  AgentManager get agents => _agentManager;
+  ResetManager get resetManager => _resetManager;
+  
   String get storageMode => _storageMode;
+  
+  // CHANTIER-01 : Setters entreprise
+  void setEnterpriseId(String id) {
+    final uuidV4 = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$');
+    if (!uuidV4.hasMatch(id)) {
+      throw ArgumentError('enterpriseId must be a valid UUID v4');
+    }
+    _enterpriseId = id;
+    notifyListeners();
+  }
+  
+  void setEnterpriseName(String name) {
+    final trimmed = name.trim();
+    if (trimmed.length < 3) {
+      throw ArgumentError('Enterprise name must be at least 3 characters');
+    }
+    if (trimmed.length > 30) {
+      throw ArgumentError('Enterprise name cannot exceed 30 characters');
+    }
+    final validChars = RegExp(r"^[a-zA-Z0-9\s\-_.\']+$");
+    if (!validChars.hasMatch(trimmed)) {
+      throw ArgumentError('Enterprise name contains invalid characters');
+    }
+    _enterpriseName = trimmed;
+    notifyListeners();
+  }
+  
+  // CHANTIER-02 : Méthodes ressources rares (délégation vers RareResourcesManager)
+  void addQuantum(int amount) {
+    _rareResourcesManager.addQuantum(amount);
+  }
+  
+  void addPointsInnovation(int amount) {
+    _rareResourcesManager.addPointsInnovation(amount);
+  }
+  
+  bool spendQuantum(int amount) {
+    return _rareResourcesManager.spendQuantum(amount);
+  }
+  
+  bool spendPointsInnovation(int amount) {
+    return _rareResourcesManager.spendPointsInnovation(amount);
+  }
+  
+  // CHANTIER-05 : Méthodes historique resets
+  void addResetEntry(ResetHistoryEntry entry) {
+    _resetHistory.add(entry);
+    _resetCount++;
+    notifyListeners();
+  }
+  
   PlayerManager get playerManager => _playerManager;
   MarketManager get marketManager => _marketManager;
   ResourceManager get resourceManager => _resourceManager;
   LevelSystem get levelSystem => _levelSystem;
   MissionSystem get missionSystem => _missionSystem;
-  GameMode get gameMode => _gameMode;
-  DateTime? get competitiveStartTime => _competitiveStartTime;
   bool get isPaused => _isPaused;
   ProductionManager get productionManager => _productionManager;
 
-  // Durée de jeu en mode compétitif (utilisée par plusieurs widgets)
-  Duration get competitivePlayTime {
-    if (_competitiveStartTime == null) {
-      return Duration.zero;
-    }
-    return _clock.now().difference(_competitiveStartTime!);
-  }
 
   // Alias de compatibilité
   int get totalTimePlayedInSeconds => _statistics.totalGameTimeSec;
   bool get isCrisisTransitionComplete => _crisisTransitionComplete;
-  String? get gameId => _gameName;
   double get autocliperCost => _playerManager.autoClipperCost;
 
   bool get autoSellEnabled => _marketManager.autoSellEnabled;
@@ -292,6 +351,24 @@ class GameState extends ChangeNotifier implements DomainPorts {
       _autoSaveService = AutoSaveService(this);
 
       _playerManager = PlayerManager();
+      
+      // CHANTIER-02 : Manager ressources rares
+      _rareResourcesManager = RareResourcesManager();
+      
+      // CHANTIER-03 : Manager arbre de recherche
+      _researchManager = ResearchManager(_rareResourcesManager, _playerManager);
+      
+      // CHANTIER-03 : Injecter ResearchManager dans PlayerManager pour bonus metalStorage
+      _playerManager.setResearchManager(_researchManager);
+      
+      // CHANTIER-04 : Manager agents IA
+      _agentManager = AgentManager(
+        _rareResourcesManager,
+        _researchManager,
+        _playerManager,
+        _marketManager,
+        _resourceManager,
+      );
 
       _progressionRules = ProgressionRulesService(
         levelSystem: _levelSystem,
@@ -320,7 +397,14 @@ class GameState extends ChangeNotifier implements DomainPorts {
         playerManager: _playerManager,
         statistics: _statistics,
         levelSystem: _levelSystem,
+        researchManager: _researchManager,
       );
+      
+      // CHANTIER-04 : Injecter AgentManager dans ProductionManager
+      _productionManager.setAgentManager(_agentManager);
+      
+      // CHANTIER-05 : Manager reset progression (architecture refactorée)
+      _resetManager = ResetManager(this);
 
       _eventBus = GameEventBus();
       _eventBus.addListener(_statistics.onGameEvent);
@@ -340,7 +424,8 @@ class GameState extends ChangeNotifier implements DomainPorts {
       _resourceManager.setPlayerManager(_playerManager);
       _resourceManager.setMarketManager(_marketManager);
       _resourceManager.setStatisticsManager(_statistics);
-      _marketManager.setManagers(_playerManager, _statistics);
+      _resourceManager.setResearchManager(_researchManager);
+      _marketManager.setManagers(_playerManager, _statistics, _researchManager, levelSystem: _levelSystem);
     } catch (e) {
       print('Erreur lors de la création des managers: $e');
       rethrow;
@@ -361,6 +446,9 @@ class GameState extends ChangeNotifier implements DomainPorts {
         elapsedSeconds: elapsedSeconds,
         autoSellEnabled: autoSellEnabled,
       );
+      
+      // CHANTIER-04 : Tick agents IA avec GameState pour actions réelles
+      _agentManager.tick(elapsedSeconds, gameState: this);
     } catch (e) {
       if (kDebugMode) {
         print('GameState: erreur lors du tick unifié: $e');
@@ -386,6 +474,7 @@ class GameState extends ChangeNotifier implements DomainPorts {
       lastActiveAt: lastActiveAt,
       lastOfflineAppliedAt: lastOfflineAppliedAt,
       nowOverride: now,
+      researchManager: _researchManager,
     );
   }
 
@@ -412,8 +501,6 @@ class GameState extends ChangeNotifier implements DomainPorts {
       levelSystem: _levelSystem,
       missionSystem: _missionSystem,
       statistics: _statistics,
-      gameMode: _gameMode,
-      competitiveStartTime: _competitiveStartTime,
     );
   }
 
@@ -423,8 +510,6 @@ class GameState extends ChangeNotifier implements DomainPorts {
 
     _lastSaveTime = null;
     _isPaused = false;
-    _gameMode = GameMode.INFINITE;
-    _competitiveStartTime = null;
   }
 
   void _resetGameDataOnly() {
@@ -440,6 +525,17 @@ class GameState extends ChangeNotifier implements DomainPorts {
     _showingCrisisView = false;
     _crisisStartTime = null;
   }
+  
+  // ============================================================================
+  // CHANTIER-05 : Reset Progression (Prestige)
+  // ============================================================================
+  
+  /// Méthode publique pour effectuer un reset progression
+  /// 
+  /// Retourne le résultat du reset (succès ou échec avec message d'erreur)
+  Future<ResetResult> performProgressionReset() async {
+    return await _resetManager.performReset();
+  }
 
   // Alias supplémentaires pour compatibilité avec l'ancien code UI
   PlayerManager get player => _playerManager;
@@ -453,44 +549,14 @@ class GameState extends ChangeNotifier implements DomainPorts {
     );
   }
 
+  // Mode compétitif supprimé dans CHANTIER-01
   int calculateCompetitiveScore() {
-    final data = CompetitiveResultService.compute(
-      paperclips: _playerManager.paperclips.round(),
-      money: _playerManager.money,
-      level: _levelSystem.currentLevel,
-      playTime: competitivePlayTime,
-    );
-    return data.score;
+    return 0;
   }
 
   void handleCompetitiveGameEnd() {
-    if (_gameMode != GameMode.COMPETITIVE) {
-      return;
-    }
-
-    final data = CompetitiveResultService.compute(
-      paperclips: _playerManager.paperclips.round(),
-      money: _playerManager.money,
-      level: _levelSystem.currentLevel,
-      playTime: competitivePlayTime,
-    );
-    // Émet un événement UI (navigation) au lieu d'appeler directement la façade Flutter
-    _eventBus.emit(
-      GameEvent(
-        type: GameEventType.importantEventOccurred,
-        source: 'GameState',
-        severity: GameEventSeverity.info,
-        data: {
-          'reason': 'ui_show_competitive_result',
-          'score': data.score,
-          'paperclips': data.paperclips,
-          'money': data.money,
-          'level': data.level,
-          'playTimeSeconds': data.playTime.inSeconds,
-          'efficiency': data.efficiency,
-        },
-      ),
-    );
+    // Mode compétitif supprimé dans CHANTIER-01
+    return;
   }
 
   void buyAutoclipper() {
@@ -556,28 +622,68 @@ class GameState extends ChangeNotifier implements DomainPorts {
     );
   }
 
-  Future<void> startNewGame(String name, {GameMode mode = GameMode.INFINITE}) async {
+  // CHANTIER-01 : Création nouvelle entreprise unique
+  Future<void> createNewEnterprise(String name) async {
+    try {
+      // Générer UUID v4 pour l'entreprise
+      final uuid = const Uuid().v4();
+      _enterpriseId = uuid;
+      
+      // Valider et définir le nom
+      setEnterpriseName(name);
+      
+      // Date de création
+      _enterpriseCreatedAt = _clock.now();
+      
+      // Réinitialiser l'état de jeu
+      reset();
+      
+      // Initialiser tous les managers (initialize() est synchrone)
+      // Note: initialize() crée déjà tous les managers y compris _rareResourcesManager
+      initialize();
+      
+      notifyListeners();
+      
+      if (kDebugMode) {
+        print('[GameState] Nouvelle entreprise créée: $name, enterpriseId: $uuid');
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        print('[GameState] Erreur création entreprise: $e');
+        print(stackTrace);
+      }
+      throw SaveError('CREATE_ENTERPRISE_ERROR', 'Impossible de créer l\'entreprise: $e');
+    }
+  }
+  
+  // CHANTIER-01 : Suppression entreprise (testeurs uniquement)
+  Future<void> deleteEnterprise() async {
+    _enterpriseId = null;
+    _enterpriseName = 'Mon Entreprise';
+    _enterpriseCreatedAt = null;
+    // Réinitialiser ressources rares (tout supprimer)
+    _rareResourcesManager.resetResources(keepRareResources: false);
+    // Note: totalResets est également réinitialisé lors de la suppression complète
+    
+    // Réinitialiser le GameState
+    initialize();
+    notifyListeners();
+    
+    if (kDebugMode) {
+      print('[GameState] Entreprise supprimée');
+    }
+  }
+
+  // DEPRECATED : Garder pour compatibilité temporaire
+  Future<void> startNewGame(String name) async {
     try {
       // CORRECTION #2: Validation du nom
       final trimmedName = name.trim();
       if (trimmedName.length < 3) {
         throw SaveError('INVALID_NAME', 'Le nom doit contenir au moins 3 caractères (reçu: "$name")');
       }
-      
-      _gameName = trimmedName;
-      // Générer un identifiant unique de partie s'il n'existe pas encore (ID-first)
-      _partieId = const Uuid().v4(); // CORRECTION: Toujours générer un nouveau UUID
       // Réinitialiser l'état de jeu
       reset();
-
-      _gameMode = mode;
-
-      // Définir le mode de jeu et le temps de début pour le mode compétitif
-      if (mode == GameMode.COMPETITIVE) {
-        _competitiveStartTime = _clock.now();
-      } else {
-        _competitiveStartTime = null;
-      }
 
       // IMPORTANT (Mission 2):
       // - La persistance (save initial) et le démarrage autosave sont orchestrés hors de GameState.
@@ -586,7 +692,7 @@ class GameState extends ChangeNotifier implements DomainPorts {
 
       // CORRECTION #3: Utiliser logger au lieu de print()
       if (kDebugMode) {
-        print('[GameState] Nouvelle partie créée: $trimmedName, mode: $mode, partieId: $_partieId');
+        print('[GameState] Nouvelle entreprise créée: $trimmedName, enterpriseId: $_enterpriseId');
       }
 
       return;
@@ -603,9 +709,9 @@ class GameState extends ChangeNotifier implements DomainPorts {
   void applyLoadedGameDataWithoutSnapshot(String name, Map<String, dynamic> gameData) {
     _resetGameDataOnly();
 
-    _gameName = name;
+    _enterpriseName = name;
 
-    _gameMode = GamePersistenceMapper.applyLoadedGameDataWithoutSnapshot(
+    GamePersistenceMapper.applyLoadedGameDataWithoutSnapshot(
       playerManager: _playerManager,
       resourceManager: _resourceManager,
       marketManager: _marketManager,
@@ -724,14 +830,16 @@ class GameState extends ChangeNotifier implements DomainPorts {
     final now = _clock.now();
     final metadata = <String, dynamic>{
       'schemaVersion': 1,
-      'snapshotSchemaVersion': 1,
-      'gameId': _gameName,
-      'partieId': _partieId,
-      'gameMode': _gameMode.toString(),
+      'snapshotSchemaVersion': 3, // CHANTIER-01: Version 3 pour entreprise unique
+      'enterpriseId': _enterpriseId,
       'storageMode': _storageMode,
       'savedAt': now.toIso8601String(),
       // Version contractuelle obligatoire
       'version': GAME_SNAPSHOT_CONTRACT_VERSION,
+      // CHANTIER-01: Champs requis par validation backend v3
+      'createdAt': (_enterpriseCreatedAt ?? now).toIso8601String(),
+      'lastModified': now.toIso8601String(),
+      'enterpriseName': _enterpriseName,
       'lastActiveAt': (_lastActiveAt ?? now).toIso8601String(),
       if (_lastOfflineAppliedAt != null)
         'lastOfflineAppliedAt': _lastOfflineAppliedAt!.toIso8601String(),
@@ -748,9 +856,13 @@ class GameState extends ChangeNotifier implements DomainPorts {
       'levelSystem': _levelSystem.toJson(),
       'missionSystem': _missionSystem.toJson(),
       'productionManager': _productionManager.toJson(),
+      'agentManager': _agentManager.toJson(),
+      'rareResourcesManager': _rareResourcesManager.toJson(),
+      'researchManager': _researchManager.toJson(),
+      'resetHistory': _resetHistory.map((e) => e.toJson()).toList(),
+      'resetCount': _resetCount,
       'game': {
-        'gameName': _gameName,
-        'gameMode': _gameMode.toString(),
+        'enterpriseName': _enterpriseName,
       },
     };
 
@@ -778,25 +890,19 @@ class GameState extends ChangeNotifier implements DomainPorts {
 
     _offlineSpecVersion = metadata['offlineSpecVersion'] as String? ?? _offlineSpecVersion;
 
-    final metaName = metadata['gameId'] as String?;
-    if (_gameName == null && metaName != null && metaName.isNotEmpty) {
-      _gameName = metaName;
+    // Nom d'entreprise depuis snapshot
+    final metaName = metadata['enterpriseName'] as String?;
+    if (metaName != null && metaName.isNotEmpty) {
+      _enterpriseName = metaName;
     }
 
     // ID technique (UUID) si présent dans les métadonnées du snapshot
-    final metaPartieId = metadata['partieId'] as String?;
-    if (_partieId == null && metaPartieId != null && metaPartieId.isNotEmpty) {
-      _partieId = metaPartieId;
+    final metaEnterpriseId = metadata['enterpriseId'] as String?;
+    if (metaEnterpriseId != null && metaEnterpriseId.isNotEmpty) {
+      _enterpriseId = metaEnterpriseId;
     }
 
-    final modeString = metadata['gameMode'] as String?;
-    if (modeString != null) {
-      if (modeString.contains('COMPETITIVE')) {
-        _gameMode = GameMode.COMPETITIVE;
-      } else {
-        _gameMode = GameMode.INFINITE;
-      }
-    }
+    // gameMode supprimé dans CHANTIER-01
 
     if (core['playerManager'] is Map) {
       _playerManager.fromJson(Map<String, dynamic>.from(core['playerManager'] as Map));
@@ -821,6 +927,28 @@ class GameState extends ChangeNotifier implements DomainPorts {
     if (core['productionManager'] is Map) {
       _productionManager.fromJson(Map<String, dynamic>.from(core['productionManager'] as Map));
     }
+    
+    if (core['rareResourcesManager'] is Map) {
+      _rareResourcesManager.fromJson(Map<String, dynamic>.from(core['rareResourcesManager'] as Map));
+    }
+    
+    if (core['researchManager'] is Map) {
+      _researchManager.fromJson(Map<String, dynamic>.from(core['researchManager'] as Map));
+    }
+    
+    if (core['agentManager'] is Map) {
+      _agentManager.fromJson(Map<String, dynamic>.from(core['agentManager'] as Map));
+      // Synchroniser avec recherche après chargement
+      _agentManager.syncWithResearch();
+    }
+
+    // Charger historique resets (CHANTIER-05)
+    if (core['resetHistory'] is List) {
+      _resetHistory = (core['resetHistory'] as List)
+          .map((e) => ResetHistoryEntry.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    _resetCount = (core['resetCount'] as int?) ?? 0;
 
     final statsCore = snapshot.stats;
     if (statsCore != null) {

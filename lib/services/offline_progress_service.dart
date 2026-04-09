@@ -1,5 +1,6 @@
 import 'package:paperclip2/constants/game_config.dart';
 import 'package:paperclip2/gameplay/game_engine.dart';
+import 'package:paperclip2/managers/research_manager.dart';
 
 class OfflineProgressResult {
   final DateTime lastActiveAt;
@@ -30,6 +31,7 @@ class OfflineProgressService {
     required DateTime? lastActiveAt,
     required DateTime? lastOfflineAppliedAt,
     DateTime? nowOverride,
+    ResearchManager? researchManager,
   }) {
     final now = nowOverride ?? DateTime.now();
 
@@ -77,12 +79,16 @@ class OfflineProgressService {
     final initialMoney = engine.player.money;
 
     // Simulation par pas (<= 10s)
+    // CHANTIER-03 : Appliquer bonus recherche offlineProduction (META6)
+    final offlineBonus = researchManager?.getResearchBonus('offlineProduction') ?? 0.0;
+    
     double remainingSeconds = delta.inMilliseconds / 1000.0;
     const double maxStepSeconds = 10.0;
     while (remainingSeconds > 0) {
       final step = remainingSeconds > maxStepSeconds ? maxStepSeconds : remainingSeconds;
+      final adjustedStep = step * (1.0 + offlineBonus);
       engine.tick(
-        elapsedSeconds: step,
+        elapsedSeconds: adjustedStep,
         autoSellEnabled: autoSellEnabled,
       );
       remainingSeconds -= step;

@@ -17,18 +17,7 @@ class FirebaseAuthService {
   // IMPORTANT: utiliser le client Web OAuth pour forcer l'émission d'un idToken valide côté Android
   // ID client Web (auto-created by Google Service) extrait de google-services.json
   // client_id: 555184834356-lr2v3kje289ghiad05uj7d2eha74kqqi.apps.googleusercontent.com
-  final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
-  
-  bool _initialized = false;
-
-  Future<void> _ensureInitialized() async {
-    if (!_initialized) {
-      await _googleSignIn.initialize(
-        serverClientId: '555184834356-lr2v3kje289ghiad05uj7d2eha74kqqi.apps.googleusercontent.com',
-      );
-      _initialized = true;
-    }
-  }
+  GoogleSignIn get _googleSignIn => GoogleSignIn.instance;
 
   Stream<User?> authStateChanges() => _auth.authStateChanges();
 
@@ -37,9 +26,16 @@ class FirebaseAuthService {
   /// Déclenche un flux de connexion Google puis signe auprès de Firebase.
   /// Ne rajoute aucune règle métier.
   Future<UserCredential> signInWithGoogle() async {
-    // 1) Demande d'auth Google
     try {
-      await _ensureInitialized();
+      // Sur le web, utiliser directement signInWithPopup
+      if (kIsWeb) {
+        final GoogleAuthProvider googleProvider = GoogleAuthProvider();
+        final cred = await _auth.signInWithPopup(googleProvider);
+        _logger.info('[AUTH] Firebase sign-in réussi (web), uid='+ (cred.user?.uid ?? '-'));
+        return cred;
+      }
+      
+      // Sur mobile, utiliser le flux Google Sign-In classique
       final GoogleSignInAccount? gUser = await _googleSignIn.authenticate();
       if (gUser == null) {
         _logger.warn('[AUTH] Google sign-in annule par utilisateur.');
@@ -47,14 +43,14 @@ class FirebaseAuthService {
       }
       final GoogleSignInAuthentication gAuth = await gUser.authentication;
 
-      // 2) Credentials pour Firebase
+      // Credentials pour Firebase
       final credential = GoogleAuthProvider.credential(
         idToken: gAuth.idToken,
       );
 
-      // 3) Sign-in Firebase
+      // Sign-in Firebase
       final cred = await _auth.signInWithCredential(credential);
-      _logger.info('[AUTH] Firebase sign-in réussi, uid='+ (cred.user?.uid ?? '-'));
+      _logger.info('[AUTH] Firebase sign-in réussi (mobile), uid='+ (cred.user?.uid ?? '-'));
       
       return cred;
     } on Exception catch (e) {
@@ -84,7 +80,6 @@ class FirebaseAuthService {
 
     try {
       // Tentative de session Google silencieuse
-      await _ensureInitialized();
       final GoogleSignInAccount? gUser = await _googleSignIn.attemptLightweightAuthentication();
       if (gUser == null) {
         // Pas de session Google disponible en silence
@@ -177,7 +172,6 @@ class FirebaseAuthService {
   Future<void> signOut() async {
     await _auth.signOut();
     try {
-      await _ensureInitialized();
       await _googleSignIn.disconnect();
     } catch (_) {}
   }

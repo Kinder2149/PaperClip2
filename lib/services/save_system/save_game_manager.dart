@@ -40,7 +40,6 @@ abstract class SaveGameManager {
   /// Crée une nouvelle sauvegarde vide avec des paramètres par défaut
   Future<SaveGame> createNewSave({
     String? name,
-    GameMode gameMode = GameMode.INFINITE,
     Map<String, dynamic>? initialData,
   });
   

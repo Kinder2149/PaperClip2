@@ -12,13 +12,13 @@ class _MockCloudPort implements CloudPersistencePort {
 
   @override
   Future<void> pushById({
-    required String partieId,
+    required String enterpriseId,
     required Map<String, dynamic> snapshot,
     required Map<String, dynamic> metadata,
   }) async {
     pushCallCount++;
-    storage[partieId] = {'snapshot': snapshot, 'metadata': metadata};
-    statuses[partieId] = CloudStatus(
+    storage[enterpriseId] = {'snapshot': snapshot, 'metadata': metadata};
+    statuses[enterpriseId] = CloudStatus(
       exists: true,
       lastSavedAt: DateTime.now(),
       name: metadata['name']?.toString(),
@@ -26,23 +26,23 @@ class _MockCloudPort implements CloudPersistencePort {
   }
 
   @override
-  Future<Map<String, dynamic>?> pullById({required String partieId}) async {
+  Future<Map<String, dynamic>?> pullById({required String enterpriseId}) async {
     pullCallCount++;
-    return storage[partieId];
+    return storage[enterpriseId];
   }
 
   @override
-  Future<CloudStatus> statusById({required String partieId}) async {
-    return statuses[partieId] ?? CloudStatus(exists: false);
+  Future<CloudStatus> statusById({required String enterpriseId}) async {
+    return statuses[enterpriseId] ?? CloudStatus(exists: false);
   }
 
   @override
   Future<List<CloudIndexEntry>> listParties() async => [];
 
   @override
-  Future<void> deleteById({required String partieId}) async {
-    storage.remove(partieId);
-    statuses[partieId] = CloudStatus(exists: false);
+  Future<void> deleteById({required String enterpriseId}) async {
+    storage.remove(enterpriseId);
+    statuses[enterpriseId] = CloudStatus(exists: false);
   }
 }
 
@@ -64,7 +64,7 @@ void main() {
         port.storage['test-partie'] = {
           'snapshot': {
             'metadata': {
-              'worldId': 'test-partie',
+              'enterpriseId': 'test-partie',
               'version': 2,
               'createdAt': now.toIso8601String(),
             },

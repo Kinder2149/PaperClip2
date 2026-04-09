@@ -319,7 +319,6 @@ class SaveMigrationService {
           lastSaveTime: DateTime.now(),
           gameData: updatedGameData,
           version: meta.version,
-          gameMode: meta.gameMode,
           isRestored: meta.isRestored,
         );
 
@@ -608,11 +607,7 @@ class SaveMigrationService {
       // Ajouter le mode de jeu
       if (migratedData.containsKey('gameMode')) {
         gameData['gameMode'] = migratedData['gameMode'];
-        _log('Mode de jeu déplacé dans gameData');
-      } else {
-        // Par défaut: mode infini
-        gameData['gameMode'] = GameMode.INFINITE.index;
-        _log('Mode de jeu par défaut ajouté: INFINITE');
+        _log('Mode de jeu déplacé dans gameData (legacy)');
       }
       
       // Conserver temps de jeu
@@ -666,26 +661,6 @@ class SaveMigrationService {
       // Extraire la version avec validation
       final String version = data['version'] as String? ?? CURRENT_SAVE_FORMAT_VERSION;
       
-      // Extraire le mode de jeu avec validation
-      GameMode gameMode = GameMode.INFINITE;
-      try {
-        if (data['gameMode'] != null && data['gameMode'] is int) {
-          final int modeIndex = data['gameMode'] as int;
-          if (modeIndex >= 0 && modeIndex < GameMode.values.length) {
-            gameMode = GameMode.values[modeIndex];
-          }
-        } else if (data['gameData']?['gameMode'] != null && data['gameData']['gameMode'] is int) {
-          final int modeIndex = data['gameData']['gameMode'] as int;
-          if (modeIndex >= 0 && modeIndex < GameMode.values.length) {
-            gameMode = GameMode.values[modeIndex];
-          }
-        } else {
-          _log('Mode de jeu non trouvé ou invalide, utilisation du mode par défaut: INFINITE');
-        }
-      } catch (e) {
-        _log('Erreur lors de l\'extraction du mode de jeu: $e');
-      }
-      
       // Vérifier que gameData existe et est valide
       if (!data.containsKey('gameData') || data['gameData'] is! Map<String, dynamic>) {
         _log('gameData manquant ou invalide, création d\'une structure vide');
@@ -699,7 +674,6 @@ class SaveMigrationService {
         lastSaveTime: timestamp,
         gameData: data['gameData'] as Map<String, dynamic>,
         version: version,
-        gameMode: gameMode,
       );
     } catch (e) {
       _log('ERREUR lors de la création du SaveGame: $e');
@@ -711,7 +685,6 @@ class SaveMigrationService {
         lastSaveTime: DateTime.now(),
         gameData: <String, dynamic>{},
         version: CURRENT_SAVE_FORMAT_VERSION,
-        gameMode: GameMode.INFINITE,
       );
     }
   }

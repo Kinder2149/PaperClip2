@@ -132,24 +132,28 @@ class AutoSaveService {
     });
   }
 
-  // MÃ©thode start pour compatibilitÃ© avec le code existant
+  // MÃthode start pour compatibilitÃ avec le code existant
   Future<void> start() async {
     await initialize();
   }
   
-  // MÃ©thode pour arrÃªter temporairement l'auto-sauvegarde
+  // MÃthode pour arrÃªter temporairement l'auto-sauvegarde
   void stop() {
+    _stopMainTimer();
+  }
+  
+  void _stopMainTimer() {
     _mainTimer?.cancel();
     _mainTimer = null;
   }
   
-  // MÃ©thode pour relancer l'auto-sauvegarde aprÃ¨s un arrÃªt
+  // MÃthode pour relancer l'auto-sauvegarde aprÃ¨s un arrÃªt
   void restart() {
     _setupMainTimer();
   }
 
   Future<void> requestLifecycleSave({String? reason}) async {
-    if (!_gameState.isInitialized || _gameState.gameName == null) {
+    if (!_gameState.isInitialized || _gameState.enterpriseName == null) {
       return;
     }
 
@@ -163,7 +167,7 @@ class AutoSaveService {
   void _setupMainTimer() {
     _mainTimer?.cancel();
     _mainTimer = Timer.periodic(GameConstants.AUTO_SAVE_INTERVAL, (_) {
-      // VÃ©rifier si l'UI n'est pas occupÃ©e avant de sauvegarder
+      // VÃrifier si l'UI n'est pas occupÃe avant de sauvegarder
       _postFrame(() {
         _performAutoSave();
       });
@@ -171,10 +175,10 @@ class AutoSaveService {
   }
 
   Future<void> createBackup() async {
-    if (!_isInitialized || _gameState.gameName == null) return;
+    if (!_isInitialized || _gameState.enterpriseName == null) return;
 
     try {
-      final baseKey = _gameState.partieId;
+      final baseKey = _gameState.enterpriseId;
       if (baseKey == null || baseKey.isEmpty) {
         return;
       }
@@ -186,17 +190,17 @@ class AutoSaveService {
         reason: 'autosave_service_create_backup',
       );
       
-      _logger.info('🗄️ Backup créé | ${backupName.substring(0, 20)}...');
+      _logger.info('â¥ï¸ Backup crÃe | ${backupName.substring(0, 20)}...');
       Future.microtask(() => _cleanupOldBackups());
     } catch (e) {
-      _logger.warn('⚠️ Erreur backup | $e');
+      _logger.warn('â˜  Erreur backup | $e');
     }
   }
 
   Future<void> _cleanupOldBackups() async {
     try {
       final saves = await _storage.listSaves();
-      // Regrouper par partieId (base avant le délimiteur)
+      // Regrouper par enterpriseId (base avant le dÃlimiteur)
       final bases = <String>{};
       for (final s in saves.where((e) => e.name.contains(GameConstants.BACKUP_DELIMITER))) {
         final base = s.name.split(GameConstants.BACKUP_DELIMITER).first;
@@ -206,39 +210,39 @@ class AutoSaveService {
       for (final base in bases) {
         try {
           final mgr = await LocalSaveGameManager.getInstance();
-          final deleted = await mgr.applyBackupRetention(partieId: base);
+          final deleted = await mgr.applyBackupRetention(enterpriseId: base);
           totalDeleted += deleted as int;
         } catch (e) {
         }
       }
       if (totalDeleted > 0) {
-        _logger.info('🧹 Nettoyage backups | ${totalDeleted} supprimés');
+        _logger.info('â§ï¸ Nettoyage backups | ${totalDeleted} supprimÃs');
       }
     } catch (e) {
     }
   }
 
   void _setupAppLifecycleSave() {
-    // Mission 2: le lifecycle est orchestrÃ© hors AutoSaveService (AppLifecycleHandler).
+    // Mission 2: le lifecycle est orchestrÃ hors AutoSaveService (AppLifecycleHandler).
   }
 
-  // Le logger est dÃ©jÃ  dÃ©fini comme static au niveau de la classe
+  // Le logger est dÃjÃ dÃfini comme static au niveau de la classe
   
   Future<void> _performAutoSave() async {
-    if (_gameState.isPaused || !_gameState.isInitialized || _gameState.gameName == null) {
+    if (_gameState.isPaused || !_gameState.isInitialized || _gameState.enterpriseName == null) {
       return;
     }
 
     try {
       
       // PR3: persistance snapshot-only.
-      // On contrÃ´le la taille du payload rÃ©ellement Ã©crit (snapshot).
+      // On contrÃ´le la taille du payload rÃellement Ãcrit (snapshot).
       final snapshot = _gameState.toSnapshot();
-      // Validation stricte: aucun snapshot invalide ne doit être persisté
+      // Validation stricte: aucun snapshot invalide ne doit Ãªtre persistÃ
       final validation = SnapshotValidator.validate(snapshot);
       if (!validation.isValid) {
         final msg = validation.errors.map((e) => e.toString()).join('; ');
-        _logger.error('❌ AutoSave annulée | Snapshot invalide');
+        _logger.error('â˜  AutoSave annulÃe | Snapshot invalide');
         await _handleSaveError('SNAPSHOT_INVALID');
         return;
       }
@@ -253,12 +257,12 @@ class AutoSaveService {
       // Validation best-effort (structure conteneur minimale + existence du snapshot)
       final validationResult = SaveValidator.validate(savePayload, quickMode: true);
       if (!validationResult.isValid) {
-        // Validation échouée mais on continue  );
+        // Validation ÃchouÃe mais on continue  );
       }
 
-      // VÃ©rifier la taille avant de sauvegarder
+      // VÃrifier la taille avant de sauvegarder
       if (!await _checkSaveSize(savePayload)) {
-        _logger.warn('⚠️ Sauvegarde trop volumineuse');
+        _logger.warn('â˜  Sauvegarde trop volumineuse');
         await _handleSaveError('Trop volumineuse');
         return;
       }
@@ -272,7 +276,7 @@ class AutoSaveService {
       _lastAutoSave = _clock.now();
       
     } catch (e) {
-      _logger.error('❌ Erreur auto-save | $e');
+      _logger.error('â˜  Erreur auto-save | $e');
       await _handleSaveError(e);
     }
   }
@@ -281,8 +285,8 @@ class AutoSaveService {
     final jsonString = jsonEncode(data);
     final size = utf8.encode(jsonString).length;
 
-    if (_gameState.gameName != null) {
-      _saveSizes[_gameState.gameName!] = size;
+    if (_gameState.enterpriseName != null) {
+      _saveSizes[_gameState.enterpriseName!] = size;
     }
 
     return size <= _maxStorageSizeBytes;
@@ -300,14 +304,14 @@ class AutoSaveService {
         _saveSizes.remove(save.name);
       }
     }
-    // Nettoyage terminé silencieusement
+    // Nettoyage terminÃ silencieusement
   }
 
   Future<void> _performBackup() async {
-    if (!_isInitialized || _gameState.gameName == null) return;
+    if (!_isInitialized || _gameState.enterpriseName == null) return;
 
     try {
-      final baseKey = _gameState.partieId;
+      final baseKey = _gameState.enterpriseId;
       if (baseKey == null || baseKey.isEmpty) {
         return;
       }
@@ -324,13 +328,13 @@ class AutoSaveService {
   }
 
   Future<void> _performSaveOnExit() async {
-    if (!_gameState.isInitialized || _gameState.gameName == null) {
+    if (!_gameState.isInitialized || _gameState.enterpriseName == null) {
       return;
     }
 
     try {
       
-      // PR3: validation rapide sur le payload snapshot-only rÃ©ellement Ã©crit.
+      // PR3: validation rapide sur le payload snapshot-only rÃellement Ãcrit.
       final snapshot = _gameState.toSnapshot();
       final validation = SnapshotValidator.validate(snapshot);
       if (!validation.isValid) {

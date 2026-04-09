@@ -470,19 +470,7 @@ class SaveValidator {
     List<String> errors = [];
     ValidationSeverity severity = ValidationSeverity.none;
     
-    // Vérification du mode de jeu
-    if (data.containsKey('gameMode')) {
-      try {
-        int modeIndex = data['gameMode'] as int;
-        if (modeIndex < 0 || modeIndex >= GameMode.values.length) {
-          errors.add('Mode de jeu invalide');
-          severity = ValidationSeverity.moderate;
-        }
-      } catch (e) {
-        errors.add('Format du mode de jeu invalide');
-        severity = ValidationSeverity.moderate;
-      }
-    }
+    // gameMode supprimé dans CHANTIER-01 - validation retirée
 
     // Vérification de la cohérence entre paperclips et money
     try {

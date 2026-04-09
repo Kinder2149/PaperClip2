@@ -2,7 +2,7 @@ import * as logger from 'firebase-functions/logger';
 
 export interface LogContext {
   uid?: string;
-  worldId?: string;
+  enterpriseId?: string;
   version?: number;
   operation?: string;
   duration?: number;

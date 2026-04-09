@@ -18,22 +18,22 @@ class SaveManager {
 
   /// Déclenche un push cloud pour la partie courante (via playerId provider de l'orchestrateur).
   Future<void> saveCloud(GameState state, {String? reason}) async {
-    final pid = state.partieId;
+    final pid = state.enterpriseId;
     if (pid == null || pid.isEmpty) return;
     // L'orchestrateur gère la récupération du playerId via son provider configuré.
     await GamePersistenceOrchestrator.instance.pushCloudForState(state, reason: reason);
   }
 
   /// Déclenche un push cloud à partir d'un identifiant de sauvegarde (sans charger l'UI).
-  Future<void> saveCloudById({required String partieId, required String uid}) async {
+  Future<void> saveCloudById({required String enterpriseId, required String uid}) async {
     await GamePersistenceOrchestrator.instance.pushCloudFromSaveId(
-      partieId: partieId,
+      enterpriseId: enterpriseId,
       uid: uid,
     );
   }
 
-  /// Charge une partie (monde) par identifiant technique.
-  Future<void> loadWorld(GameState state, {required String worldId}) {
-    return GamePersistenceOrchestrator.instance.loadGameById(state, worldId);
+  /// Charge une entreprise par identifiant technique.
+  Future<void> loadEnterprise(GameState state, {required String enterpriseId}) {
+    return GamePersistenceOrchestrator.instance.loadGameById(state, enterpriseId);
   }
 }

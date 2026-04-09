@@ -9,6 +9,7 @@ import 'lifecycle/app_lifecycle_handler.dart';
 import '../gameplay/events/bus/game_event_bus.dart';
 import '../gameplay/events/game_event.dart';
 import 'persistence/game_persistence_orchestrator.dart';
+import 'persistence/game_persistence_mapper.dart';
 import 'metrics/runtime_metrics.dart';
 import 'metrics/runtime_watchdog.dart';
 import 'runtime/runtime_meta.dart';
@@ -16,10 +17,10 @@ import 'audio/game_audio_port.dart';
 import 'runtime/clock.dart';
 import 'runtime/runtime_orchestrator.dart';
 import 'offline_progress_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/logger.dart';
 import 'package:flutter/foundation.dart';
 import 'auth/firebase_auth_service.dart';
+import 'persistence/last_played_tracker.dart';
 
 class GameRuntimeCoordinator implements RuntimeOrchestrator {
   final GameState _gameState;
@@ -138,19 +139,17 @@ class GameRuntimeCoordinator implements RuntimeOrchestrator {
   // Legacy supprimé: loadGameAndStartAutoSave(name) retiré (ID-first uniquement)
 
   Future<void> loadGameByIdAndStartAutoSave(String id) async {
+    // CORRECTION BUG: Arrêter proprement la session en cours avant le switch
+    stopSession();
     _autoSaveService.stop();
     try {
       // [WORLD-SWITCH] before loading new world
-      final prevId = _gameState.partieId ?? '';
+      final prevId = _gameState.enterpriseId ?? '';
       _logger.info('[WORLD-SWITCH] before', code: 'world_switch_before', ctx: {
         'from': prevId,
         'to': id,
         'reason': 'user_load',
       });
-    } catch (_) {}
-    // Nettoyer la file de sauvegarde pour éviter d'exécuter des requêtes du monde précédent
-    try {
-      GamePersistenceOrchestrator.instance.discardPendingForWorldSwitch(id);
     } catch (_) {}
     
     try {
@@ -158,7 +157,7 @@ class GameRuntimeCoordinator implements RuntimeOrchestrator {
     } catch (e, stack) {
       // CORRECTION: Gestion d'erreur complète avec logs détaillés
       _logger.error('[WORLD-SWITCH] Échec chargement', code: 'world_switch_load_error', ctx: {
-        'worldId': id,
+        'enterpriseId': id,
         'error': e.toString(),
         'stack': stack.toString().substring(0, stack.toString().length > 300 ? 300 : stack.toString().length),
       });
@@ -176,35 +175,147 @@ class GameRuntimeCoordinator implements RuntimeOrchestrator {
     }
     
     await _autoSaveService.start();
+    
+    // Enregistrer comme dernière partie jouée
+    try {
+      await LastPlayedTracker.instance.setLastPlayed(id);
+    } catch (_) {}
+    
     // Après chargement local, vérifier l'état cloud et importer si le cloud est en avance.
     // Appel non bloquant: l'orchestrateur gère l'identité et les erreurs réseau.
     unawaited(GamePersistenceOrchestrator.instance.checkCloudAndPullIfNeeded(
       state: _gameState,
-      partieId: id,
+      enterpriseId: id,
     ));
     final audio = _audioPort;
     if (audio != null) {
-      // Charger l'état audio associé à la partie (utiliser le nom résolu après chargement)
-      final name = _gameState.gameName ?? '';
+      // Charger l'état audio associé à l'entreprise (utiliser le nom résolu après chargement)
+      final name = _gameState.enterpriseName ?? '';
       if (name.isNotEmpty) {
         unawaited(audio.loadGameMusicState(name));
       }
     }
     try {
       // [WORLD-SWITCH] after loading new world
-      final newId = _gameState.partieId ?? id;
+      final newId = _gameState.enterpriseId ?? id;
       _logger.info('[WORLD-SWITCH] after', code: 'world_switch_after', ctx: {
         'to': newId,
         'reason': 'user_load',
         'success': true,
       });
     } catch (_) {}
+    
+    // Enregistrer comme dernière partie jouée
+    try {
+      await LastPlayedTracker.instance.setLastPlayed(id);
+    } catch (_) {}
+  }
+
+  // CHANTIER-01: Créer une nouvelle entreprise
+  Future<void> createNewEnterpriseAndStartAutoSave(String enterpriseName) async {
+    _autoSaveService.stop();
+    
+    try {
+      _logger.info('Creating new enterprise', code: 'enterprise_create_start', ctx: {
+        'name': enterpriseName,
+      });
+      
+      // Créer l'entreprise dans GameState
+      await _gameState.createNewEnterprise(enterpriseName);
+      
+      final enterpriseId = _gameState.enterpriseId;
+      if (enterpriseId == null || enterpriseId.isEmpty) {
+        throw StateError('Enterprise ID missing after creation');
+      }
+      
+      _logger.info('Enterprise created', code: 'enterprise_created', ctx: {
+        'enterpriseId': enterpriseId,
+        'enterpriseName': enterpriseName,
+      });
+      
+      // Sauvegarde locale immédiate
+      await GamePersistenceOrchestrator.instance.saveGameById(_gameState);
+      
+    } catch (e, stack) {
+      _logger.error('Failed to create enterprise', code: 'enterprise_create_failed', ctx: {
+        'error': e.toString(),
+        'stack': stack.toString(),
+      });
+      rethrow;
+    }
+    
+    await _autoSaveService.start();
+    
+    final audio = _audioPort;
+    if (audio != null && enterpriseName.isNotEmpty) {
+      unawaited(audio.loadGameMusicState(enterpriseName));
+    }
+    
+    // Cloud push si connecté
+    try {
+      final firebaseUser = FirebaseAuthService.instance.currentUser;
+      if (firebaseUser != null) {
+        _logger.debug('[Runtime] Pushing new enterprise to cloud');
+        unawaited(
+          GamePersistenceOrchestrator.instance.saveOnImportantEvent(_gameState),
+        );
+      }
+    } catch (_) {}
+  }
+
+  // CHANTIER-01: Charger l'entreprise unique
+  Future<void> loadEnterpriseAndStartAutoSave() async {
+    stopSession();
+    _autoSaveService.stop();
+    
+    try {
+      // Charger l'entreprise par son ID
+      final enterpriseId = _gameState.enterpriseId;
+      if (enterpriseId == null || enterpriseId.isEmpty) {
+        throw StateError('No enterprise ID found');
+      }
+      await GamePersistenceOrchestrator.instance.loadGameById(_gameState, enterpriseId);
+      
+      _logger.info('Enterprise loaded', code: 'enterprise_loaded', ctx: {
+        'enterpriseId': _gameState.enterpriseId,
+        'enterpriseName': _gameState.enterpriseName,
+      });
+    } catch (e, stack) {
+      _logger.error('Failed to load enterprise', code: 'enterprise_load_failed', ctx: {
+        'error': e.toString(),
+        'stack': stack.toString(),
+      });
+      rethrow;
+    }
+    
+    await _autoSaveService.start();
+    
+    final audio = _audioPort;
+    if (audio != null) {
+      final name = _gameState.enterpriseName;
+      if (name != null && name.isNotEmpty) {
+        unawaited(audio.loadGameMusicState(name));
+      }
+    }
+    
+    // Cloud sync si connecté
+    try {
+      final enableCloud = (dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true';
+      final eid = _gameState.enterpriseId;
+      if (enableCloud && eid != null && eid.isNotEmpty) {
+        unawaited(
+          GamePersistenceOrchestrator.instance.checkCloudAndPullIfNeeded(
+            state: _gameState,
+            enterpriseId: eid,
+          ),
+        );
+      }
+    } catch (_) {}
   }
 
   Future<void> startNewGameAndStartAutoSave(
-    String name, {
-    GameMode mode = GameMode.INFINITE,
-  }) async {
+    String name,
+  ) async {
     _autoSaveService.stop();
     // Mission: snapshot des mondes présents avant la création de B
     try {
@@ -220,28 +331,26 @@ class GameRuntimeCoordinator implements RuntimeOrchestrator {
     } catch (_) {}
     try {
       // [WORLD-CREATE] before creation
-      final beforeId = _gameState.partieId ?? '';
+      final beforeId = _gameState.enterpriseId ?? '';
       _logger.info('[WORLD-CREATE] before', code: 'world_create_before', ctx: {
-        'prev_worldId': beforeId,
+        'prev_enterpriseId': beforeId,
         'origin': 'new_game',
         'name': name,
-        'mode': mode.toString(),
       });
     } catch (_) {}
-    await _gameState.startNewGame(name, mode: mode);
-    // Invariant identité: une partie doit posséder un partieId unique dès sa création
-    final newPartieId = _gameState.partieId;
-    if (newPartieId == null || newPartieId.isEmpty) {
+    await _gameState.startNewGame(name);
+    // Invariant identité: une entreprise doit posséder un enterpriseId unique dès sa création
+    final newEnterpriseId = _gameState.enterpriseId;
+    if (newEnterpriseId == null || newEnterpriseId.isEmpty) {
       // Verrouillage strict: interdire toute suite (autosave/sync) sans identité
-      throw StateError('[IdentityInvariant] partieId manquant après startNewGame("'+name+'"): création invalide');
+      throw StateError('[IdentityInvariant] enterpriseId manquant après startNewGame("'+name+'"): création invalide');
     }
     try {
       // [WORLD-CREATE] after creation
       _logger.info('[WORLD-CREATE] after', code: 'world_create_after', ctx: {
-        'worldId': newPartieId,
+        'enterpriseId': newEnterpriseId,
         'origin': 'new_game',
         'name': name,
-        'mode': mode.toString(),
       });
     } catch (_) {}
     
@@ -249,7 +358,7 @@ class GameRuntimeCoordinator implements RuntimeOrchestrator {
     // Garantit que le monde est persisté même si crash avant premier autosave
     try {
       _logger.info('[WORLD-CREATE] Sauvegarde locale immédiate', code: 'world_create_initial_save', ctx: {
-        'worldId': newPartieId,
+        'enterpriseId': newEnterpriseId,
       });
       await GamePersistenceOrchestrator.instance.requestLifecycleSave(
         _gameState,
@@ -262,6 +371,12 @@ class GameRuntimeCoordinator implements RuntimeOrchestrator {
     }
     
     await _autoSaveService.start();
+    
+    // Enregistrer comme dernière partie jouée
+    try {
+      await LastPlayedTracker.instance.setLastPlayed(newEnterpriseId);
+    } catch (_) {}
+    
     final audio = _audioPort;
     if (audio != null) {
       unawaited(audio.loadGameMusicState(name));
@@ -368,12 +483,12 @@ class GameRuntimeCoordinator implements RuntimeOrchestrator {
     
     try {
       final enableCloud = (dotenv.env['FEATURE_CLOUD_PER_PARTIE'] ?? 'false').toLowerCase() == 'true';
-      final pid = _gameState.partieId;
+      final pid = _gameState.enterpriseId;
       if (enableCloud && pid != null && pid.isNotEmpty) {
         unawaited(
           GamePersistenceOrchestrator.instance.checkCloudAndPullIfNeeded(
             state: _gameState,
-            partieId: pid,
+            enterpriseId: pid,
           ),
         );
       }

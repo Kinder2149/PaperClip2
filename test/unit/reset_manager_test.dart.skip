@@ -1,0 +1,174 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:paperclip2/managers/reset_manager.dart';
+import 'package:paperclip2/managers/rare_resources_manager.dart';
+import 'package:paperclip2/services/reset/reset_rewards_calculator.dart';
+
+void main() {
+  group('ResetManager', () {
+    late ResetManager resetManager;
+    late RareResourcesManager rareResourcesManager;
+    
+    // Variables pour simuler l'état du jeu
+    int currentLevel = 1;
+    int totalPaperclips = 0;
+    ResetRewards? lastCalculatedRewards;
+    bool resetPerformed = false;
+
+    setUp(() {
+      rareResourcesManager = RareResourcesManager();
+      currentLevel = 1;
+      totalPaperclips = 0;
+      lastCalculatedRewards = null;
+      resetPerformed = false;
+
+      resetManager = ResetManager(
+        canResetCallback: () {
+          return currentLevel >= ResetManager.MIN_LEVEL_FOR_RESET &&
+                 totalPaperclips >= ResetManager.MIN_PAPERCLIPS_FOR_RESET;
+        },
+        calculatePotentialRewardsCallback: () {
+          lastCalculatedRewards = ResetRewardsCalculator.calculateRewards(
+            totalPaperclipsProduced: totalPaperclips.toDouble(),
+            totalMoneyEarned: 1000.0,
+            autoClipperCount: 5,
+            playerLevel: currentLevel,
+            playTimeHours: 2.0,
+            resetCount: rareResourcesManager.totalResets,
+            researchesCompleted: 3,
+            quantumResearchBonus: 0.0,
+            innovationResearchBonus: 0.0,
+          );
+          return lastCalculatedRewards!;
+        },
+        performActualResetCallback: (rewards) async {
+          resetPerformed = true;
+          rareResourcesManager.recordReset(
+            quantumGained: rewards.quantum,
+            innovationPointsGained: rewards.innovationPoints,
+            levelReached: currentLevel,
+            paperclipsProduced: totalPaperclips.toDouble(),
+            moneyEarned: 1000.0,
+            autoclippersOwned: 5,
+            playTimeHours: 2.0,
+          );
+          rareResourcesManager.addQuantum(rewards.quantum, source: 'test');
+          rareResourcesManager.addPointsInnovation(rewards.innovationPoints, source: 'test');
+        },
+      );
+    });
+
+    test('canReset retourne false si niveau insuffisant', () {
+      currentLevel = 10;
+      totalPaperclips = 10000;
+      
+      expect(resetManager.canReset(), false);
+    });
+
+    test('canReset retourne true si niveau >= 20 et trombones suffisants', () {
+      currentLevel = 20;
+      totalPaperclips = 100000; // Au-dessus du minimum requis
+      
+      expect(resetManager.canReset(), true);
+    });
+
+    test('calculatePotentialRewards calcule correctement les récompenses', () {
+      currentLevel = 25;
+      totalPaperclips = 100000;
+      
+      final rewards = resetManager.calculatePotentialRewards();
+      
+      expect(rewards.quantum, greaterThan(0));
+      expect(rewards.innovationPoints, greaterThan(0));
+      expect(lastCalculatedRewards, isNotNull);
+    });
+
+    test('getResetRecommendation retourne message approprié si niveau insuffisant', () {
+      currentLevel = 15;
+      final rewards = ResetRewards(quantum: 10, innovationPoints: 5);
+      
+      final message = resetManager.getResetRecommendation(currentLevel, rewards);
+      
+      expect(message, contains('minimum requis'));
+    });
+
+    test('getResetRecommendation retourne un message', () {
+      currentLevel = 25;
+      final rewards = ResetRewards(quantum: 15, innovationPoints: 8);
+      
+      final message = resetManager.getResetRecommendation(currentLevel, rewards);
+      
+      expect(message, isNotEmpty);
+      expect(message.length, greaterThan(10));
+    });
+
+    test('performReset échoue si conditions non remplies', () async {
+      currentLevel = 10;
+      totalPaperclips = 5000;
+      
+      final result = await resetManager.performReset();
+      
+      expect(result.success, false);
+      expect(result.error, isNotNull);
+      expect(resetPerformed, false);
+    });
+
+    test('performReset réussit si conditions remplies', () async {
+      currentLevel = 25;
+      totalPaperclips = 100000; // Au-dessus du minimum
+      
+      final result = await resetManager.performReset();
+      
+      expect(result.success, true);
+      expect(result.rewards, isNotNull);
+      expect(result.rewards!.quantum, greaterThan(0));
+      expect(result.rewards!.innovationPoints, greaterThan(0));
+      expect(resetPerformed, true);
+    });
+
+    test('performReset incrémente le compteur de resets', () async {
+      currentLevel = 25;
+      totalPaperclips = 100000;
+      
+      expect(rareResourcesManager.totalResets, 0);
+      
+      await resetManager.performReset();
+      
+      expect(rareResourcesManager.totalResets, 1);
+      expect(rareResourcesManager.resetHistory.length, 1);
+    });
+
+    test('performReset ajoute les récompenses aux ressources rares', () async {
+      currentLevel = 25;
+      totalPaperclips = 100000;
+      
+      final initialQuantum = rareResourcesManager.quantum;
+      final initialPI = rareResourcesManager.pointsInnovation;
+      
+      final result = await resetManager.performReset();
+      
+      expect(rareResourcesManager.quantum, greaterThan(initialQuantum));
+      expect(rareResourcesManager.pointsInnovation, greaterThan(initialPI));
+      expect(rareResourcesManager.quantum, equals(initialQuantum + result.rewards!.quantum));
+      expect(rareResourcesManager.pointsInnovation, equals(initialPI + result.rewards!.innovationPoints));
+    });
+
+    test('Plusieurs resets successifs fonctionnent correctement', () async {
+      currentLevel = 25;
+      totalPaperclips = 100000;
+      
+      // Premier reset
+      await resetManager.performReset();
+      expect(rareResourcesManager.totalResets, 1);
+      
+      // Deuxième reset
+      await resetManager.performReset();
+      expect(rareResourcesManager.totalResets, 2);
+      
+      // Troisième reset
+      await resetManager.performReset();
+      expect(rareResourcesManager.totalResets, 3);
+      
+      expect(rareResourcesManager.resetHistory.length, 3);
+    });
+  });
+}

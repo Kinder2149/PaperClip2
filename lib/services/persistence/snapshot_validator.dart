@@ -21,7 +21,7 @@ class SnapshotValidationResult {
 /// - racine "metadata" et "core" DOIVENT exister et être Map
 /// - racine "stats" DOIT exister et être Map (backend l'attend au minimum)
 /// - metadata.schemaVersion (int) doit exister et être >= minSchemaVersion
-/// - metadata.partieId (String) non vide (identité technique)
+/// - metadata.enterpriseId (String) non vide (identité technique)
 /// - metadata.savedAt (String ISO) facultatif
 /// - sections optionnelles: market/production (si présentes: Map)
 class SnapshotValidator {
@@ -49,9 +49,9 @@ class SnapshotValidator {
         errors.add(SnapshotValidationError('SCHEMA_VERSION_UNSUPPORTED', 'schemaVersion=$schemaVersion inférieur au minimum supporté ($minSchemaVersion)'));
       }
 
-      final partieId = meta['partieId'] ?? meta['id'];
-      if (partieId is! String || partieId.trim().isEmpty) {
-        errors.add(const SnapshotValidationError('PARTIE_ID_MISSING', 'metadata.partieId (ou id) requis, non vide'));
+      final enterpriseId = meta['enterpriseId'] ?? meta['id'];
+      if (enterpriseId is! String || enterpriseId.trim().isEmpty) {
+        errors.add(const SnapshotValidationError('ENTERPRISE_ID_MISSING', 'metadata.enterpriseId (ou id) requis, non vide'));
       }
 
       final version = meta['appVersion'];
