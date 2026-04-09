@@ -3,7 +3,6 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:paperclip2/models/game_state.dart';
-import 'package:paperclip2/constants/game_config.dart';
 
 void main() {
   group('CHANTIER-01: Enterprise Creation', () {
@@ -60,7 +59,7 @@ void main() {
     test('createNewEnterprise initialise le GameState correctement', () async {
       await gameState.createNewEnterprise('Test Corp');
 
-      expect(gameState.gameMode, equals(GameMode.INFINITE));
+      // GameMode supprimé lors de CHANTIER-01
       expect(gameState.playerManager, isNotNull);
       expect(gameState.resourceManager, isNotNull);
       expect(gameState.marketManager, isNotNull);

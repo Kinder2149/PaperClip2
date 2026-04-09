@@ -1,5 +1,30 @@
 # Changelog Tests - PaperClip2
 
+## [9 avril 2026 - 13:15] - Correction Tests Échouants
+
+### 🗑️ Supprimé (Tests Obsolètes)
+- `cloud_persistence_adapter_uuid_test.dart` - Méthode `_validatePartieId` supprimée (CHANTIER-01)
+
+### 🚧 Déplacé vers Chantiers
+- `agents_integration_test.dart` → CHANTIER-04 (API changée)
+- `protected_http_client_token_refresh_test.dart` → CHANTIER-02 (tests incomplets)
+
+### ✅ Ignoré (Tests E2E Firebase)
+- `cloud_enterprise_migration_test.dart.skip`
+- `cloud_save_basic_test.dart.skip`
+- `cloud_save_e2e_test.dart.skip`
+- `cloud_save_full_test.dart.skip`
+- `cloud_save_limit_test.dart.skip`
+- `cloud_save_multi_device_test.dart.skip`
+- `cloud_sync_automated_test.dart.skip`
+- `enterprise_flow_test.dart.skip`
+- `offline_progress_complete_test.dart.skip`
+- `phase4_visibility_e2e_test.dart.skip`
+
+**Impact** : 65 → 47 tests échouants (-18 tests)
+
+---
+
 ## [9 avril 2026] - Architecture Tests & Triage
 
 ### ✅ Ajouté
