@@ -143,40 +143,86 @@ Exemples :
 
 ---
 
-## 💰 Marché
+## 💰 Marché Mondial Simulé
 
-### Prix de Vente
+> Mis à jour : 10 avril 2026 — Nouveau système de marché mondial avec concurrence simulée.
 
-```
-Prix = PRIX_BASE × SATURATION × REPUTATION
-
-Où :
-- PRIX_BASE = 0.25€ (initial)
-- SATURATION = 0.5 à 1.5 (demande marché)
-- REPUTATION = 1.0 à 2.0 (qualité perçue)
-```
-
-### Saturation Marché
+### Équation A — Demande Mondiale
 
 ```
-Saturation diminue avec ventes :
-- Vente < 100 : Saturation = 1.0
-- Vente 100-1000 : Saturation = 0.9
-- Vente 1000-10000 : Saturation = 0.7
-- Vente > 10000 : Saturation = 0.5
+DemandeMondiale(t) = 500 × (0.7 + 0.3 × sin(2π × t / 300))
 
-Récupération : +0.01 par minute
+Paramètres :
+- 500  = demande de base mondiale (trombones/s)
+- 0.7  = facteur minimum (cycle économique bas)
+- t    = secondes de jeu cumulées depuis le début/reset
+- 300s = période du cycle économique (5 minutes)
+
+Résultat : varie entre 350/s et 500/s
+```
+
+### Équation B — Prix Concurrent
+
+```
+PrixConcurrent(t) = 0.30 × (1 + 0.20 × sin(2π × t / 360)) + bruit[-0.03, +0.03]
+
+Paramètres :
+- 0.30  = prix concurrent de base
+- 0.20  = amplitude de variation (±20%)
+- 360s  = période du cycle concurrent (6 minutes)
+- bruit = valeur aléatoire fixée UNE FOIS par tick
+
+Résultat : varie entre ~0.18€ et ~0.42€
+```
+
+### Équation C — Part de Marché du Joueur
+
+```
+delta = (PrixConcurrent - PrixJoueur) / PrixConcurrent
+
+Si delta ≥ 0 (joueur moins cher — attractif) :
+  PartMarché = clamp(0.20 + 0.50 × delta, 0.20, 0.70)
+
+Si delta < 0 (joueur plus cher — peu attractif) :
+  PartMarché = clamp(0.20 × (1 + delta)², 0.02, 0.20)
+
+Exemples :
+- Joueur à 0.25€ vs concurrent 0.30€ → delta=+0.17 → part=28%
+- Joueur au même prix (0.30€) → delta=0 → part=20%
+- Joueur à 0.35€ vs concurrent 0.30€ → delta=-0.17 → part=14%
+- Joueur à 0.45€ vs concurrent 0.30€ → delta=-0.5 → part=5%
+```
+
+### Équation D — Ventes Réelles
+
+```
+DemandePrixJoueur = DemandeMondiale × PartMarché × Marketing × Réputation
+
+VentesRéelles/s = min(DemandePrixJoueur, StockTrombones)
+
+Marketing = 1 + niveau × 0.15   (bonus upgrades)
+Réputation = 0.5 à 1.5          (évolue avec l'historique des ventes)
+```
+
+### Agent MarketAnalyst — Stratégie d'optimisation
+
+```
+L'agent teste 3 scénarios à chaque activation (toutes les 5 min) :
+  Revenue_stable = prixActuel     × demand(prixActuel)
+  Revenue_+3%    = prixActuel×1.03 × demand(prixActuel×1.03)
+  Revenue_-3%    = prixActuel×0.97 × demand(prixActuel×0.97)
+
+→ Applique la direction avec le meilleur revenu/s
+→ Borné entre MIN_PRICE (0.01€) et MAX_PRICE (0.50€)
 ```
 
 ### Réputation
 
 ```
-Réputation augmente avec :
-- Qualité constante : +0.01 par 100 ventes
-- Recherches qualité : +0.1 à +0.5
-- Agents actifs : +0.05 à +0.2
-
-Plafond : 2.0
+Réputation évolue lentement (tous les 10s) :
+- Prix dans la plage optimale (0.25-0.35€) + ventes régulières → +0.01
+- Prix excessif (> 0.50€) + faibles ventes consécutives → -0.01
+Bornes : 0.5 à 1.5
 ```
 
 ---

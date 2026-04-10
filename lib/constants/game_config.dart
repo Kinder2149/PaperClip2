@@ -54,13 +54,28 @@ class GameConstants {
   //======================================================================
   // SECTION: MARCHÉ ET VENTE
   //======================================================================
-  static const double SATURATION_DECAY_RATE = 0.01;     // Taux de décroissance naturelle de la saturation du marché
-  static const double BASE_DEMAND = 10.0;              // Demande de base pour les trombones
-  static const double MAX_PRICE_THRESHOLD = 0.50;      // Prix maximum (en euros) au-delà duquel la demande commence à chuter drastiquement
-  static const double MARKETING_BOOST_PER_LEVEL = 0.15; // Boost de demande par niveau de marketing
-  static const int MAX_SALES_HISTORY = 10;             // Nombre maximal d'entrées dans l'historique des ventes
-  static const double SATURATION_IMPACT_PER_SALE = 0.005; // Impact d'une vente sur la saturation du marché
-  static const double MIN_MARKET_SATURATION = 0.05;    // Saturation minimale du marché
+
+  // --- Marché Mondial (nouveau système) ---
+  static const double WORLD_BASE_DEMAND = 500.0;          // Demande mondiale de base (trombones/s)
+  static const double WORLD_DEMAND_MIN_FACTOR = 0.7;      // Facteur minimum du cycle économique
+  static const double WORLD_DEMAND_CYCLE_SECONDS = 300.0; // Durée du cycle économique (5 min)
+  static const double COMPETITOR_BASE_PRICE = 0.30;       // Prix concurrent de base
+  static const double COMPETITOR_PRICE_AMPLITUDE = 0.20;  // Amplitude de variation ±20%
+  static const double COMPETITOR_PRICE_CYCLE_SECONDS = 360.0; // Durée du cycle concurrent (6 min)
+  static const double COMPETITOR_PRICE_NOISE = 0.03;      // Bruit aléatoire ±3% par tick
+  static const double MARKET_SHARE_MIN = 0.02;            // Part de marché minimum (joueur très cher)
+  static const double MARKET_SHARE_NEUTRAL = 0.20;        // Part de marché au prix neutre
+  static const double MARKET_SHARE_MAX = 0.70;            // Part de marché maximum (joueur très compétitif)
+  static const double MARKETING_BOOST_PER_LEVEL = 0.15;   // Boost de demande par niveau de marketing
+  static const int MAX_SALES_HISTORY = 10;                // Nombre maximal d'entrées dans l'historique des ventes
+
+  // --- Anciens paramètres de saturation (conservés pour compatibilité JSON) ---
+  static const double SATURATION_DECAY_RATE = 0.0;        // Désactivé — remplacé par part de marché
+  static const double SATURATION_IMPACT_PER_SALE = 0.0;   // Désactivé
+  static const double MIN_MARKET_SATURATION = 1.0;        // Neutralisé
+  static const double DEFAULT_MARKET_SATURATION = 1.0;    // Neutralisé
+  static const double BASE_DEMAND = WORLD_BASE_DEMAND;    // Alias pour compatibilité
+  static const double MAX_PRICE_THRESHOLD = 0.50;         // Conservé pour compatibilité (prix max slider)
   // Ces constantes sont déjà définies dans la section "DURÉES ET INTERVALLES DE TEMPS" ci-dessus
   // static const Duration PRODUCTION_INTERVAL = Duration(seconds: 1);
   // static const Duration METAL_PRICE_UPDATE_INTERVAL = Duration(seconds: 6);
@@ -139,8 +154,7 @@ class GameConstants {
   static const int MARKET_UNLOCK_LEVEL = 3; // Niveau requis pour débloquer le marché
   static const int UPGRADES_UNLOCK_LEVEL = 5; // Niveau requis pour débloquer les améliorations
   
-  // Marché et progression
-  static const double DEFAULT_MARKET_SATURATION = 0.5; // Saturation de marché par défaut
+  // Marché et progression (DEFAULT_MARKET_SATURATION défini dans la section MARCHÉ ET VENTE)
   static const double BASE_DIFFICULTY = 1.0; // Difficulté de base
   static const double WARNING_THRESHOLD = 30.0; // Seuil d'avertissement pour les ressources
   static const double CRITICAL_THRESHOLD = 10.0; // Seuil critique pour les ressources

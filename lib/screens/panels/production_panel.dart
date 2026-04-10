@@ -60,6 +60,9 @@ class _ProductionPanelState extends State<ProductionPanel> with AutomaticKeepAli
   }
 
   Widget _buildProductionStats(GameState gameState) {
+    final productionRate = gameState.productionManager.currentProductionRatePerSecond;
+    final metalPrice = gameState.marketManager.marketMetalPrice;
+
     return Card(
       child: Padding(
         padding: DesignTokens.cardPadding,
@@ -79,10 +82,24 @@ class _ProductionPanelState extends State<ProductionPanel> with AutomaticKeepAli
             ),
             DesignTokens.mediumGap,
             StatCard(
+              emoji: '⚡',
+              label: 'Production',
+              value: '${productionRate.toStringAsFixed(1)} trombones/s',
+              color: Colors.blue,
+            ),
+            DesignTokens.mediumGap,
+            StatCard(
               emoji: '⚙️',
               label: 'Métal disponible',
               value: '${gameState.playerManager.metal.toStringAsFixed(2)} kg',
               color: Colors.grey,
+            ),
+            DesignTokens.mediumGap,
+            StatCard(
+              emoji: '💲',
+              label: 'Prix du métal',
+              value: '${metalPrice.toStringAsFixed(3)} €/kg',
+              color: Colors.brown,
             ),
           ],
         ),
