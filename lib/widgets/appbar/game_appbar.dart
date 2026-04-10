@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/game_state.dart';
+import '../../utils/responsive_utils.dart';
 import 'level_badge.dart';
 import 'appbar_actions.dart';
 import 'resource_chip.dart';
@@ -58,7 +59,7 @@ class GameAppBar extends StatelessWidget implements PreferredSizeWidget {
   }) : super(key: key);
   
   @override
-  Size get preferredSize => const Size.fromHeight(100); // Augmenté pour 2 lignes
+  Size get preferredSize => const Size.fromHeight(100); // Mobile: 100 (2 lignes) | Tablette/Desktop: 56 (1 ligne)
 
   @override
   Widget build(BuildContext context) {
@@ -79,69 +80,20 @@ class GameAppBar extends StatelessWidget implements PreferredSizeWidget {
                 ? theme.colorScheme.surface
                 : const Color(0xFF673AB7)); // Colors.deepPurple[700]
 
+        // RESPONSIVE-APPBAR: toolbarHeight et layout dynamiques
+        final toolbarHeight = const ResponsiveValue<double>(
+          mobile: 100.0,
+          tablet: 56.0,
+          desktop: 56.0,
+        ).getValue(context);
+
+        final isMobile = context.isMobile;
+
         return AppBar(
-          toolbarHeight: 100,
-          title: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // LIGNE 1: Niveau + Nom entreprise + Argent
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  LevelBadge(levelSystem: view.levelSystem),
-                  const SizedBox(width: 12),
-                  Container(
-                    constraints: const BoxConstraints(maxWidth: 150),
-                    child: Text(
-                      view.enterpriseName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        letterSpacing: 0.3,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  ResourceChip(
-                    emoji: '💵',
-                    value: view.money,
-                    color: Colors.green.shade600,
-                    formatLarge: true,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              // LIGNE 2: Trombones + Quantum + Points Innovation
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  ResourceChip(
-                    emoji: '📎',
-                    value: view.paperclips,
-                    color: Colors.blue.shade500,
-                    formatLarge: true,
-                  ),
-                  const SizedBox(width: 8),
-                  ResourceChip(
-                    emoji: '⚡',
-                    value: view.quantum.toDouble(),
-                    color: Colors.cyan.shade400,
-                    formatLarge: false,
-                  ),
-                  const SizedBox(width: 8),
-                  ResourceChip(
-                    emoji: '💡',
-                    value: view.innovationPoints.toDouble(),
-                    color: Colors.purple.shade400,
-                    formatLarge: false,
-                  ),
-                ],
-              ),
-            ],
-          ),
+          toolbarHeight: toolbarHeight,
+          title: isMobile
+              ? _buildMobileLayout(view)
+              : _buildTabletDesktopLayout(view, context),
           centerTitle: true,
           backgroundColor: appBarColor,
           actions: AppBarActions(
@@ -150,6 +102,124 @@ class GameAppBar extends StatelessWidget implements PreferredSizeWidget {
           ).buildActions(context),
         );
       },
+    );
+  }
+
+  /// Layout mobile (2 lignes) - COMPORTEMENT ACTUEL PRÉSERVÉ
+  Widget _buildMobileLayout(_GameAppBarView view) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // LIGNE 1: Niveau + Nom entreprise + Argent
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            LevelBadge(levelSystem: view.levelSystem),
+            const SizedBox(width: 12),
+            Container(
+              constraints: const BoxConstraints(maxWidth: 150),
+              child: Text(
+                view.enterpriseName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            ResourceChip(
+              emoji: '💵',
+              value: view.money,
+              color: Colors.green.shade600,
+              formatLarge: true,
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        // LIGNE 2: Trombones + Quantum + Points Innovation
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ResourceChip(
+              emoji: '📎',
+              value: view.paperclips,
+              color: Colors.blue.shade500,
+              formatLarge: true,
+            ),
+            const SizedBox(width: 8),
+            ResourceChip(
+              emoji: '⚡',
+              value: view.quantum.toDouble(),
+              color: Colors.cyan.shade400,
+              formatLarge: false,
+            ),
+            const SizedBox(width: 8),
+            ResourceChip(
+              emoji: '💡',
+              value: view.innovationPoints.toDouble(),
+              color: Colors.purple.shade400,
+              formatLarge: false,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// Layout tablette/desktop (1 ligne) - NOUVEAU
+  Widget _buildTabletDesktopLayout(_GameAppBarView view, BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        LevelBadge(levelSystem: view.levelSystem),
+        const SizedBox(width: 16),
+        Container(
+          constraints: const BoxConstraints(maxWidth: 200),
+          child: Text(
+            view.enterpriseName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+              letterSpacing: 0.3,
+            ),
+          ),
+        ),
+        const SizedBox(width: 16),
+        ResourceChip(
+          emoji: '💵',
+          value: view.money,
+          color: Colors.green.shade600,
+          formatLarge: true,
+        ),
+        const SizedBox(width: 12),
+        ResourceChip(
+          emoji: '📎',
+          value: view.paperclips,
+          color: Colors.blue.shade500,
+          formatLarge: true,
+        ),
+        const SizedBox(width: 12),
+        ResourceChip(
+          emoji: '⚡',
+          value: view.quantum.toDouble(),
+          color: Colors.cyan.shade400,
+          formatLarge: false,
+        ),
+        const SizedBox(width: 12),
+        ResourceChip(
+          emoji: '💡',
+          value: view.innovationPoints.toDouble(),
+          color: Colors.purple.shade400,
+          formatLarge: false,
+        ),
+      ],
     );
   }
 }

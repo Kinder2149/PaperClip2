@@ -3,9 +3,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:paperclip2/widgets/worlds/world_state_helper.dart';
 import 'package:paperclip2/services/google/google_bootstrap.dart';
+import 'package:paperclip2/services/auth/firebase_auth_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:paperclip2/utils/logger.dart';
 
@@ -79,13 +79,12 @@ class _CloudSyncStatusButtonState extends State<CloudSyncStatusButton> {
       identityStatus = google.identity.status.toString();
     } catch (_) {}
 
-    // 1) Récupérer l'état Cloud activé depuis SharedPreferences (préférence utilisateur)
-    return FutureBuilder<bool>(
-      future: SharedPreferences.getInstance().then((prefs) => prefs.getBool('cloud_enabled') ?? false),
-      builder: (context, cloudSnap) {
-        final cloudOn = cloudSnap.data ?? false;
-        // 2) Puis récupérer l'état canonique (pending/synced/local_only)
-        return FutureBuilder<String>(
+    // CORRECTION AUTH-CLOUD-FIABILISATION: Cloud automatique si Firebase connecté
+    final firebaseUser = FirebaseAuthService.instance.currentUser;
+    final cloudOn = firebaseUser != null;
+    
+    // Récupérer l'état canonique (pending/synced/local_only)
+    return FutureBuilder<String>(
           future: WorldStateHelper.canonicalStateFor(widget.saveEntry as dynamic),
           builder: (context, snapshot) {
             final canonical = snapshot.data ?? 'local_only';
@@ -149,8 +148,6 @@ class _CloudSyncStatusButtonState extends State<CloudSyncStatusButton> {
             }
           },
         );
-      },
-    );
   }
 
   Widget _buildAction({required String label, required Color color, required IconData icon, required VoidCallback onPressed}) {

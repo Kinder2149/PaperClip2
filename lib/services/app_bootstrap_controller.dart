@@ -460,22 +460,10 @@ class AppBootstrapController extends ChangeNotifier {
       // Marquer comme synchronisé AVANT de démarrer (éviter double sync)
       _lastSyncedUid = uid;
       
-      print('🔥🔥🔥 [$source] STEP 2: Getting SharedPreferences 🔥🔥🔥');
-      // Activer cloud automatiquement
-      final prefs = await SharedPreferences.getInstance();
-      final cloudEnabled = prefs.getBool('cloud_enabled') ?? false;
-      
-      print('🔥🔥🔥 [$source] STEP 3: Cloud preference | enabled=$cloudEnabled 🔥🔥🔥');
-      appLogger.info('[$source] Cloud preference | enabled=$cloudEnabled', code: 'sync_cloud_pref');
-      
-      if (!cloudEnabled) {
-        print('🔥🔥🔥 [$source] STEP 4: Auto-enabling cloud 🔥🔥🔥');
-        appLogger.info('[$source] Auto-enabling cloud (Firebase user detected)', code: 'sync_auto_enable');
-        await prefs.setBool('cloud_enabled', true);
-        print('🔥🔥🔥 [$source] STEP 5: Cloud enabled in prefs 🔥🔥🔥');
-      }
-      
-      print('🔥🔥🔥 [$source] STEP 6: Activating CloudPort... 🔥🔥🔥');
+      print('🔥🔥🔥 [$source] STEP 2: Activating CloudPort (Firebase user authenticated)... 🔥🔥🔥');
+      // CORRECTION AUTH-CLOUD-FIABILISATION: Cloud activé automatiquement si utilisateur Firebase connecté
+      // Plus de préférence cloud_enabled - la présence d'un utilisateur Firebase suffit
+      appLogger.info('[$source] Auto-activating cloud (Firebase user authenticated)', code: 'sync_auto_activate');
       // Activer CloudPort
       appLogger.info('[$source] Activating CloudPort...', code: 'sync_cloudport_start');
       
@@ -628,6 +616,28 @@ class AppBootstrapController extends ChangeNotifier {
       level: NotificationLevel.WARNING,
       source: 'OFFLINE',
     );
+  }
+
+  /// CORRECTION AUTH-CLOUD-FIABILISATION: Méthode publique pour déclencher Google Sign-In
+  /// Les écrans doivent utiliser cette méthode au lieu d'appeler FirebaseAuthService directement
+  /// La sync cloud sera déclenchée automatiquement par le listener Firebase Auth
+  Future<void> requestGoogleSignIn() async {
+    try {
+      print('🔥🔥🔥 [BOOTSTRAP] requestGoogleSignIn() called from UI 🔥🔥🔥');
+      appLogger.info('[BOOTSTRAP] Google Sign-In requested from UI', code: 'auth_ui_request');
+      
+      await FirebaseAuthService.instance.signInWithGoogle();
+      
+      print('🔥🔥🔥 [BOOTSTRAP] Google Sign-In successful - listener will trigger sync 🔥🔥🔥');
+      appLogger.info('[BOOTSTRAP] Google Sign-In successful', code: 'auth_ui_success');
+      
+      // La sync sera déclenchée automatiquement par le listener Firebase Auth
+      // Pas besoin d'appeler _syncUserImmediately() ici
+    } catch (e) {
+      print('🔥🔥🔥 [BOOTSTRAP] Google Sign-In failed: $e 🔥🔥🔥');
+      appLogger.error('[BOOTSTRAP] Google Sign-In failed: $e', code: 'auth_ui_error');
+      rethrow;
+    }
   }
 
   @override

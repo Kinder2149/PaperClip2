@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Flutter Web",
+      "runtimeExecutable": "flutter",
+      "runtimeArgs": ["run", "-d", "web-server", "--web-port", "8080"],
+      "port": 8080
+    },
+    {
+      "name": "Firebase Emulators",
+      "runtimeExecutable": "firebase",
+      "runtimeArgs": ["emulators:start", "--only", "functions,firestore,auth"],
+      "port": 4000
+    }
+  ]
+}

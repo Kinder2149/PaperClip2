@@ -213,7 +213,6 @@ void main() async {
       final firebaseUser = FirebaseAuthService.instance.currentUser;
       final isFirebaseSignedIn = firebaseUser != null;
 
-      var cloudEnabled = prefs.getBool('cloud_enabled') ?? false;
       // Filtre mission depuis préférences utilisateur (priorité aux prefs si activées)
       try {
         final missionPref = prefs.getBool('mission_logging');
@@ -221,22 +220,17 @@ void main() async {
           Logger.enableMissionMode(missionPref == true);
         }
       } catch (_) {}
-      // Activer automatiquement le cloud si l'utilisateur est connecté à Firebase
-      if (!cloudEnabled && isFirebaseSignedIn) {
-        cloudEnabled = true;
-        await prefs.setBool('cloud_enabled', true);
-      }
-      // CORRECTION AUDIT #1: Simplifier activation CloudPort au boot
-      // Si cloud_enabled=true, TOUJOURS activer le CloudPort
-      // La vérification auth se fera au moment des requêtes via ensureAuthenticatedForCloud()
-      print('🔥🔥🔥 [MAIN] CloudPort activation | cloudEnabled=$cloudEnabled isFirebaseSignedIn=$isFirebaseSignedIn uid=${firebaseUser?.uid} 🔥🔥🔥');
       
-      if (cloudEnabled) {
-        final activated = await CloudPortManager.instance.activate(reason: 'boot_user_preference');
+      // CORRECTION AUTH-CLOUD-FIABILISATION: CloudPort activé automatiquement si utilisateur Firebase connecté
+      // Plus de préférence cloud_enabled - la présence d'un utilisateur Firebase suffit
+      print('🔥🔥🔥 [MAIN] CloudPort activation | isFirebaseSignedIn=$isFirebaseSignedIn uid=${firebaseUser?.uid} 🔥🔥🔥');
+      
+      if (isFirebaseSignedIn) {
+        final activated = await CloudPortManager.instance.activate(reason: 'boot_firebase_user_authenticated');
         print('🔥🔥🔥 [MAIN] CloudPort.activate() result: $activated 🔥🔥🔥');
       } else {
-        print('🔥🔥🔥 [MAIN] CloudPort NOT activated (cloud disabled) 🔥🔥🔥');
-        await CloudPortManager.instance.deactivate(reason: 'boot_user_disabled');
+        print('🔥🔥🔥 [MAIN] CloudPort NOT activated (no Firebase user) 🔥🔥🔥');
+        await CloudPortManager.instance.deactivate(reason: 'boot_no_firebase_user');
       }
       
       // P0-1: Provider playerId SUPPRIMÉ - utiliser directement FirebaseAuthService.instance.currentUser?.uid

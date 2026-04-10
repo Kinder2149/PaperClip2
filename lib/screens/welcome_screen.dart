@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import '../services/runtime/runtime_actions.dart';
+import '../services/app_bootstrap_controller.dart';
 import 'main_screen.dart';
 import 'profile_screen.dart';
 import '../services/google/google_bootstrap.dart';
@@ -97,8 +98,8 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     try {
       if (kDebugMode) _logger.debug('[WelcomeScreen] Connexion Google demandée');
       
-      // Connexion Firebase
-      await FirebaseAuthService.instance.signInWithGoogle();
+      // CORRECTION AUTH-CLOUD-FIABILISATION: Utiliser AppBootstrapController pour centraliser l'auth
+      await context.read<AppBootstrapController>().requestGoogleSignIn();
       
       // Tentative GPG (best effort)
       try {

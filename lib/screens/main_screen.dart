@@ -3,7 +3,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 // Import de notre nouvelle AppBar
 import '../widgets/appbar/game_appbar.dart';
@@ -22,7 +21,6 @@ import '../services/progression/progression_rules_service.dart';
 import '../services/upgrades/upgrade_effects_calculator.dart';
 import '../services/persistence/game_persistence_orchestrator.dart';
 import '../services/save_system/local_save_game_manager.dart';
-import '../services/cloud/cloud_port_manager.dart';
 import '../services/auth/firebase_auth_service.dart';
 
 // Imports des services
@@ -1059,118 +1057,73 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                       ),
                     ),
 
-                    // Section Cloud (remplace "Mode hors ligne")
+                    // Section Cloud (CORRECTION AUTH-CLOUD-FIABILISATION: cloud automatique si Firebase connecté)
                     Card(
                       elevation: 0,
                       color: Colors.grey[50],
                       child: Builder(
                         builder: (context) {
-                          // CORRECTION: Vérifier Firebase Auth au lieu de Google Play Games
+                          // Cloud automatiquement actif si Firebase connecté
                           final firebaseUser = FirebaseAuthService.instance.currentUser;
                           final isSignedIn = firebaseUser != null;
-                          return FutureBuilder<bool>(
-                            future: SharedPreferences.getInstance().then((prefs) => prefs.getBool('cloud_enabled') ?? false),
-                            builder: (context, snap) {
-                              final enabled = snap.data ?? false;
-                              return Column(
-                                children: [
-                                  SwitchListTile(
-                                    secondary: Icon(enabled ? Icons.cloud : Icons.cloud_off),
-                                    title: const Text('Cloud'),
-                                    subtitle: Text(enabled ? 'Synchronisation activée' : 'Synchronisation désactivée'),
-                                    value: enabled,
-                                    onChanged: isSignedIn
-                                        ? (value) async {
-                                            final prefs = await SharedPreferences.getInstance();
-                                            await prefs.setBool('cloud_enabled', value);
-                                            
-                                            if (value) {
-                                              try {
-                                                await FirebaseAuthService.instance.ensureAuthenticatedForCloud();
-                                                await CloudPortManager.instance.activate(reason: 'user_toggle_enabled');
-                                                
-                                                Future.microtask(() async {
-                                                  await Future.delayed(const Duration(milliseconds: 600));
-                                                  try {
-                                                    final uid = FirebaseAuthService.instance.currentUser?.uid;
-                                                    if (uid != null && uid.isNotEmpty) {
-                                                      final mgr = await LocalSaveGameManager.getInstance();
-                                                      final all = await mgr.listSaves();
-                                                      for (final s in all) {
-                                                        try {
-                                                          await GamePersistenceOrchestrator.instance.pushCloudFromSaveId(
-                                                            enterpriseId: s.id,
-                                                            uid: uid,
-                                                          );
-                                                        } catch (_) {}
-                                                      }
-                                                    }
-                                                  } catch (_) {}
-                                                });
-                                              } catch (e) {
-                                                await CloudPortManager.instance.deactivate(reason: 'user_toggle_auth_failed');
-                                              }
-                                            } else {
-                                              await CloudPortManager.instance.deactivate(reason: 'user_toggle_disabled');
-                                            }
-                                            
-                                            if (!mounted) return;
-                                            // Forcer un rebuild pour que le FutureBuilder relise la préférence et mette à jour le switch
-                                            setState(() {});
+                          
+                          return Column(
+                            children: [
+                              // Indicateur statut cloud (non modifiable - automatique)
+                              ListTile(
+                                leading: Icon(isSignedIn ? Icons.cloud : Icons.cloud_off),
+                                title: const Text('Cloud'),
+                                subtitle: Text(isSignedIn 
+                                  ? 'Synchronisation automatique active' 
+                                  : 'Connectez-vous pour activer le cloud'),
+                                trailing: isSignedIn ? const Icon(Icons.check_circle, color: Colors.green) : null,
+                              ),
+                              const Divider(height: 1),
+                              // Bouton sync manuelle
+                              ListTile(
+                                leading: const Icon(Icons.cloud_upload_outlined),
+                                title: const Text('Synchroniser maintenant'),
+                                subtitle: const Text('Forcer l\'envoi des sauvegardes locales vers le cloud'),
+                                enabled: isSignedIn,
+                                onTap: isSignedIn
+                                    ? () async {
+                                        try {
+                                          final enterpriseId = context.read<GameState>().enterpriseId;
+                                          if (enterpriseId == null || enterpriseId.isEmpty) {
                                             NotificationManager.instance.showNotification(
-                                              message: value ? 'Cloud activé' : 'Cloud désactivé',
+                                              message: 'Aucune entreprise active à synchroniser',
                                               level: NotificationLevel.INFO,
                                             );
+                                            return;
                                           }
-                                        : null,
-                                  ),
-                                  ListTile(
-                                    leading: const Icon(Icons.cloud_upload_outlined),
-                                    title: const Text('Synchroniser maintenant'),
-                                    subtitle: const Text('Forcer l\'envoi des sauvegardes locales vers le cloud'),
-                                    enabled: isSignedIn && enabled,
-                                    onTap: isSignedIn && enabled
-                                        ? () async {
-                                            try {
-                                              final enterpriseId = context.read<GameState>().enterpriseId;
-                                              if (enterpriseId == null || enterpriseId.isEmpty) {
-                                                NotificationManager.instance.showNotification(
-                                                  message: 'Aucune entreprise active à synchroniser',
-                                                  level: NotificationLevel.INFO,
-                                                );
-                                                return;
-                                              }
-                                              final uid = FirebaseAuthService.instance.currentUser?.uid;
-                                              if (uid == null || uid.isEmpty) {
-                                                throw Exception('UID Firebase manquant - authentification requise');
-                                              }
-                                              await GamePersistenceOrchestrator.instance.pushCloudFromSaveId(enterpriseId: enterpriseId, uid: uid);
-                                              if (context.mounted) {
-                                                NotificationManager.instance.showNotification(
-                                                  message: '✅ Monde synchronisé avec le cloud',
-                                                  level: NotificationLevel.SUCCESS,
-                                                );
-                                              }
-                                            } catch (e) {
-                                              if (context.mounted) {
-                                                // CORRECTION AUDIT: Message d'erreur explicite selon le type d'erreur
-                                                final errorMsg = e.toString().contains('PLAYER_ID_REQUIRED')
-                                                    ? '⚠️ Connexion requise pour synchroniser avec le cloud'
-                                                    : e.toString().contains('NOT_AUTHENTICATED')
-                                                    ? '⚠️ Veuillez vous connecter pour activer le cloud'
-                                                    : '❌ Échec synchronisation: ${e.toString().split(':').last.trim()}';
-                                                NotificationManager.instance.showNotification(
-                                                  message: errorMsg,
-                                                  level: NotificationLevel.ERROR,
-                                                );
-                                              }
-                                            }
+                                          final uid = FirebaseAuthService.instance.currentUser?.uid;
+                                          if (uid == null || uid.isEmpty) {
+                                            throw Exception('UID Firebase manquant - authentification requise');
                                           }
-                                        : null,
-                                  ),
-                                ],
-                              );
-                            },
+                                          await GamePersistenceOrchestrator.instance.pushCloudFromSaveId(enterpriseId: enterpriseId, uid: uid);
+                                          if (context.mounted) {
+                                            NotificationManager.instance.showNotification(
+                                              message: '✅ Monde synchronisé avec le cloud',
+                                              level: NotificationLevel.SUCCESS,
+                                            );
+                                          }
+                                        } catch (e) {
+                                          if (context.mounted) {
+                                            final errorMsg = e.toString().contains('PLAYER_ID_REQUIRED')
+                                                ? '⚠️ Connexion requise pour synchroniser avec le cloud'
+                                                : e.toString().contains('NOT_AUTHENTICATED')
+                                                ? '⚠️ Veuillez vous connecter pour activer le cloud'
+                                                : '❌ Échec synchronisation: ${e.toString().split(':').last.trim()}';
+                                            NotificationManager.instance.showNotification(
+                                              message: errorMsg,
+                                              level: NotificationLevel.ERROR,
+                                            );
+                                          }
+                                        }
+                                      }
+                                    : null,
+                              ),
+                            ],
                           );
                         },
                       ),

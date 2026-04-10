@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/game_state.dart';
 import '../../constants/game_config.dart'; // Importé depuis constants au lieu de models
+import '../../utils/responsive_utils.dart';
 
 class AppBarProgressIndicator extends StatelessWidget {
   const AppBarProgressIndicator({Key? key}) : super(key: key);
@@ -16,11 +17,42 @@ class AppBarProgressIndicator extends StatelessWidget {
             (totalPaperclipsProduced.toDouble() / GameConstants.GLOBAL_PROGRESS_TARGET)
                 .clamp(0.0, 1.0);
 
+        // RESPONSIVE-APPBAR: Dimensions adaptées selon breakpoint
+        final containerWidth = const ResponsiveValue<double>(
+          mobile: 45.0,
+          tablet: 50.0,
+          desktop: 50.0,
+        ).getValue(context);
+
+        final containerHeight = const ResponsiveValue<double>(
+          mobile: 40.0,
+          tablet: 44.0,
+          desktop: 44.0,
+        ).getValue(context);
+
+        final progressSize = const ResponsiveValue<double>(
+          mobile: 32.0,
+          tablet: 36.0,
+          desktop: 36.0,
+        ).getValue(context);
+
+        final fontSize = const ResponsiveValue<double>(
+          mobile: 11.0,
+          tablet: 12.0,
+          desktop: 12.0,
+        ).getValue(context);
+
+        final strokeWidth = const ResponsiveValue<double>(
+          mobile: 3.0,
+          tablet: 3.5,
+          desktop: 3.5,
+        ).getValue(context);
+
         return GestureDetector(
           onTap: () => _showProgressDetails(context, context.read<GameState>()),
           child: Container(
-            width: 45,
-            height: 40,
+            width: containerWidth,
+            height: containerHeight,
             decoration: BoxDecoration(
               color: Theme.of(context).brightness == Brightness.dark
                   ? Colors.blue.shade900
@@ -38,8 +70,8 @@ class AppBarProgressIndicator extends StatelessWidget {
               alignment: Alignment.center,
               children: [
                 SizedBox(
-                  width: 32,
-                  height: 32,
+                  width: progressSize,
+                  height: progressSize,
                   child: CircularProgressIndicator(
                     value: progressValue,
                     backgroundColor:
@@ -50,14 +82,14 @@ class AppBarProgressIndicator extends StatelessWidget {
                       _getProgressColor(
                           progressValue, Theme.of(context).brightness),
                     ),
-                    strokeWidth: 3,
+                    strokeWidth: strokeWidth,
                   ),
                 ),
                 Text(
                   '${(progressValue * 100).toInt()}%',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: Colors.white,
-                    fontSize: 11,
+                    fontSize: fontSize,
                     fontWeight: FontWeight.bold,
                   ),
                 ),

@@ -1,6 +1,7 @@
 // lib/widgets/appbar/resource_chip.dart
 
 import 'package:flutter/material.dart';
+import '../../utils/responsive_utils.dart';
 
 /// Widget réutilisable pour afficher une ressource avec emoji et valeur
 class ResourceChip extends StatelessWidget {
@@ -19,8 +20,39 @@ class ResourceChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // RESPONSIVE-APPBAR: Paddings et tailles adaptés selon breakpoint
+    final horizontalPadding = const ResponsiveValue<double>(
+      mobile: 10.0,
+      tablet: 12.0,
+      desktop: 12.0,
+    ).getValue(context);
+
+    final verticalPadding = const ResponsiveValue<double>(
+      mobile: 6.0,
+      tablet: 8.0,
+      desktop: 8.0,
+    ).getValue(context);
+
+    final emojiFontSize = const ResponsiveValue<double>(
+      mobile: 16.0,
+      tablet: 18.0,
+      desktop: 18.0,
+    ).getValue(context);
+
+    final textFontSize = const ResponsiveValue<double>(
+      mobile: 13.0,
+      tablet: 14.0,
+      desktop: 14.0,
+    ).getValue(context);
+
+    final spacing = const ResponsiveValue<double>(
+      mobile: 6.0,
+      tablet: 8.0,
+      desktop: 8.0,
+    ).getValue(context);
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: verticalPadding),
       decoration: BoxDecoration(
         color: color.withOpacity(0.15),
         borderRadius: BorderRadius.circular(16),
@@ -31,13 +63,13 @@ class ResourceChip extends StatelessWidget {
         children: [
           Text(
             emoji,
-            style: const TextStyle(fontSize: 16),
+            style: TextStyle(fontSize: emojiFontSize),
           ),
-          const SizedBox(width: 6),
+          SizedBox(width: spacing),
           Text(
             formatLarge ? _formatNumber(value) : value.toStringAsFixed(0),
-            style: const TextStyle(
-              fontSize: 13,
+            style: TextStyle(
+              fontSize: textFontSize,
               fontWeight: FontWeight.bold,
               color: Colors.white,
             ),

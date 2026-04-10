@@ -116,3 +116,8 @@ firebase.json
 *.temp
 .temp/
 build_*.txt
+# Environnements et archives
+.venv/
+_archives/
+test_analysis_complete.txt
+test_errors_detailed.txt

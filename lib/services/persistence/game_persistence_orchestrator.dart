@@ -632,7 +632,7 @@ class GamePersistenceOrchestrator {
       ctx: {
         'trigger': request.trigger.toString(),
         'priority': request.priority.toString(),
-        'worldId': request.slotId,
+        'enterpriseId': request.slotId,
         'backup': request.isBackup,
         'queue': _queue.length,
       },
@@ -665,7 +665,7 @@ class GamePersistenceOrchestrator {
             code: 'save_pump_start',
             ctx: {
               'trigger': next.trigger.toString(),
-              'worldId': next.slotId,
+              'enterpriseId': next.slotId,
               'backup': next.isBackup,
             },
           );
@@ -723,7 +723,7 @@ class GamePersistenceOrchestrator {
           }
           try {
             _logger.info('[WORLD-SAVE] done', code: 'world_save_done', ctx: {
-              'worldId': isBackupName ? next.slotId : next.slotId,
+              'enterpriseId': isBackupName ? next.slotId : next.slotId,
               'type': next.trigger.toString(),
               'backup': isBackupName,
             });
@@ -747,7 +747,7 @@ class GamePersistenceOrchestrator {
                     kCloudPushTimeout,
                     onTimeout: () {
                       _logger.warn('[PUMP] Timeout cloud push - marquage pending', code: 'pump_cloud_timeout', ctx: {
-                        'worldId': pid,
+                        'enterpriseId': pid,
                         'timeout': kCloudPushTimeout.inSeconds,
                       });
                       throw TimeoutException('Cloud push timeout après ${kCloudPushTimeout.inSeconds}s');
@@ -756,7 +756,7 @@ class GamePersistenceOrchestrator {
                 } else {
                   // P0-1: uid Firebase manquant (utilisateur non connecté)
                   _logger.warn('[PUMP] uid Firebase manquant, marquage pending', code: 'pump_no_uid', ctx: {
-                    'worldId': pid,
+                    'enterpriseId': pid,
                   });
                   
                   // Marquer comme pending pour retry au prochain login
@@ -778,7 +778,7 @@ class GamePersistenceOrchestrator {
               // CORRECTION #7: Gérer timeout cloud spécifiquement
               _logger.warn('[PUMP] Timeout cloud push (60s)', code: 'pump_cloud_timeout', ctx: {
                 'error': e.toString(),
-                'worldId': next.slotId,
+                'enterpriseId': next.slotId,
               });
               
               // Marquer comme pending pour retry
@@ -797,7 +797,7 @@ class GamePersistenceOrchestrator {
               // CORRECTION #6: Logger et notifier au lieu d'avaler l'exception
               _logger.error('[PUMP] Push cloud échoué', code: 'pump_push_error', ctx: {
                 'error': e.toString(),
-                'worldId': next.slotId,
+                'enterpriseId': next.slotId,
               });
               
               // Marquer comme pending pour retry
@@ -1337,7 +1337,7 @@ class GamePersistenceOrchestrator {
     if (localMeta == null) {
       // Monde absent localement → tenter matérialisation depuis cloud
       // CORRECTION: Indicateur téléchargement cloud + notification utilisateur
-      print('🔥🔥🔥 [LOAD] Monde absent localement, tentative matérialisation | worldId=$id 🔥🔥🔥');
+      print('🔥🔥🔥 [LOAD] Monde absent localement, tentative matérialisation | enterpriseId=$id 🔥🔥🔥');
       
       try {
         syncState.value = SyncState.downloading;
@@ -1351,7 +1351,7 @@ class GamePersistenceOrchestrator {
       );
       
       _logger.info('[LOAD] Monde absent localement, tentative matérialisation cloud', code: 'load_materialize_attempt', ctx: {
-        'worldId': id,
+        'enterpriseId': id,
       });
       
       try {
@@ -1360,7 +1360,7 @@ class GamePersistenceOrchestrator {
           kCloudMaterializeTimeout,
           onTimeout: () {
             _logger.error('[LOAD] Timeout matérialisation cloud', code: 'load_materialize_timeout', ctx: {
-              'worldId': id,
+              'enterpriseId': id,
               'timeout': kCloudMaterializeTimeout.inSeconds,
             });
             throw TimeoutException('Téléchargement trop long (${kCloudMaterializeTimeout.inSeconds}s) - vérifiez votre connexion');
@@ -1372,7 +1372,7 @@ class GamePersistenceOrchestrator {
         }
         
         _logger.info('[LOAD] Monde matérialisé depuis cloud avec succès', code: 'load_materialize_success', ctx: {
-          'worldId': id,
+          'enterpriseId': id,
         });
         
         // CORRECTION: Notification succès
@@ -1388,7 +1388,7 @@ class GamePersistenceOrchestrator {
         } catch (_) {}
       } on TimeoutException catch (e) {
         _logger.error('[LOAD] Timeout matérialisation cloud', code: 'load_materialize_timeout_caught', ctx: {
-          'worldId': id,
+          'enterpriseId': id,
           'error': e.toString(),
         });
         
@@ -1407,7 +1407,7 @@ class GamePersistenceOrchestrator {
         print('🔥🔥🔥 [LOAD] EXCEPTION matérialisation: ${e.toString()} 🔥🔥🔥');
         
         _logger.error('[LOAD] Échec matérialisation cloud', code: 'load_materialize_error', ctx: {
-          'worldId': id,
+          'enterpriseId': id,
           'error': e.toString(),
         });
         
@@ -1969,7 +1969,7 @@ class GamePersistenceOrchestrator {
       }
     } catch (e) {
       _logger.warn('[SYNC-LOGIN] Erreur récupération cloud', code: 'sync_login_cloud_error', ctx: {
-        'worldId': enterpriseId,
+        'enterpriseId': enterpriseId,
         'error': e.toString(),
       });
       return; // Erreur réseau, skip ce monde
@@ -2136,7 +2136,7 @@ class GamePersistenceOrchestrator {
         cloudName: cloudName,
       );
       _logger.info('[SYNC-LOGIN] Cloud importé (cloud wins)', code: 'sync_login_cloud_wins', ctx: {
-        'worldId': enterpriseId,
+        'enterpriseId': enterpriseId,
       });
       return;
     }
@@ -2151,11 +2151,11 @@ class GamePersistenceOrchestrator {
           reason: 'sync_login_local_only',
         );
         _logger.info('[SYNC-LOGIN] Local poussé au cloud', code: 'sync_login_push_local', ctx: {
-          'worldId': enterpriseId,
+          'enterpriseId': enterpriseId,
         });
       } catch (e) {
         _logger.warn('[SYNC-LOGIN] Échec push local', code: 'sync_login_push_error', ctx: {
-          'worldId': enterpriseId,
+          'enterpriseId': enterpriseId,
           'error': e.toString(),
         });
       }
@@ -2287,7 +2287,7 @@ class GamePersistenceOrchestrator {
     final sw = Stopwatch()..start();
     try {
       _logger.info('worlds_put_attempt', code: 'worlds_put_attempt', ctx: {
-        'worldId': enterpriseId,
+        'enterpriseId': enterpriseId,
         'reason': reason ?? 'unspecified',
       });
       await port.pushById(enterpriseId: enterpriseId, snapshot: snapshot, metadata: meta);
@@ -2298,7 +2298,7 @@ class GamePersistenceOrchestrator {
       } catch (_) {}
       sw.stop();
       _logger.info('worlds_put_success', code: 'worlds_put_success', ctx: {
-        'worldId': enterpriseId,
+        'enterpriseId': enterpriseId,
         'latency_ms': sw.elapsedMilliseconds,
       });
       if (_isDebug) {
@@ -2326,7 +2326,7 @@ class GamePersistenceOrchestrator {
       } catch (_) {}
       
       _logger.error('[cloud] pushCloudFromSaveId failed', code: 'worlds_put_failure', ctx: {
-        'worldId': enterpriseId,
+        'enterpriseId': enterpriseId,
         'latency_ms': sw.elapsedMilliseconds,
         if (httpCode != null) 'http_code': httpCode,
         'cause_category': cause,
@@ -2597,30 +2597,30 @@ class GamePersistenceOrchestrator {
       final List<String> failedEnterpriseIds = [];
 
       for (final cloudEntry in cloudWorlds) {
-        final worldId = cloudEntry.enterpriseId;
-        if (worldId.isEmpty) continue;
+        final enterpriseId = cloudEntry.enterpriseId;
+        if (enterpriseId.isEmpty) continue;
 
         try {
           _logger.info('[SYNC-LOGIN] Synchronisation monde', code: 'sync_login_world_start', ctx: {
-            'worldId': worldId,
-            'hasLocal': localWorldIds.contains(worldId),
+            'enterpriseId': enterpriseId,
+            'hasLocal': localWorldIds.contains(enterpriseId),
           });
 
           // CORRECTION POST-AUDIT: Utiliser "cloud always wins" au lieu de l'arbitrage
           await _syncFromCloudAtLogin(
-            enterpriseId: worldId,
+            enterpriseId: enterpriseId,
             playerId: ensuredUid,
           );
 
           syncedCount++;
           _logger.info('[SYNC-LOGIN] Monde synchronisé', code: 'sync_login_world_ok', ctx: {
-            'worldId': worldId,
+            'enterpriseId': enterpriseId,
           });
         } catch (e) {
           errorCount++;
-          failedEnterpriseIds.add(worldId);
+          failedEnterpriseIds.add(enterpriseId);
           _logger.warn('[SYNC-LOGIN] Échec sync monde', code: 'sync_login_world_error', ctx: {
-            'worldId': worldId,
+            'enterpriseId': enterpriseId,
             'error': e.toString(),
           });
           // Continuer avec les autres mondes même en cas d'erreur
@@ -2639,7 +2639,7 @@ class GamePersistenceOrchestrator {
         for (final orphanId in orphanLocalIds) {
           try {
             _logger.info('[SYNC-LOGIN] Push monde orphelin vers cloud', code: 'sync_login_orphan_push', ctx: {
-              'worldId': orphanId,
+              'enterpriseId': orphanId,
             });
 
             await pushCloudFromSaveId(
@@ -2652,7 +2652,7 @@ class GamePersistenceOrchestrator {
           } catch (e) {
             errorCount++;
             _logger.warn('[SYNC-LOGIN] Échec push orphelin', code: 'sync_login_orphan_error', ctx: {
-              'worldId': orphanId,
+              'enterpriseId': orphanId,
               'error': e.toString(),
             });
           }

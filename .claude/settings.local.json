@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs wc:*)",
+      "Bash(cp METHODO/CASCADE_GLOBAL_RULES.md _archives/METHODO/)",
+      "Bash(cp METHODO/PROJET_CONTEXTE_TEMPLATE.md _archives/METHODO/)",
+      "Bash(cp METHODO/README_METHODE.md _archives/METHODO/)",
+      "Bash(cp METHODO/STACK_STANDARD.md _archives/METHODO/)",
+      "Bash(cp METHODO/prompts/* _archives/METHODO/prompts/)",
+      "Bash(rm -f fix_final_errors.py fix_partie_id.py fix_remaining_errors.py test_results.json test_results_final.json)",
+      "Bash(rm -rf .venv/ archive/)",
+      "Bash(find \"/c/DEV/PROJETS/applications_mobile/PaperClip2/lib/screens/panels\" -name \"*.dart\" -exec grep -l \"MediaQuery\\\\|LayoutBuilder\\\\|Breakpoints\" {} \\\\;)",
+      "Bash(wc -l \"/c/DEV/PROJETS/applications_mobile/PaperClip2/lib/utils\"/*.dart \"/c/DEV/PROJETS/applications_mobile/PaperClip2/lib/theme\"/*.dart \"/c/DEV/PROJETS/applications_mobile/PaperClip2/lib/widgets/appbar\"/*.dart \"/c/DEV/PROJETS/applications_mobile/PaperClip2/lib/widgets/design_system\"/*.dart \"/c/DEV/PROJETS/applications_mobile/PaperClip2/lib/widgets/layout\"/*.dart \"/c/DEV/PROJETS/applications_mobile/PaperClip2/lib/widgets/buttons\"/*.dart)",
+      "Bash(grep -n \"ResponsiveGrid\\\\|ResponsiveLayout\\\\|ResponsiveBuilder\\\\|ResponsiveValue\" \"/c/DEV/PROJETS/applications_mobile/PaperClip2/lib/screens/panels\"/*.dart)",
+      "Bash(flutter build:*)",
+      "Bash(keytool -list -v -keystore \"C:\\\\Users\\\\vcout\\\\.android\\\\debug.keystore\" -alias androiddebugkey -storepass android -keypass android)",
+      "Bash(findstr /i \"SHA1\\\\|SHA-1\\\\|Certificate\")"
+    ]
+  }
+}

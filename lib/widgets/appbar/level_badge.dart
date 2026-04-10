@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import '../../models/progression_system.dart';
+import '../../utils/responsive_utils.dart';
 
 /// Badge moderne pour afficher le niveau avec gradient doré
 class LevelBadge extends StatelessWidget {
@@ -14,10 +15,41 @@ class LevelBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // RESPONSIVE-APPBAR: Paddings et tailles adaptés selon breakpoint
+    final horizontalPadding = const ResponsiveValue<double>(
+      mobile: 8.0,
+      tablet: 10.0,
+      desktop: 10.0,
+    ).getValue(context);
+
+    final verticalPadding = const ResponsiveValue<double>(
+      mobile: 4.0,
+      tablet: 6.0,
+      desktop: 6.0,
+    ).getValue(context);
+
+    final iconSize = const ResponsiveValue<double>(
+      mobile: 14.0,
+      tablet: 16.0,
+      desktop: 16.0,
+    ).getValue(context);
+
+    final fontSize = const ResponsiveValue<double>(
+      mobile: 12.0,
+      tablet: 14.0,
+      desktop: 14.0,
+    ).getValue(context);
+
+    final spacing = const ResponsiveValue<double>(
+      mobile: 4.0,
+      tablet: 6.0,
+      desktop: 6.0,
+    ).getValue(context);
+
     return GestureDetector(
       onTap: () => _showLevelInfoDialog(context),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: verticalPadding),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
@@ -39,16 +71,16 @@ class LevelBadge extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
+            Icon(
               Icons.star,
-              size: 14,
+              size: iconSize,
               color: Colors.white,
             ),
-            const SizedBox(width: 4),
+            SizedBox(width: spacing),
             Text(
               'Niv. ${levelSystem.level}',
-              style: const TextStyle(
-                fontSize: 12,
+              style: TextStyle(
+                fontSize: fontSize,
                 fontWeight: FontWeight.bold,
                 color: Colors.white,
               ),

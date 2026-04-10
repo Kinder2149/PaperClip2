@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 
 import '../services/notification_manager.dart';
+import '../services/app_bootstrap_controller.dart';
 import '../services/google/google_bootstrap.dart';
 import '../services/auth/firebase_auth_service.dart';
 import '../services/google/identity/google_identity_service.dart';
@@ -25,7 +26,8 @@ class AuthChoiceScreen extends StatelessWidget {
               label: const Text('Se connecter avec Google (Firebase)'),
               onPressed: () async {
                 try {
-                  await FirebaseAuthService.instance.signInWithGoogle();
+                  // CORRECTION AUTH-CLOUD-FIABILISATION: Utiliser AppBootstrapController pour centraliser l'auth
+                  await context.read<AppBootstrapController>().requestGoogleSignIn();
                   final token = await FirebaseAuthService.instance.getIdToken();
                   NotificationManager.instance.showNotification(
                     message: token != null ? 'Connecté (Firebase). ID Token reçu.' : 'Connecté (Firebase). Pas d\'ID Token.',

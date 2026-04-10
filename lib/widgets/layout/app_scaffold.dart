@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:paperclip2/widgets/appbar/game_appbar.dart';
 import 'package:paperclip2/widgets/appbar/settings_bottom_sheet.dart';
+import 'package:paperclip2/utils/responsive_utils.dart';
 
 class AppScaffold extends StatelessWidget {
   final Widget body;
@@ -24,9 +25,17 @@ class AppScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // RESPONSIVE-APPBAR: toolbarHeight dynamique selon breakpoint
+    // Mobile: 100px (2 lignes) | Tablette/Desktop: 56px (1 ligne Material standard)
+    final toolbarHeight = const ResponsiveValue<double>(
+      mobile: 100.0,
+      tablet: 56.0,
+      desktop: 56.0,
+    ).getValue(context);
+
     return Scaffold(
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(kToolbarHeight),
+        preferredSize: Size.fromHeight(toolbarHeight),
         child: GameAppBar(
           selectedIndex: appBarSelectedIndex,
           additionalActions: appBarActions,

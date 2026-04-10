@@ -95,8 +95,8 @@ class _StartScreenState extends State<StartScreen> {
     try {
       if (kDebugMode) _logger.debug('[SignIn] Connexion Firebase demandée');
       
-      // 1. Connexion Firebase (OBLIGATOIRE)
-      await FirebaseAuthService.instance.signInWithGoogle();
+      // CORRECTION AUTH-CLOUD-FIABILISATION: Utiliser AppBootstrapController pour centraliser l'auth
+      await context.read<AppBootstrapController>().requestGoogleSignIn();
       
       // 2. Tentative GPG (OPTIONNEL, best effort)
       try {
