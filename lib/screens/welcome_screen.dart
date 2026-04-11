@@ -4,14 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import '../services/runtime/runtime_actions.dart';
+import '../services/persistence/game_persistence_orchestrator.dart';
+import '../constants/game_config.dart';
+import '../services/save_game.dart';
 import 'main_screen.dart';
 import 'profile_screen.dart';
 import '../services/google/google_bootstrap.dart';
 import '../services/auth/firebase_auth_service.dart';
 import '../utils/logger.dart';
 
-/// Écran d'accueil affiché uniquement lors de la première utilisation
-/// (quand aucune entreprise n'existe)
+/// Écran d'accueil — s'adapte selon l'état de l'utilisateur :
+/// - Connecté + entreprise existante → bouton "Reprendre"
+/// - Connecté sans entreprise       → formulaire de création
+/// - Non connecté                   → formulaire + bouton connexion Google
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({Key? key}) : super(key: key);
 
@@ -25,67 +30,99 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   String? _enterpriseNameError;
   bool _isCreating = false;
 
+  // Sauvegardes locales — chargées au montage du widget
+  List<SaveGameInfo> _localSaves = [];
+  bool _savesLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocalSaves();
+  }
+
   @override
   void dispose() {
     _enterpriseNameController.dispose();
     super.dispose();
   }
 
+  /// Charge la liste des sauvegardes locales non-backup.
+  Future<void> _loadLocalSaves() async {
+    try {
+      final all = await GamePersistenceOrchestrator.instance.listSaves();
+      final nonBackup = all
+          .where((m) => !m.name.contains(GameConstants.BACKUP_DELIMITER))
+          .toList();
+      if (mounted) {
+        setState(() {
+          _localSaves = nonBackup;
+          _savesLoaded = true;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _savesLoaded = true);
+    }
+  }
+
+  /// Reprend l'entreprise existante et navigue vers MainScreen.
+  Future<void> _handleResumeEnterprise() async {
+    if (_localSaves.isEmpty || _isCreating) return;
+    setState(() => _isCreating = true);
+    try {
+      final runtimeActions = context.read<RuntimeActions>();
+      await runtimeActions.loadGameByIdAndStartAutoSave(_localSaves.first.id);
+      runtimeActions.startSession();
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const MainScreen()),
+      );
+    } catch (e) {
+      if (kDebugMode) _logger.debug('Erreur reprise entreprise: $e');
+      if (!mounted) return;
+      setState(() => _isCreating = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur lors de la reprise: $e')),
+      );
+    }
+  }
+
   Future<void> _handleCreateEnterprise() async {
     final name = _enterpriseNameController.text.trim();
-    
-    // Validation du nom
+
     if (name.isEmpty) {
-      setState(() {
-        _enterpriseNameError = "Veuillez entrer un nom pour votre entreprise";
-      });
+      setState(() => _enterpriseNameError = "Veuillez entrer un nom pour votre entreprise");
       return;
     }
-    
     if (name.length < 3) {
-      setState(() {
-        _enterpriseNameError = "Le nom doit contenir au moins 3 caractères";
-      });
+      setState(() => _enterpriseNameError = "Le nom doit contenir au moins 3 caractères");
       return;
     }
-    
     if (name.length > 30) {
-      setState(() {
-        _enterpriseNameError = "Le nom ne peut pas dépasser 30 caractères";
-      });
+      setState(() => _enterpriseNameError = "Le nom ne peut pas dépasser 30 caractères");
       return;
     }
-    
     final validChars = RegExp(r"^[a-zA-Z0-9\s\-_.\']+$");
     if (!validChars.hasMatch(name)) {
-      setState(() {
-        _enterpriseNameError = "Le nom contient des caractères non autorisés";
-      });
+      setState(() => _enterpriseNameError = "Le nom contient des caractères non autorisés");
       return;
     }
-    
-    // Création de l'entreprise
+
     setState(() {
       _isCreating = true;
       _enterpriseNameError = null;
     });
-    
+
     try {
       final runtimeActions = context.read<RuntimeActions>();
       await runtimeActions.createNewEnterpriseAndStartAutoSave(name);
       runtimeActions.startSession();
-      
       if (!mounted) return;
-      
-      // Navigation vers le jeu principal
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const MainScreen()),
       );
     } catch (e) {
       if (kDebugMode) _logger.debug('Erreur création entreprise: $e');
-      
       if (!mounted) return;
-      
       setState(() {
         _isCreating = false;
         _enterpriseNameError = "Erreur lors de la création de l'entreprise";
@@ -96,11 +133,8 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   Future<void> _handleGoogleSignIn() async {
     try {
       if (kDebugMode) _logger.debug('[WelcomeScreen] Connexion Google demandée');
-      
-      // Connexion Firebase
       await FirebaseAuthService.instance.signInWithGoogle();
-      
-      // Tentative GPG (best effort)
+
       try {
         final google = context.read<GoogleServicesBundle>();
         await google.identity.signIn();
@@ -108,16 +142,19 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       } catch (e) {
         if (kDebugMode) _logger.debug('[WelcomeScreen] GPG échec (non bloquant): $e');
       }
-      
+
+      // Recharger les sauvegardes locales après connexion
+      await _loadLocalSaves();
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Connecté avec succès'))
+          const SnackBar(content: Text('Connecté avec succès')),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Connexion échouée: $e'))
+          SnackBar(content: Text('Connexion échouée: $e')),
         );
       }
     }
@@ -151,7 +188,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   color: Colors.white.withOpacity(0.9),
                 ),
                 const SizedBox(height: 40),
-                
+
                 // Titre
                 Text(
                   "BIENVENUE",
@@ -171,244 +208,322 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 20),
-                
-                // Sous-titre
-                Text(
-                  "Créez votre empire de trombones",
-                  style: TextStyle(
-                    fontSize: 18,
-                    color: Colors.white.withOpacity(0.9),
-                    height: 1.5,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 60),
-                
-                // Champ de saisie du nom d'entreprise
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.9),
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                  child: TextField(
-                    controller: _enterpriseNameController,
-                    enabled: !_isCreating,
-                    decoration: InputDecoration(
-                      hintText: "Nom de votre entreprise",
-                      border: InputBorder.none,
-                      errorText: _enterpriseNameError,
-                      prefixIcon: const Icon(Icons.business_center),
-                    ),
-                    style: const TextStyle(
-                      fontSize: 18,
-                      color: Colors.black87,
-                    ),
-                    textAlign: TextAlign.center,
-                    onChanged: (value) {
-                      if (_enterpriseNameError != null) {
-                        setState(() {
-                          _enterpriseNameError = null;
-                        });
-                      }
-                    },
-                    onSubmitted: (_) => _handleCreateEnterprise(),
-                  ),
-                ),
-                const SizedBox(height: 15),
-                
-                // Exemples
-                Text(
-                  "Exemples : PaperClip Corp, TromboTech, ClipMaster Inc.",
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.white.withOpacity(0.7),
-                    fontStyle: FontStyle.italic,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 40),
-                
-                // Bouton Créer l'entreprise
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _isCreating ? null : _handleCreateEnterprise,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 40,
-                        vertical: 20,
-                      ),
-                      backgroundColor: Colors.white.withOpacity(0.9),
-                      foregroundColor: Colors.deepPurple[900],
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15),
-                      ),
-                      elevation: 5,
-                    ),
-                    child: _isCreating
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text(
-                            'CRÉER MON ENTREPRISE',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1,
-                            ),
-                          ),
-                  ),
-                ),
-                const SizedBox(height: 30),
-                
-                // Séparateur
-                Row(
-                  children: [
-                    Expanded(
-                      child: Divider(
-                        color: Colors.white.withOpacity(0.3),
-                        thickness: 1,
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(
-                        "OU",
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: Divider(
-                        color: Colors.white.withOpacity(0.3),
-                        thickness: 1,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 30),
-                
-                // Bouton Google Dynamique (Connexion ou Profil)
+
+                // Contenu conditionnel : Reprendre ou Créer
                 StreamBuilder(
                   stream: FirebaseAuthService.instance.authStateChanges(),
                   builder: (context, snapshot) {
-                    final isConnected = FirebaseAuthService.instance.currentUser != null;
-                    final googleIdentity = context.watch<GoogleServicesBundle>().identity;
+                    final isConnected =
+                        FirebaseAuthService.instance.currentUser != null;
+                    final hasEnterprise =
+                        isConnected && _savesLoaded && _localSaves.isNotEmpty;
+                    final enterpriseName =
+                        _localSaves.isNotEmpty ? _localSaves.first.name : '';
+                    final googleIdentity =
+                        context.watch<GoogleServicesBundle>().identity;
                     final avatarUrl = googleIdentity.avatarUrl;
-                    
-                    if (isConnected) {
-                      // Bouton "Mon Profil" avec avatar
-                      return SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: _isCreating ? null : () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(builder: (_) => const ProfileScreen()),
-                            );
-                          },
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 40,
-                              vertical: 20,
+
+                    if (hasEnterprise) {
+                      // ── Mode REPRISE ───────────────────────────────────────
+                      return Column(
+                        children: [
+                          Text(
+                            "Votre empire vous attend",
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: Colors.white.withOpacity(0.9),
+                              height: 1.5,
                             ),
-                            backgroundColor: Colors.white.withOpacity(0.9),
-                            foregroundColor: Colors.deepPurple[900],
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(15),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 60),
+
+                          // Bouton REPRENDRE
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed:
+                                  _isCreating ? null : _handleResumeEnterprise,
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 40, vertical: 20),
+                                backgroundColor: Colors.white.withOpacity(0.9),
+                                foregroundColor: Colors.deepPurple[900],
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(15)),
+                                elevation: 5,
+                              ),
+                              child: _isCreating
+                                  ? const SizedBox(
+                                      height: 20,
+                                      width: 20,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
+                                    )
+                                  : Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        const Icon(Icons.play_arrow, size: 24),
+                                        const SizedBox(width: 8),
+                                        Flexible(
+                                          child: Text(
+                                            'REPRENDRE — $enterpriseName',
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                              letterSpacing: 1,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                             ),
-                            elevation: 5,
                           ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              // Avatar miniature
-                              CircleAvatar(
-                                radius: 16,
-                                backgroundColor: Colors.deepPurple[100],
-                                backgroundImage: avatarUrl != null && avatarUrl.isNotEmpty
-                                    ? NetworkImage(avatarUrl)
-                                    : null,
-                                child: avatarUrl == null || avatarUrl.isEmpty
-                                    ? Icon(Icons.person, size: 16, color: Colors.deepPurple[900])
-                                    : null,
-                              ),
-                              const SizedBox(width: 12),
-                              const Text(
-                                'MON PROFIL',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 1,
-                                ),
-                              ),
-                            ],
+                          const SizedBox(height: 30),
+
+                          // Séparateur OU
+                          _buildSeparator(),
+                          const SizedBox(height: 30),
+
+                          // Bouton Mon Profil
+                          _buildProfileButton(context, avatarUrl),
+                          const SizedBox(height: 20),
+
+                          Text(
+                            "Accédez à votre profil pour gérer votre compte",
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.white.withOpacity(0.6),
+                              fontStyle: FontStyle.italic,
+                            ),
+                            textAlign: TextAlign.center,
                           ),
-                        ),
+                        ],
                       );
                     } else {
-                      // Bouton "Se connecter avec Google"
-                      return SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: _isCreating ? null : _handleGoogleSignIn,
-                          icon: const Icon(Icons.login, color: Colors.white),
-                          label: const Text(
-                            'SE CONNECTER AVEC GOOGLE',
+                      // ── Mode CRÉATION ──────────────────────────────────────
+                      return Column(
+                        children: [
+                          Text(
+                            "Créez votre empire de trombones",
                             style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1,
-                              color: Colors.white,
+                              fontSize: 18,
+                              color: Colors.white.withOpacity(0.9),
+                              height: 1.5,
                             ),
+                            textAlign: TextAlign.center,
                           ),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 40,
-                              vertical: 20,
-                            ),
-                            side: BorderSide(
-                              color: Colors.white.withOpacity(0.5),
-                              width: 2,
-                            ),
-                            shape: RoundedRectangleBorder(
+                          const SizedBox(height: 60),
+
+                          // Champ de saisie du nom
+                          Container(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 20),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.9),
                               borderRadius: BorderRadius.circular(15),
                             ),
+                            child: TextField(
+                              controller: _enterpriseNameController,
+                              enabled: !_isCreating,
+                              decoration: InputDecoration(
+                                hintText: "Nom de votre entreprise",
+                                border: InputBorder.none,
+                                errorText: _enterpriseNameError,
+                                prefixIcon:
+                                    const Icon(Icons.business_center),
+                              ),
+                              style: const TextStyle(
+                                  fontSize: 18, color: Colors.black87),
+                              textAlign: TextAlign.center,
+                              onChanged: (value) {
+                                if (_enterpriseNameError != null) {
+                                  setState(() => _enterpriseNameError = null);
+                                }
+                              },
+                              onSubmitted: (_) => _handleCreateEnterprise(),
+                            ),
                           ),
-                        ),
+                          const SizedBox(height: 15),
+
+                          Text(
+                            "Exemples : PaperClip Corp, TromboTech, ClipMaster Inc.",
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.white.withOpacity(0.7),
+                              fontStyle: FontStyle.italic,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 40),
+
+                          // Bouton CRÉER MON ENTREPRISE
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed:
+                                  _isCreating ? null : _handleCreateEnterprise,
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 40, vertical: 20),
+                                backgroundColor: Colors.white.withOpacity(0.9),
+                                foregroundColor: Colors.deepPurple[900],
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(15)),
+                                elevation: 5,
+                              ),
+                              child: _isCreating
+                                  ? const SizedBox(
+                                      height: 20,
+                                      width: 20,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
+                                    )
+                                  : const Text(
+                                      'CRÉER MON ENTREPRISE',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 1,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                          const SizedBox(height: 30),
+
+                          // Séparateur OU
+                          _buildSeparator(),
+                          const SizedBox(height: 30),
+
+                          // Bouton Connexion ou Profil
+                          if (isConnected)
+                            _buildProfileButton(context, avatarUrl)
+                          else
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed:
+                                    _isCreating ? null : _handleGoogleSignIn,
+                                icon: const Icon(Icons.login,
+                                    color: Colors.white),
+                                label: const Text(
+                                  'SE CONNECTER AVEC GOOGLE',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 40, vertical: 20),
+                                  side: BorderSide(
+                                      color: Colors.white.withOpacity(0.5),
+                                      width: 2),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(15)),
+                                ),
+                              ),
+                            ),
+                          const SizedBox(height: 20),
+
+                          Text(
+                            isConnected
+                                ? "Accédez à votre profil pour gérer votre compte"
+                                : "La connexion Google n'est pas obligatoire\npour commencer à jouer",
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.white.withOpacity(0.6),
+                              fontStyle: FontStyle.italic,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
                       );
                     }
-                  },
-                ),
-                const SizedBox(height: 20),
-                
-                // Note dynamique
-                StreamBuilder(
-                  stream: FirebaseAuthService.instance.authStateChanges(),
-                  builder: (context, snapshot) {
-                    final isConnected = FirebaseAuthService.instance.currentUser != null;
-                    
-                    return Text(
-                      isConnected
-                          ? "Accédez à votre profil pour gérer votre compte"
-                          : "La connexion Google n'est pas obligatoire\npour commencer à jouer",
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.white.withOpacity(0.6),
-                        fontStyle: FontStyle.italic,
-                      ),
-                      textAlign: TextAlign.center,
-                    );
                   },
                 ),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSeparator() {
+    return Row(
+      children: [
+        Expanded(
+            child: Divider(
+                color: Colors.white.withOpacity(0.3), thickness: 1)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            "OU",
+            style: TextStyle(
+                color: Colors.white.withOpacity(0.7),
+                fontSize: 14,
+                fontWeight: FontWeight.w500),
+          ),
+        ),
+        Expanded(
+            child: Divider(
+                color: Colors.white.withOpacity(0.3), thickness: 1)),
+      ],
+    );
+  }
+
+  Widget _buildProfileButton(BuildContext context, String? avatarUrl) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: _isCreating
+            ? null
+            : () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                ).then((_) {
+                  // Recharger les saves au retour du profil (ex: après suppression)
+                  _loadLocalSaves();
+                });
+              },
+        style: ElevatedButton.styleFrom(
+          padding:
+              const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+          backgroundColor: Colors.white.withOpacity(0.9),
+          foregroundColor: Colors.deepPurple[900],
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(15)),
+          elevation: 5,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: Colors.deepPurple[100],
+              backgroundImage:
+                  avatarUrl != null && avatarUrl.isNotEmpty
+                      ? NetworkImage(avatarUrl)
+                      : null,
+              child: avatarUrl == null || avatarUrl.isEmpty
+                  ? Icon(Icons.person,
+                      size: 16, color: Colors.deepPurple[900])
+                  : null,
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'MON PROFIL',
+              style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1),
+            ),
+          ],
         ),
       ),
     );
