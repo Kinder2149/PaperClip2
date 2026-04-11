@@ -113,7 +113,12 @@ Map<String, dynamic> _snapshot({
   required int level,
   String name = 'Entreprise Test',
 }) {
-  final now = DateTime.now().toUtc().toIso8601String();
+  // Tronquer aux millisecondes : JS Date.toISOString() produit 3 décimales,
+  // Dart toIso8601String() produit 6. Le backend valide avec === strict.
+  final rawNow = DateTime.now().toUtc();
+  final now = DateTime.utc(rawNow.year, rawNow.month, rawNow.day,
+          rawNow.hour, rawNow.minute, rawNow.second, rawNow.millisecond)
+      .toIso8601String();
   return {
     'metadata': {
       'version': 3,
