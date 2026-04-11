@@ -16,6 +16,7 @@
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:paperclip2/firebase_options.dart';
 import 'package:paperclip2/services/cloud/cloud_persistence_adapter.dart';
@@ -96,6 +97,9 @@ void main() {
   late FirebaseAuth auth;
 
   setUpAll(() async {
+    // Requis pour les plugins natifs (Firebase, platform channels) en dehors de runApp
+    TestWidgetsFlutterBinding.ensureInitialized();
+
     // Initialisation Firebase avec les options de la plateforme courante
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
