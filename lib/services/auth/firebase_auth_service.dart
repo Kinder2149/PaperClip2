@@ -14,10 +14,13 @@ class FirebaseAuthService {
   static final Logger _logger = Logger.forComponent('auth');
   
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  // IMPORTANT: utiliser le client Web OAuth pour forcer l'émission d'un idToken valide côté Android
-  // ID client Web (auto-created by Google Service) extrait de google-services.json
-  // client_id: 555184834356-lr2v3kje289ghiad05uj7d2eha74kqqi.apps.googleusercontent.com
-  GoogleSignIn get _googleSignIn => GoogleSignIn.instance;
+
+  // Client Web OAuth — requis sur Android pour que google_sign_in v7+ émette un idToken Firebase valide.
+  // Extrait de google-services.json (client_type: 3 = web).
+  // Stocké en champ (pas getter) pour éviter la recréation d'instance à chaque appel.
+  static const _kServerClientId =
+      '555184834356-lr2v3kje289ghiad05uj7d2eha74kqqi.apps.googleusercontent.com';
+  final GoogleSignIn _googleSignIn = GoogleSignIn(serverClientId: _kServerClientId);
 
   Stream<User?> authStateChanges() => _auth.authStateChanges();
 
