@@ -672,9 +672,10 @@ class AppBootstrapController extends ChangeNotifier {
       appLogger.info('[$source] Entreprise disponible après sync, chargement + navigation MainScreen',
           code: 'nav_main_screen_start');
 
-      // Charger l'entreprise en mémoire
+      // Charger l'entreprise en mémoire via son ID explicite (évite le deadlock enterpriseId==null)
+      final enterpriseId = nonBackupSaves.first.id;
       final runtimeActions = context.read<runtime_facade.RuntimeActions>();
-      await runtimeActions.loadEnterpriseAndStartAutoSave();
+      await runtimeActions.loadGameByIdAndStartAutoSave(enterpriseId);
       runtimeActions.startSession();
 
       // Naviguer vers MainScreen

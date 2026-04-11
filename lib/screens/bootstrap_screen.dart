@@ -153,10 +153,11 @@ class _BootstrapScreenState extends State<BootstrapScreen> {
                   if (kDebugMode) {
                     print('[BootstrapScreen] Entreprise disponible trouvée, chargement...');
                   }
-                  
-                  // Charger la première entreprise disponible
+
+                  // Charger la première entreprise disponible via son ID explicite
+                  final enterpriseId = nonBackupEnterprises.first.id;
                   final runtimeActions = context.read<RuntimeActions>();
-                  await runtimeActions.loadEnterpriseAndStartAutoSave();
+                  await runtimeActions.loadGameByIdAndStartAutoSave(enterpriseId);
                   runtimeActions.startSession();
                   
                   if (!mounted) return;
