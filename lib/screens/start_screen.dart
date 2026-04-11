@@ -256,10 +256,10 @@ class _StartScreenState extends State<StartScreen> {
   }
 
   Future<void> _continueLastGame() async {
-    // Neutralisé: la reprise directe est désactivée (entrée unique via Mes Mondes)
+    // Neutralisé: la reprise directe est désactivée (entrée unique via Mes Entreprises)
     if (mounted) {
       NotificationManager.instance.showNotification(
-        message: 'Ouvrez "Mes Mondes" pour sélectionner un monde',
+        message: 'Ouvrez "Mes Entreprises" pour sélectionner une partie',
         level: NotificationLevel.INFO,
         duration: const Duration(seconds: 2),
       );
@@ -267,10 +267,10 @@ class _StartScreenState extends State<StartScreen> {
   }
 
   Future<void> _startNewGameAuto() async {
-    // Neutralisé: la création de partie est désactivée (entrée unique via Mes Mondes)
+    // Neutralisé: la création de partie est désactivée (entrée unique via Mes Entreprises)
     if (mounted) {
       NotificationManager.instance.showNotification(
-        message: 'Créez un monde depuis "Mes Mondes"',
+        message: 'Créez une entreprise depuis "Mes Entreprises"',
         level: NotificationLevel.INFO,
         duration: const Duration(seconds: 2),
       );
@@ -287,14 +287,14 @@ class _StartScreenState extends State<StartScreen> {
       barrierDismissible: true,
       builder: (ctx) {
         return AlertDialog(
-          title: const Text('Nouveau monde'),
+          title: const Text('Nouvelle Entreprise'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: nameController,
                 decoration: const InputDecoration(
-                  labelText: 'Nom du monde',
+                  labelText: "Nom de l'entreprise",
                 ),
               ),
             ],

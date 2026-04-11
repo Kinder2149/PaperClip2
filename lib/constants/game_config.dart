@@ -38,8 +38,8 @@ class GameConstants {
   // Rétention backups (Phase 4)
   static const int BACKUP_RETENTION_MAX = 10;              // N = 10 backups par enterpriseId
   static const Duration BACKUP_RETENTION_TTL = Duration(days: 30); // TTL = 30 jours
-  // Limite de mondes (Phase 1.3)
-  static const int MAX_WORLDS = 10;                        // Nombre maximum de mondes créables par utilisateur
+  // Limite d'entreprises (Phase 1.3)
+  static const int MAX_WORLDS = 10;                        // Nombre maximum d'entreprises créables par utilisateur
   static const int MAX_STORAGE_SIZE = 50 * 1024 * 1024;    // Depuis AutoSaveService
   static const Duration MAX_SAVE_AGE = Duration(days: 30); // Depuis AutoSaveService
   static const int MAX_TOTAL_SAVES = 10;                   // Depuis AutoSaveService
