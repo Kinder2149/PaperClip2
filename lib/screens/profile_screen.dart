@@ -687,7 +687,12 @@ class ProfileScreen extends StatelessWidget {
         context.read<RuntimeActions>().stopSession();
       } catch (_) {}
 
-      // 2. Supprimer la sauvegarde locale
+      // 2. Supprimer toutes les sauvegardes locales
+      // (inclut les résidus d'anciens formats avec des UUID différents)
+      try {
+        await GamePersistenceOrchestrator.instance.deleteAllLocalSaves();
+      } catch (_) {}
+      // Garder le deleteSaveById pour compatibilité si deleteAllLocalSaves échoue
       if (enterpriseId != null && enterpriseId.isNotEmpty) {
         try {
           await GamePersistenceOrchestrator.instance.deleteSaveById(enterpriseId);

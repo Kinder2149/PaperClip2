@@ -1198,6 +1198,21 @@ class GamePersistenceOrchestrator {
     return _deleteSaveByIdViaLocalManager(id);
   }
 
+  /// Supprime TOUTES les sauvegardes locales (entreprises + backups).
+  /// À utiliser lors d'un reset complet — garantit l'absence de résidus
+  /// d'anciens formats (ex: saves "monde" migrées avec un UUID différent).
+  Future<void> deleteAllLocalSaves() async {
+    final mgr = await LocalSaveGameManager.getInstance();
+    final metas = await mgr.listSaves();
+    for (final meta in metas) {
+      try {
+        await mgr.deleteSave(meta.id);
+      } catch (_) {}
+    }
+    _logger.info('[DELETE-ALL] Toutes les sauvegardes locales supprimées',
+        code: 'delete_all_local', ctx: {'count': metas.length});
+  }
+
   Future<SaveGame?> loadSaveById(String id) {
     return _loadSaveByIdViaLocalManager(id);
   }
