@@ -7,6 +7,7 @@ import 'package:paperclip2/services/auth/firebase_auth_service.dart';
 import 'package:paperclip2/services/google/google_bootstrap.dart';
 import 'package:paperclip2/services/persistence/game_persistence_orchestrator.dart';
 import 'package:paperclip2/services/runtime/runtime_actions.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'welcome_screen.dart';
 
@@ -704,12 +705,34 @@ class ProfileScreen extends StatelessWidget {
       // 4. Réinitialiser le GameState en mémoire
       gameState.deleteEnterprise();
 
+      // 5. Nettoyer les préférences locales liées au cloud
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('cloud_enabled', false);
+      } catch (_) {}
+
+      // 6. Supprimer le compte Firebase Auth (Option C)
+      String? accountDeleteNote;
+      try {
+        await FirebaseAuthService.instance.deleteAccount();
+        // Compte Firebase Auth supprimé avec succès
+      } catch (e) {
+        final msg = e.toString().toLowerCase();
+        if (msg.contains('recent-login') || msg.contains('requires-recent')) {
+          accountDeleteNote =
+              'Données supprimées. Pour supprimer votre compte Google/Firebase, '
+              'rendez-vous dans Firebase Console > Authentication > Users.';
+        }
+        // Si autre erreur, on continue quand même (données déjà supprimées)
+      }
+
       if (!context.mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Entreprise supprimée définitivement'),
-          backgroundColor: Colors.green,
+        SnackBar(
+          content: Text(accountDeleteNote ?? 'Compte et données supprimés définitivement'),
+          backgroundColor: accountDeleteNote != null ? Colors.orange : Colors.green,
+          duration: Duration(seconds: accountDeleteNote != null ? 8 : 3),
         ),
       );
 

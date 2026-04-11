@@ -178,4 +178,18 @@ class FirebaseAuthService {
       }
     } catch (_) {}
   }
+
+  /// Supprime définitivement le compte Firebase Auth de l'utilisateur connecté.
+  /// Lance une exception si l'utilisateur doit se reconnecter d'abord
+  /// (code Firebase : 'requires-recent-login').
+  Future<void> deleteAccount() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    try {
+      if (!kIsWeb && _googleSignInInitialized) {
+        await _googleSignIn.disconnect();
+      }
+    } catch (_) {}
+    await user.delete();
+  }
 }

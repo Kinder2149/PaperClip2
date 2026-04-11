@@ -550,28 +550,33 @@ class AppBootstrapController extends ChangeNotifier {
           code: 'sync_orchestrator_result');
         
         if (!syncResult.isSuccess) {
-          appLogger.warn('[$source] Sync failed | message=${syncResult.userMessage}', 
+          appLogger.warn('[$source] Sync failed | message=${syncResult.userMessage}',
             code: 'sync_failed');
-          
-          NotificationManager.instance.showNotification(
-            message: syncResult.userMessage,
-            level: NotificationLevel.WARNING,
-            duration: const Duration(seconds: 5),
-          );
+          // Alerter uniquement pour les vraies erreurs — pas pour noCloudPort/noUid
+          // qui sont des états normaux (cloud désactivé ou non connecté).
+          final isRealError = syncResult.status == SyncStatus.networkError ||
+              syncResult.status == SyncStatus.authenticationError ||
+              syncResult.status == SyncStatus.partialSuccess;
+          if (isRealError) {
+            NotificationManager.instance.showNotification(
+              message: syncResult.userMessage,
+              level: NotificationLevel.WARNING,
+              duration: const Duration(seconds: 5),
+            );
+          }
         } else {
-          appLogger.info('[$source] Sync completed successfully', code: 'sync_success');
-          
-          // CORRECTION: Notification utilisateur du succès de la synchronisation
-          // Note: Le 404 sur /enterprise/{uid} est NORMAL pour un nouvel utilisateur
-          // car il n'a pas encore créé d'entreprise dans le cloud
-          print('🔥🔥🔥 [$source] SHOWING SUCCESS NOTIFICATION 🔥🔥🔥');
-          
-          // Retry automatique avec délai progressif pour garantir que l'UI est prête
-          _showNotificationWhenReady(
-            message: '✅ Synchronisation terminée',
-            level: NotificationLevel.SUCCESS,
-            source: source,
-          );
+          appLogger.info('[$source] Sync completed | syncedCount=${syncResult.syncedCount}',
+            code: 'sync_success');
+
+          // Notification uniquement si des données ont vraiment été synchronisées.
+          // syncedCount==0 = "rien à synchroniser" → pas d'alerte.
+          if (syncResult.syncedCount > 0) {
+            _showNotificationWhenReady(
+              message: '✅ Sauvegarde synchronisée',
+              level: NotificationLevel.SUCCESS,
+              source: source,
+            );
+          }
 
           // Charger l'entreprise et naviguer vers MainScreen si disponible
           await _navigateToMainIfEnterpriseAvailable(source);
@@ -630,9 +635,8 @@ class AppBootstrapController extends ChangeNotifier {
   }
 
   void _showOfflineNotification() {
-    // Utiliser le même mécanisme de retry pour les notifications offline
     _showNotificationWhenReady(
-      message: '⚠️ Erreur sync cloud - Mode offline activé',
+      message: '📡 Pas de connexion — mode hors ligne',
       level: NotificationLevel.WARNING,
       source: 'OFFLINE',
     );
