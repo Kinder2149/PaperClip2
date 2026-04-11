@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/game_state.dart';
+import '../../constants/game_config.dart';
 
 /// Panel Dashboard - Vue d'ensemble du jeu
 /// 
@@ -307,7 +308,7 @@ class DashboardPanel extends StatelessWidget {
               children: [
                 _buildActionChip(
                   icon: Icons.shopping_cart,
-                  label: 'Acheter Métal (${(1000 * gameState.marketManager.marketMetalPrice).toStringAsFixed(0)}€)',
+                  label: 'Acheter Métal (${(GameConstants.METAL_PACK_AMOUNT * gameState.marketManager.marketMetalPrice).toStringAsFixed(2)}€)',
                   onTap: () => _buyMetal(gameState),
                   enabled: gameState.canBuyMetal(),
                 ),

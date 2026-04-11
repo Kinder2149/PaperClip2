@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:paperclip2/models/game_state.dart';
 import 'package:paperclip2/widgets/design_system/design_system.dart';
+import 'package:paperclip2/constants/game_config.dart';
 
 /// Panel de production - Interface principale pour créer des trombones
 class ProductionPanel extends StatefulWidget {
@@ -110,7 +111,7 @@ class _ProductionPanelState extends State<ProductionPanel> with AutomaticKeepAli
   Widget _buildManualProduction(GameState gameState) {
     final canProduce = gameState.resourceManager.canPurchaseMetal();
     final metalPrice = gameState.marketManager.marketMetalPrice;
-    final metalAmount = 1000.0; // GameConstants.METAL_PACK_AMOUNT
+    final metalAmount = GameConstants.METAL_PACK_AMOUNT;
     
     return Card(
       child: Padding(
@@ -132,7 +133,7 @@ class _ProductionPanelState extends State<ProductionPanel> with AutomaticKeepAli
             DesignTokens.mediumGap,
             ActionButton(
               emoji: '⚙️',
-              label: 'Acheter Métal (${(metalAmount * metalPrice).toStringAsFixed(2)} \$)',
+              label: 'Acheter Métal (${(metalAmount * metalPrice).toStringAsFixed(2)} €)',
               onPressed: canProduce ? () => gameState.resourceManager.purchaseMetal() : null,
               color: Colors.grey.shade700,
               isCompact: true,
@@ -144,9 +145,9 @@ class _ProductionPanelState extends State<ProductionPanel> with AutomaticKeepAli
   }
 
   Widget _buildAutoProduction(GameState gameState) {
-    final cost = gameState.playerManager.autoClipperCost;
+    final cost = gameState.productionManager.calculateAutoclipperCost();
     final canBuy = gameState.productionManager.canBuyAutoclipper();
-    
+
     return Card(
       child: Padding(
         padding: DesignTokens.cardPadding,
@@ -160,7 +161,7 @@ class _ProductionPanelState extends State<ProductionPanel> with AutomaticKeepAli
             DesignTokens.sectionGap,
             ActionButton(
               emoji: '🤖',
-              label: 'Acheter Autoclipper (${cost.toStringAsFixed(0)} \$)',
+              label: 'Acheter Autoclipper (${cost.toStringAsFixed(0)} €)',
               onPressed: canBuy ? () => gameState.productionManager.buyAutoclipper() : null,
               color: Colors.purple,
             ),
