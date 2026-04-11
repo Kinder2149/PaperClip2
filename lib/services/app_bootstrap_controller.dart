@@ -1,16 +1,21 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../utils/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:paperclip2/services/cloud/cloud_port_manager.dart';
 import 'package:paperclip2/services/notification_manager.dart';
 
+import '../constants/game_config.dart';
 import '../env_config.dart';
 import '../models/game_state.dart';
+import '../screens/main_screen.dart';
 import '../services/background_music.dart';
 import '../services/game_runtime_coordinator.dart';
 import '../services/lifecycle/app_lifecycle_handler.dart';
+import '../services/runtime/runtime_actions.dart' as runtime_facade;
 import 'package:paperclip2/services/persistence/game_persistence_orchestrator.dart';
 import 'package:paperclip2/services/persistence/sync_result.dart';
 import 'package:paperclip2/services/notification_manager.dart';
@@ -533,28 +538,36 @@ class AppBootstrapController extends ChangeNotifier {
           code: 'sync_orchestrator_result');
         
         if (!syncResult.isSuccess) {
-          appLogger.warn('[$source] Sync failed | message=${syncResult.userMessage}', 
+          appLogger.warn('[$source] Sync failed | message=${syncResult.userMessage}',
             code: 'sync_failed');
-          
-          NotificationManager.instance.showNotification(
-            message: syncResult.userMessage,
-            level: NotificationLevel.WARNING,
-            duration: const Duration(seconds: 5),
-          );
+          // Alerter uniquement pour les vraies erreurs — pas pour noCloudPort/noUid
+          // qui sont des états normaux (cloud désactivé ou non connecté).
+          final isRealError = syncResult.status == SyncStatus.networkError ||
+              syncResult.status == SyncStatus.authenticationError ||
+              syncResult.status == SyncStatus.partialSuccess;
+          if (isRealError) {
+            NotificationManager.instance.showNotification(
+              message: syncResult.userMessage,
+              level: NotificationLevel.WARNING,
+              duration: const Duration(seconds: 5),
+            );
+          }
         } else {
-          appLogger.info('[$source] Sync completed successfully', code: 'sync_success');
-          
-          // CORRECTION: Notification utilisateur du succès de la synchronisation
-          // Note: Le 404 sur /enterprise/{uid} est NORMAL pour un nouvel utilisateur
-          // car il n'a pas encore créé d'entreprise dans le cloud
-          print('🔥🔥🔥 [$source] SHOWING SUCCESS NOTIFICATION 🔥🔥🔥');
-          
-          // Retry automatique avec délai progressif pour garantir que l'UI est prête
-          _showNotificationWhenReady(
-            message: '✅ Synchronisation terminée',
-            level: NotificationLevel.SUCCESS,
-            source: source,
-          );
+          appLogger.info('[$source] Sync completed | syncedCount=${syncResult.syncedCount}',
+            code: 'sync_success');
+
+          // Notification uniquement si des données ont vraiment été synchronisées.
+          // syncedCount==0 = "rien à synchroniser" → pas d'alerte.
+          if (syncResult.syncedCount > 0) {
+            _showNotificationWhenReady(
+              message: '✅ Sauvegarde synchronisée',
+              level: NotificationLevel.SUCCESS,
+              source: source,
+            );
+          }
+
+          // Charger l'entreprise et naviguer vers MainScreen si disponible
+          await _navigateToMainIfEnterpriseAvailable(source);
         }
       } on TimeoutException {
         appLogger.warn('[$source] Sync timeout - offline mode', code: 'sync_timeout_offline');
@@ -610,33 +623,79 @@ class AppBootstrapController extends ChangeNotifier {
   }
 
   void _showOfflineNotification() {
-    // Utiliser le même mécanisme de retry pour les notifications offline
     _showNotificationWhenReady(
-      message: '⚠️ Erreur sync cloud - Mode offline activé',
+      message: '📡 Pas de connexion — mode hors ligne',
       level: NotificationLevel.WARNING,
       source: 'OFFLINE',
     );
   }
 
-  /// CORRECTION AUTH-CLOUD-FIABILISATION: Méthode publique pour déclencher Google Sign-In
-  /// Les écrans doivent utiliser cette méthode au lieu d'appeler FirebaseAuthService directement
-  /// La sync cloud sera déclenchée automatiquement par le listener Firebase Auth
+  /// Point d'entrée UI pour déclencher Google Sign-In.
+  /// La sync cloud sera déclenchée automatiquement par le listener Firebase Auth.
   Future<void> requestGoogleSignIn() async {
     try {
-      print('🔥🔥🔥 [BOOTSTRAP] requestGoogleSignIn() called from UI 🔥🔥🔥');
       appLogger.info('[BOOTSTRAP] Google Sign-In requested from UI', code: 'auth_ui_request');
-      
       await FirebaseAuthService.instance.signInWithGoogle();
-      
-      print('🔥🔥🔥 [BOOTSTRAP] Google Sign-In successful - listener will trigger sync 🔥🔥🔥');
       appLogger.info('[BOOTSTRAP] Google Sign-In successful', code: 'auth_ui_success');
-      
-      // La sync sera déclenchée automatiquement par le listener Firebase Auth
-      // Pas besoin d'appeler _syncUserImmediately() ici
     } catch (e) {
-      print('🔥🔥🔥 [BOOTSTRAP] Google Sign-In failed: $e 🔥🔥🔥');
       appLogger.error('[BOOTSTRAP] Google Sign-In failed: $e', code: 'auth_ui_error');
       rethrow;
+    }
+  }
+
+  /// Après une sync cloud réussie, charge l'entreprise en mémoire et navigue vers MainScreen.
+  /// Déclenché uniquement si : sync réussie + entreprise locale disponible + GameState pas déjà chargé.
+  Future<void> _navigateToMainIfEnterpriseAvailable(String source) async {
+    try {
+      // Si GameState a déjà une entreprise chargée, ne rien faire
+      if (_gameState.enterpriseId != null && _gameState.enterpriseId!.isNotEmpty) {
+        appLogger.info('[$source] Entreprise déjà chargée en mémoire, navigation ignorée',
+            code: 'nav_skip_loaded');
+        return;
+      }
+
+      // Vérifier si une entreprise est disponible localement (sync depuis cloud)
+      final saves = await GamePersistenceOrchestrator.instance.listSaves();
+      final nonBackupSaves = saves
+          .where((m) => !m.name.contains(GameConstants.BACKUP_DELIMITER))
+          .toList();
+
+      if (nonBackupSaves.isEmpty) {
+        appLogger.info('[$source] Aucune entreprise locale disponible, pas de navigation',
+            code: 'nav_no_enterprise');
+        return;
+      }
+
+      // Obtenir le contexte de navigation
+      final context = navigatorKey.currentContext;
+      if (context == null || !context.mounted) {
+        appLogger.warn('[$source] Pas de contexte disponible pour la navigation',
+            code: 'nav_no_context');
+        return;
+      }
+
+      appLogger.info('[$source] Entreprise disponible après sync, chargement + navigation MainScreen',
+          code: 'nav_main_screen_start');
+
+      // Charger l'entreprise en mémoire via son ID explicite (évite le deadlock enterpriseId==null)
+      final enterpriseId = nonBackupSaves.first.id;
+      final runtimeActions = context.read<runtime_facade.RuntimeActions>();
+      await runtimeActions.loadGameByIdAndStartAutoSave(enterpriseId);
+      runtimeActions.startSession();
+
+      // Naviguer vers MainScreen
+      final navContext = navigatorKey.currentContext;
+      if (navContext != null && navContext.mounted) {
+        Navigator.of(navContext).pushReplacement(
+          MaterialPageRoute(builder: (_) => const MainScreen()),
+        );
+        appLogger.info('[$source] Navigation vers MainScreen effectuée',
+            code: 'nav_main_screen_done');
+      }
+    } catch (e) {
+      appLogger.warn('[$source] Erreur navigation post-sync (non bloquant): $e',
+          code: 'nav_error');
+      // Non bloquant — l'utilisateur reste sur WelcomeScreen et peut naviguer manuellement
     }
   }
 

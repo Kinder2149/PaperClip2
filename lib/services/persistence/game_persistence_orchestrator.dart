@@ -767,7 +767,7 @@ class GamePersistenceOrchestrator {
                   
                   // P0-1: Notification utilisateur (uid Firebase requis)
                   NotificationManager.instance.showNotification(
-                    message: '💾 Monde sauvegardé localement\n'
+                    message: '💾 Entreprise sauvegardée localement\n'
                              '🔐 Connectez-vous avec Google pour synchroniser',
                     level: NotificationLevel.WARNING,
                     duration: const Duration(seconds: 7),
@@ -1683,8 +1683,8 @@ class GamePersistenceOrchestrator {
         });
         
         NotificationManager.instance.showNotification(
-          message: '⚠️ Limite de ${GameConstants.MAX_WORLDS} mondes atteinte\n'
-                   'Supprimez un monde existant pour en créer un nouveau',
+          message: '⚠️ Limite de ${GameConstants.MAX_WORLDS} entreprises atteinte\n'
+                   'Supprimez une entreprise existante pour en créer une nouvelle',
           level: NotificationLevel.ERROR,
           duration: const Duration(seconds: 7),
         );
@@ -2462,11 +2462,21 @@ class GamePersistenceOrchestrator {
           successCount++;
           _logger.info('[RETRY] Succès pour ${m.id}', code: 'retry_success');
         } catch (e) {
-          // Incrémenter le compteur de retry
+          final errorStr = e.toString();
+          // Erreur de validation (format incompatible) : inutile de réessayer, nettoyer immédiatement
+          if (errorStr.contains('push_failed_400') || errorStr.contains('invalid_snapshot') ||
+              errorStr.contains('missing_data') || errorStr.contains('invalid_enterprise_id')) {
+            _logger.warn('[RETRY] Format invalide pour ${m.id} — entrée supprimée',
+              code: 'retry_invalid_format', ctx: {'error': errorStr});
+            await prefs.remove(keyIdentity);
+            await prefs.remove(keyRetryCount);
+            continue;
+          }
+          // Incrémenter le compteur de retry (erreur réseau ou serveur)
           await prefs.setInt(keyRetryCount, retryCount + 1);
           failureCount++;
-          _logger.warn('[RETRY] Échec pour ${m.id} (tentative ${retryCount + 1}/3)', 
-            code: 'retry_failure', ctx: {'error': e.toString()});
+          _logger.warn('[RETRY] Échec pour ${m.id} (tentative ${retryCount + 1}/3)',
+            code: 'retry_failure', ctx: {'error': errorStr});
         }
       }
       
@@ -2476,7 +2486,7 @@ class GamePersistenceOrchestrator {
       // P1-2: Notification utilisateur du résultat de la réconciliation
       if (successCount > 0) {
         NotificationManager.instance.showNotification(
-          message: '✅ $successCount monde(s) synchronisé(s) avec le cloud',
+          message: '✅ $successCount entreprise(s) synchronisée(s) avec le cloud',
           level: NotificationLevel.SUCCESS,
           duration: const Duration(seconds: 5),
         );
@@ -2484,7 +2494,7 @@ class GamePersistenceOrchestrator {
       
       if (failureCount > 0 && successCount == 0) {
         NotificationManager.instance.showNotification(
-          message: '⚠️ Échec synchronisation de $failureCount monde(s) - Réessayez plus tard',
+          message: '⚠️ Échec synchronisation de $failureCount entreprise(s) - Réessayez plus tard',
           level: NotificationLevel.WARNING,
           duration: const Duration(seconds: 5),
         );
@@ -2492,7 +2502,7 @@ class GamePersistenceOrchestrator {
       
       if (limitReachedCount > 0) {
         NotificationManager.instance.showNotification(
-          message: '⚠️ $limitReachedCount monde(s) non synchronisé(s) (limite retry atteinte)',
+          message: '⚠️ $limitReachedCount entreprise(s) non synchronisée(s) (limite retry atteinte)',
           level: NotificationLevel.WARNING,
           duration: const Duration(seconds: 7),
         );

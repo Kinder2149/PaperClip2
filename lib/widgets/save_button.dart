@@ -54,7 +54,7 @@ class SaveButton extends StatefulWidget {
     final gameState = Provider.of<GameState>(context, listen: false);
     if (!gameState.isInitialized || gameState.enterpriseId == null || gameState.enterpriseId!.isEmpty) {
       NotificationManager.instance.showNotification(
-        message: 'Erreur: Jeu non initialisé ou ID de monde manquant',
+        message: "Erreur: Jeu non initialisé ou ID d'entreprise manquant",
         level: NotificationLevel.ERROR,
       );
       return;
@@ -67,7 +67,7 @@ class SaveButton extends StatefulWidget {
       );
       if (context.mounted) {
         NotificationManager.instance.showNotification(
-          message: 'Monde sauvegardé avec succès!',
+          message: 'Entreprise sauvegardée !',
           level: NotificationLevel.SUCCESS,
         );
       }
@@ -92,7 +92,7 @@ class SaveButton extends StatefulWidget {
     final gameState = Provider.of<GameState>(context, listen: false);
     if (!gameState.isInitialized || gameState.enterpriseId == null || gameState.enterpriseId!.isEmpty) {
       NotificationManager.instance.showNotification(
-        message: 'Erreur: Jeu non initialisé ou ID de monde manquant',
+        message: "Erreur: Jeu non initialisé ou ID d'entreprise manquant",
         level: NotificationLevel.ERROR,
       );
       return false;
@@ -106,7 +106,7 @@ class SaveButton extends StatefulWidget {
       );
       if (context.mounted) {
         NotificationManager.instance.showNotification(
-          message: 'Monde sauvegardé avec succès!',
+          message: 'Entreprise sauvegardée !',
           level: NotificationLevel.SUCCESS,
         );
       }
@@ -175,11 +175,11 @@ class _SaveButtonState extends State<SaveButton> {
       
       if (context.mounted) {
         NotificationManager.instance.showNotification(
-          message: 'Monde sauvegardé avec succès!',
+          message: 'Entreprise sauvegardée !',
           level: NotificationLevel.SUCCESS,
         );
       }
-      
+
       if (widget.onSaveComplete != null) {
         widget.onSaveComplete!();
       }

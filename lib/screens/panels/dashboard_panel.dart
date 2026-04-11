@@ -47,6 +47,9 @@ class DashboardPanel extends StatelessWidget {
   }
 
   Widget _buildStatsGrid(GameState gameState) {
+    final productionRate = gameState.productionManager.currentProductionRatePerSecond;
+    final salesRate = gameState.marketManager.lastTickSalesPerSecond;
+
     return GridView.count(
       crossAxisCount: 2,
       shrinkWrap: true,
@@ -63,7 +66,7 @@ class DashboardPanel extends StatelessWidget {
         ),
         _buildStatCard(
           icon: Icons.attach_file,
-          label: 'Trombones',
+          label: 'Trombones stock',
           value: '${gameState.playerManager.paperclips.toStringAsFixed(0)}',
           color: Colors.blue,
         ),
@@ -78,6 +81,18 @@ class DashboardPanel extends StatelessWidget {
           label: 'Autoclippers',
           value: '${gameState.playerManager.autoClipperCount}',
           color: Colors.purple,
+        ),
+        _buildStatCard(
+          icon: Icons.speed,
+          label: 'Production/s',
+          value: '${productionRate.toStringAsFixed(1)}/s',
+          color: Colors.lightBlue,
+        ),
+        _buildStatCard(
+          icon: Icons.trending_up,
+          label: 'Ventes/s',
+          value: '${salesRate.toStringAsFixed(1)}/s',
+          color: Colors.teal,
         ),
       ],
     );
@@ -292,7 +307,7 @@ class DashboardPanel extends StatelessWidget {
               children: [
                 _buildActionChip(
                   icon: Icons.shopping_cart,
-                  label: 'Acheter Métal',
+                  label: 'Acheter Métal (${(1000 * gameState.marketManager.marketMetalPrice).toStringAsFixed(0)}€)',
                   onTap: () => _buyMetal(gameState),
                   enabled: gameState.canBuyMetal(),
                 ),

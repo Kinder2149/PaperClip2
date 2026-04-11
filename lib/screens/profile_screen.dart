@@ -5,6 +5,9 @@ import 'package:provider/provider.dart';
 import 'package:paperclip2/models/game_state.dart';
 import 'package:paperclip2/services/auth/firebase_auth_service.dart';
 import 'package:paperclip2/services/google/google_bootstrap.dart';
+import 'package:paperclip2/services/persistence/game_persistence_orchestrator.dart';
+import 'package:paperclip2/services/runtime/runtime_actions.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'welcome_screen.dart';
 
@@ -415,6 +418,48 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ),
             ),
+            const SizedBox(height: 12),
+
+            // Zone danger : suppression entreprise
+            const Divider(height: 24),
+            Row(
+              children: [
+                Icon(Icons.warning_amber_rounded,
+                    size: 16, color: Colors.red[700]),
+                const SizedBox(width: 6),
+                Text(
+                  'Zone de danger',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.red[700],
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _handleDeleteEnterprise(context),
+                icon: Icon(Icons.delete_forever, color: Colors.red[800]),
+                label: Text(
+                  'Supprimer mon entreprise',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.red[800],
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  side: BorderSide(color: Colors.red[800]!, width: 1.5),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -515,19 +560,18 @@ class ProfileScreen extends StatelessWidget {
 
   /// Gestion de la déconnexion
   Future<void> _handleSignOut(BuildContext context) async {
-    // Confirmation
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         title: const Text('Déconnexion'),
         content: const Text('Êtes-vous sûr de vouloir vous déconnecter ?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
+            onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('Annuler'),
           ),
           ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
+            onPressed: () => Navigator.of(ctx).pop(true),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
@@ -541,20 +585,22 @@ class ProfileScreen extends StatelessWidget {
     if (confirmed != true) return;
 
     try {
-      // Déconnexion Firebase
+      // IMPORTANT : remettre le GameState à zéro en mémoire avant de déconnecter.
+      // Sans ça, enterpriseId reste non-null et bloque la navigation post-reconnexion.
+      try {
+        context.read<GameState>().deleteEnterprise();
+        context.read<RuntimeActions>().stopSession();
+      } catch (_) {}
+
       await FirebaseAuthService.instance.signOut();
-      
-      // Déconnexion Google Identity (best effort)
+
       try {
         final google = context.read<GoogleServicesBundle>();
         await google.identity.signOut();
-      } catch (e) {
-        // Non bloquant
-      }
+      } catch (_) {}
 
       if (!context.mounted) return;
 
-      // Notification
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Déconnecté avec succès'),
@@ -562,16 +608,144 @@ class ProfileScreen extends StatelessWidget {
         ),
       );
 
-      // Retour WelcomeScreen
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const WelcomeScreen()),
       );
     } catch (e) {
       if (!context.mounted) return;
-      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Erreur lors de la déconnexion: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Suppression complète de l'entreprise (local + cloud) avec double confirmation.
+  Future<void> _handleDeleteEnterprise(BuildContext context) async {
+    // Première confirmation
+    final firstConfirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer l\'entreprise'),
+        content: const Text(
+          'Cette action est irréversible.\n\n'
+          'Toutes vos données de jeu (local et cloud) seront supprimées définitivement.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Continuer'),
+          ),
+        ],
+      ),
+    );
+    if (firstConfirm != true) return;
+
+    // Deuxième confirmation
+    final secondConfirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Dernière confirmation'),
+        content: const Text(
+          'Confirmez-vous la suppression définitive de votre entreprise et de toutes vos sauvegardes ?\n\n'
+          'Cette action ne peut pas être annulée.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Supprimer définitivement'),
+          ),
+        ],
+      ),
+    );
+    if (secondConfirm != true) return;
+
+    try {
+      final gameState = context.read<GameState>();
+      final enterpriseId = gameState.enterpriseId;
+
+      // 1. Arrêter la session en cours
+      try {
+        context.read<RuntimeActions>().stopSession();
+      } catch (_) {}
+
+      // 2. Supprimer la sauvegarde locale
+      if (enterpriseId != null && enterpriseId.isNotEmpty) {
+        try {
+          await GamePersistenceOrchestrator.instance.deleteSaveById(enterpriseId);
+        } catch (_) {}
+      }
+
+      // 3. Supprimer la sauvegarde cloud
+      if (enterpriseId != null && enterpriseId.isNotEmpty) {
+        try {
+          await GamePersistenceOrchestrator.instance
+              .deleteCloudById(partieId: enterpriseId);
+        } catch (_) {}
+      }
+
+      // 4. Réinitialiser le GameState en mémoire
+      gameState.deleteEnterprise();
+
+      // 5. Nettoyer les préférences locales liées au cloud
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('cloud_enabled', false);
+      } catch (_) {}
+
+      // 6. Supprimer le compte Firebase Auth (Option C)
+      String? accountDeleteNote;
+      try {
+        await FirebaseAuthService.instance.deleteAccount();
+        // Compte Firebase Auth supprimé avec succès
+      } catch (e) {
+        final msg = e.toString().toLowerCase();
+        if (msg.contains('recent-login') || msg.contains('requires-recent')) {
+          accountDeleteNote =
+              'Données supprimées. Pour supprimer votre compte Google/Firebase, '
+              'rendez-vous dans Firebase Console > Authentication > Users.';
+        }
+        // Si autre erreur, on continue quand même (données déjà supprimées)
+      }
+
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(accountDeleteNote ?? 'Compte et données supprimés définitivement'),
+          backgroundColor: accountDeleteNote != null ? Colors.orange : Colors.green,
+          duration: Duration(seconds: accountDeleteNote != null ? 8 : 3),
+        ),
+      );
+
+      // Retour à WelcomeScreen (écran vierge)
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+        (route) => false,
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur lors de la suppression: $e'),
           backgroundColor: Colors.red,
         ),
       );

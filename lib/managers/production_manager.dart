@@ -41,6 +41,19 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
   int get totalPaperclipsProduced => _statistics.totalPaperclipsProduced;
   double get maintenanceCosts => _maintenanceCosts;
   bool get isPaused => _pauseReader != null ? (_pauseReader!.call()) : false;
+
+  /// Production automatique théorique en trombones/s (avec tous les bonus)
+  double get currentProductionRatePerSecond {
+    if (_playerManager.autoClipperCount == 0) return 0.0;
+    final researchSpeedBonus = _researchManager.getResearchBonus('productionSpeed');
+    final bulkBonus = 1.0 + _researchManager.getResearchBonus('productionBulk');
+    final agentSpeedBonus = _agentManager?.getProductionSpeedBonus() ?? 0.0;
+    final totalSpeedBonus = 1.0 + researchSpeedBonus + agentSpeedBonus;
+    return _playerManager.autoClipperCount *
+        GameConstants.BASE_AUTOCLIPPER_PRODUCTION *
+        totalSpeedBonus *
+        bulkBonus;
+  }
   
   // Accesseurs pour faciliter le code
   PlayerManager get player => _playerManager;

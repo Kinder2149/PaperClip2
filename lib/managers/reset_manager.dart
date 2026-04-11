@@ -105,8 +105,9 @@ class ResetManager extends ChangeNotifier {
   /// Reset tous les managers dans l'ordre
   Future<void> _resetAllManagers() async {
     // Reset dans l'ordre pour éviter les dépendances
+    _gameState.playerManager.resetForProgression(); // autoclippers → 0, coût → 15€
     _gameState.productionManager.reset();
-    _gameState.marketManager.reset();
+    _gameState.marketManager.resetForProgression();
     _gameState.levelSystem.reset();
     _gameState.statistics.resetCurrentRun();
     _gameState.agents.deactivateAll();

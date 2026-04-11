@@ -7,10 +7,6 @@ import '../../utils/logger.dart';
 /// - Gère le cycle de vie via le SDK Firebase (streams et currentUser)
 /// - Expose un ID Token Firebase à la demande
 /// - Fournit un signal "user ready" pour déclencher la sync cloud
-///
-/// google_sign_in v7+ : utilise GoogleSignIn.instance (singleton).
-/// initialize() doit être appelé une fois avant authenticate() ou attemptLightweightAuthentication().
-/// serverClientId = client Web (client_type: 3) depuis google-services.json — requis sur Android.
 class FirebaseAuthService {
   FirebaseAuthService._();
   static final FirebaseAuthService instance = FirebaseAuthService._();
@@ -19,23 +15,21 @@ class FirebaseAuthService {
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  // serverClientId = client Web (client_type: 3) depuis google-services.json
-  // Requis explicitement sur Android avec google_sign_in v7+ (non lu automatiquement)
-  static const String _serverClientId =
+  // google_sign_in v7 : seul GoogleSignIn.instance est accessible (constructeur privé).
+  // initialize() doit être appelé une fois avant tout appel authenticate/signOut.
+  // serverClientId = Web OAuth client ID (client_type 3) extrait de google-services.json.
+  static const _kServerClientId =
       '555184834356-lr2v3kje289ghiad05uj7d2eha74kqqi.apps.googleusercontent.com';
 
+  // Garde pour n'appeler initialize() qu'une seule fois.
   bool _googleSignInInitialized = false;
 
-  /// Initialise GoogleSignIn.instance avec le serverClientId.
-  /// google_sign_in v7+ : initialize() doit être appelé exactement une fois
-  /// avant tout appel à authenticate() ou attemptLightweightAuthentication().
+  GoogleSignIn get _googleSignIn => GoogleSignIn.instance;
+
   Future<void> _ensureGoogleSignInInitialized() async {
-    if (!_googleSignInInitialized) {
-      await GoogleSignIn.instance.initialize(
-        serverClientId: _serverClientId,
-      );
-      _googleSignInInitialized = true;
-    }
+    if (_googleSignInInitialized || kIsWeb) return;
+    await GoogleSignIn.instance.initialize(serverClientId: _kServerClientId);
+    _googleSignInInitialized = true;
   }
 
   Stream<User?> authStateChanges() => _auth.authStateChanges();
@@ -54,18 +48,17 @@ class FirebaseAuthService {
         return cred;
       }
 
-      // Sur mobile : initialiser GoogleSignIn v7 avec serverClientId
+      // Sur mobile, initialiser GoogleSignIn v7 avec le serverClientId
       await _ensureGoogleSignInInitialized();
 
-      // authenticate() = méthode interactive v7 (remplace signIn() de v6)
-      // Lance la popup de sélection de compte Google.
-      // Lève une GoogleSignInException si annulé ou en cas d'erreur.
-      final GoogleSignInAccount gUser = await GoogleSignIn.instance.authenticate();
+      final GoogleSignInAccount? gUser = await _googleSignIn.authenticate();
+      if (gUser == null) {
+        _logger.warn('[AUTH] Google sign-in annule par utilisateur.');
+        throw StateError('Connexion Google annulée');
+      }
+      final GoogleSignInAuthentication gAuth = await gUser.authentication;
 
-      // authentication est un getter synchrone en v7 (plus de await nécessaire)
-      final GoogleSignInAuthentication gAuth = gUser.authentication;
-
-      // Credentials pour Firebase (idToken uniquement — v7 supprime accessToken de GoogleSignInAuthentication)
+      // Credentials pour Firebase
       final credential = GoogleAuthProvider.credential(
         idToken: gAuth.idToken,
       );
@@ -101,69 +94,49 @@ class FirebaseAuthService {
     }
 
     try {
+      // Initialiser GoogleSignIn v7 avant toute tentative silencieuse
       await _ensureGoogleSignInInitialized();
 
-      // attemptLightweightAuthentication() = méthode silencieuse v7 (remplace signInSilently() de v6)
-      // Retourne Future<GoogleSignInAccount?>? — le Future lui-même peut être null sur certaines plateformes (FedCM/web).
-      final Future<GoogleSignInAccount?>? silentFuture =
-          GoogleSignIn.instance.attemptLightweightAuthentication();
-
-      if (silentFuture == null) {
-        // Plateforme en mode "stream only" (ex: FedCM web) — pas de future disponible
-        _logger.warn('[AUTH] attemptLightweightAuthentication: plateforme sans future (mode stream).');
-        return null;
-      }
-
-      final GoogleSignInAccount? gUser = await silentFuture;
+      final GoogleSignInAccount? gUser =
+          await _googleSignIn.attemptLightweightAuthentication();
       if (gUser == null) {
-        // Pas de session Google disponible en silence
         _logger.warn('[AUTH] attemptLightweightAuthentication: aucun compte Google disponible.');
         return null;
       }
-
-      final GoogleSignInAuthentication gAuth = gUser.authentication;
+      final GoogleSignInAuthentication gAuth = await gUser.authentication;
       final credential = GoogleAuthProvider.credential(
         idToken: gAuth.idToken,
       );
       await _auth.signInWithCredential(credential);
-
-      // Récupérer le token après sign-in silencieux
       token = await getIdToken();
       _logger.info('[AUTH] attemptLightweightAuthentication: Firebase connecté=' +
           (token != null && token.isNotEmpty).toString());
 
       return token;
     } catch (e) {
-      // Rester discret mais journaliser l'erreur pour diagnostic
       _logger.warn('[AUTH] attemptLightweightAuthentication erreur: ' + e.toString());
       return null;
     }
   }
 
-  /// MISSION STABILISATION: Garantit que l'utilisateur est authentifié et prêt pour les opérations cloud.
-  /// Cette méthode est le point d'entrée unique pour vérifier l'état "user ready".
-  ///
-  /// Retourne true si l'utilisateur est connecté avec un token valide.
-  /// Tente une connexion silencieuse si nécessaire.
+  /// Garantit que l'utilisateur est authentifié et prêt pour les opérations cloud.
   Future<bool> ensureUserReady() async {
     try {
-      // Vérifier si déjà connecté avec token valide
       final token = await getIdToken();
       if (token != null && token.isNotEmpty) {
         _logger.info('[AUTH] User ready (déjà connecté)', code: 'auth_user_ready');
         return true;
       }
 
-      // Tenter connexion silencieuse
       _logger.info('[AUTH] Tentative connexion silencieuse', code: 'auth_silent_attempt');
       final silentToken = await ensureSignedInSilently();
 
       if (silentToken != null && silentToken.isNotEmpty) {
-        _logger.info('[AUTH] User ready (connexion silencieuse réussie)', code: 'auth_user_ready_silent');
+        _logger.info('[AUTH] User ready (connexion silencieuse réussie)',
+            code: 'auth_user_ready_silent');
         return true;
       }
 
-      // Pas de session disponible
       _logger.info('[AUTH] User not ready (aucune session)', code: 'auth_user_not_ready');
       return false;
     } catch (e) {
@@ -172,16 +145,9 @@ class FirebaseAuthService {
     }
   }
 
-  /// CORRECTION AUDIT: Point d'entrée unique pour vérifier l'authentification avant toute opération cloud.
-  /// Cette méthode centralise TOUTES les vérifications d'identité et lève une exception explicite en cas d'échec.
-  ///
+  /// Point d'entrée unique pour vérifier l'authentification avant toute opération cloud.
   /// Retourne le token Firebase valide ou lève une exception.
-  ///
-  /// Exceptions:
-  /// - StateError('NOT_AUTHENTICATED') si aucun utilisateur connecté
-  /// - StateError('TOKEN_UNAVAILABLE') si le token ne peut pas être récupéré
   Future<String> ensureAuthenticatedForCloud() async {
-    // Vérifier utilisateur connecté
     final user = _auth.currentUser;
     if (user == null) {
       _logger.error('[AUTH] ensureAuthenticatedForCloud: utilisateur non connecté',
@@ -189,24 +155,17 @@ class FirebaseAuthService {
       throw StateError('NOT_AUTHENTICATED: Utilisateur non connecté');
     }
 
-    // Récupérer token Firebase
     final token = await getIdToken();
     if (token == null || token.isEmpty) {
       _logger.error('[AUTH] ensureAuthenticatedForCloud: token indisponible',
           code: 'auth_token_unavailable',
-          ctx: {
-            'hasUser': user != null,
-            'uid': user.uid,
-          });
+          ctx: {'uid': user.uid});
       throw StateError('TOKEN_UNAVAILABLE: Token Firebase indisponible pour uid=${user.uid}');
     }
 
     _logger.info('[AUTH] ensureAuthenticatedForCloud: OK',
         code: 'auth_cloud_ready',
-        ctx: {
-          'uid': user.uid,
-          'tokenLength': token.length,
-        });
+        ctx: {'uid': user.uid, 'tokenLength': token.length});
 
     return token;
   }
@@ -214,8 +173,23 @@ class FirebaseAuthService {
   Future<void> signOut() async {
     await _auth.signOut();
     try {
-      // disconnect() = déconnexion complète + révocation autorisation (v7)
-      await GoogleSignIn.instance.disconnect();
+      if (!kIsWeb && _googleSignInInitialized) {
+        await _googleSignIn.disconnect();
+      }
     } catch (_) {}
+  }
+
+  /// Supprime définitivement le compte Firebase Auth de l'utilisateur connecté.
+  /// Lance une exception si l'utilisateur doit se reconnecter d'abord
+  /// (code Firebase : 'requires-recent-login').
+  Future<void> deleteAccount() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    try {
+      if (!kIsWeb && _googleSignInInitialized) {
+        await _googleSignIn.disconnect();
+      }
+    } catch (_) {}
+    await user.delete();
   }
 }

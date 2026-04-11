@@ -478,20 +478,7 @@ class GameState extends ChangeNotifier implements DomainPorts {
     );
   }
 
-  /// Tick métier pour le marché.
-  ///
-  /// Appelé par GameSessionController; aucun Timer n'est géré ici.
-  void tickMarket() {
-    if (!_isInitialized || _isPaused) return;
-    try {
-      _engine.tickMarket();
-    } catch (e) {
-      if (kDebugMode) {
-        print('GameState: erreur lors du tick de marché: $e');
-      }
-    }
-    notifyListeners();
-  }
+  // tickMarket() supprimé — chemin unique : GameSessionController → tick(realElapsed)
 
   // Prépare une structure de données minimale pour la persistance legacy
   Map<String, dynamic> prepareGameData() {

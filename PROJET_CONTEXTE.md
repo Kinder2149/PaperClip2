@@ -1,13 +1,9 @@
 # PROJET_CONTEXTE — PaperClip2
 
 > Emplacement : racine du projet
-> Template source : METHODO/PROJET_CONTEXTE_TEMPLATE.md
->
-> ⚠️ INSTRUCTION POUR L'IA (Claude et Cascade)
-> Ce fichier est la source de vérité absolue du projet.
-> Le lire EN ENTIER avant toute action.
-> Toute décision technique qui le contredit est interdite.
-> Si une demande sort de ce cadre : poser UNE question avant d'agir.
+> Source de vérité absolue — lire EN ENTIER avant toute action.
+> Toute décision technique qui contredit ce fichier est interdite.
+> Dernière mise à jour : 2026-04-11
 
 ---
 
@@ -16,123 +12,108 @@
 | Champ | Valeur |
 |---|---|
 | Nom | PaperClip2 |
-| Type | Mobile |
-| Objectif en 1 phrase | Jeu idle incrémental : gérer et vendre des trombones, progresser par resets avec méta-progression |
-| Statut | En développement (ancienne version sur Play Store, sans utilisateurs actifs) |
-| Utilisateurs actuels | 0 actifs |
-| Dernière mise à jour de ce fichier | 2026-04-10 |
+| Type | Application mobile (Flutter / Android) |
+| Objectif en 1 phrase | Jeu de gestion incrémental (idle game) où le joueur produit et vend des trombones pour développer son empire industriel, avec sauvegarde cloud multi-appareils |
+| Statut | En développement — core gameplay stable, cloud stable |
+| Utilisateurs actuels | Tests internes (1 compte de test) |
+| Dernière mise à jour | 2026-04-11 |
 
 ---
 
 ## 2. STACK TECHNIQUE
 
-> Tout ce qui n'est pas listé ici ne doit pas être utilisé sans validation.
-
 **Frontend :**
 - Framework : Flutter 3.x
-- Langage : Dart 3.8+
-- Composants UI : fl_chart (graphiques), just_audio (audio jeu), games_services (Google Play Games)
-- Gestion de l'affichage dynamique : Provider ^6.1.1
+- Langage : Dart
+- Composants UI : Material Design (widgets Flutter natifs)
+- Gestion de l'affichage dynamique : Provider (ChangeNotifier)
 
 **Backend :**
-- Framework : Express.js sur Firebase Functions v2
-- Langage : TypeScript (Node.js 20)
-- Endpoint principal : `/enterprise/{uid}` (GET, PUT, DELETE)
+- Framework : Express 4.x (Node.js 20)
+- Langage : TypeScript
+- Hébergement : Firebase Functions v2
+- Port local : Firebase Emulators (8080 Firestore, 5001 Functions)
 
 **Base de données :**
 - Technologie : Cloud Firestore
-- Collection active : `/enterprises/{uid}` (snapshot v3, schéma entreprise unique)
-- Stockage local : SharedPreferences + SQLite (via path_provider)
-- Collections obsolètes (ne pas utiliser) : `/players/{uid}/saves/` et `/players/{uid}/analytics/`
+- Collection principale : `enterprises/{uid}` (une entrée par utilisateur Firebase)
+- Lancement en local : `firebase emulators:start` dans /functions
 
 **Services externes :**
-- Comptes utilisateurs : Firebase Auth + Google Sign-In
-- Stockage fichiers : NON UTILISÉ (Firebase Storage non actif dans ce projet)
-- Mise en ligne : Google Play Store (en développement)
-- Autres : Google Play Games Services (achievements, leaderboards)
+- Comptes utilisateurs : Firebase Auth (Google Sign-In)
+- Sauvegarde cloud : Cloud Firestore via Firebase Functions REST API
+- Stockage local : SharedPreferences (Flutter)
+- Mise en ligne : Google Play Store (APK/AAB)
 
 ---
 
 ## 3. ARCHITECTURE
 
-> Cette structure ne change pas sans validation écrite dans ce fichier.
-
 ```
 PaperClip2/
 ├── lib/
-│   ├── screens/ + widgets/         → Couche 1 : Interface (UI uniquement)
-│   ├── services/ + managers/       → Couche 2 : Logique métier
-│   │   ├── persistence/            → Orchestration save/sync
-│   │   ├── cloud/                  → Sync Firestore
-│   │   ├── auth/                   → Authentification
-│   │   ├── backend/                → Client API Functions
-│   │   └── [autres sous-dossiers]
-│   └── models/                     → Couche 3 : Données et état
-├── functions/src/                  → Backend Firebase Functions
-├── METHODO/                        → Méthode de travail (ne pas modifier)
-├── PROJET_CONTEXTE.md              → Ce fichier
-├── README.md                       → Commandes et démarrage
-├── CHANGELOG.md                    → Historique des missions
-├── BUGS.md                         → Bugs connus
-└── STACK_STANDARD.md               → Stack de référence
+│   ├── screens/           # UI : bootstrap, welcome, main, profile
+│   ├── models/            # GameState, SaveMetadata, ResetHistory
+│   ├── services/
+│   │   ├── auth/          # FirebaseAuthService (Google Sign-In)
+│   │   ├── persistence/   # GamePersistenceOrchestrator, SyncResult
+│   │   ├── cloud/         # CloudPortManager, CloudPersistencePort
+│   │   ├── save_system/   # LocalSaveGameManager
+│   │   ├── runtime/       # RuntimeActions (façade UI → RuntimeCoordinator)
+│   │   └── google/        # GoogleBootstrap, Achievements, Leaderboards
+│   ├── controllers/       # GameSessionController
+│   ├── widgets/           # SyncStatusChip, SaveButton
+│   └── main.dart
+├── functions/             # Backend Firebase Functions (TypeScript)
+│   └── src/index.ts       # GET/PUT/DELETE /enterprise/:uid
+├── test/
+│   └── persistence/       # Tests HTTP multi-appareils (5/5 ✅)
+└── PROJET_CONTEXTE.md     # Ce fichier
 ```
 
-**Nombre de services actifs : 20 / 20 maximum**
+**Nombre de services actifs :** ~15 / 20 maximum
 
-| # | Service | Rôle |
-|---|---|---|
-| 1 | GameState | État central du jeu |
-| 2 | GamePersistenceOrchestrator | Orchestration sauvegarde/sync |
-| 3 | LocalGamePersistence | Sauvegarde locale SQLite |
-| 4 | CloudPersistenceAdapter | Synchronisation Firestore |
-| 5 | AppBootstrapController | Démarrage et initialisation |
-| 6 | GameRuntimeCoordinator | Boucle de jeu et runtime |
-| 7 | EventSystem | Bus d'événements inter-services |
-| 8 | AudioService | Sons et effets audio |
-| 9 | FirebaseAuthService | Authentification Firebase |
-| 10 | BackendHttpClient | Appels API Firebase Functions |
-| 11 | AnalyticsService | Événements analytiques |
-| 12 | MetricsWatchdog | Surveillance métriques jeu |
-| 13 | ProgressionService | Règles de progression |
-| 14 | UpgradeService | Effets des améliorations |
-| 15 | XPService | Formules XP et niveaux |
-| 16 | RareResourcesService | Quantum et Innovation Points |
-| 17 | ResetRewardsCalculator | Calcul récompenses de reset |
-| 18 | AgentSystem | 6 agents IA d'optimisation |
-| 19 | MarketService | Insights et dynamique de marché |
-| 20 | GoogleServicesAdapter | Play Games achievements/leaderboards |
+**Flux principal :**
+```
+Démarrage → BootstrapScreen → AppBootstrapController
+  → Firebase Auth check → sync cloud (onPlayerConnected)
+  → si entreprise locale : LoadGameById → MainScreen
+  → si aucune entreprise  : WelcomeScreen (Créer ou Reprendre)
+```
 
 ---
 
 ## 4. FONCTIONNALITÉS
 
 ### ✅ Stables (ne pas toucher sans raison)
-- Sauvegarde locale (SQLite/SharedPreferences)
-- Synchronisation cloud Firestore — architecture entreprise unique, LWW
-- Firebase Auth + Google Sign-In — cloud automatique si connecté (préférence `cloud_enabled` supprimée)
-- Appels auth centralisés via `AppBootstrapController.requestGoogleSignIn()`
-- Déclencheur sync unique : listener Firebase Auth dans `AppBootstrapController`
-- Interface PageView (8 panneaux swipables)
-- Système de recherche (tech tree, 20 nœuds)
-- Ressources rares (Quantum max 500 / Innovation Points max 100)
-- Système XP + niveaux
-- Audio jeu (just_audio)
-- Thème et design responsive (refonte avril 2026)
 
-### 🚧 En cours (missions actives uniquement)
-- Aucune mission active
+- Gameplay core : production manuelle/auto de trombones, marché, upgrades, niveaux
+- Sauvegarde locale (SharedPreferences) avec système de backup automatique
+- Sauvegarde cloud Firebase (push/pull) via Cloud Functions
+- Authentification Google (Firebase Auth + google_sign_in v7)
+- Sync multi-appareils au login (onPlayerConnected)
+- Navigation dynamique WelcomeScreen : bouton "Reprendre" si entreprise existante
+- Navigation post-reconnexion automatique vers MainScreen (loadGameByIdAndStartAutoSave)
+- ProfileScreen : affichage stats, déconnexion (avec reset GameState), suppression entreprise (local + cloud + compte Firebase)
+- Tests de persistance multi-appareils (test/persistence/) : 5/5 ✅
 
-### 🔜 Missions futures (ne pas commencer avant validation)
-- Système de Reset complet (code partiel dans `services/reset/`, non testé)
-- Agents IA (visibles en UI, non testés — code dans `agents/`)
+### 🚧 En cours / À améliorer
+
+- Notifications utilisateur après sync : correction partielle (false errors supprimées)
+- Google Play Games (achievements, leaderboards) : câblé mais pas testé en production
 
 ### ❌ Bugs connus
-- Aucun bug connu
+
+- Aucun bug bloquant connu à ce jour
+- Si `requires-recent-login` lors de la suppression du compte Firebase : message informatif affiché, suppression manuelle via Firebase Console requise
 
 ### 🔒 Hors scope (ne jamais implémenter sans décision explicite)
-- Architecture multi-worlds / multi-save (abandonnée — décision figée)
-- Firebase Storage (non utilisé dans ce projet)
-- Endpoints `/worlds/*` et `/saves/*` (supprimés du backend)
+
+- Multi-entreprises par compte (architecture entreprise unique décidée)
+- Supabase (remplacé par Firebase)
+- Système de monde / WorldsScreen (remplacé par entreprise unique)
+- Backend HTTP dédié autre que Firebase Functions
+- iOS / Web (Android uniquement pour l'instant)
 
 ---
 
@@ -143,22 +124,21 @@ PaperClip2/
 - Ne pas ajouter de dépendance sans demande explicite
 - Modifier l'existant avant d'en créer du nouveau
 - Zéro structure vide créée "pour le futur"
-- Tout fichier .md créé hors des 5 autorisés va directement dans `_archives/`
-- Les scripts Python à la racine (`fix_*.py`) et `.venv/` sont des artefacts obsolètes — ne pas les utiliser
-- Le dossier `archive/` contient du code mort — ne pas en extraire sans décision explicite
+- L'identité utilisateur = Firebase UID (source de vérité unique)
+- Le GameState doit TOUJOURS être réinitialisé (deleteEnterprise) avant toute déconnexion
 
 ---
 
 ## 6. DÉCISIONS FIGÉES
 
-> Ces décisions ont été prises et validées. Elles ne se remettent pas en question.
-
 | Date | Décision | Raison |
 |---|---|---|
-| 2026-04-07 | Architecture entreprise unique — 1 seule entreprise UUID v4 par joueur | Simplification vs multi-worlds, Firestore `/enterprises/{uid}` |
-| 2026-04-07 | Stratégie LWW (Last-Write-Wins) pour les conflits cloud | Cloud gagne toujours à la connexion, offline-first sinon |
-| 2026-04-08 | Interface PageView 8 panneaux swipables | Refonte UX mobile — responsive validé |
-| 2026-04-10 | Firebase Storage non utilisé dans ce projet | Auth + Firestore suffisants, pas de besoin de stockage fichiers |
+| 2026-01 | Entreprise unique par compte (pas multi-monde) | Simplification architecture, UX plus claire |
+| 2026-01 | Firebase UID = identité canonique (pas Google Play ID) | Firebase Auth est la source de vérité |
+| 2026-01 | google_sign_in v7 : GoogleSignIn.instance.initialize(serverClientId) | Constructeur privé depuis v7 |
+| 2026-01 | Snapshot v3 format avec dates ISO à 3 décimales | Compatibilité backend JS Date.toISOString() |
+| 2026-01 | Tests de persistance = HTTP pur (pas SDK Flutter) | Fonctionne en VM Dart sans platform channels |
+| 2026-04 | loadGameByIdAndStartAutoSave(id) vs loadEnterpriseAndStartAutoSave() | Évite le deadlock enterpriseId==null |
 
 ---
 
@@ -167,35 +147,26 @@ PaperClip2/
 | Fichier | Rôle |
 |---|---|
 | PROJET_CONTEXTE.md | Source de vérité (ce fichier) |
-| README.md | Présentation, commandes, démarrage |
-| CHANGELOG.md | Historique des missions terminées |
-| BUGS.md | Bugs connus et leur statut |
-| STACK_STANDARD.md | Stack et règles de référence |
+| README.md | Guide démarrage rapide |
+| METHODO/STACK_STANDARD.md | Stack de référence globale |
+| docs/01-architecture/architecture-globale.md | Architecture technique détaillée |
+| docs/02-guides-developpeur/api-backend.md | API Cloud Functions |
 
-Tout autre fichier .md va dans `_archives/`, jamais créé spontanément.
+Tout autre fichier .md → archive/.
 
 ---
 
 ## 8. SESSION EN COURS
 
-**Objectif de la session :** Correction bug Android Google Sign-In (`clientConfigurationError — serverClientId must be provided, null`)
-**Fichiers concernés :** `lib/services/auth/firebase_auth_service.dart` (1 fichier, 3 changements)
-**Hors scope cette session :** Reset system, Agents IA, nouvelles fonctionnalités, refactoring architecture
-**Résultat de fin de session :** ✅ Session terminée — Cause racine : `google_sign_in v7+` ne lit plus automatiquement le `serverClientId` depuis `google-services.json` sur Android. Fix : remplacement de `GoogleSignIn.instance` par une instance statique configurée avec `serverClientId` explicite (client Web, client_type 3 : `555184834356-lr2v3kje289ghiad05uj7d2eha74kqqi.apps.googleusercontent.com`). Méthodes migrées : `authenticate()` → `signIn()`, `attemptLightweightAuthentication()` → `signInSilently()`. 1 fichier modifié. ⚠️ À tester sur appareil Android physique avec APK debug fraîchement compilé.
+**Objectif de la session :** Clôture — reset Firebase test + fix notifications + documentation
+**Fichiers concernés :** firebase_auth_service.dart, profile_screen.dart, app_bootstrap_controller.dart, PROJET_CONTEXTE.md
+**Hors scope cette session :** Gameplay, backend functions, architecture
+**Résultat de fin de session :** À compléter après tests
 
 ---
 
 ## 9. BACKLOG (missions suivantes)
 
-> Ordonné par priorité. Ne jamais commencer la suivante sans que la précédente soit ✅ testée.
-
-1. ✅ Créer PROJET_CONTEXTE.md et aligner sur METHODO — fait le 2026-04-10
-2. ✅ Nettoyage worldId → enterpriseId — fait le 2026-04-10 (0 occurrence résiduelle)
-3. Implémenter et tester le système de Reset complet
-4. Tester et valider les Agents IA (6 agents)
-
----
-
-*Template source : METHODO/PROJET_CONTEXTE_TEMPLATE.md*
-*Rempli avec : Claude (mode Project)*
-*Lu par : Cascade à chaque début de session*
+1. Google Play Games achievements/leaderboards — tester en production
+2. Build release (APK signé) — préparation Google Play Store
+3. Onboarding utilisateur — tutoriel première utilisation
