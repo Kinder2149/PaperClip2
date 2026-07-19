@@ -1,0 +1,11 @@
+node_modules/
+.venv/
+venv/
+dist/
+build/
+__pycache__/
+graphify-out/
+.git/
+*.pyc
+*.min.js
+*.min.css

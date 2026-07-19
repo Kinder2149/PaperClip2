@@ -1,18 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/game_state.dart';
-import '../constants/game_config.dart'; // Importé depuis constants au lieu de models
-import '../widgets/resources/resource_widgets.dart';
-import '../widgets/indicators/level_widgets.dart';
-import '../widgets/charts/chart_widgets.dart';
-import '../widgets/buttons/production_button.dart';
-import '../models/event_system.dart';
-import '../services/notification_manager.dart';
-import '../widgets/indicators/stat_indicator.dart';
-import '../widgets/cards/info_card.dart';
-import '../widgets/cards/stats_panel.dart';
-import '../widgets/dialogs/info_dialog.dart';
 import '../services/progression/progression_rules_service.dart';
+import '../widgets/buttons/production_button.dart';
+import '../widgets/indicators/stat_indicator.dart';
 
 class NewMetalProductionScreen extends StatefulWidget {
   const NewMetalProductionScreen({Key? key}) : super(key: key);
@@ -29,7 +20,7 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
   }
 
   @override
@@ -45,116 +36,6 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
       return '${(number / 1000).toStringAsFixed(1)}K';
     }
     return number.toStringAsFixed(0);
-  }
-
-  // Onglet Missions (PLACEHOLDER UX)
-  //
-  // MissionSystem est officiellement en pause (Option A).
-  // Cet onglet affiche un contenu statique volontairement, afin d'éviter toute
-  // confusion avec un système de missions non branché au runtime.
-  Widget _buildResourcesTab(GameState gameState) {
-    // Le système de missions est en pause : aucune mission n'est calculée ici.
-    const bool allMissionsCompleted = false;
-
-    return SingleChildScrollView(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Card(
-              color: Colors.purple.shade50,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Missions Journalières',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            color: Colors.deepPurple,
-                          ),
-                        ),
-                        if (allMissionsCompleted)
-                          ElevatedButton.icon(
-                            onPressed: () {
-                              gameState.levelSystem.addExperience(
-                                  GameConstants.DAILY_BONUS_AMOUNT * 2,
-                                  ExperienceType.DAILY_BONUS
-                              );
-                              // MissionSystem (Option A — mise en pause): aucun refresh mission.
-                            },
-                            icon: const Icon(Icons.stars, color: Colors.amber),
-                            label: const Text('Réclamer Bonus'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.deepPurple,
-                              foregroundColor: Colors.white,
-                            ),
-                          ),
-                      ],
-                    ),
-                    const Divider(),
-                    // Contenu statique : placeholder tant que MissionSystem est en pause.
-                    Card(
-                      color: Colors.grey.shade100,
-                      child: Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            ListTile(
-                              leading: Icon(
-                                Icons.pending,
-                                color: Colors.orange,
-                                size: 32,
-                              ),
-                              title: Text(
-                                'Mission Exemple',
-                                style: const TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                              subtitle: Text('Description de la mission exemple'),
-                              trailing: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    '100 XP',
-                                    style: const TextStyle(
-                                      color: Colors.deepPurple,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '50%',
-                                    style: TextStyle(
-                                      color: Colors.grey,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            LinearProgressIndicator(
-                              value: 0.5,
-                              backgroundColor: Colors.grey.shade200,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.deepPurple,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   // Gardons votre onglet Production intact
@@ -342,56 +223,6 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
       ),
     );
   }
-  Widget _buildAchievementSection() {
-    return Card(
-      color: Colors.purple.shade50,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Progression des succès',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.deepPurple,
-              ),
-            ),
-            const Divider(),
-            FutureBuilder<double?>(
-              // Utilisez la constante du contrôleur pour l'ID
-              future: Future.value(0.0),
-              builder: (context, snapshot) {
-                if (snapshot.hasData) {
-                  final progress = snapshot.data ?? 0.0;
-                  return Column(
-                    children: [
-                      LinearProgressIndicator(
-                        value: progress,
-                        backgroundColor: Colors.grey.shade200,
-                        valueColor: const AlwaysStoppedAnimation<Color>(Colors.deepPurple),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '${(progress * 100).toInt()}%',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.deepPurple,
-                        ),
-                      ),
-                    ],
-                  );
-                }
-                return const CircularProgressIndicator();
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-  // Dans new_metal_production_screen.dart
 
   Widget _buildLeaderboardCard({
     required String title,
@@ -522,7 +353,6 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
               TabBar(
                 controller: _tabController,
                 tabs: const [
-                  Tab(icon: Icon(Icons.dashboard), text: 'Missions'),
                   Tab(icon: Icon(Icons.precision_manufacturing), text: 'Production'),
                   Tab(icon: Icon(Icons.leaderboard), text: 'Classements'),
                 ],
@@ -531,7 +361,6 @@ class _NewMetalProductionScreenState extends State<NewMetalProductionScreen> wit
                 child: TabBarView(
                   controller: _tabController,
                   children: [
-                    SingleChildScrollView(child: _buildResourcesTab(gameState)),
                     SingleChildScrollView(child: _buildMetalProductionTab(gameState)),
                     SingleChildScrollView(child: _buildLeaderboardsTab(gameState)),
                   ],

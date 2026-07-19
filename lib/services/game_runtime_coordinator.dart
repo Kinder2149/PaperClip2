@@ -338,12 +338,12 @@ class GameRuntimeCoordinator implements RuntimeOrchestrator {
         'name': name,
       });
     } catch (_) {}
-    await _gameState.startNewGame(name);
+    await _gameState.createNewEnterprise(name);
     // Invariant identité: une entreprise doit posséder un enterpriseId unique dès sa création
     final newEnterpriseId = _gameState.enterpriseId;
     if (newEnterpriseId == null || newEnterpriseId.isEmpty) {
       // Verrouillage strict: interdire toute suite (autosave/sync) sans identité
-      throw StateError('[IdentityInvariant] enterpriseId manquant après startNewGame("'+name+'"): création invalide');
+      throw StateError('[IdentityInvariant] enterpriseId manquant après createNewEnterprise("'+name+'"): création invalide');
     }
     try {
       // [WORLD-CREATE] after creation

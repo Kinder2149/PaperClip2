@@ -62,7 +62,17 @@ class _ProductionPanelState extends State<ProductionPanel> with AutomaticKeepAli
 
   Widget _buildProductionStats(GameState gameState) {
     final productionRate = gameState.productionManager.currentProductionRatePerSecond;
-    final metalPrice = gameState.marketManager.marketMetalPrice;
+    final metalPrice = gameState.effectiveMetalUnitPrice;
+    final bonuses = gameState.activeProductionBonuses;
+    final metalEfficiency = bonuses['metalEfficiency'] ?? 0.0;
+    final productionSpeed = bonuses['productionSpeed'] ?? 0.0;
+    final productionBulk = bonuses['productionBulk'] ?? 0.0;
+    final metalPurchaseDiscount = bonuses['metalPurchaseDiscount'] ?? 0.0;
+    final hasActiveBonus =
+        metalEfficiency > 0.0 ||
+        productionSpeed > 0.0 ||
+        productionBulk > 0.0 ||
+        metalPurchaseDiscount > 0.0;
 
     return Card(
       child: Padding(
@@ -98,10 +108,53 @@ class _ProductionPanelState extends State<ProductionPanel> with AutomaticKeepAli
             DesignTokens.mediumGap,
             StatCard(
               emoji: '💲',
-              label: 'Prix du métal',
+              label: 'Prix effectif du métal',
               value: '${metalPrice.toStringAsFixed(3)} €/kg',
               color: Colors.brown,
             ),
+            if (hasActiveBonus) ...[
+              if (metalEfficiency > 0.0) ...[
+                DesignTokens.mediumGap,
+                StatCard(
+                  emoji: '⚡',
+                  label: 'Efficacité métal totale',
+                  value: '-${(metalEfficiency * 100).toStringAsFixed(0)} %',
+                  color: Colors.indigo,
+                ),
+              ],
+              if (productionSpeed > 0.0) ...[
+                DesignTokens.mediumGap,
+                StatCard(
+                  emoji: '🚀',
+                  label: 'Vitesse production totale',
+                  value: '+${(productionSpeed * 100).toStringAsFixed(0)} %',
+                  color: Colors.blueAccent,
+                ),
+              ],
+              if (productionBulk > 0.0) ...[
+                DesignTokens.mediumGap,
+                StatCard(
+                  emoji: '📦',
+                  label: 'Production en masse',
+                  value: '+${(productionBulk * 100).toStringAsFixed(0)} %',
+                  color: Colors.deepPurple,
+                ),
+              ],
+              if (metalPurchaseDiscount > 0.0) ...[
+                DesignTokens.mediumGap,
+                StatCard(
+                  emoji: '🛒',
+                  label: 'Remise achat métal totale',
+                  value: '-${(metalPurchaseDiscount * 100).toStringAsFixed(0)} %',
+                  color: Colors.green,
+                ),
+              ],
+            ] else ...[
+              DesignTokens.mediumGap,
+              const Text(
+                'Aucun bonus actif — débloquez des recherches pour voir les effets ici',
+              ),
+            ],
           ],
         ),
       ),
@@ -109,8 +162,9 @@ class _ProductionPanelState extends State<ProductionPanel> with AutomaticKeepAli
   }
 
   Widget _buildManualProduction(GameState gameState) {
-    final canProduce = gameState.resourceManager.canPurchaseMetal();
-    final metalPrice = gameState.marketManager.marketMetalPrice;
+    final canProduce = gameState.canBuyMetal();
+    final canCreatePaperclip = gameState.playerManager.metal > 0;
+    final metalPrice = gameState.effectiveMetalUnitPrice;
     final metalAmount = GameConstants.METAL_PACK_AMOUNT;
     
     return Card(
@@ -127,14 +181,25 @@ class _ProductionPanelState extends State<ProductionPanel> with AutomaticKeepAli
             ActionButton(
               emoji: '📎',
               label: 'Créer un trombone',
-              onPressed: () => gameState.productionManager.producePaperclip(),
+              onPressed: canCreatePaperclip ? () => gameState.producePaperclip() : null,
               color: Colors.blue,
             ),
+            if (!canCreatePaperclip) ...[
+              DesignTokens.smallGap,
+              Text(
+                'Achetez du métal pour produire',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.orange.shade700,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
             DesignTokens.mediumGap,
             ActionButton(
               emoji: '⚙️',
               label: 'Acheter Métal (${(metalAmount * metalPrice).toStringAsFixed(2)} €)',
-              onPressed: canProduce ? () => gameState.resourceManager.purchaseMetal() : null,
+              onPressed: canProduce ? () => gameState.purchaseMetal() : null,
               color: Colors.grey.shade700,
               isCompact: true,
             ),
@@ -145,7 +210,7 @@ class _ProductionPanelState extends State<ProductionPanel> with AutomaticKeepAli
   }
 
   Widget _buildAutoProduction(GameState gameState) {
-    final cost = gameState.productionManager.calculateAutoclipperCost();
+    final cost = gameState.effectiveAutoclipperCost;
     final canBuy = gameState.productionManager.canBuyAutoclipper();
 
     return Card(

@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:paperclip2/models/game_state.dart';
-import 'package:paperclip2/screens/start_screen.dart';
+import 'package:paperclip2/screens/welcome_screen.dart';
 import 'package:paperclip2/screens/profile_screen.dart';
 import 'package:paperclip2/services/save_system/local_save_game_manager.dart';
 import 'package:paperclip2/services/auth/firebase_auth_service.dart';
@@ -66,7 +66,7 @@ Future<void> showSettingsBottomSheet(BuildContext context) async {
                       children: [
                         ListTile(
                           leading: const Icon(Icons.refresh),
-                          title: const Text('Nouveau monde'),
+                          title: const Text('Nouvelle partie'),
                           onTap: () => _showNewGameConfirmation(context),
                         ),
                         const Divider(height: 1),
@@ -117,7 +117,7 @@ Future<void> showSettingsBottomSheet(BuildContext context) async {
                           onTap: () {
                             Navigator.pop(context);
                             Navigator.of(context).pushAndRemoveUntil(
-                              MaterialPageRoute(builder: (context) => const StartScreen()),
+                              MaterialPageRoute(builder: (context) => const WelcomeScreen()),
                               (route) => false,
                             );
                           },
@@ -201,16 +201,16 @@ void _showNewGameConfirmation(BuildContext context) {
         children: [
           Icon(Icons.warning),
           SizedBox(width: 8),
-          Text('Nouveau monde'),
+          Text('Nouvelle partie'),
         ],
       ),
       content: const Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('Êtes-vous sûr de vouloir créer un nouveau monde ?'),
+          Text('Êtes-vous sûr de vouloir créer une nouvelle partie ?'),
           SizedBox(height: 8),
           Text(
-            'La progression du monde actuel sera perdue s\'il n\'est pas sauvegardé.',
+            'La progression actuelle sera perdue s\'il n\'est pas sauvegardé.',
             style: TextStyle(fontStyle: FontStyle.italic, color: Colors.red),
           ),
         ],
@@ -225,12 +225,12 @@ void _showNewGameConfirmation(BuildContext context) {
             Navigator.pop(context); // ferme le dialogue
             Navigator.pop(context); // ferme la bottom sheet
             Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute(builder: (context) => const StartScreen(continueOpensWorlds: true)),
+              MaterialPageRoute(builder: (context) => const WelcomeScreen()),
               (route) => false,
             );
           },
           style: TextButton.styleFrom(foregroundColor: Colors.red),
-          child: const Text('Nouveau monde'),
+          child: const Text('Nouvelle partie'),
         ),
       ],
     ),

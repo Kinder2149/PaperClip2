@@ -2656,7 +2656,7 @@ class GamePersistenceOrchestrator {
       final cloudWorldIds = cloudWorlds.map((e) => e.enterpriseId).toSet();
       final orphanLocalIds = localWorldIds.difference(cloudWorldIds);
 
-      if (orphanLocalIds.isNotEmpty) {
+      if (orphanLocalIds.isNotEmpty && cloudWorlds.isEmpty) {
         _logger.info('[SYNC-LOGIN] Mondes locaux orphelins détectés', code: 'sync_login_orphans', ctx: {
           'count': orphanLocalIds.length,
         });
@@ -2703,7 +2703,7 @@ class GamePersistenceOrchestrator {
           failedEnterpriseIds: failedEnterpriseIds,
           syncedCount: syncedCount,
           totalCount: totalWorlds,
-          errorDetails: '${failedEnterpriseIds.length} monde(s) non synchronisé(s)',
+          errorDetails: '${failedEnterpriseIds.length} entreprise(s) non synchronisée(s)',
         );
       } else if (errorCount > 0) {
         return SyncResult(
@@ -2711,7 +2711,7 @@ class GamePersistenceOrchestrator {
           failedEnterpriseIds: failedEnterpriseIds,
           syncedCount: syncedCount,
           totalCount: totalWorlds,
-          errorDetails: 'Échec synchronisation de tous les mondes',
+          errorDetails: 'Échec synchronisation de l\'entreprise',
         );
       } else {
         return SyncResult(

@@ -86,9 +86,10 @@ class _AgentsPanelState extends State<AgentsPanel> with AutomaticKeepAliveClient
       children: allAgents.map((agent) {
         final isLocked = !agent.isUnlocked;
         final isActive = agent.isActive;
-        final canActivate = agent.isUnlocked && 
-                           !agent.isActive && 
-                           gameState.agents.availableSlots > 0;
+        final hasEnoughQuantum = gameState.rareResources.quantum >= agent.activationCost;
+        final canShowActivateAction =
+            agent.isUnlocked && !agent.isActive && gameState.agents.availableSlots > 0;
+        final canActivate = canShowActivateAction && hasEnoughQuantum;
         
         return Card(
           color: isActive 
@@ -140,6 +141,17 @@ class _AgentsPanelState extends State<AgentsPanel> with AutomaticKeepAliveClient
                       Text('Durée: 1h'),
                     ],
                   ),
+                  if (canShowActivateAction && !hasEnoughQuantum) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      'Quantum insuffisant (${gameState.rareResources.quantum}/${agent.activationCost})',
+                      style: TextStyle(
+                        color: Colors.orange.shade700,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ],
                 if (agent.totalActions > 0) ...[
                   const SizedBox(height: 8),
@@ -148,12 +160,12 @@ class _AgentsPanelState extends State<AgentsPanel> with AutomaticKeepAliveClient
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
-                if (canActivate) ...[
+                if (canShowActivateAction) ...[
                   DesignTokens.mediumGap,
                   ActionButton(
                     emoji: '▶️',
-                    label: 'Activer',
-                    onPressed: () => gameState.agents.activateAgent(agent.id),
+                    label: 'Activer (${agent.activationCost} Q)',
+                    onPressed: canActivate ? () => gameState.agents.activateAgent(agent.id) : null,
                     color: Colors.cyan,
                   ),
                 ],

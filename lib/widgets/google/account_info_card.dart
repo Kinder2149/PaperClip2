@@ -126,7 +126,7 @@ class _AccountInfoCardState extends State<AccountInfoCard> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Synchronisez vos mondes dans le cloud',
+                    'Synchronisez votre entreprise avec le cloud',
                     style: TextStyle(
                       fontSize: 13,
                       color: txtColor.withOpacity(0.7),
@@ -321,7 +321,7 @@ class _AccountInfoCardState extends State<AccountInfoCard> {
                   child: _buildStatItem(
                     context,
                     icon: Icons.public,
-                    label: 'Mondes',
+                    label: 'Entreprise',
                     value: _loadingWorlds ? '...' : '$_worldCount',
                     color: Colors.blue,
                     txtColor: txtColor,

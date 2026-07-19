@@ -74,9 +74,11 @@ class ResourceManager extends ChangeNotifier implements JsonLoadable {
 
   bool canPurchaseMetal([double? customPrice]) {
     final double amount = GameConstants.METAL_PACK_AMOUNT;
-    // CHANTIER-03 : Appliquer le rabais via recherche
-    final double discount = _researchManager?.getResearchBonus('metalPurchaseDiscount') ?? 0.0;
-    final double unitPrice = _marketManager.marketMetalPrice * (1.0 - discount);
+    final procurementLevel = _playerManager.upgrades['procurement']?.level ?? 0;
+    final upgradeDiscount = UpgradeEffectsCalculator.metalDiscount(level: procurementLevel);
+    final researchDiscount = _researchManager?.getResearchBonus('metalPurchaseDiscount') ?? 0.0;
+    final double unitPrice =
+        _marketManager.marketMetalPrice * (1.0 - upgradeDiscount) * (1.0 - researchDiscount);
     final double price = customPrice ?? (amount * unitPrice);
 
     if (_playerManager.money < price) {

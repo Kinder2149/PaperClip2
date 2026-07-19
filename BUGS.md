@@ -6,6 +6,7 @@
 
 | Date | Description | Statut | Fichier |
 |---|---|---|---|
+| 2026-04-12 | Suppression entreprise incomplète : les anciennes sauvegardes cloud pouvaient rester si `enterpriseId` legacy non-UUID, puis revenir à la reconnexion | ✅ Résolu | `lib/services/cloud/cloud_persistence_adapter.dart` |
 | 2026-04-10 | 30 occurrences de `worldId` dans les logs (cosmétique, pas de bug runtime) | ✅ Résolu | `lib/services/persistence/game_persistence_orchestrator.dart` |
 | 2026-04-10 | Google Sign-In Android : `clientConfigurationError — serverClientId must be provided, null` | ✅ Résolu (code) | `lib/services/auth/firebase_auth_service.dart` |
 | 2026-04-10 | Google Sign-In Android : `[16] Account reauth failed` après fix code | ⏳ En attente config | `android/app/google-services.json` + Firebase Console |

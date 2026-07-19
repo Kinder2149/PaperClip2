@@ -4,7 +4,6 @@ import 'package:paperclip2/models/statistics_manager.dart';
 import 'package:paperclip2/managers/player_manager.dart';
 import 'package:paperclip2/managers/market_manager.dart';
 import 'package:paperclip2/managers/resource_manager.dart';
-import 'package:paperclip2/models/game_state_interfaces.dart';
 import 'package:paperclip2/models/game_state.dart';
 import 'game_snapshot.dart';
 
@@ -13,14 +12,12 @@ class GamePersistenceMapper {
     required PlayerManager playerManager,
     required MarketManager marketManager,
     required LevelSystem levelSystem,
-    required MissionSystem missionSystem,
     required StatisticsManager statistics,
   }) {
     return {
       'playerManager': playerManager.toJson(),
       'marketManager': marketManager.toJson(),
       'levelSystem': levelSystem.toJson(),
-      'missionSystem': missionSystem.toJson(),
       'statistics': statistics.toJson(),
     };
   }
@@ -30,7 +27,6 @@ class GamePersistenceMapper {
     required ResourceManager resourceManager,
     required MarketManager marketManager,
     required LevelSystem levelSystem,
-    required MissionSystem missionSystem,
     required StatisticsManager statistics,
     required Map<String, dynamic> gameData,
   }) {
@@ -49,10 +45,6 @@ class GamePersistenceMapper {
 
     if (gameData.containsKey('levelSystem')) {
       levelSystem.fromJson(gameData['levelSystem'] as Map<String, dynamic>);
-    }
-
-    if (gameData.containsKey('missionSystem')) {
-      missionSystem.fromJson(gameData['missionSystem'] as Map<String, dynamic>);
     }
 
     if (gameData.containsKey('statistics')) {
@@ -112,7 +104,6 @@ class GamePersistenceMapper {
     required PlayerManager playerManager,
     required MarketManager marketManager,
     required LevelSystem levelSystem,
-    required MissionSystem missionSystem,
     required StatisticsManager statistics,
     required Map<String, dynamic> gameData,
   }) {
@@ -124,9 +115,6 @@ class GamePersistenceMapper {
     }
     if (gameData['levelSystem'] != null) {
       levelSystem.fromJson(gameData['levelSystem']);
-    }
-    if (gameData['missionSystem'] != null) {
-      missionSystem.fromJson(gameData['missionSystem']);
     }
     if (gameData['statistics'] != null) {
       statistics.fromJson(gameData['statistics']);
@@ -165,7 +153,6 @@ class GamePersistenceMapper {
       core: {
         'player': state.playerManager.toJson(),
         'levelSystem': state.levelSystem.toJson(),
-        'missionSystem': state.missionSystem.toJson(),
         // CHANTIER-02 : Ressources rares
         'rareResources': state.rareResources.toJson(),
         'agents': _serializeAgents(state),
@@ -219,9 +206,6 @@ class GamePersistenceMapper {
     }
     if (core['levelSystem'] != null) {
       state.levelSystem.fromJson(core['levelSystem'] as Map<String, dynamic>);
-    }
-    if (core['missionSystem'] != null) {
-      state.missionSystem.fromJson(core['missionSystem'] as Map<String, dynamic>);
     }
     
     // Charger market

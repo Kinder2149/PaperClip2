@@ -61,6 +61,14 @@ class _MarketPanelState extends State<MarketPanel> with AutomaticKeepAliveClient
 
   Widget _buildWorldMarketSection(GameState gameState) {
     final market = gameState.marketManager;
+    final bonuses = gameState.activeMarketBonuses;
+    final volatilityReduction = bonuses['volatilityReduction'] ?? 0.0;
+    final maxSalePriceBonus = bonuses['maxSalePriceBonus'] ?? 0.0;
+    final marketSaturationRisk = bonuses['marketSaturationRisk'] ?? 0.0;
+    final hasActiveMarketBonus =
+        volatilityReduction > 0.0 ||
+        maxSalePriceBonus > 0.0 ||
+        marketSaturationRisk > 0.0;
     final worldDemand = market.worldDemand;
     final competitorPrice = market.competitorPrice;
     final playerShare = market.playerMarketShare;
@@ -104,6 +112,40 @@ class _MarketPanelState extends State<MarketPanel> with AutomaticKeepAliveClient
               value: '${salesPerSec.toStringAsFixed(1)} trombones/s',
               color: Colors.green,
             ),
+            if (hasActiveMarketBonus) ...[
+              if (volatilityReduction > 0.0) ...[
+                DesignTokens.mediumGap,
+                StatCard(
+                  emoji: '🌪️',
+                  label: 'Réduction volatilité',
+                  value: '-${(volatilityReduction * 100).toStringAsFixed(0)} %',
+                  color: Colors.indigo,
+                ),
+              ],
+              if (maxSalePriceBonus > 0.0) ...[
+                DesignTokens.mediumGap,
+                StatCard(
+                  emoji: '💎',
+                  label: 'Bonus plafond prix max',
+                  value: '+${(maxSalePriceBonus * 100).toStringAsFixed(0)} %',
+                  color: Colors.deepPurple,
+                ),
+              ],
+              if (marketSaturationRisk > 0.0) ...[
+                DesignTokens.mediumGap,
+                StatCard(
+                  emoji: '⚠️',
+                  label: 'Risque saturation marché',
+                  value: '+${(marketSaturationRisk * 100).toStringAsFixed(0)} %',
+                  color: Colors.redAccent,
+                ),
+              ],
+            ] else ...[
+              DesignTokens.mediumGap,
+              const Text(
+                'Aucun bonus actif — débloquez des recherches pour voir les effets ici',
+              ),
+            ],
           ],
         ),
       ),
@@ -157,6 +199,8 @@ class _MarketPanelState extends State<MarketPanel> with AutomaticKeepAliveClient
   Widget _buildPlayerPriceSection(BuildContext context, GameState gameState) {
     final playerPrice = gameState.player.sellPrice;
     final competitorPrice = gameState.marketManager.competitorPrice;
+    final salePriceBonus = gameState.activeMarketBonuses['salePrice'] ?? 0.0;
+    final effectivePrice = playerPrice * (1 + salePriceBonus);
 
     final delta = (competitorPrice - playerPrice) / competitorPrice;
     final competitivity = _competitivityLabel(delta);
@@ -238,6 +282,17 @@ class _MarketPanelState extends State<MarketPanel> with AutomaticKeepAliveClient
                 ),
               ],
             ),
+            if (salePriceBonus > 0) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Prix effectif : ${effectivePrice.toStringAsFixed(2)} €',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.green.shade700,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
             DesignTokens.smallGap,
 
             // Revenu estimé par seconde

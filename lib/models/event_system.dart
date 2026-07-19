@@ -3,11 +3,9 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import '../constants/game_config.dart';
 import 'game_state.dart'; // Importer GameState
-import 'game_state_interfaces.dart';
 import 'json_loadable.dart';
 import 'package:flutter/foundation.dart';
 import '../utils/logger.dart';
-import 'package:paperclip2/screens/event_log_screen.dart';
 import 'progression_system.dart';
 
 
@@ -247,7 +245,6 @@ class EventManager extends ChangeNotifier implements JsonLoadable {
   String get _currentGameName => _gameState?.enterpriseName ?? 'default';
 
   final List<GameEvent> _events = [];
-  final Map<String, DateTime> _lastNotifications = {}; // Ajout de cette ligne
 
   final Map<UnlockableFeature, UnlockDetails> _unlockDetailsMap = {
     // Ajoutez les détails de déverrouillage ici
@@ -543,48 +540,6 @@ ${unlockDetails.tips.map((t) => '• $t').join('\n')}
       case EventImportance.CRITICAL:
         return NotificationPriority.CRITICAL;
     }
-  }
-
-  void showNotification(NotificationEvent notification) {
-    if (_canShowNotification(notification)) {
-      _lastNotifications[notification.title] = DateTime.now();
-    }
-  }
-
-  bool _canShowNotification(NotificationEvent event) {
-    if (!event.canBeSuppressed) return true;
-
-    final lastShown = _lastNotifications[event.title];
-    if (lastShown == null) return true;
-
-    return DateTime.now().difference(lastShown) >= (event.suppressionDuration ?? const Duration(minutes: 5));
-  }
-
-  NotificationPriority _convertImportanceToNotificationPriority(EventImportance importance) {
-    switch (importance) {
-      case EventImportance.LOW:
-        return NotificationPriority.LOW;
-      case EventImportance.MEDIUM:
-        return NotificationPriority.MEDIUM;
-      case EventImportance.HIGH:
-        return NotificationPriority.HIGH;
-      case EventImportance.CRITICAL:
-        return NotificationPriority.CRITICAL;
-    }
-  }
-
-  void _cleanOldEvents() {
-    final now = DateTime.now();
-    _events.removeWhere((event) =>
-    now.difference(event.timestamp) > GameConstants.EVENT_MAX_AGE);
-
-    while (_events.length > GameConstants.MAX_STORED_EVENTS) {
-      _events.removeAt(0);
-    }
-  }
-
-  List<GameEvent> getEventsByImportance(EventImportance minImportance) {
-    return _events.where((event) => event.importance >= minImportance).toList();
   }
 
   void clearEvents() {

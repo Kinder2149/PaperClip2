@@ -59,7 +59,7 @@ class GameAppBar extends StatelessWidget implements PreferredSizeWidget {
   }) : super(key: key);
   
   @override
-  Size get preferredSize => const Size.fromHeight(100); // Mobile: 100 (2 lignes) | Tablette/Desktop: 56 (1 ligne)
+  Size get preferredSize => const Size.fromHeight(124); // Mobile: 124 (3 lignes) | Tablette/Desktop: 56 (1 ligne)
 
   @override
   Widget build(BuildContext context) {
@@ -82,7 +82,7 @@ class GameAppBar extends StatelessWidget implements PreferredSizeWidget {
 
         // RESPONSIVE-APPBAR: toolbarHeight et layout dynamiques
         final toolbarHeight = const ResponsiveValue<double>(
-          mobile: 100.0,
+          mobile: 124.0,
           tablet: 56.0,
           desktop: 56.0,
         ).getValue(context);
@@ -107,6 +107,21 @@ class GameAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   /// Layout mobile (2 lignes) - COMPORTEMENT ACTUEL PRÉSERVÉ
   Widget _buildMobileLayout(_GameAppBarView view) {
+    const List<String> panelNames = [
+      'Dashboard',
+      'Production',
+      'Marché',
+      'Recherche',
+      'Agents',
+      'Progression',
+      'Statistiques',
+      'Paramètres',
+    ];
+    final panelName =
+        (selectedIndex >= 0 && selectedIndex < panelNames.length)
+            ? panelNames[selectedIndex]
+            : panelNames[0];
+
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -165,6 +180,24 @@ class GameAppBar extends StatelessWidget implements PreferredSizeWidget {
               formatLarge: false,
             ),
           ],
+        ),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            panelName,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.normal,
+              letterSpacing: 0.5,
+            ),
+          ),
         ),
       ],
     );

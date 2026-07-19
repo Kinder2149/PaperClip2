@@ -29,7 +29,7 @@ class MetalBuyerAgent implements BaseAgentExecutor {
     }
     
     final resourceManager = gameState.resources;
-    final purchased = resourceManager.purchaseMetal();
+    final purchased = gameState.purchaseMetal();
     
     if (purchased) {
       if (kDebugMode) {
@@ -52,7 +52,6 @@ class MetalBuyerAgent implements BaseAgentExecutor {
     
     final resourceManager = gameState.resources;
     final playerManager = gameState.player;
-    final marketManager = gameState.market;
     
     // Vérifier stock < 30%
     final stockRatio = resourceManager.metal / resourceManager.maxStorageCapacity;
@@ -71,8 +70,8 @@ class MetalBuyerAgent implements BaseAgentExecutor {
       return false;
     }
     
-    // Vérifier prix métal < 0.40€
-    final metalPrice = marketManager.marketMetalPrice;
+    // Vérifier prix métal effectif < 0.40€
+    final metalPrice = gameState.effectiveMetalUnitPrice;
     if (metalPrice >= MAX_METAL_PRICE) {
       if (kDebugMode) {
         print('[MetalBuyer] Prix métal trop élevé: ${metalPrice.toStringAsFixed(2)}€');

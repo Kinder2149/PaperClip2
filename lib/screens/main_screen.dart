@@ -40,7 +40,7 @@ import '../services/game_runtime_coordinator.dart';
 
 // Imports des écrans encore utilisés
 import 'event_log_screen.dart';
-import 'start_screen.dart';
+import 'welcome_screen.dart';
 import 'new_metal_production_screen.dart';
 
 // Imports des panneaux
@@ -421,7 +421,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       builder: (context, gameState, child) {
         final backgroundMusicService = context.watch<BackgroundMusicService>();
 
-        // Utilisation de notre nouvelle GameAppBar réutilisable
         final appBar = PreferredSize(
           preferredSize: const Size.fromHeight(kToolbarHeight),
           child: GameAppBar(
@@ -430,7 +429,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           ),
         );
 
-        // Construction du contenu selon le mode
         if (gameState.isInCrisisMode) {
           return AppScaffold(
             appBarSelectedIndex: _selectedIndex,
@@ -450,47 +448,48 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               },
               child: gameState.crisisTransitionComplete
                   ? Stack(
-                children: [
-                  gameState.showingCrisisView
-                      ? const NewMetalProductionScreen()
-                      : _buildPageView(),
-                  Positioned(
-                    top: 16,
-                    right: 16,
-                    child: Card(
-                      color: Colors.red.withOpacity(0.9),
-                      child: const Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: Text(
-                          'Mode Crise Actif',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
+                      children: [
+                        gameState.showingCrisisView
+                            ? const NewMetalProductionScreen()
+                            : _buildPageView(),
+                        Positioned(
+                          top: 16,
+                          right: 16,
+                          child: Card(
+                            color: Colors.red.withOpacity(0.9),
+                            child: const Padding(
+                              padding: EdgeInsets.all(8.0),
+                              child: Text(
+                                'Mode Crise Actif',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                  ),
-                ],
-              )
+                      ],
+                    )
                   : const NewMetalProductionScreen(),
             ),
             bottomNavigationBar: gameState.crisisTransitionComplete
                 ? SafeArea(
-              child: NavigationBar(
-                height: 56,
-                selectedIndex: _selectedIndex,
-                onDestinationSelected: (index) {
-                  setState(() => _selectedIndex = index);
-                  _pageController.animateToPage(
-                    index,
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeInOut,
-                  );
-                },
-                destinations: _buildNavigationDestinations(),
-              ),
-            )
+                    child: NavigationBar(
+                      height: 52,
+                      labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+                      selectedIndex: _selectedIndex,
+                      onDestinationSelected: (index) {
+                        setState(() => _selectedIndex = index);
+                        _pageController.animateToPage(
+                          index,
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                        );
+                      },
+                      destinations: _buildNavigationDestinations(),
+                    ),
+                  )
                 : null,
             floatingActionButton: FloatingActionButton(
               onPressed: () => gameState.toggleCrisisInterface(),
@@ -506,13 +505,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             ),
           );
         }
-
-        // Interface normale
-        final efficiencyLevel = gameState.player.upgrades['efficiency']?.level ?? 0;
-        final metalPerPaperclip = UpgradeEffectsCalculator.metalPerPaperclip(
-          efficiencyLevel: efficiencyLevel,
-        );
-        final canProduce = gameState.player.metal >= metalPerPaperclip;
 
         return AppScaffold(
           appBarSelectedIndex: _selectedIndex,
@@ -535,96 +527,13 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           ),
           bottomNavigationBar: SafeArea(
             child: Container(
-              color: Theme
-                  .of(context)
-                  .scaffoldBackgroundColor,
+              color: Theme.of(context).scaffoldBackgroundColor,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (!gameState.isInCrisisMode && _selectedIndex != 0)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 4.0),
-                      child: SizedBox(
-                        width: double.infinity,
-                        height: 42,
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: canProduce
-                                ? () {
-                              HapticFeedback.mediumImpact();
-                              gameState.producePaperclip();
-                            }
-                                : null,
-                            borderRadius: BorderRadius.circular(16),
-                            child: Ink(
-                              decoration: BoxDecoration(
-                                color: canProduce
-                                    ? Colors.blue.shade400
-                                    : Colors.grey.shade400,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: canProduce
-                                      ? Colors.blue.shade200
-                                      : Colors.grey.shade300,
-                                  width: 2,
-                                ),
-                                boxShadow: canProduce
-                                    ? [
-                                  BoxShadow(
-                                    color: Colors.blue.withOpacity(0.3),
-                                    spreadRadius: 1,
-                                    blurRadius: 5,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ]
-                                    : null,
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.add_circle_outline,
-                                    color: canProduce ? Colors.white : Colors
-                                        .grey.shade300,
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    crossAxisAlignment: CrossAxisAlignment
-                                        .start,
-                                    children: [
-                                      Text(
-                                        'Produire',
-                                        style: TextStyle(
-                                          color: canProduce
-                                              ? Colors.white
-                                              : Colors.grey.shade300,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                      Text(
-                                        '${metalPerPaperclip.toStringAsFixed(2)} métal',
-                                        style: TextStyle(
-                                          color: canProduce
-                                              ? Colors.white.withOpacity(0.8)
-                                              : Colors.grey.shade300,
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
                   NavigationBar(
-                    height: 56,
+                    height: 52,
+                    labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
                     selectedIndex: _selectedIndex,
                     onDestinationSelected: (index) {
                       setState(() => _selectedIndex = index);
@@ -809,7 +718,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                         children: [
                           ListTile(
                             leading: const Icon(Icons.add_circle_outline),
-                            title: const Text('Nouveau monde'),
+                            title: const Text('Nouvelle partie'),
                             onTap: () => _showNewGameConfirmation(context),
                           ),
                           const Divider(height: 1),
@@ -849,7 +758,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                               Navigator.pop(context);
                               Navigator.of(context).pushAndRemoveUntil(
                                 MaterialPageRoute(
-                                  builder: (context) => const StartScreen(),
+                                  builder: (context) => const WelcomeScreen(),
                                 ),
                                 (route) => false,
                               );
@@ -1175,15 +1084,15 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           children: [
             Icon(Icons.warning),
             SizedBox(width: 8),
-            Text('Nouveau monde'),
+            Text('Nouvelle partie'),
           ],
         ),
         content: const Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Êtes-vous sûr de vouloir créer un nouveau monde ?'),
+            Text('Êtes-vous sûr de vouloir créer une nouvelle partie ?'),
             SizedBox(height: 8),
-            Text('La progression du monde actuel sera perdue s\'il n\'est pas sauvegardé.',
+            Text('La progression actuelle sera perdue s\'il n\'est pas sauvegardé.',
                  style: TextStyle(fontStyle: FontStyle.italic, color: Colors.red)),
           ],
         ),
@@ -1198,13 +1107,13 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               Navigator.pop(context); // Fermer les paramètres
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(
-                  builder: (context) => const StartScreen(),
+                  builder: (context) => const WelcomeScreen(),
                 ),
                 (route) => false,
               );
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Nouveau monde'),
+            child: const Text('Nouvelle partie'),
           ),
         ],
       ),

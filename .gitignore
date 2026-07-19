@@ -118,6 +118,7 @@ firebase.json
 build_*.txt
 # Environnements et archives
 .venv/
+graphify-out/
 _archives/
 test_analysis_complete.txt
 test_errors_detailed.txt

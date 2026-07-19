@@ -45,14 +45,28 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
   /// Production automatique théorique en trombones/s (avec tous les bonus)
   double get currentProductionRatePerSecond {
     if (_playerManager.autoClipperCount == 0) return 0.0;
+    
+    // Bonus vitesse : recherche + agent + upgrade
     final researchSpeedBonus = _researchManager.getResearchBonus('productionSpeed');
-    final bulkBonus = 1.0 + _researchManager.getResearchBonus('productionBulk');
     final agentSpeedBonus = _agentManager?.getProductionSpeedBonus() ?? 0.0;
-    final totalSpeedBonus = 1.0 + researchSpeedBonus + agentSpeedBonus;
+    final speedLevel = _playerManager.upgrades['speed']?.level ?? 0;
+    final upgradeSpeedBonus = UpgradeEffectsCalculator.speedMultiplier(level: speedLevel) - 1.0;
+    final totalSpeedBonus = 1.0 + researchSpeedBonus + agentSpeedBonus + upgradeSpeedBonus;
+    
+    // Bonus volume : recherche + upgrade
+    final researchBulkBonus = _researchManager.getResearchBonus('productionBulk');
+    final bulkLevel = _playerManager.upgrades['bulk']?.level ?? 0;
+    final upgradeBulkBonus = UpgradeEffectsCalculator.bulkMultiplier(level: bulkLevel) - 1.0;
+    final bulkBonus = 1.0 + researchBulkBonus + upgradeBulkBonus;
+    
+    // Bonus niveau joueur (+5% production par niveau)
+    final levelProductionMultiplier = _levelSystem.productionMultiplier;
+    
     return _playerManager.autoClipperCount *
         GameConstants.BASE_AUTOCLIPPER_PRODUCTION *
         totalSpeedBonus *
-        bulkBonus;
+        bulkBonus *
+        levelProductionMultiplier;
   }
   
   // Accesseurs pour faciliter le code
@@ -103,10 +117,13 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
   }
 
   double _metalPerPaperclip() {
-    // CHANTIER-03 : Utiliser bonus recherche au lieu d'upgrades
-    final efficiencyBonus = _researchManager.getResearchBonus('metalEfficiency');
+    // Bonus efficacité : recherche + upgrade (combinaison multiplicative)
+    final researchEfficiency = _researchManager.getResearchBonus('metalEfficiency');
+    final effLevel = _playerManager.upgrades['efficiency']?.level ?? 0;
+    final upgradeEfficiency = UpgradeEffectsCalculator.efficiencyReduction(level: effLevel);
+    final combinedEfficiency = 1.0 - ((1.0 - researchEfficiency) * (1.0 - upgradeEfficiency));
     final baseConsumption = GameConstants.METAL_PER_PAPERCLIP;
-    return baseConsumption * (1.0 - efficiencyBonus);
+    return baseConsumption * (1.0 - combinedEfficiency);
   }
 
   /// Traite la production automatique de trombones via les autoclippeuses
@@ -125,19 +142,29 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
       _logger.debug('[ProductionManager] État initial: ${player.paperclips.toStringAsFixed(1)} trombones, ${player.metal.toStringAsFixed(1)} métal, ${player.autoClipperCount} autoclippeuses');
     }
 
-    // CHANTIER-03 : Calcul des bonus via recherches
+    // Bonus vitesse : recherche + agent + upgrade
     final double researchSpeedBonus = _researchManager.getResearchBonus('productionSpeed');
-    final double bulkBonus = 1.0 + _researchManager.getResearchBonus('productionBulk');
-    final double efficiencyBonus = 1.0 - _researchManager.getResearchBonus('metalEfficiency');
-    
-    // CHANTIER-04 : Bonus Production Optimizer Agent (+25% si actif)
     final double agentSpeedBonus = _agentManager?.getProductionSpeedBonus() ?? 0.0;
-    final double totalSpeedBonus = 1.0 + researchSpeedBonus + agentSpeedBonus;
+    final int speedLevel = _playerManager.upgrades['speed']?.level ?? 0;
+    final double upgradeSpeedBonus = UpgradeEffectsCalculator.speedMultiplier(level: speedLevel) - 1.0;
+    final double totalSpeedBonus = 1.0 + researchSpeedBonus + agentSpeedBonus + upgradeSpeedBonus;
+    
+    // Bonus volume : recherche + upgrade
+    final double researchBulkBonus = _researchManager.getResearchBonus('productionBulk');
+    final int bulkLevel = _playerManager.upgrades['bulk']?.level ?? 0;
+    final double upgradeBulkBonus = UpgradeEffectsCalculator.bulkMultiplier(level: bulkLevel) - 1.0;
+    final double bulkBonus = 1.0 + researchBulkBonus + upgradeBulkBonus;
+    
+    // Bonus efficacité : recherche + upgrade (combinaison multiplicative)
+    final double researchEfficiency = _researchManager.getResearchBonus('metalEfficiency');
+    final int effLevel = _playerManager.upgrades['efficiency']?.level ?? 0;
+    final double upgradeEfficiency = UpgradeEffectsCalculator.efficiencyReduction(level: effLevel);
+    final double combinedEfficiency = 1.0 - ((1.0 - researchEfficiency) * (1.0 - upgradeEfficiency));
 
     if (kDebugMode) {
-      final reduction = _researchManager.getResearchBonus('metalEfficiency');
-      _logger.debug('[ProductionManager] Bonus: vitesse recherche: +${(researchSpeedBonus * 100).toStringAsFixed(1)}%, agent: +${(agentSpeedBonus * 100).toStringAsFixed(1)}%, total: x${totalSpeedBonus.toStringAsFixed(2)}');
-      _logger.debug('[ProductionManager] Bonus: masse: x${bulkBonus.toStringAsFixed(2)}, efficacité: x${efficiencyBonus.toStringAsFixed(2)} (réduction: ${(reduction * 100).toStringAsFixed(1)}%)');
+      _logger.debug('[ProductionManager] Bonus vitesse: recherche +${(researchSpeedBonus * 100).toStringAsFixed(1)}%, agent +${(agentSpeedBonus * 100).toStringAsFixed(1)}%, upgrade +${(upgradeSpeedBonus * 100).toStringAsFixed(1)}% → total x${totalSpeedBonus.toStringAsFixed(2)}');
+      _logger.debug('[ProductionManager] Bonus volume: recherche +${(researchBulkBonus * 100).toStringAsFixed(1)}%, upgrade +${(upgradeBulkBonus * 100).toStringAsFixed(1)}% → total x${bulkBonus.toStringAsFixed(2)}');
+      _logger.debug('[ProductionManager] Bonus efficacité: recherche -${(researchEfficiency * 100).toStringAsFixed(1)}%, upgrade -${(upgradeEfficiency * 100).toStringAsFixed(1)}% → combiné -${(combinedEfficiency * 100).toStringAsFixed(1)}%');
     }
 
     // Si joueur a des autoclippeuses
@@ -146,8 +173,12 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
       // GameConstants.BASE_AUTOCLIPPER_PRODUCTION est interprété comme une production "par seconde".
       double productionRatePerSecond =
           player.autoClipperCount * GameConstants.BASE_AUTOCLIPPER_PRODUCTION;
-      productionRatePerSecond *= totalSpeedBonus; // Inclut bonus recherche + agent
+      productionRatePerSecond *= totalSpeedBonus; // Inclut bonus recherche + agent + upgrade
       productionRatePerSecond *= bulkBonus;
+      
+      // Bonus niveau joueur (+5% production par niveau)
+      final levelProductionMultiplier = _levelSystem.productionMultiplier;
+      productionRatePerSecond *= levelProductionMultiplier;
 
       final metalPerPaperclip = _metalPerPaperclip();
 
@@ -267,12 +298,12 @@ class ProductionManager extends ChangeNotifier implements JsonLoadable {
 
   /// Calcule le coût d'achat d'une autoclippeuse supplémentaire
   double calculateAutoclipperCost() {
-    // CHANTIER-03 : Utiliser bonus recherche pour discount autoclippers
-    final discount = _researchManager.getResearchBonus('autoclipperDiscount');
+    final automationLevel = _playerManager.upgrades['automation']?.level ?? 0;
+    final automationDiscount = UpgradeEffectsCalculator.autoclipperDiscount(level: automationLevel);
+    final researchDiscount = _researchManager.getResearchBonus('autoclipperDiscount');
     final baseCost = GameConstants.BASE_AUTOCLIPPER_COST;
     final count = player.autoClipperCount;
-    // Formule exponentielle : coût augmente avec le nombre
-    return baseCost * pow(1.15, count) * (1.0 - discount);
+    return baseCost * pow(GameConstants.AUTOCLIPPER_COST_MULTIPLIER, count) * (1.0 - automationDiscount) * (1.0 - researchDiscount);
   }
 
   /// Vérifie si le joueur peut acheter une autoclippeuse

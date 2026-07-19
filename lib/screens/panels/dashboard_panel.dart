@@ -308,7 +308,7 @@ class DashboardPanel extends StatelessWidget {
               children: [
                 _buildActionChip(
                   icon: Icons.shopping_cart,
-                  label: 'Acheter Métal (${(GameConstants.METAL_PACK_AMOUNT * gameState.marketManager.marketMetalPrice).toStringAsFixed(2)}€)',
+                  label: 'Acheter Métal (${(GameConstants.METAL_PACK_AMOUNT * gameState.effectiveMetalUnitPrice).toStringAsFixed(2)}€)',
                   onTap: () => _buyMetal(gameState),
                   enabled: gameState.canBuyMetal(),
                 ),

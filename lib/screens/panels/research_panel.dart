@@ -13,6 +13,59 @@ class ResearchPanel extends StatefulWidget {
 }
 
 class _ResearchPanelState extends State<ResearchPanel> with AutomaticKeepAliveClientMixin {
+  String? _formatActiveEffectLine(GameState gameState, String stat) {
+    final productionBonuses = gameState.activeProductionBonuses;
+    final marketBonuses = gameState.activeMarketBonuses;
+
+    switch (stat) {
+      case 'metalEfficiency':
+        return 'Efficacité métal totale: -${(productionBonuses['metalEfficiency']! * 100).toStringAsFixed(0)} %';
+      case 'productionSpeed':
+        return 'Vitesse production totale: +${(productionBonuses['productionSpeed']! * 100).toStringAsFixed(0)} %';
+      case 'metalPurchaseDiscount':
+        return 'Remise achat métal totale: -${(productionBonuses['metalPurchaseDiscount']! * 100).toStringAsFixed(0)} %';
+      case 'volatilityReduction':
+        return 'Réduction volatilité totale: -${(marketBonuses['volatilityReduction']! * 100).toStringAsFixed(0)} %';
+      case 'maxSalePrice':
+        return 'Bonus plafond prix total: +${(marketBonuses['maxSalePriceBonus']! * 100).toStringAsFixed(0)} %';
+      case 'marketSaturation':
+        return 'Risque saturation total: +${(marketBonuses['marketSaturationRisk']! * 100).toStringAsFixed(0)} %';
+      default:
+        return null;
+    }
+  }
+
+  String? _activeEffectSummary(GameState gameState, ResearchNode node) {
+    final stats = <String>[];
+    final params = node.effect.params;
+
+    if (params['stat'] is String) {
+      stats.add(params['stat'] as String);
+    }
+
+    final bonuses = params['bonuses'];
+    if (bonuses is List) {
+      for (final bonus in bonuses) {
+        if (bonus is Map && bonus['stat'] is String) {
+          stats.add(bonus['stat'] as String);
+        }
+      }
+    }
+
+    final lines = <String>[];
+    for (final stat in stats) {
+      final line = _formatActiveEffectLine(gameState, stat);
+      if (line != null && !lines.contains(line)) {
+        lines.add(line);
+      }
+    }
+
+    if (lines.isEmpty) {
+      return null;
+    }
+    return lines.join(' • ');
+  }
+
   @override
   bool get wantKeepAlive => true;
 
@@ -44,7 +97,7 @@ class _ResearchPanelState extends State<ResearchPanel> with AutomaticKeepAliveCl
       metrics: [
         MetricData(
           label: 'Argent',
-          value: '\$${gameState.playerManager.money.toStringAsFixed(0)}',
+          value: '${gameState.playerManager.money.toStringAsFixed(0)} €',
           color: Colors.green,
         ),
         MetricData(
@@ -387,7 +440,7 @@ class _ResearchPanelState extends State<ResearchPanel> with AutomaticKeepAliveCl
                       const SizedBox(width: 4),
                       Text(
                         node.moneyCost > 0 
-                            ? '\$${node.moneyCost}'
+                            ? '${node.moneyCost} €'
                             : '${node.innovationPointsCost} PI',
                         style: TextStyle(
                           fontSize: 12,
@@ -421,6 +474,25 @@ class _ResearchPanelState extends State<ResearchPanel> with AutomaticKeepAliveCl
                     ],
                   ),
                 ),
+              if (isResearched) ...[
+                const SizedBox(height: 6),
+                Builder(
+                  builder: (context) {
+                    final summary = _activeEffectSummary(gameState, node);
+                    if (summary == null) {
+                      return const SizedBox.shrink();
+                    }
+                    return Text(
+                      summary,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey[700],
+                        fontWeight: FontWeight.w600,
+                      ),
+                    );
+                  },
+                ),
+              ],
             ],
           ),
         ),
@@ -568,7 +640,7 @@ class _ResearchPanelState extends State<ResearchPanel> with AutomaticKeepAliveCl
                       const SizedBox(width: 4),
                       Text(
                         currentNode.moneyCost > 0 
-                            ? '\$${currentNode.moneyCost}'
+                            ? '${currentNode.moneyCost} €'
                             : '${currentNode.innovationPointsCost} PI',
                         style: TextStyle(
                           fontSize: 12,
@@ -602,6 +674,25 @@ class _ResearchPanelState extends State<ResearchPanel> with AutomaticKeepAliveCl
                     ],
                   ),
                 ),
+              if (isCompleted) ...[
+                const SizedBox(height: 6),
+                Builder(
+                  builder: (context) {
+                    final summary = _activeEffectSummary(gameState, displayNode);
+                    if (summary == null) {
+                      return const SizedBox.shrink();
+                    }
+                    return Text(
+                      summary,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey[700],
+                        fontWeight: FontWeight.w600,
+                      ),
+                    );
+                  },
+                ),
+              ],
             ],
           ),
         ),

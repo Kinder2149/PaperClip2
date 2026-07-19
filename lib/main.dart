@@ -25,7 +25,6 @@ import './presentation/adapters/event_manager_domain_event_adapter.dart';
 import './services/google/google_bootstrap.dart';
 import './services/google/achievements/achievements_event_adapter.dart';
 import './services/google/leaderboards/leaderboards_event_adapter.dart';
-import './screens/auth_choice_screen.dart';
 // Cloud ports legacy retirés
 import 'services/google/identity/google_identity_service.dart';
 import 'services/google/identity/identity_status.dart';
@@ -339,9 +338,6 @@ class MyApp extends StatelessWidget {
         darkTheme: themeServiceProvider.getDarkTheme(),
         themeMode: themeServiceProvider.themeMode,
         home: const BootstrapScreen(),
-        routes: {
-          '/auth': (_) => const AuthChoiceScreen(),
-        },
         debugShowCheckedModeBanner: false,
       );
     } catch (e, st) {

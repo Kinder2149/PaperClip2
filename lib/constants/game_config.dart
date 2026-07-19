@@ -66,6 +66,8 @@ class GameConstants {
   static const double MARKET_SHARE_MIN = 0.02;            // Part de marché minimum (joueur très cher)
   static const double MARKET_SHARE_NEUTRAL = 0.20;        // Part de marché au prix neutre
   static const double MARKET_SHARE_MAX = 0.70;            // Part de marché maximum (joueur très compétitif)
+  static const double MARKET_SATURATION_THRESHOLD = 0.45; // Début de la saturation de demande
+  static const double MARKET_SATURATION_MAX_PENALTY = 0.30; // Pénalité max à part de marché maximale
   static const double MARKETING_BOOST_PER_LEVEL = 0.15;   // Boost de demande par niveau de marketing
   static const int MAX_SALES_HISTORY = 10;                // Nombre maximal d'entrées dans l'historique des ventes
 
@@ -121,9 +123,7 @@ class GameConstants {
   static const double BASE_AUTOCLIPPER_COST = 15.0;
   static const double MIN_PRICE = 0.01;
   static const double MAX_PRICE = 0.50;
-  
-  static const int MAX_COMBO_COUNT = 5;
-  static const double COMBO_MULTIPLIER = 0.1;  // Pour le calcul du multiplicateur de combo
+
   // Constantes de métal définies plus haut :
   // - METAL_PER_PAPERCLIP = 0.1
   // - METAL_PACK_AMOUNT = 10.0
@@ -149,6 +149,7 @@ class GameConstants {
   // Prix du métal sur le marché
   static const double MIN_METAL_PRICE = 0.10; // Prix minimum du métal
   static const double MAX_METAL_PRICE = 0.50; // Prix maximum du métal
+  static const double METAL_AUTO_BUY_PRICE_MAX = 0.40;
 
   // Niveaux de déblocage
   static const int MARKET_UNLOCK_LEVEL = 3; // Niveau requis pour débloquer le marché
@@ -186,18 +187,6 @@ class GameConstants {
   static const double TICKS_PER_SECOND = 10.0; // 1000ms / 100ms
   static const double BASE_PRODUCTION_PER_SECOND = 1.0; // 1 trombone par seconde
   static const double BASE_PRODUCTION_PER_TICK = BASE_PRODUCTION_PER_SECOND / TICKS_PER_SECOND; // 0.1 par tick
-
-
-
-
-  //  "Expérience et progression"
-  static const double MANUAL_PRODUCTION_XP = 1.5;
-  static const double AUTO_PRODUCTION_XP = 0.2;
-  static const double SALE_BASE_XP = 0.5;
-  static const double AUTOCLIPPER_PURCHASE_XP = 3.0;
-  static const double UPGRADE_XP_MULTIPLIER = 2.0;
-  static const double XP_BOOST_MULTIPLIER = 2.0;
-
   // Limites système
   static const int MAX_STORED_EVENTS = 100;
   static const double MIN_MARKET_SATURATION_LEGACY = 50.0; // Renommé pour éviter le conflit avec la nouvelle constante
@@ -219,11 +208,6 @@ class GameConstants {
   // MAX_EFFICIENCY_LEVEL déjà défini plus haut
   static const int MAX_BULK_LEVEL = 20;
   static const int MAX_MARKETING_LEVEL = 20;
-
-  // Bonus de progression
-  static const double BASE_XP_MULTIPLIER = 1.0;
-  static const double PATH_XP_MULTIPLIER = 0.2;
-  static const double COMBO_XP_MULTIPLIER = 0.1;
 
   // Bonus quotidiens
   static const double DAILY_BONUS_AMOUNT = 10.0;

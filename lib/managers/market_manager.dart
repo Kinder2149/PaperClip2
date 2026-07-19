@@ -140,7 +140,7 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
   double _currentPrice = GameConstants.INITIAL_PRICE;
   DateTime? _lastMetalPriceUpdateTime;
   double _marketMetalPrice = GameConstants.MIN_METAL_PRICE;
-  bool _autoSellEnabled = true;
+  bool _autoSellEnabled = false;
   double _salesRemainder = 0.0;
   double reputation = 1.0;
 
@@ -260,10 +260,19 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
     // → varie entre WORLD_BASE_DEMAND × 0.7 et WORLD_BASE_DEMAND × 1.0
 
     // Équation B — Prix Concurrent (calculé UNE FOIS par tick, bruit fixé)
-    _tickNoise = (_random.nextDouble() * 2 - 1) * GameConstants.COMPETITOR_PRICE_NOISE;
+    // Réduction volatilité : recherche + upgrade marketResearch (combinaison multiplicative)
+    final researchVolatilityReduction = _researchManager?.getResearchBonus('volatilityReduction') ?? 0.0;
+    final marketResearchLevel = _playerManager?.upgrades['marketResearch']?.level ?? 0;
+    final upgradeVolatilityReduction = UpgradeEffectsCalculator.volatilityReduction(level: marketResearchLevel);
+    final combinedVolatilityReduction = 1.0 - ((1.0 - researchVolatilityReduction) * (1.0 - upgradeVolatilityReduction));
+    final effectiveAmplitude =
+        GameConstants.COMPETITOR_PRICE_AMPLITUDE * (1.0 - combinedVolatilityReduction);
+    final effectiveNoise =
+        GameConstants.COMPETITOR_PRICE_NOISE * (1.0 - combinedVolatilityReduction);
+    _tickNoise = (_random.nextDouble() * 2 - 1) * effectiveNoise;
     final priceSine = sin(2 * pi * _totalGameTime / GameConstants.COMPETITOR_PRICE_CYCLE_SECONDS);
     _competitorPrice = (GameConstants.COMPETITOR_BASE_PRICE *
-            (1.0 + GameConstants.COMPETITOR_PRICE_AMPLITUDE * priceSine) +
+            (1.0 + effectiveAmplitude * priceSine) +
         _tickNoise)
         .clamp(0.12, 0.50);
 
@@ -298,11 +307,25 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
     final marketingMultiplier = (1.0 + marketingLevel * GameConstants.MARKETING_BOOST_PER_LEVEL) *
         (1.0 + extraMarketing);
 
-    // Bonus réputation + recherche
+    // Bonus réputation : dynamique + recherche + upgrade
     final reputationExtra = _researchManager?.getResearchBonus('reputationBonus') ?? 0.0;
-    final reputationFactor = reputation.clamp(0.5, 1.5) * (1.0 + reputationExtra);
+    final repLevel = _playerManager?.upgrades['reputation']?.level ?? 0;
+    final upgradeRepBonus = UpgradeEffectsCalculator.reputationBonus(level: repLevel);
+    final reputationFactor = reputation.clamp(0.5, 1.5) * (1.0 + reputationExtra + upgradeRepBonus);
 
-    return _worldDemand * _playerMarketShare * marketingMultiplier * reputationFactor;
+    // Pénalité de saturation du marché (atténuée par recherche)
+    final saturationBonus = _researchManager?.getResearchBonus('marketSaturation') ?? 0.0;
+    final effectivePenalty =
+        GameConstants.MARKET_SATURATION_MAX_PENALTY * (1.0 - saturationBonus);
+    final saturationProgress = ((_playerMarketShare - GameConstants.MARKET_SATURATION_THRESHOLD) /
+            (GameConstants.MARKET_SHARE_MAX - GameConstants.MARKET_SATURATION_THRESHOLD))
+        .clamp(0.0, 1.0);
+    final saturationFactor = 1.0 - (saturationProgress * effectivePenalty);
+
+    // Bonus niveau joueur (+3% ventes par niveau)
+    final levelSalesMultiplier = _levelSystem?.salesMultiplier ?? 1.0;
+
+    return _worldDemand * _playerMarketShare * marketingMultiplier * reputationFactor * saturationFactor * levelSalesMultiplier;
   }
 
   UnitsPerSecond calculateDemandPerSecond({
@@ -342,8 +365,11 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
     // Calcul de la demande avec le nouveau système
     final demandPerSecond = calculateDemand(sellPrice, marketingLevel);
 
-    // Bonus qualité via recherche
-    final qualityBonus = 1.0 + (_researchManager?.getResearchBonus('salePrice') ?? 0.0);
+    // Bonus qualité : recherche + upgrade
+    final researchSalePrice = _researchManager?.getResearchBonus('salePrice') ?? 0.0;
+    final qualityUpgradeLevel = _playerManager?.upgrades['quality']?.level ?? 0;
+    final qualityUpgradeBonus = UpgradeEffectsCalculator.qualityMultiplier(level: qualityUpgradeLevel) - 1.0;
+    final qualityBonus = 1.0 + researchSalePrice + qualityUpgradeBonus;
     final maxPriceBonus = _researchManager?.getResearchBonus('maxSalePrice') ?? 0.0;
     final effectiveMaxPrice = GameConstants.MAX_PRICE_THRESHOLD * (1.0 + maxPriceBonus);
     final effectiveSellPrice = (sellPrice * qualityBonus).clamp(0.0, effectiveMaxPrice);
@@ -567,6 +593,7 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
     'currentPrice': _currentPrice,
     'marketMetalPrice': _marketMetalPrice,
     'lastMetalPriceUpdateTime': _lastMetalPriceUpdateTime?.toIso8601String(),
+    'autoSellEnabled': _autoSellEnabled,
     'totalSales': _totalSales,
     'totalSalesCount': _totalSalesCount,
     'averageSalePrice': _averageSalePrice,
@@ -588,6 +615,7 @@ class MarketManager extends ChangeNotifier implements JsonLoadable {
         (json['currentPrice'] as num?)?.toDouble() ?? GameConstants.INITIAL_PRICE;
     _marketMetalPrice =
         (json['marketMetalPrice'] as num?)?.toDouble() ?? GameConstants.MIN_METAL_PRICE;
+    _autoSellEnabled = json['autoSellEnabled'] as bool? ?? false;
     _totalSales = (json['totalSales'] as num?)?.toDouble() ?? 0.0;
     _totalSalesCount = (json['totalSalesCount'] as num?)?.toInt() ?? 0;
     _averageSalePrice = (json['averageSalePrice'] as num?)?.toDouble() ?? 0.0;

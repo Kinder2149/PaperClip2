@@ -43,6 +43,7 @@ class AgentManager extends ChangeNotifier {
   ) {
     _initializeAgents();
     _initializeExecutors();
+    _researchManager.addListener(syncWithResearch);
   }
   
   /// Initialise les exécuteurs d'actions pour chaque agent
@@ -277,11 +278,14 @@ class AgentManager extends ChangeNotifier {
       
       // Vérifier si action nécessaire (sauf agents passifs)
       if (agent.actionIntervalMinutes > 0) {
+        final efficiency = _researchManager?.getResearchBonus('agentEfficiency') ?? 0.0;
+        final effectiveIntervalMinutes =
+            agent.actionIntervalMinutes * (1.0 - efficiency);
         final timeSinceLastAction = agent.lastActionAt != null
             ? now.difference(agent.lastActionAt!)
             : const Duration(hours: 1);
         
-        if (timeSinceLastAction.inMinutes >= agent.actionIntervalMinutes) {
+        if (timeSinceLastAction.inMinutes >= effectiveIntervalMinutes) {
           if (gameState != null) {
             executeAgentActionWithGameState(agent, gameState);
           } else {
@@ -426,5 +430,11 @@ class AgentManager extends ChangeNotifier {
     }
     
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _researchManager.removeListener(syncWithResearch);
+    super.dispose();
   }
 }

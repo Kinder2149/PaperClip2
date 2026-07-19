@@ -26,9 +26,9 @@ class AppScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // RESPONSIVE-APPBAR: toolbarHeight dynamique selon breakpoint
-    // Mobile: 100px (2 lignes) | Tablette/Desktop: 56px (1 ligne Material standard)
+    // Mobile: 124px (3 lignes) | Tablette/Desktop: 56px (1 ligne Material standard)
     final toolbarHeight = const ResponsiveValue<double>(
-      mobile: 100.0,
+      mobile: 124.0,
       tablet: 56.0,
       desktop: 56.0,
     ).getValue(context);

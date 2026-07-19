@@ -39,14 +39,12 @@ class ResetManager extends ChangeNotifier {
   
   /// Calculer bonus recherches META pour Quantum
   double _getQuantumResearchBonus() {
-    // TODO: Implémenter quand recherches META seront ajoutées
-    return 0.0;
+    return _gameState.researchManager.getResetBonus('quantum');
   }
   
   /// Calculer bonus recherches META pour Innovation
   double _getInnovationResearchBonus() {
-    // TODO: Implémenter quand recherches META seront ajoutées
-    return 0.0;
+    return _gameState.researchManager.getResetBonus('innovation');
   }
   
   /// Effectuer le reset (async pour sauvegarde)
@@ -77,6 +75,16 @@ class ResetManager extends ChangeNotifier {
       // 4. Appliquer récompenses
       _gameState.addQuantum(rewards.quantum);
       _gameState.addPointsInnovation(rewards.innovationPoints);
+
+      _gameState.rareResources.recordReset(
+        quantumGained: rewards.quantum,
+        innovationPointsGained: rewards.innovationPoints,
+        levelReached: _gameState.levelSystem.currentLevel,
+        paperclipsProduced: _gameState.statistics.totalPaperclipsProduced.toDouble(),
+        moneyEarned: _gameState.statistics.totalMoneyEarned,
+        autoclippersOwned: _gameState.playerManager.autoClipperCount,
+        playTimeHours: _gameState.statistics.totalGameTimeSec / 3600,
+      );
       
       // 5. Ajouter à l'historique
       _gameState.addResetEntry(resetEntry);
@@ -110,8 +118,8 @@ class ResetManager extends ChangeNotifier {
     _gameState.marketManager.resetForProgression();
     _gameState.levelSystem.reset();
     _gameState.statistics.resetCurrentRun();
+    _gameState.researchManager.resetForProgression();
     _gameState.agents.deactivateAll();
-    _gameState.missionSystem.cancelAll();
   }
   
   /// Obtenir recommandation pour le joueur

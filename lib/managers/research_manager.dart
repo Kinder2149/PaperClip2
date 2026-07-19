@@ -863,9 +863,12 @@ class ResearchManager extends ChangeNotifier {
         break;
         
       case ResearchEffectType.UNLOCK_FEATURE:
-        // Feature flags
+        final feature = node.effect.params['feature'];
+        if (feature == 'auto_metal_purchase') {
+          _playerManager.enableAutoMetalBuyer();
+        }
         if (kDebugMode) {
-          print('[ResearchManager] Feature unlocked: ${node.effect.params['feature']}');
+          print('[ResearchManager] Feature unlocked: $feature');
         }
         break;
     }

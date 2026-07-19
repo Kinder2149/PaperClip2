@@ -3,7 +3,7 @@
 > Emplacement : racine du projet
 > Source de vérité absolue — lire EN ENTIER avant toute action.
 > Toute décision technique qui contredit ce fichier est interdite.
-> Dernière mise à jour : 2026-04-11
+> Dernière mise à jour : 2026-04-12
 
 ---
 
@@ -119,6 +119,8 @@ Démarrage → BootstrapScreen → AppBootstrapController
 
 ## 5. RÈGLES STRICTES DU PROJET
 
+- GRAPHIFY ACTIF : Lire graphify-out/GRAPH_REPORT.md en début de chaque session.
+  Si absent → le regénérer avant tout autre travail (graphify claude install + graphify .)
 - Ne modifier QUE les fichiers concernés par la mission en cours
 - Ne créer aucun nouveau fichier sans le lister ici après création
 - Ne pas ajouter de dépendance sans demande explicite
@@ -133,6 +135,7 @@ Démarrage → BootstrapScreen → AppBootstrapController
 
 | Date | Décision | Raison |
 |---|---|---|
+| 2026-04-14 | graphify initialisé | Réduction tokens, carte persistante entre sessions |
 | 2026-01 | Entreprise unique par compte (pas multi-monde) | Simplification architecture, UX plus claire |
 | 2026-01 | Firebase UID = identité canonique (pas Google Play ID) | Firebase Auth est la source de vérité |
 | 2026-01 | google_sign_in v7 : GoogleSignIn.instance.initialize(serverClientId) | Constructeur privé depuis v7 |
@@ -156,14 +159,18 @@ Tout autre fichier .md → archive/.
 
 ---
 
+
+
+
+
 ## 8. SESSION EN COURS
 
-**Objectif de la session :** Clôture — reset Firebase test + fix notifications + documentation
-**Fichiers concernés :** firebase_auth_service.dart, profile_screen.dart, app_bootstrap_controller.dart, PROJET_CONTEXTE.md
-**Hors scope cette session :** Gameplay, backend functions, architecture
-**Résultat de fin de session :** À compléter après tests
-
----
+Graphify : ✅ COMPLÉTÉ
+Objectif de la session : Créer une page web statique de tracker de films avec formulaire et liste vide par défaut, design moderne sans JavaScript.
+Fichiers concernés : index.html, style.css
+Hors scope cette session : Logique JavaScript, persistance de données, dépendances externes autres que Google Fonts CDN, autres répertoires du projet
+Résultat fin de session : Deux fichiers HTML/CSS autonomes et fonctionnels dans C:\DEV\TEST\film-tracker\. Tester en décommentant la carte exemple dans le HTML et rafraîchissant le navigateur.
+Graphe mis à jour : oui
 
 ## 9. BACKLOG (missions suivantes)
 

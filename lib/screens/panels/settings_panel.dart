@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:paperclip2/models/game_state.dart';
 import 'package:paperclip2/services/auth/firebase_auth_service.dart';
 import 'package:paperclip2/widgets/design_system/design_system.dart';
+import 'package:paperclip2/screens/welcome_screen.dart';
 
 /// Panel paramètres - Configuration et compte
 class SettingsPanel extends StatefulWidget {
@@ -98,7 +99,9 @@ class _SettingsPanelState extends State<SettingsPanel> with AutomaticKeepAliveCl
                 onPressed: () async {
                   await FirebaseAuthService.instance.signOut();
                   if (mounted) {
-                    setState(() {});
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+                    );
                   }
                 },
                 color: Colors.red,

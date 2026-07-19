@@ -4,7 +4,6 @@ import 'dart:async';
 import 'dart:math';
 import '../constants/game_config.dart'; // Mis à jour pour utiliser le dossier constants
 import '../models/json_loadable.dart';
-import '../models/game_state_interfaces.dart';
 import '../models/upgrade.dart';
 import '../services/upgrades/upgrade_effects_calculator.dart';
 import '../services/units/value_objects.dart';
@@ -216,6 +215,15 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
   bool canAfford(double price) {
     return _money >= price;
   }
+
+  /// Active l'achat automatique de métal (débloqué par recherche)
+  void enableAutoMetalBuyer() {
+    if (_autoMetalBuyerEnabled) {
+      return;
+    }
+    _autoMetalBuyerEnabled = true;
+    notifyListeners();
+  }
   
   /// Dépense de l'argent (pour recherches, etc.)
   bool spendMoney(double amount) {
@@ -301,9 +309,6 @@ class PlayerManager extends ChangeNotifier implements JsonLoadable {
       _autoClipperCount++;
       _money -= cost;
       if (_money < 0) _money = 0;
-      // Conserver un mirroring pour compatibilité (UI/saves legacy),
-      // la source de vérité est désormais le calcul dynamique.
-      _autoClipperCost = calculateAutoclipperCost();
       notifyListeners();
       return true;
     }

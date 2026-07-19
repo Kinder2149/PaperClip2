@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:math' show pow, max;
 import 'package:paperclip2/utils/logger.dart';
 import '../constants/game_config.dart';
+import '../services/xp/xp_config.dart';
 import 'package:paperclip2/domain/events/domain_event.dart';
 import 'package:paperclip2/domain/events/domain_event_type.dart';
 import 'package:paperclip2/domain/ports/domain_event_sink.dart';
@@ -81,11 +82,11 @@ class XPComboSystem {
   }
 
   double getComboMultiplier() {
-    return 1.0 + (_comboCount * 0.1);
+    return 1.0 + (_comboCount * XPConfig.COMBO_INCREMENT);
   }
 
   void incrementCombo() {
-    _comboCount = (_comboCount + 1).clamp(0, GameConstants.MAX_COMBO_COUNT);
+    _comboCount = (_comboCount + 1).clamp(0, XPConfig.COMBO_MAX);
     _resetComboTimer();
   }
 
@@ -233,140 +234,6 @@ class Mission {
       default:
         throw Exception('Mission template not found');
     }
-  }
-}
-
-/// Gestionnaire de missions
-class MissionSystem implements JsonLoadable {
-  List<Mission> dailyMissions = [];
-  List<Mission> weeklyMissions = [];
-  List<Mission> achievements = [];
-  Timer? missionRefreshTimer;
-  DateTime? lastMissionRefreshTime;
-  Function(Mission mission)? onMissionCompleted;
-  Function()? onMissionSystemRefresh;
-
-  void initialize() {
-    generateDailyMissions();
-    generateWeeklyMissions();
-    startMissionRefreshTimer();
-  }
-
-  void generateDailyMissions() {
-    dailyMissions = [
-      Mission.getMissionTemplate('daily_production'),
-      Mission.getMissionTemplate('daily_sales'),
-    ];
-  }
-
-  void generateWeeklyMissions() {
-    weeklyMissions = [
-      Mission.getMissionTemplate('weekly_autoclippers'),
-    ];
-  }
-
-  void startMissionRefreshTimer() {
-    missionRefreshTimer?.cancel();
-    // Enregistrer le moment du dernier rafraîchissement des missions
-    lastMissionRefreshTime = DateTime.now();
-    missionRefreshTimer = Timer.periodic(
-      const Duration(hours: 24),
-          (_) {
-        generateDailyMissions();
-        lastMissionRefreshTime = DateTime.now();
-        onMissionSystemRefresh?.call();
-      },
-    );
-  }
-
-  void updateMissions(MissionType type, double amount) {
-    for (var mission in [...dailyMissions, ...weeklyMissions]) {
-      if (mission.type == type && !mission.isCompleted) {
-        mission.updateProgress(amount);
-        if (mission.isCompleted) {
-          onMissionCompleted?.call(mission);
-        }
-      }
-    }
-  }
-
-  Map<String, dynamic> toJson() => {
-    'dailyMissions': dailyMissions.map((m) => m.toJson()).toList(),
-    'weeklyMissions': weeklyMissions.map((m) => m.toJson()).toList(),
-  };
-
-  @override
-  void fromJson(Map<String, dynamic> json) {
-    try {
-      if (json['dailyMissions'] != null) {
-        dailyMissions = (json['dailyMissions'] as List)
-            .map((missionJson) => Mission.fromJson(missionJson))
-            .toList();
-      }
-
-      if (json['weeklyMissions'] != null) {
-        weeklyMissions = (json['weeklyMissions'] as List)
-            .map((missionJson) => Mission.fromJson(missionJson))
-            .toList();
-      }
-      
-      // Charger la date du dernier rafraîchissement des missions
-      if (json['lastMissionRefreshTime'] != null) {
-        lastMissionRefreshTime = DateTime.parse(json['lastMissionRefreshTime'] as String);
-      } else if (json['lastRefresh'] != null) {
-        lastMissionRefreshTime = DateTime.parse(json['lastRefresh'] as String);
-      } else {
-        // Si aucune date n'est disponible, utiliser la date actuelle
-        lastMissionRefreshTime = DateTime.now();
-      }
-    } catch (e, stack) {
-      Logger.forComponent('progression').error('Error loading mission system', ctx: {'error': e.toString(), 'stack': stack.toString().substring(0, 200)});
-      _resetToDefaults();
-    }
-  }
-  
-  /// Réinitialise les valeurs par défaut
-  void _resetToDefaults() {
-    dailyMissions = [];
-    weeklyMissions = [];
-    achievements = [];
-    // Regénérer les missions par défaut
-    generateDailyMissions();
-    generateWeeklyMissions();
-  }
-  
-  /// Annule toutes les missions en cours (pour reset progression)
-  void cancelAll() {
-    dailyMissions.clear();
-    weeklyMissions.clear();
-    // Regénérer les missions
-    generateDailyMissions();
-    generateWeeklyMissions();
-  }
-
-  /// Renvoie des informations détaillées sur la progression des missions
-  Map<String, dynamic> getDetailedMissionProgress() {
-    return {
-      'daily': dailyMissions.map((mission) => {
-        'id': mission.id,
-        'progress': mission.progress,
-        'target': mission.targetAmount,
-        'isCompleted': mission.isCompleted,
-        'rewardClaimed': mission.rewardClaimed,
-      }).toList(),
-      'weekly': weeklyMissions.map((mission) => {
-        'id': mission.id,
-        'progress': mission.progress,
-        'target': mission.targetAmount,
-        'isCompleted': mission.isCompleted,
-        'rewardClaimed': mission.rewardClaimed,
-      }).toList(),
-      'lastRefresh': lastMissionRefreshTime?.toIso8601String(),
-    };
-  }
-
-  void dispose() {
-    missionRefreshTimer?.cancel();
   }
 }
 

@@ -295,9 +295,6 @@ class CloudPersistenceAdapter implements CloudPersistencePort {
   }
 
   Future<void> _deleteByIdInternal({required String enterpriseId}) async {
-    // P0-2: Validation UUID v4 avant tout appel HTTP
-    _validateEnterpriseId(enterpriseId);
-
     // CHANTIER-01: Récupérer uid Firebase pour API /enterprise
     final uid = FirebaseAuthService.instance.currentUser?.uid;
     if (uid == null || uid.isEmpty) {

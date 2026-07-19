@@ -36,14 +36,12 @@ class XPConfig {
   
   // Multiplicateurs
   static const double PATH_MATCH_MULTIPLIER = 1.2;
-  static const double PATH_MILESTONE_BONUS = 0.05;
   static const double COMBO_INCREMENT = 0.1;
   static const int COMBO_MAX = 10;
   
   // Reset progression
   static const double RESET_XP_BONUS_PER_RESET = 0.05;
   static const double RESET_XP_BONUS_MAX = 2.0;
-  static const int RESET_XP_BONUS_MAX_RESETS = 20;
   
   // Scaling
   static const double LEVEL_SCALING_FACTOR = 0.04;

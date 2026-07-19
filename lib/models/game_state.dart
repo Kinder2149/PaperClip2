@@ -19,8 +19,6 @@ import '../managers/research_manager.dart';
 import '../managers/agent_manager.dart';
 import '../managers/reset_manager.dart';
 import 'reset_history_entry.dart';
-
-import 'game_state_interfaces.dart';
 import 'statistics_manager.dart';
 import '../models/upgrade.dart';
 
@@ -28,7 +26,6 @@ import 'dart:convert';
 import '../services/auto_save_service.dart';
 import '../services/save_game.dart';
 import '../services/offline_progress_service.dart';
-import '../services/competitive/competitive_result_service.dart';
 import '../ui/utils/ui_formatting_utils.dart';
 import '../services/progression/progression_rules_service.dart';
 import '../services/upgrades/upgrade_effects_calculator.dart';
@@ -46,10 +43,6 @@ class GameState extends ChangeNotifier implements DomainPorts {
   late final MarketManager _marketManager;
   late final ResourceManager _resourceManager;
   late final LevelSystem _levelSystem;
-  // MissionSystem (Option A — mise en pause):
-  // - conservé pour compatibilité/persistance (JSON) et future feature
-  // - non initialisé au runtime (pas de timer, pas de callbacks, pas d'événements gameplay)
-  late final MissionSystem _missionSystem;
   late final StatisticsManager _statistics;
   late final ProductionManager _productionManager;
   late final ProgressionRulesService _progressionRules;
@@ -170,6 +163,7 @@ class GameState extends ChangeNotifier implements DomainPorts {
   // Accès direct au manager pour fonctionnalités avancées
   RareResourcesManager get rareResources => _rareResourcesManager;
   ResearchManager get research => _researchManager;
+  ResearchManager get researchManager => _researchManager;
   AgentManager get agents => _agentManager;
   ResetManager get resetManager => _resetManager;
   
@@ -229,7 +223,6 @@ class GameState extends ChangeNotifier implements DomainPorts {
   MarketManager get marketManager => _marketManager;
   ResourceManager get resourceManager => _resourceManager;
   LevelSystem get levelSystem => _levelSystem;
-  MissionSystem get missionSystem => _missionSystem;
   bool get isPaused => _isPaused;
   ProductionManager get productionManager => _productionManager;
 
@@ -237,7 +230,38 @@ class GameState extends ChangeNotifier implements DomainPorts {
   // Alias de compatibilité
   int get totalTimePlayedInSeconds => _statistics.totalGameTimeSec;
   bool get isCrisisTransitionComplete => _crisisTransitionComplete;
-  double get autocliperCost => _playerManager.autoClipperCost;
+  double get autocliperCost => effectiveAutoclipperCost;
+
+  double get effectiveMetalUnitPrice {
+    final procurementLevel = _playerManager.upgrades['procurement']?.level ?? 0;
+    final upgradeDiscount = UpgradeEffectsCalculator.metalDiscount(level: procurementLevel);
+    final researchDiscount = _researchManager.getResearchBonus('metalPurchaseDiscount');
+    return _marketManager.marketMetalPrice * (1.0 - upgradeDiscount) * (1.0 - researchDiscount);
+  }
+
+  double get effectiveAutoclipperCost => _productionManager.calculateAutoclipperCost();
+
+  Map<String, double> get activeProductionBonuses {
+    final procurementLevel = _playerManager.upgrades['procurement']?.level ?? 0;
+    final upgradeDiscount = UpgradeEffectsCalculator.metalDiscount(level: procurementLevel);
+    final researchMetalDiscount = _researchManager.getResearchBonus('metalPurchaseDiscount');
+    final combinedMetalDiscount = 1.0 - ((1.0 - upgradeDiscount) * (1.0 - researchMetalDiscount));
+
+    return {
+      'metalEfficiency': _researchManager.getResearchBonus('metalEfficiency'),
+      'productionSpeed': _researchManager.getResearchBonus('productionSpeed'),
+      'productionBulk': _researchManager.getResearchBonus('productionBulk'),
+      'metalPurchaseDiscount': combinedMetalDiscount,
+    };
+  }
+
+  Map<String, double> get activeMarketBonuses {
+    return {
+      'volatilityReduction': _researchManager.getResearchBonus('volatilityReduction'),
+      'maxSalePriceBonus': _researchManager.getResearchBonus('maxSalePrice'),
+      'marketSaturationRisk': _researchManager.getResearchBonus('marketSaturation'),
+    };
+  }
 
   bool get autoSellEnabled => _marketManager.autoSellEnabled;
 
@@ -254,27 +278,25 @@ class GameState extends ChangeNotifier implements DomainPorts {
   void addEventListener(GameEventListener listener) => _eventBus.addListener(listener);
   void removeEventListener(GameEventListener listener) => _eventBus.removeListener(listener);
 
-  bool canBuyMetal() => _resourceManager.canPurchaseMetal();
+  bool canBuyMetal() {
+    final totalPrice = GameConstants.METAL_PACK_AMOUNT * effectiveMetalUnitPrice;
+    return _resourceManager.canPurchaseMetal(totalPrice);
+  }
 
   // Alias de compatibilité pour les écrans qui appellent gameState.purchaseMetal()
   bool purchaseMetal() {
-    // Appliquer la remise d'achat métal selon l'upgrade 'procurement'
     final procurementLevel = _playerManager.upgrades['procurement']?.level ?? 0;
-    final unitPrice = _marketManager.marketMetalPrice;
-    double? discountedUnitPrice;
-    if (procurementLevel > 0) {
-      final discount = UpgradeEffectsCalculator.metalDiscount(level: procurementLevel);
-      discountedUnitPrice = unitPrice * (1.0 - discount);
-    }
+    final upgradeDiscount = UpgradeEffectsCalculator.metalDiscount(level: procurementLevel);
+    final researchDiscount = _researchManager.getResearchBonus('metalPurchaseDiscount');
+    final appliedUnitPrice = effectiveMetalUnitPrice;
+    final totalPrice = GameConstants.METAL_PACK_AMOUNT * appliedUnitPrice;
 
-    final success = _resourceManager.purchaseMetal(discountedUnitPrice);
+    final success = _resourceManager.purchaseMetal(totalPrice);
     if (success) {
       // Émission d'un événement analytics/jeu: achat de métal
       final double amount = GameConstants.METAL_PACK_AMOUNT;
-      final double appliedUnitPrice = (discountedUnitPrice ?? unitPrice);
-      final double discountPct = (procurementLevel > 0)
-          ? UpgradeEffectsCalculator.metalDiscount(level: procurementLevel) * 100.0
-          : 0.0;
+      final double discountPct =
+          (1.0 - ((1.0 - upgradeDiscount) * (1.0 - researchDiscount))) * 100.0;
 
       _eventBus.emit(
         GameEvent(
@@ -284,6 +306,8 @@ class GameState extends ChangeNotifier implements DomainPorts {
             'unitPrice': appliedUnitPrice,
             'totalSpent': amount * appliedUnitPrice,
             'discountPct': discountPct,
+            'upgradeDiscountPct': upgradeDiscount * 100.0,
+            'researchDiscountPct': researchDiscount * 100.0,
           },
         ),
       );
@@ -344,10 +368,6 @@ class GameState extends ChangeNotifier implements DomainPorts {
       _resourceManager = ResourceManager();
       _marketManager = MarketManager();
       _levelSystem = LevelSystem();
-      // MissionSystem (Option A — mise en pause):
-      // - conservé pour compatibilité/persistance (JSON) et future feature
-      // - non initialisé au runtime (pas de timer, pas de callbacks, pas d'événements gameplay)
-      _missionSystem = MissionSystem();
       _autoSaveService = AutoSaveService(this);
 
       _playerManager = PlayerManager();
@@ -449,6 +469,17 @@ class GameState extends ChangeNotifier implements DomainPorts {
       
       // CHANTIER-04 : Tick agents IA avec GameState pour actions réelles
       _agentManager.tick(elapsedSeconds, gameState: this);
+
+      if (_playerManager.autoMetalBuyerEnabled) {
+        final isMetalLow = _playerManager.metal < (_playerManager.maxMetalStorage * 0.30);
+        final hasMinimumMoney = _playerManager.money > 100.0;
+        final isPriceAllowed =
+            effectiveMetalUnitPrice < GameConstants.METAL_AUTO_BUY_PRICE_MAX;
+
+        if (isMetalLow && hasMinimumMoney && isPriceAllowed) {
+          purchaseMetal();
+        }
+      }
     } catch (e) {
       if (kDebugMode) {
         print('GameState: erreur lors du tick unifié: $e');
@@ -486,7 +517,6 @@ class GameState extends ChangeNotifier implements DomainPorts {
       playerManager: _playerManager,
       marketManager: _marketManager,
       levelSystem: _levelSystem,
-      missionSystem: _missionSystem,
       statistics: _statistics,
     );
   }
@@ -534,16 +564,6 @@ class GameState extends ChangeNotifier implements DomainPorts {
     return UiFormattingUtils.formatDurationHms(
       Duration(seconds: _statistics.totalGameTimeSec),
     );
-  }
-
-  // Mode compétitif supprimé dans CHANTIER-01
-  int calculateCompetitiveScore() {
-    return 0;
-  }
-
-  void handleCompetitiveGameEnd() {
-    // Mode compétitif supprimé dans CHANTIER-01
-    return;
   }
 
   void buyAutoclipper() {
@@ -661,38 +681,6 @@ class GameState extends ChangeNotifier implements DomainPorts {
     }
   }
 
-  // DEPRECATED : Garder pour compatibilité temporaire
-  Future<void> startNewGame(String name) async {
-    try {
-      // CORRECTION #2: Validation du nom
-      final trimmedName = name.trim();
-      if (trimmedName.length < 3) {
-        throw SaveError('INVALID_NAME', 'Le nom doit contenir au moins 3 caractères (reçu: "$name")');
-      }
-      // Réinitialiser l'état de jeu
-      reset();
-
-      // IMPORTANT (Mission 2):
-      // - La persistance (save initial) et le démarrage autosave sont orchestrés hors de GameState.
-      // - GameState ne fait ici que réinitialiser l'état métier.
-      notifyListeners();
-
-      // CORRECTION #3: Utiliser logger au lieu de print()
-      if (kDebugMode) {
-        print('[GameState] Nouvelle entreprise créée: $trimmedName, enterpriseId: $_enterpriseId');
-      }
-
-      return;
-    } catch (e, stackTrace) {
-      // CORRECTION #3: Utiliser logger pour erreurs
-      if (kDebugMode) {
-        print('[GameState] Erreur lors de la création d\'une nouvelle partie: $e');
-        print(stackTrace);
-      }
-      throw SaveError('CREATE_ERROR', 'Impossible de créer une nouvelle partie: $e');
-    }
-  }
-
   void applyLoadedGameDataWithoutSnapshot(String name, Map<String, dynamic> gameData) {
     _resetGameDataOnly();
 
@@ -703,7 +691,6 @@ class GameState extends ChangeNotifier implements DomainPorts {
       resourceManager: _resourceManager,
       marketManager: _marketManager,
       levelSystem: _levelSystem,
-      missionSystem: _missionSystem,
       statistics: _statistics,
       gameData: gameData,
     );
@@ -841,7 +828,6 @@ class GameState extends ChangeNotifier implements DomainPorts {
       'marketManager': _marketManager.toJson(),
       'resourceManager': _resourceManager.toJson(),
       'levelSystem': _levelSystem.toJson(),
-      'missionSystem': _missionSystem.toJson(),
       'productionManager': _productionManager.toJson(),
       'agentManager': _agentManager.toJson(),
       'rareResourcesManager': _rareResourcesManager.toJson(),
@@ -907,10 +893,6 @@ class GameState extends ChangeNotifier implements DomainPorts {
       _levelSystem.fromJson(Map<String, dynamic>.from(core['levelSystem'] as Map));
     }
 
-    if (core['missionSystem'] is Map) {
-      _missionSystem.fromJson(Map<String, dynamic>.from(core['missionSystem'] as Map));
-    }
-
     if (core['productionManager'] is Map) {
       _productionManager.fromJson(Map<String, dynamic>.from(core['productionManager'] as Map));
     }
@@ -945,12 +927,11 @@ class GameState extends ChangeNotifier implements DomainPorts {
     notifyListeners();
   }
 
-  void _loadGameData(Map<String, dynamic> gameData) {
+  void loadGameData(Map<String, dynamic> gameData) {
     GamePersistenceMapper.loadGameData(
       playerManager: _playerManager,
       marketManager: _marketManager,
       levelSystem: _levelSystem,
-      missionSystem: _missionSystem,
       statistics: _statistics,
       gameData: gameData,
     );
