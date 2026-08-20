@@ -1,8 +1,8 @@
 // lib/widgets/appbar/appbar_progress_indicator.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../models/game_state.dart';
-import '../../constants/game_config.dart'; // Importé depuis constants au lieu de models
+import 'package:paperclip2/models/game_state.dart';
+import 'package:paperclip2/constants/game_config.dart'; // Importé depuis constants au lieu de models
 import '../../utils/responsive_utils.dart';
 
 class AppBarProgressIndicator extends StatelessWidget {

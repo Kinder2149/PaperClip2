@@ -1,9 +1,9 @@
 // lib/widgets/indicators/level_widgets.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../models/game_state.dart';
+import 'package:paperclip2/models/game_state.dart';
 import '../../models/progression_system.dart';
-import '../../constants/game_config.dart'; // Importé depuis constants au lieu de models
+import 'package:paperclip2/constants/game_config.dart'; // Importé depuis constants au lieu de models
 
 class XPStatusDisplay extends StatelessWidget {
   const XPStatusDisplay({Key? key}) : super(key: key);

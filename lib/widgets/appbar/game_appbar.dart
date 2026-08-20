@@ -1,7 +1,7 @@
 // lib/widgets/appbar/game_appbar.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../models/game_state.dart';
+import 'package:paperclip2/models/game_state.dart';
 import '../../utils/responsive_utils.dart';
 import 'level_badge.dart';
 import 'appbar_actions.dart';

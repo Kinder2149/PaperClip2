@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import '../../models/event_system.dart';
 import 'dart:async';
-import '../../constants/game_config.dart'; // Importé depuis constants au lieu de models
+import 'package:paperclip2/constants/game_config.dart'; // Importé depuis constants au lieu de models
 import '../../services/notification_storage_service.dart';
 import '../../managers/market_manager.dart';
 

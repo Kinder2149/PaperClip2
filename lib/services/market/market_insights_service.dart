@@ -1,7 +1,7 @@
 import 'dart:math' show min;
 
 import '../../managers/market_manager.dart';
-import '../../constants/game_config.dart';
+import 'package:paperclip2/constants/game_config.dart';
 import '../upgrades/upgrade_effects_calculator.dart';
 import '../units/value_objects.dart';
 

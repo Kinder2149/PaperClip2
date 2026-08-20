@@ -2,8 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../constants/game_config.dart';
-import '../models/game_state.dart';
+import 'package:paperclip2/constants/game_config.dart';
+import 'package:paperclip2/models/game_state.dart';
 import '../services/app_bootstrap_controller.dart';
 import '../services/persistence/game_persistence_orchestrator.dart';
 import '../services/runtime/runtime_actions.dart';

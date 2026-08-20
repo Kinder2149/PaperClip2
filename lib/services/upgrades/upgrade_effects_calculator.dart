@@ -1,6 +1,6 @@
 import 'dart:math' show min, max;
 
-import '../../constants/game_config.dart';
+import 'package:paperclip2/constants/game_config.dart';
 
 class UpgradeEffectsCalculator {
   static double speedMultiplier({required int level}) {

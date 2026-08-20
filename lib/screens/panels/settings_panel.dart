@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:paperclip2/models/game_state.dart';
 import 'package:paperclip2/services/auth/firebase_auth_service.dart';
+import 'package:paperclip2/services/background_music.dart';
 import 'package:paperclip2/widgets/design_system/design_system.dart';
 import 'package:paperclip2/screens/welcome_screen.dart';
 
@@ -132,28 +133,21 @@ class _SettingsPanelState extends State<SettingsPanel> with AutomaticKeepAliveCl
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 16),
-            SwitchListTile(
-              title: const Text('Sons'),
-              subtitle: const Text('Activer les effets sonores'),
-              value: true, // TODO: Lier à un vrai paramètre
-              onChanged: (value) {
-                // TODO: Implémenter
-              },
-            ),
-            SwitchListTile(
-              title: const Text('Musique'),
-              subtitle: const Text('Activer la musique de fond'),
-              value: true, // TODO: Lier à un vrai paramètre
-              onChanged: (value) {
-                // TODO: Implémenter
-              },
-            ),
-            SwitchListTile(
-              title: const Text('Notifications'),
-              subtitle: const Text('Recevoir des notifications'),
-              value: true, // TODO: Lier à un vrai paramètre
-              onChanged: (value) {
-                // TODO: Implémenter
+            Consumer<BackgroundMusicService>(
+              builder: (context, backgroundMusicService, child) {
+                return SwitchListTile(
+                  title: const Text('Musique'),
+                  subtitle: const Text('Activer la musique de fond'),
+                  value: backgroundMusicService.isPlaying,
+                  onChanged: (value) async {
+                    await backgroundMusicService.setPlayingState(value);
+                    await backgroundMusicService.saveGameMusicState(
+                      gameState.enterpriseName,
+                      value,
+                    );
+                    setState(() {});
+                  },
+                );
               },
             ),
           ],

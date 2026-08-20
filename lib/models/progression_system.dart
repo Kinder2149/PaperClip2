@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:math' show pow, max;
 import 'package:paperclip2/utils/logger.dart';
-import '../constants/game_config.dart';
+import 'package:paperclip2/constants/game_config.dart';
 import '../services/xp/xp_config.dart';
 import 'package:paperclip2/domain/events/domain_event.dart';
 import 'package:paperclip2/domain/events/domain_event_type.dart';

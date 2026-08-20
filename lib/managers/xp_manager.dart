@@ -2,7 +2,7 @@
 
 import 'package:flutter/foundation.dart';
 import 'dart:math';
-import '../constants/game_config.dart';
+import 'package:paperclip2/constants/game_config.dart';
 import '../services/xp/xp_config.dart';
 import '../services/xp/xp_formulas.dart';
 

@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../services/reset/reset_rewards_calculator.dart';
-import '../models/game_state.dart';
+import 'package:paperclip2/models/game_state.dart';
 import '../models/reset_history_entry.dart';
 
 /// Manager pour le système de reset progression (prestige)

@@ -1,4 +1,4 @@
-import '../models/game_state.dart';
+import 'package:paperclip2/models/game_state.dart';
 
 class GameActions {
   final GameState _gameState;

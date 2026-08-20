@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import 'events/bus/game_event_bus.dart';
 import 'events/game_event.dart';
-import '../constants/game_config.dart';
+import 'package:paperclip2/constants/game_config.dart';
 import '../managers/production_manager.dart';
 import '../managers/player_manager.dart';
 import '../managers/market_manager.dart';

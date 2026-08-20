@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:provider/provider.dart';
-import '../../models/game_state.dart';
+import 'package:paperclip2/models/game_state.dart';
 import '../../managers/market_manager.dart';
 import '../../services/format/game_format.dart';
 

@@ -24,8 +24,9 @@ Le dossier `models` contient les structures de données fondamentales, les inter
 
 Certains fichiers sont marqués avec le suffixe `_legacy` pour indiquer qu'ils sont obsolètes mais conservés pour référence ou compatibilité :
 
-- **resource_manager_legacy.dart** : Ancienne version du gestionnaire de ressources, remplacée par celle dans le dossier `managers/`.
 - **game_state_legacy.dart** : Ancienne version de l'état du jeu, conservée pour référence.
+
+Le gestionnaire de ressources a été remplacé par `lib/managers/resource_manager.dart`.
 
 ## Notes Importantes
 

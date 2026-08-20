@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../models/game_state.dart';
+import 'package:paperclip2/models/game_state.dart';
 import '../services/game_runtime_coordinator.dart';
 import '../services/notification_manager.dart';
 import '../services/persistence/game_persistence_orchestrator.dart';

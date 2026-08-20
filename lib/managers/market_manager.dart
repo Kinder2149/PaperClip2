@@ -1,7 +1,7 @@
 // lib/managers/market_manager.dart
 import 'package:flutter/foundation.dart';
 import 'dart:math';
-import '../constants/game_config.dart';
+import 'package:paperclip2/constants/game_config.dart';
 import '../models/json_loadable.dart';
 import '../models/statistics_manager.dart';
 import 'player_manager.dart';

@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import '../models/event_system.dart';
 import '../utils/logger.dart';
-import '../constants/game_config.dart'; // Ajout pour EventType
+import 'package:paperclip2/constants/game_config.dart'; // Ajout pour EventType
 import '../constants/storage_keys.dart';
 import '../utils/icon_helper.dart'; // Pour utiliser des icônes constantes (déplacé depuis utilities)
 

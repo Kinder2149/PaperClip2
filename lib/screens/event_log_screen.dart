@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/material.dart';
-import '../constants/game_config.dart'; // Importé depuis constants au lieu de models
+import 'package:paperclip2/constants/game_config.dart'; // Importé depuis constants au lieu de models
 import '../models/event_system.dart';
 
 class EventLogScreen extends StatefulWidget {

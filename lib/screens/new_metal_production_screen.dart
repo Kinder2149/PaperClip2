@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../models/game_state.dart';
+import 'package:paperclip2/models/game_state.dart';
 import '../services/progression/progression_rules_service.dart';
 import '../widgets/buttons/production_button.dart';
 import '../widgets/indicators/stat_indicator.dart';

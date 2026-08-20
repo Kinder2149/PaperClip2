@@ -9,7 +9,7 @@ export '../models/save_metadata.dart' show SaveMetadata;
 export 'save_system/save_error.dart' show SaveError;
 
 // Import des dépendances nécessaires pour la réutilisation des classes
-import '../constants/game_config.dart';
+import 'package:paperclip2/constants/game_config.dart';
 import 'save_system/local_save_game_manager.dart';
 import '../models/save_metadata.dart'; // Import direct de SaveMetadata pour l'utilisation interne
 

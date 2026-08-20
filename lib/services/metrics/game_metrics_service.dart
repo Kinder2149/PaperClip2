@@ -1,5 +1,5 @@
-import '../../constants/game_config.dart';
-import '../../models/game_state.dart';
+import 'package:paperclip2/constants/game_config.dart';
+import 'package:paperclip2/models/game_state.dart';
 import '../market/market_insights_service.dart';
 import '../upgrades/upgrade_effects_calculator.dart';
 import '../units/value_objects.dart';

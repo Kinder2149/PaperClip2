@@ -3,7 +3,7 @@
 import 'package:flutter/foundation.dart';
 import 'base_agent_executor.dart';
 import '../models/agent.dart';
-import '../models/game_state.dart';
+import 'package:paperclip2/models/game_state.dart';
 
 /// Agent Quantum Researcher
 /// 

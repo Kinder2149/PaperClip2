@@ -1,5 +1,5 @@
 import 'package:json_annotation/json_annotation.dart';
-import '../../../constants/game_config.dart';
+import 'package:paperclip2/constants/game_config.dart';
 
 part 'cloud_world_detail.g.dart';
 

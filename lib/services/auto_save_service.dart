@@ -9,8 +9,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import '../utils/logger.dart';
 
-import '../models/game_state.dart';
-import '../constants/game_config.dart';  // Import des constantes centralisÃ©es
+import 'package:paperclip2/models/game_state.dart';
+import 'package:paperclip2/constants/game_config.dart';  // Import des constantes centralisÃ©es
 import 'save_game.dart';  // Import du fichier point d'entrÃ©e pour le systÃ¨me de sauvegarde
 import '../constants/storage_constants.dart';  // Chemin corrigÃ© vers les constantes de stockage
 import 'save_system/save_validator.dart';  // Import du nouveau validateur de sauvegarde

@@ -1,7 +1,7 @@
 // lib/managers/production_manager.dart
 import 'package:flutter/foundation.dart';
 import 'dart:math';
-import '../constants/game_config.dart' show GameConstants, EventType, EventImportance; // Import des constantes et enums requis
+import 'package:paperclip2/constants/game_config.dart' show GameConstants, EventType, EventImportance; // Import des constantes et enums requis
 import 'player_manager.dart';
 import '../models/statistics_manager.dart';
 import 'research_manager.dart';

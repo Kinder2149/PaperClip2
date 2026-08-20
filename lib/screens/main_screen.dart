@@ -9,8 +9,8 @@ import '../widgets/appbar/game_appbar.dart';
 import 'package:paperclip2/widgets/layout/app_scaffold.dart';
 
 // Imports des modèles
-import '../models/game_state.dart';
-import '../constants/game_config.dart'; // Importé depuis constants au lieu de models
+import 'package:paperclip2/models/game_state.dart';
+import 'package:paperclip2/constants/game_config.dart'; // Importé depuis constants au lieu de models
 import '../models/event_system.dart';
 import '../models/progression_system.dart';
 import '../models/statistics_manager.dart';

@@ -1,6 +1,6 @@
 // lib/models/upgrade.dart
 import 'dart:math';
-import '../constants/game_config.dart'; // Importé depuis constants au lieu de models
+import 'package:paperclip2/constants/game_config.dart'; // Importé depuis constants au lieu de models
 import '../services/upgrades/upgrade_effects_calculator.dart';
 
 class Upgrade {

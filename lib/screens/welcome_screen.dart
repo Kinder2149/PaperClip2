@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
 import '../services/runtime/runtime_actions.dart';
 import '../services/app_bootstrap_controller.dart';
 import '../services/persistence/game_persistence_orchestrator.dart';
-import '../constants/game_config.dart';
+import 'package:paperclip2/constants/game_config.dart';
 import '../services/save_game.dart';
 import 'main_screen.dart';
 import 'profile_screen.dart';

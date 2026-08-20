@@ -1,8 +1,8 @@
 import 'dart:async' show unawaited;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import '../models/game_state.dart';
-import '../constants/game_config.dart';
+import 'package:paperclip2/models/game_state.dart';
+import 'package:paperclip2/constants/game_config.dart';
 import 'auto_save_service.dart';
 import '../controllers/game_session_controller.dart';
 import 'lifecycle/app_lifecycle_handler.dart';

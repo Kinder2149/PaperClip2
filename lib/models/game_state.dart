@@ -8,7 +8,7 @@ import '../services/runtime/domain_ports.dart';
 import '../services/persistence/game_snapshot.dart';
 import '../services/persistence/game_persistence_orchestrator.dart';
 
-import '../constants/game_config.dart';
+import 'package:paperclip2/constants/game_config.dart';
 import '../managers/player_manager.dart';
 import '../managers/market_manager.dart';
 import 'progression_system.dart';

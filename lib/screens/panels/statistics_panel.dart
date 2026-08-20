@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../models/game_state.dart';
+import 'package:paperclip2/models/game_state.dart';
 import '../../models/reset_history_entry.dart';
 
 /// Panel Statistiques - Statistiques détaillées du jeu

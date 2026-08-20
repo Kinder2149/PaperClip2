@@ -8,9 +8,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:paperclip2/services/cloud/cloud_port_manager.dart';
 import 'package:paperclip2/services/notification_manager.dart';
 
-import '../constants/game_config.dart';
+import 'package:paperclip2/constants/game_config.dart';
 import '../env_config.dart';
-import '../models/game_state.dart';
+import 'package:paperclip2/models/game_state.dart';
 import '../screens/main_screen.dart';
 import '../services/background_music.dart';
 import '../services/game_runtime_coordinator.dart';

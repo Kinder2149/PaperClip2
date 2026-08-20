@@ -1,7 +1,7 @@
 // lib/managers/resource_manager.dart
 import 'package:flutter/foundation.dart';
 import 'dart:math';
-import '../constants/game_config.dart' show GameConstants; // Import explicite de la classe GameConstants
+import 'package:paperclip2/constants/game_config.dart' show GameConstants; // Import explicite de la classe GameConstants
 import '../models/json_loadable.dart';
 import 'player_manager.dart';
 import 'market_manager.dart';

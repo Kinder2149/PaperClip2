@@ -4,7 +4,7 @@ import '../models/research_node.dart';
 import '../managers/rare_resources_manager.dart';
 import '../managers/player_manager.dart';
 import '../models/progression_system.dart';
-import '../constants/game_config.dart';
+import 'package:paperclip2/constants/game_config.dart';
 
 /// Manager pour l'arbre de recherche
 /// 

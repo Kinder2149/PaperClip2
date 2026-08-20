@@ -1,4 +1,4 @@
-import '../constants/game_config.dart';  // Importé depuis constants au lieu de models
+import 'package:paperclip2/constants/game_config.dart';  // Importé depuis constants au lieu de models
 
 class UpdateManager {
   static const String CURRENT_VERSION = "1.0.3";  // Mise à jour de la version

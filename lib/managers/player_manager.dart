@@ -2,7 +2,7 @@
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:math';
-import '../constants/game_config.dart'; // Mis à jour pour utiliser le dossier constants
+import 'package:paperclip2/constants/game_config.dart'; // Mis à jour pour utiliser le dossier constants
 import '../models/json_loadable.dart';
 import '../models/upgrade.dart';
 import '../services/upgrades/upgrade_effects_calculator.dart';

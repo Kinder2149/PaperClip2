@@ -1,7 +1,7 @@
 // lib/agents/base_agent_executor.dart
 
 import '../models/agent.dart';
-import '../models/game_state.dart';
+import 'package:paperclip2/models/game_state.dart';
 
 /// Interface commune pour l'exécution des actions des agents
 /// 

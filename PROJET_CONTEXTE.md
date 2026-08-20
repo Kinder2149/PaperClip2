@@ -3,7 +3,7 @@
 > Emplacement : racine du projet
 > Source de vérité absolue — lire EN ENTIER avant toute action.
 > Toute décision technique qui contredit ce fichier est interdite.
-> Dernière mise à jour : 2026-04-12
+> Dernière mise à jour : 2026-08-06
 
 ---
 
@@ -16,7 +16,7 @@
 | Objectif en 1 phrase | Jeu de gestion incrémental (idle game) où le joueur produit et vend des trombones pour développer son empire industriel, avec sauvegarde cloud multi-appareils |
 | Statut | En développement — core gameplay stable, cloud stable |
 | Utilisateurs actuels | Tests internes (1 compte de test) |
-| Dernière mise à jour | 2026-04-11 |
+| Dernière mise à jour | 2026-08-06 |
 
 ---
 
@@ -142,6 +142,8 @@ Démarrage → BootstrapScreen → AppBootstrapController
 | 2026-01 | Snapshot v3 format avec dates ISO à 3 décimales | Compatibilité backend JS Date.toISOString() |
 | 2026-01 | Tests de persistance = HTTP pur (pas SDK Flutter) | Fonctionne en VM Dart sans platform channels |
 | 2026-04 | loadGameByIdAndStartAutoSave(id) vs loadEnterpriseAndStartAutoSave() | Évite le deadlock enterpriseId==null |
+| 2026-08-06 | Imports internes en style absolu (`package:paperclip2/...`) | Convention Dart/Flutter officielle, cohérence du projet (52 fichiers absolus vs 96 relatifs avant uniformisation) |
+| 2026-08-06 | Interrupteurs Sons et Notifications retirés du panel Paramètres | Aucun service réel activable derrière (`playSfx()` stub no-op, `NotificationManager` sans notion ON/OFF) — à réintroduire si ces services sont construits un jour |
 
 ---
 
@@ -165,15 +167,20 @@ Tout autre fichier .md → archive/.
 
 ## 8. SESSION EN COURS
 
-Graphify : ✅ COMPLÉTÉ
-Objectif de la session : Créer une page web statique de tracker de films avec formulaire et liste vide par défaut, design moderne sans JavaScript.
-Fichiers concernés : index.html, style.css
-Hors scope cette session : Logique JavaScript, persistance de données, dépendances externes autres que Google Fonts CDN, autres répertoires du projet
-Résultat fin de session : Deux fichiers HTML/CSS autonomes et fonctionnels dans C:\DEV\TEST\film-tracker\. Tester en décommentant la carte exemple dans le HTML et rafraîchissant le navigateur.
-Graphe mis à jour : oui
+Graphify : ✅ COMPLÉTÉ (à rafraîchir — imports modifiés depuis la dernière génération)
+Objectif de la session : 3 corrections préparées via Brain (chaîne "bug") et exécutées par Claude Code — README.md fantôme, incohérence de style d'imports, interrupteurs settings_panel.dart non câblés.
+Fichiers concernés : lib/models/README.md, 48 fichiers lib/ (imports game_config.dart/game_state.dart), lib/screens/panels/settings_panel.dart
+Hors scope cette session : services Sons/Notifications (inexistants, non construits), fichiers dupliqués constants/game_config.dart et game_state.dart à la racine (hors lib/, morts, signalés mais non traités)
+Résultat fin de session : 3 missions closes et validées (flutter analyze sans régression, test manuel de l'interrupteur Musique validé par Kinder).
+Graphe mis à jour : non — à relancer (graphify claude install / graphify .) avant la prochaine analyse d'architecture
 
 ## 9. BACKLOG (missions suivantes)
 
 1. Google Play Games achievements/leaderboards — tester en production
 2. Build release (APK signé) — préparation Google Play Store
 3. Onboarding utilisateur — tutoriel première utilisation
+4. Rafraîchir `graphify-out/` (`graphify .`) — le graphe actuel date du 2026-08-05, avant l'uniformisation des imports du 2026-08-06 ; ses "God Nodes" montrent encore `../../constants/game_config.dart` (32 edges) et `package:paperclip2/constants/game_config.dart` (16 edges) comme deux nœuds séparés, résidu de l'ancien mélange relatif/absolu.
+5. Traiter ou supprimer les fichiers morts hors `lib/` signalés en session du 2026-08-06 : `constants/game_config.dart` et `game_state.dart` dupliqués à la racine du projet (hors scope de cette session-là, jamais rouverts depuis).
+
+## 10. AUDIT DE REPRISE (2026-08-06)
+**Constat :** ce fichier et `CHANGELOG.md` viennent d'être mis à jour aujourd'hui (session close, validée par Kinder). `graphify-out/GRAPH_REPORT.md` existe (234 fichiers, 2257 nœuds, 81 communautés) mais date de la veille (2026-08-05) — cohérent avec la note « Graphe mis à jour : non » en section 8. Aucun écart supplémentaire trouvé entre la doc et l'état du code lors de cet audit ; le projet est le mieux tenu du périmètre audité jusqu'ici (méthode déjà respectée : graphify actif, backlog priorisé, décisions figées à jour).
