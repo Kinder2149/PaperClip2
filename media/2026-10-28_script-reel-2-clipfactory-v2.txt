@@ -1,0 +1,121 @@
+SCRIPT V2 — Reel 2 ClipFactory Empire « Chaque clic fabrique un trombone. » (angle B, « La machine », textes réécrits pour être compris)
+Écrit par Claude Code le 28/10/2026, d'après le retour de Kinder sur le montage de la V1 (« il manque le logo, les phrases sont trop courtes, on ne comprend rien ») et la note d'affinage du 28/10/2026 (instagram/veille/2026-10-28_note-clipfactory-reel2.txt). Statut : TEXTES VALIDÉS PAR KINDER le 28/10/2026 (les cinq phrases) ; LOGO À FOURNIR avant le montage. Remplace la V1 (2026-10-28_script-reel-2-clipfactory.txt, validée puis refusée au visionnage du montage).
+L'agent Instagram monte exactement ce script. Il ne réécrit aucun texte, ne change ni l'ordre, ni les durées, ni les captures. S'il ne peut pas respecter un point, il s'arrête et le signale à Kinder.
+
+======================================================================
+1. L'IDÉE (une seule) ET CE QUI CHANGE PAR RAPPORT À LA V1
+======================================================================
+Histoire en cinq phrases qui s'enchaînent (chaque phrase répond à la question que le spectateur se pose après la précédente) :
+  1. Chaque clic fabrique un trombone.            → et ensuite ?
+  2. Chaque trombone se vend tout seul.           → et avec l'argent ?
+  3. Tu achètes une machine avec l'argent.       → combien ?
+  4. Elle coûte 15 € du jeu.                      → et elle fait quoi ?
+  5. Elle fabrique des trombones toute seule.     (chute)
+Ce qui change : la V1 coupait l'accroche en morceaux (« 15 €, et une machine », « clique pour toi ») que personne ne comprenait. La V2 dit les choses simplement et dans l'ordre. « 15 € du jeu » : la monnaie du jeu, pour qu'on ne pense pas à de l'argent réel. Le logo de l'application est sur l'écran de fin.
+Chaque phrase est vraie sur les captures : un tap sur Produire = un trombone ; « Vente automatique » est activée (l'argent monte sans toucher la vente) ; le panneau Autoclippers propose « Acheter Autoclipper (15,0 € ) » ; après l'achat « Autoclippers : 1 » et le total de trombones monte tout seul (environ 1 par seconde).
+Honnêteté (note de Recherche) : aucun gain spectaculaire promis ; on montre le passage du clic à l'automatique.
+
+======================================================================
+2. RÉGLAGES GÉNÉRAUX
+======================================================================
+- Format : vertical 1080x1920, 30 images/s. Durée : 22 s (44 temps à 120 BPM, 1 temps = 0,5 s). Règle 2.1 : 15 à 30 s.
+- Musique : « Fly Away (120 BPM) » — ThisIsBeatKitchen (Pixabay), à partir de 19,5 s, volume 0,9. Chaque coupe tombe sur un temps. Pas de voix. Le Reel se comprend sans le son.
+- Images de l'appli : ÉCRAN ENTIER, sans cadre de téléphone, tout l'écran visible, fond #120B24 sur les côtés. AUCUN zoom.
+- Textes : police Inter, gras, taille 64 px (le minimum de la charte, pour tenir sur deux lignes), bandeau sombre presque opaque (85 %, #120B24), un mot clé en vert #4CAF50 (noté *ainsi*), DEUX lignes au plus par carton, 4 à 6 mots (règle 6.2). Chaque carton reste affiché pendant tout son plan et dure au moins mots ÷ 1,5 s (règle 6.3). Les mots apparaissent un à un (style cinétique de l'outil).
+- Couleurs relevées sur l'appli (à valider par Kinder) : violet #673AB7, boutons verts #4CAF50.
+- Zone sûre, TEST de la règle 5.4 : aucun texte important dans les 290 px du haut ni dans les 480 px du bas (zone de texte : de 290 à 1440 px).
+- Emplacement des textes : jamais sur un défilement, jamais sur un chiffre de l'appli (argent, total, stock, prix, nombre d'autoclippers). L'agent vérifie la place avec la commande « aperçu ».
+  * Plans 1 et 2 (capture A) : « bas », dans le vide sous « Sauvegarder la Partie ».
+  * Plans 3, 4 et 5 (capture B) : « haut », de 290 px, sur la ligne « Vente automatique », jusqu'au-dessus des cartes Total / Stock. Si deux lignes à 64 px ne tiennent pas sans toucher un chiffre : l'agent s'ARRÊTE et le dit (retour au script), il ne change ni le texte ni la durée.
+- Rythme (règle 3.2) : un plan toutes les 3,5 à 4 s.
+- Vitesse : plan 2 ×1,5 ; plan 3 au ralenti (×0,43, l'écran est presque fixe) ; plan 5 ×2 (règle 3.3). La prise B est saccadée (environ 3 images par seconde) ; le montage la rend à 30 images/s en répétant les images. Limite connue (règle 5.1).
+- Logo : fichier media/2026-10-28_clipfactory-logo.png (à déposer dans le dépôt PaperClip2 avant le montage : le logo du code est le logo Flutter par défaut, PAS celui de l'appli). Champ « logo » du plan ; grande icône sur l'écran de fin.
+
+======================================================================
+3. DÉROULÉ, PLAN PAR PLAN (6 plans, 7 + 8 + 8 + 7 + 8 + 6 = 44 temps)
+======================================================================
+Les heures « dans la capture » renvoient aux vidéos d'écran sources (media/ du dépôt PaperClip2), relevées image par image.
+
+PLAN 1 — Un clic, un trombone (0 → 3,5 s, 7 temps)
+  Capture : 2026-10-28_clipfactory-clics.mp4, de 1,0 s à 4,5 s, vitesse ×1 (écran à 0 €, premiers clics à 1,8 s).
+  Texte (présent DÈS la première image) : « Chaque *clic* fabrique un trombone. » (5 mots, 3,3 s)
+  Emplacement : bas.
+
+PLAN 2 — Il se vend tout seul (3,5 → 7,5 s, 8 temps)
+  Capture : 2026-10-28_clipfactory-clics.mp4, de 4,5 s à 10,5 s, vitesse ×1,5 (l'argent passe de 1,50 € à 5,00 €).
+  Texte : « Chaque trombone se vend *tout seul*. » (6 mots, 4 s)
+  Emplacement : bas.
+
+PLAN 3 — On achète une machine (7,5 → 11,5 s, 8 temps)
+  Capture : 2026-10-28_clipfactory-autoclipper.mp4, de 1,7 s à 3,4 s (le panneau « Autoclippers : 0 » et « Acheter Autoclipper (15,0 €) », écran déjà immobile, SANS le défilement), ralentie (×0,43) pour durer 4 s.
+  Texte : « Tu achètes une *machine* avec l'argent. » (6 mots, 4 s)
+  Emplacement : haut (de 290 px).
+
+PLAN 4 — Elle coûte 15 € du jeu (11,5 → 15 s, 7 temps)
+  Capture : 2026-10-28_clipfactory-autoclipper.mp4, de 3,4 s à 6,9 s, vitesse ×1 (le bouton d'achat est touché vers 3,5 s ; le panneau passe à « Autoclippers : 1 », le prix à 16,5 €).
+  Texte : « Elle coûte *15 €* du jeu. » (5 mots, 3,3 s)
+  Emplacement : haut.
+
+PLAN 5 — Le moment fort : elle travaille seule (15 → 19 s, 8 temps)
+  Capture : 2026-10-28_clipfactory-autoclipper.mp4, de 7,0 s à 15,0 s, accélérée ×2 pour durer 4 s (le total de trombones monte de 322 à 331 sans aucun clic).
+  Texte : « Elle fabrique des trombones *toute seule*. » (6 mots, 4 s)
+  Emplacement : haut.
+  Moment fort : de 15 s à 19 s, soit entre 68 et 86 % du Reel (règle 4.4).
+
+PLAN 6 — Fin avec le logo (19 → 22 s, 6 temps)
+  Fond : la dernière image du plan 5, assombrie et floutée (on voit encore l'appli derrière). PAS d'écran noir vide.
+  Par-dessus, centrés dans la zone de texte :
+    - le LOGO de ClipFactory Empire en grand (il « tombe » en place, fonction de l'outil) ;
+    - « ClipFactory Empire » (Caladea, blanc) ;
+    - « *Gratuit* sur Google Play » ;
+    - « Lien en bio ».
+  La vidéo s'arrête net sur le dernier temps : la boucle relance l'accroche « Chaque clic fabrique un trombone. » sur l'écran à 0 €.
+
+======================================================================
+4. LÉGENDE (à copier telle quelle)
+======================================================================
+Chaque clic fabrique un trombone… jusqu'à ce que tu achètes une machine qui le fait pour toi. 🏭
+
+Dans ClipFactory Empire, tu produis à la main, tes trombones se vendent tout seuls, et avec l'argent du jeu tu achètes ton premier autoclipper : une machine qui fabrique à ta place.
+
+Gratuit sur Google Play. Lien en bio.
+
+#jeuandroid #idlegame #jeuxmobile #clicker #indiedev
+
+======================================================================
+5. LISTE DES CAPTURES ET FICHIERS
+======================================================================
+Déjà dans media/ du dépôt PaperClip2 (branche principale, commit cf94493), copie du serveur ~/montage-instagram/depots/paperclip2/media/ :
+  - media/2026-10-28_clipfactory-clics.mp4        (plans 1 et 2, de 1,0 à 4,5 s et de 4,5 à 10,5 s)
+  - media/2026-10-28_clipfactory-autoclipper.mp4  (plans 3, 4 et 5, de 1,7 à 3,4 s, de 3,4 à 6,9 s et de 7,0 à 15,0 s)
+À AJOUTER avant le montage :
+  - media/2026-10-28_clipfactory-logo.png (logo de l'application, 512 x 512, fourni par Kinder ou repris du portfolio avec son accord).
+  - Musique : thisisbeatkitchen_fly-away-120bpm.mp3 (sur le serveur : ~/montage-instagram/musique/).
+Aucune donnée personnelle visible (le nom affiché est « Utilisateur »).
+
+======================================================================
+6. CONTRÔLE AVANT DE SOUMETTRE À KINDER (par l'agent)
+======================================================================
+[ ] « Chaque clic fabrique un trombone. » est lisible sur la toute première image, avec 0,00 € à l'écran.
+[ ] Chaque carton fait au plus deux lignes ; les cinq textes sont, dans l'ordre : plan 1 « Chaque clic fabrique un trombone. », plan 2 « Chaque trombone se vend tout seul. », plan 3 « Tu achètes une machine avec l'argent. », plan 4 « Elle coûte 15 € du jeu. », plan 5 « Elle fabrique des trombones toute seule. »
+[ ] Aucun texte ne chevauche un chiffre de l'appli ou un autre texte ; aucun texte au-dessus d'un défilement (le plan 3 n'a plus de défilement).
+[ ] Aucun texte dans les 290 px du haut ni les 480 px du bas.
+[ ] Aucun cadre de téléphone ; aucun zoom ; tout l'écran de l'appli est visible.
+[ ] Plan 4 : « Autoclippers : 1 » et le prix 16,5 € sont visibles avant la fin du plan.
+[ ] Plan 5 : le total de trombones monte pendant le plan sans clic.
+[ ] Fin : fond flouté, pas d'écran noir ; LE LOGO DE L'APPLICATION (pas le logo Flutter) en grand ; titre, « Gratuit sur Google Play », « Lien en bio » lisibles ; la vidéo boucle sur l'accroche.
+[ ] Durée 22 s ; six plans de 3,5, 4, 4, 3,5, 4 et 3 s ; coupes sur les temps de la musique.
+[ ] Légende et hashtags identiques au point 4. Aucune donnée personnelle visible.
+
+======================================================================
+7. RÈGLES SUIVIES ET LIMITES
+======================================================================
+Suivies (numéros du socle) : 1.1 et 1.2 (texte direct dès l'image, promesse visible : 0 €), 2.1 (22 s), 2.2 (une idée), 3.1 et 3.2 (un plan toutes les 3,5 à 4 s), 3.3 (passages accélérés), 4.1 (la fin boucle), 4.4 (moment fort de 68 à 86 %), 5.2 et 5.3 (9:16, tout l'écran), 5.4 (zone de texte de 290 à 1440 px), 6.1 à 6.3 (deux lignes, 5 à 6 mots, durée d'affichage suffisante), 6.5 bis (lisible sans le son), 7.1 (musique de la bibliothèque), 8.2 (logo seulement sur l'écran de fin), 8.4 (deux polices, deux couleurs), 9.3 (l'essentiel dans les 55 premiers caractères de la légende), 10.1 (5 hashtags).
+Test de ce Reel (un seul) : règle 5.4 (zone de texte de 290 à 1440 px). Le test « fin sans logo » (règle 4.2) est abandonné : la V1 a été refusée à cause de l'absence de logo.
+Limites :
+  - Les cartons des plans 2, 3 et 5 comptent 6 mots (règle 6.2 : 4 à 7) ; ils passent sur deux lignes.
+  - Les textes B (plans 3 à 5) sont sur deux lignes tout en haut ; ils cachent la ligne « Vente automatique » et frôlent les cartes Total / Stock. Si un chiffre est couvert, l'agent s'arrête (voir point 2).
+  - Règle 5.1 (30 images/s) : la prise B est enregistrée à environ 3 images/s ; elle reste saccadée. Si Kinder la refuse au visionnage, on refilme la prise B.
+  - Le gain de la machine est lent (environ 1 trombone par seconde) : le moment fort est le passage au « automatique ».
+  - Le logo du dépôt PaperClip2 (code) est celui de Flutter : le vrai logo doit être fourni.
+Notes pour le montage : si l'outil ne peut pas poser un texte à l'endroit voulu, c'est au montage de s'adapter, pas au script. Version de l'application : celle du Play Store au 28/10/2026.
