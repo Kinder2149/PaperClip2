@@ -7,6 +7,20 @@
 
 ---
 
+## STATUT — fait foi pour les statuts (lu par Pilotage)
+
+```
+STATUT DU PROJET : En pause
+MISSION : Trois corrections du 2026-08-06 (README fantôme, imports, interrupteurs de réglages) — Close
+IDÉES PARQUÉES :
+  - Google Play Games (achievements, leaderboards) à tester en production
+  - Build release (APK signé) pour le Play Store
+  - Onboarding utilisateur (tutoriel de première utilisation)
+  - Rafraîchir graphify-out/
+  - Traiter ou supprimer les fichiers morts hors lib/ (constants/game_config.dart, game_state.dart)
+```
+*(Bloc ajouté le 2026-10-30, validé par Kinder.)*
+
 ## 1. IDENTITÉ DU PROJET
 
 | Champ | Valeur |
