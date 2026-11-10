@@ -12,6 +12,7 @@
 ```
 STATUT DU PROJET : En pause
 MISSION : Trois corrections du 2026-08-06 (README fantôme, imports, interrupteurs de réglages) — Close
+EXCEPTION : functions\README.md et integration_test\README.md sont des README de sous-dossiers de code (comme ceux de lib\ et test\) et ne comptent pas dans la limite de 5 .md — précision du 2026-11-10 (à valider par Kinder)
 REPRISE : préparer la version téléchargeable pour le Play Store (build release signé) et tester les succès et classements Google Play Games
 IDÉES PARQUÉES :
   - Google Play Games (achievements, leaderboards) à tester en production
