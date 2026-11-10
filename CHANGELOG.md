@@ -6,6 +6,7 @@
 
 | Date | Type | Description |
 | --- | --- | --- |
+| 2026-11-10 | Rangement (tri des projets, lot 3) | Pause propre : statut En pause, ligne de reprise écrite (version Play Store + Google Play Games) ; 9 rapports et guides de test rangés de test\ vers docs\tests\ (aucun supprimé) |
 | 2026-08-06 | Bug fix UI Settings | Interrupteurs `settings_panel.dart` câblés à un vrai état — Musique reliée à `BackgroundMusicService` (effet réel play/pause + persistance `SharedPreferences` par partie), interrupteurs Sons et Notifications retirés (aucun service réel activable derrière : `playSfx()` stub no-op, `NotificationManager` sans toggle), 6 TODO supprimés ; validé manuellement par Kinder |
 | 2026-08-06 | Refactor Imports | Uniformisation des imports `game_config.dart`/`game_state.dart` en style absolu (`package:paperclip2/...`) — 48 fichiers `lib/` modifiés (60 lignes), plus aucun import relatif vers ces 2 fichiers, `flutter analyze` sans régression (comparé par `git stash`) |
 | 2026-08-06 | Doc | Référence fantôme corrigée dans `lib/models/README.md` — ne mentionne plus `resource_manager_legacy.dart` (fichier supprimé), remplacé par une mention du vrai fichier `lib/managers/resource_manager.dart` |

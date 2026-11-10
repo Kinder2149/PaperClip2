@@ -12,6 +12,7 @@
 ```
 STATUT DU PROJET : En pause
 MISSION : Trois corrections du 2026-08-06 (README fantôme, imports, interrupteurs de réglages) — Close
+REPRISE : préparer la version téléchargeable pour le Play Store (build release signé) et tester les succès et classements Google Play Games
 IDÉES PARQUÉES :
   - Google Play Games (achievements, leaderboards) à tester en production
   - Build release (APK signé) pour le Play Store
@@ -21,6 +22,8 @@ IDÉES PARQUÉES :
 ```
 *(Bloc ajouté le 2026-10-30, validé par Kinder.)*
 
+---
+
 ## 1. IDENTITÉ DU PROJET
 
 | Champ | Valeur |
@@ -28,7 +31,7 @@ IDÉES PARQUÉES :
 | Nom | PaperClip2 |
 | Type | Application mobile (Flutter / Android) |
 | Objectif en 1 phrase | Jeu de gestion incrémental (idle game) où le joueur produit et vend des trombones pour développer son empire industriel, avec sauvegarde cloud multi-appareils |
-| Statut | En développement — core gameplay stable, cloud stable |
+| Statut | En pause — core gameplay stable, cloud stable (pause décidée au tri du 2026-11-10) |
 | Utilisateurs actuels | Tests internes (1 compte de test) |
 | Dernière mise à jour | 2026-08-06 |
 
@@ -167,7 +170,6 @@ Démarrage → BootstrapScreen → AppBootstrapController
 |---|---|
 | PROJET_CONTEXTE.md | Source de vérité (ce fichier) |
 | README.md | Guide démarrage rapide |
-| METHODO/STACK_STANDARD.md | Stack de référence globale |
 | docs/01-architecture/architecture-globale.md | Architecture technique détaillée |
 | docs/02-guides-developpeur/api-backend.md | API Cloud Functions |
 
